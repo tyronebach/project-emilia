@@ -102,6 +102,53 @@ class MemoryUpdateRequest(BaseModel):
 # Initialize FastAPI
 app = FastAPI(title="Emilia Web App API", version="1.0.0")
 
+
+# ========================================
+# CONSISTENT ERROR RESPONSE FORMAT
+# ========================================
+
+def make_error_response(status_code: int, error: str, detail: str = None) -> Dict[str, Any]:
+    """Create a consistent error response dict."""
+    response = {
+        "error": error,
+        "status_code": status_code
+    }
+    if detail:
+        response["detail"] = detail
+    return response
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc: HTTPException):
+    """Return consistent JSON error responses for all HTTP exceptions."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=make_error_response(
+            status_code=exc.status_code,
+            error=exc.detail,
+            detail=f"Request: {request.method} {request.url.path}"
+        )
+    )
+
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc: Exception):
+    """Catch-all handler for unexpected errors."""
+    import traceback
+    error_id = f"ERR-{int(time.time())}"
+    print(f"[{error_id}] Unexpected error: {exc}")
+    print(traceback.format_exc())
+
+    return JSONResponse(
+        status_code=500,
+        content=make_error_response(
+            status_code=500,
+            error="Internal server error",
+            detail=f"Error ID: {error_id}. Check server logs for details."
+        )
+    )
+
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
