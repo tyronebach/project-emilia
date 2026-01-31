@@ -21,6 +21,16 @@ let conversationHistory = [];
 let selectedVoice = 'rachel';
 let sessionId = 'web-user-' + Date.now();
 
+// TTS toggle (default OFF)
+const TTS_STORAGE_KEY = 'emilia_tts_enabled';
+let ttsEnabled = false;
+try {
+    ttsEnabled = localStorage.getItem(TTS_STORAGE_KEY) === 'true';
+} catch (e) {
+    // ignore
+}
+
+
 // DOM elements
 const pttButton = document.getElementById('pttButton');
 const statusIndicator = document.getElementById('statusIndicator');
@@ -36,7 +46,62 @@ const clearDebug = document.getElementById('clearDebug');
 const textInput = document.getElementById('textInput');
 const sendButton = document.getElementById('sendButton');
 const voiceSelector = document.getElementById('voiceSelector');
+const ttsToggle = document.getElementById('ttsToggle');
+const sessionSelector = document.getElementById('sessionSelector');
+const refreshSessionsButton = document.getElementById('refreshSessions');
 const newSessionButton = document.getElementById('newSessionButton');
+
+async function loadSessionsList() {
+    if (!sessionSelector) return;
+    try {
+        const response = await fetch(`${API_URL}/api/sessions/list`, {
+            headers: {
+                'Authorization': `Bearer ${AUTH_TOKEN}`
+            }
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to load sessions: ${response.status}`);
+        }
+        const data = await response.json();
+        const sessions = data.sessions || [];
+
+        // Always include current session
+        const existing = new Set(sessions.map(s => s.display_id));
+        if (!existing.has(sessionId)) {
+            sessions.unshift({ display_id: sessionId, session_key: sessionId });
+        }
+
+        sessionSelector.innerHTML = sessions
+            .map(s => {
+                const value = s.display_id;
+                const selected = value === sessionId ? 'selected' : '';
+                return `<option value="${escapeHtml(value)}" ${selected}>${escapeHtml(value)}</option>`;
+            })
+            .join('');
+
+        log('Sessions loaded', { count: sessions.length });
+    } catch (e) {
+        log('Failed to load sessions', { error: e.message });
+        sessionSelector.innerHTML = `<option value="${escapeHtml(sessionId)}" selected>${escapeHtml(sessionId)}</option>`;
+    }
+}
+
+if (refreshSessionsButton) {
+    refreshSessionsButton.addEventListener('click', async () => {
+        await loadSessionsList();
+    });
+}
+
+if (sessionSelector) {
+    sessionSelector.addEventListener('change', (e) => {
+        const value = e.target.value;
+        if (value) {
+            sessionId = value;
+            log('Session switched', { sessionId });
+        }
+    });
+}
+
 
 // Logging
 function log(message, data = null) {
@@ -458,9 +523,14 @@ async function getAgentResponse(message) {
         
         addMessage('assistant', result.response || '(no response)', assistantMeta);
         
-        // Generate and play TTS audio
+        // Generate and play TTS audio (optional)
         if (result.response && result.response.trim()) {
-            await speakText(result.response);
+            if (ttsEnabled) {
+                await speakText(result.response);
+            } else {
+                log('TTS disabled - skipping /api/speak');
+                setState('ready');
+            }
         } else {
             setState('ready');
         }
@@ -479,6 +549,12 @@ async function getAgentResponse(message) {
 async function speakText(text) {
     setState('speaking');
     
+    if (!ttsEnabled) {
+        log('TTS disabled - speakText() skipped');
+        setState('ready');
+        return;
+    }
+
     log('Generating TTS...', { textLength: text.length, voice: selectedVoice });
     
     const startTime = Date.now();
@@ -597,6 +673,18 @@ async function loadVoices() {
     }
 }
 
+function applyTtsUiState() {
+    if (ttsToggle) {
+        ttsToggle.checked = !!ttsEnabled;
+    }
+    if (voiceSelector) {
+        voiceSelector.disabled = !ttsEnabled;
+        if (!ttsEnabled) {
+            voiceSelector.innerHTML = '<option value="rachel">(Voice off)</option>';
+        }
+    }
+}
+
 // Voice selector change
 if (voiceSelector) {
     voiceSelector.addEventListener('change', (e) => {
@@ -604,6 +692,29 @@ if (voiceSelector) {
         log('Voice changed', { voice: selectedVoice });
     });
 }
+
+// TTS toggle
+if (ttsToggle) {
+    ttsToggle.addEventListener('change', async (e) => {
+        ttsEnabled = !!e.target.checked;
+        try {
+            localStorage.setItem(TTS_STORAGE_KEY, ttsEnabled ? 'true' : 'false');
+        } catch (err) {
+            // ignore
+        }
+        log('TTS toggle changed', { ttsEnabled });
+
+        applyTtsUiState();
+
+        // If enabling, load voices immediately
+        if (ttsEnabled) {
+            await loadVoices();
+        }
+    });
+}
+
+// Apply initial UI state
+applyTtsUiState();
 
 // New session button
 if (newSessionButton) {
@@ -614,6 +725,7 @@ if (newSessionButton) {
             if (conversationHistoryEl) conversationHistoryEl.innerHTML = '';
             if (conversationEmpty) conversationEmpty.style.display = 'flex';
             log('New session started', { sessionId });
+            loadSessionsList();
             alert(`New session started: ${sessionId}`);
         }
     });
@@ -781,7 +893,14 @@ window.addEventListener('load', async () => {
     sendButton.disabled = false;
     
     await checkHealth();
-    await loadVoices();
+    await loadSessionsList();
+
+    if (ttsEnabled) {
+        await loadVoices();
+    } else {
+        log('TTS disabled on load - skipping voice load');
+    }
+
     await initMicrophone();
 });
 
@@ -824,16 +943,10 @@ async function loadMemoryMain() {
         const memoryText = document.getElementById('memoryMainText');
         
         if (memoryText) {
-            // Make it editable
-            memoryText.contentEditable = true;
+            // Read-only for security
+            memoryText.contentEditable = false;
             memoryText.textContent = content;
-            memoryText.classList.add('editable');
-            
-            // Save on blur
-            memoryText.addEventListener('blur', async () => {
-                const newContent = memoryText.textContent;
-                await saveMemoryMain(newContent);
-            });
+            memoryText.classList.remove('editable');
         }
         
         log('MEMORY.md loaded');
@@ -847,30 +960,8 @@ async function loadMemoryMain() {
 }
 
 async function saveMemoryMain(content) {
-    try {
-        const response = await fetch(`${API_URL}/api/memory`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${AUTH_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                content: content,
-                append: false
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Failed to save MEMORY.md: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        log('MEMORY.md saved', result);
-        addStateEntry('Memory updated');
-    } catch (error) {
-        log('Failed to save MEMORY.md', { error: error.message });
-        alert(`Failed to save MEMORY.md: ${error.message}`);
-    }
+    // Disabled for security: memory viewer is read-only
+    log('saveMemoryMain disabled (read-only mode)');
 }
 
 async function loadMemoryFileList() {
@@ -937,16 +1028,10 @@ async function loadMemoryFile(filename) {
         if (memoryText) {
             currentMemoryFile = filename;
             
-            // Make it editable
-            memoryText.contentEditable = true;
+            // Read-only for security
+            memoryText.contentEditable = false;
             memoryText.textContent = content;
-            memoryText.classList.add('editable');
-            
-            // Save on blur
-            memoryText.addEventListener('blur', async () => {
-                const newContent = memoryText.textContent;
-                await saveMemoryFile(filename, newContent);
-            });
+            memoryText.classList.remove('editable');
         }
         
         log(`Loaded ${filename}`);
@@ -960,30 +1045,8 @@ async function loadMemoryFile(filename) {
 }
 
 async function saveMemoryFile(filename, content) {
-    try {
-        const response = await fetch(`${API_URL}/api/memory/${filename}`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${AUTH_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                content: content,
-                append: false
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Failed to save ${filename}: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        log(`${filename} saved`, result);
-        addStateEntry(`Memory file ${filename} updated`);
-    } catch (error) {
-        log(`Failed to save ${filename}`, { error: error.message });
-        alert(`Failed to save ${filename}: ${error.message}`);
-    }
+    // Disabled for security: memory viewer is read-only
+    log('saveMemoryFile disabled (read-only mode)', { filename });
 }
 
 // Memory tab switching
@@ -1140,6 +1203,14 @@ const filterCheckboxes = {
     meta: document.getElementById('filterMeta')
 };
 
+function applyMetaFilterToMessage(messageEl, enabled) {
+    if (!messageEl) return;
+    const metaEl = messageEl.querySelector('.message-meta');
+    if (metaEl) {
+        metaEl.style.display = enabled ? '' : 'none';
+    }
+}
+
 function getFilterStates() {
     return {
         reasoning: filterCheckboxes.reasoning?.checked ?? true,
@@ -1164,6 +1235,9 @@ addMessage = function(role, content, meta = {}) {
     
     if (!lastMessage) return;
     
+    // Apply meta filter
+    applyMetaFilterToMessage(lastMessage, filters.meta);
+
     // Add reasoning if present and filter enabled
     if (filters.reasoning && meta.reasoning) {
         const reasoningDiv = document.createElement('div');
@@ -1187,7 +1261,7 @@ addMessage = function(role, content, meta = {}) {
         tokensDiv.textContent = `Tokens: ${meta.usage.prompt_tokens || 0} prompt + ${meta.usage.completion_tokens || 0} completion = ${meta.usage.total_tokens || 0} total`;
         lastMessage.appendChild(tokensDiv);
     }
-    
+
     // Update stats if this is an assistant message
     if (role === 'assistant' && meta.processing_ms) {
         updateStats(meta);
@@ -1240,9 +1314,14 @@ getAgentResponse = async function(message) {
         
         addMessage('assistant', result.response || '(no response)', assistantMeta);
         
-        // Generate and play TTS audio
+        // Generate and play TTS audio (optional)
         if (result.response && result.response.trim()) {
-            await speakText(result.response);
+            if (ttsEnabled) {
+                await speakText(result.response);
+            } else {
+                log('TTS disabled - skipping /api/speak');
+                setState('ready');
+            }
         } else {
             setState('ready');
         }
