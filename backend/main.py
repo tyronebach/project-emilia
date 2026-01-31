@@ -12,9 +12,9 @@ from pydantic import BaseModel
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Header
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response, PlainTextResponse
+from fastapi.responses import JSONResponse, Response, PlainTextResponse, StreamingResponse
 
 
 from parse_chat import parse_chat_completion
@@ -230,27 +230,114 @@ async def transcribe(
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 
+async def _stream_chat_sse(request: ChatRequest, start_time: float):
+    """Generator for SSE streaming chat responses."""
+    import json as json_module
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            payload = {
+                "model": "clawdbot",
+                "messages": [
+                    {"role": "user", "content": request.message}
+                ],
+                "stream": True,
+                "user": request.session_id
+            }
+
+            headers = {
+                "Authorization": f"Bearer {CLAWDBOT_TOKEN}",
+                "Content-Type": "application/json",
+                "x-clawdbot-agent-id": CLAWDBOT_AGENT_ID
+            }
+
+            async with client.stream(
+                "POST",
+                f"{CLAWDBOT_URL}/v1/chat/completions",
+                headers=headers,
+                json=payload
+            ) as response:
+                if response.status_code != 200:
+                    error_text = await response.aread()
+                    yield f"data: {json_module.dumps({'error': f'Brain error: {error_text.decode()}'})}\n\n"
+                    return
+
+                full_content = ""
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str.strip() == "[DONE]":
+                            # Send final event with metadata
+                            processing_ms = int((time.time() - start_time) * 1000)
+                            final_event = {
+                                "done": True,
+                                "response": full_content,
+                                "agent_id": CLAWDBOT_AGENT_ID,
+                                "processing_ms": processing_ms
+                            }
+                            yield f"data: {json_module.dumps(final_event)}\n\n"
+                            break
+                        try:
+                            chunk = json_module.loads(data_str)
+                            choices = chunk.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    full_content += content
+                                    yield f"data: {json_module.dumps({'content': content})}\n\n"
+                        except json_module.JSONDecodeError:
+                            continue
+    except httpx.TimeoutException:
+        yield f"data: {json_module.dumps({'error': 'Brain service timeout'})}\n\n"
+    except httpx.ConnectError:
+        yield f"data: {json_module.dumps({'error': 'Brain service unavailable'})}\n\n"
+    except Exception as e:
+        yield f"data: {json_module.dumps({'error': f'Chat failed: {str(e)}'})}\n\n"
+
+
 @app.post("/api/chat")
 async def chat(
     request: ChatRequest,
-    token: str = Depends(verify_token)
+    token: str = Depends(verify_token),
+    stream: int = Query(0, description="Enable SSE streaming (1=enabled, 0=disabled)")
 ):
     """
     Send message to Clawdbot Brain and get response
-    
+
     Body: {
         "message": "user message",
         "session_id": "user-123" (optional)
     }
-    
-    Returns: {
+
+    Query params:
+        stream: 1 to enable SSE streaming, 0 for regular JSON response
+
+    Returns (non-streaming): {
         "response": "agent reply",
         "agent_id": "main",
         "processing_ms": 1234
     }
+
+    Returns (streaming): SSE events with chunks: {"content": "..."} and final: {"done": true, ...}
     """
     start_time = time.time()
-    
+
+    # Streaming mode
+    if stream == 1:
+        return StreamingResponse(
+            _stream_chat_sse(request, start_time),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+    # Non-streaming mode (original behavior)
     try:
         # Call Clawdbot HTTP API
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -262,27 +349,27 @@ async def chat(
                 "stream": False,
                 "user": request.session_id
             }
-            
+
             headers = {
                 "Authorization": f"Bearer {CLAWDBOT_TOKEN}",
                 "Content-Type": "application/json",
                 "x-clawdbot-agent-id": CLAWDBOT_AGENT_ID
             }
-            
+
             response = await client.post(
                 f"{CLAWDBOT_URL}/v1/chat/completions",
                 headers=headers,
                 json=payload
             )
-            
+
             if response.status_code != 200:
                 raise HTTPException(
                     status_code=response.status_code,
                     detail=f"Brain error: {response.text}"
                 )
-            
+
             result = response.json()
-        
+
         parsed = parse_chat_completion(result)
         response_text = parsed["response_text"]
         reasoning = parsed["reasoning"]
@@ -304,16 +391,16 @@ async def chat(
             response_data["reasoning"] = reasoning
         if thinking:
             response_data["thinking"] = thinking
-            
+
         # Include usage stats if present
         if "usage" in result:
             response_data["usage"] = result["usage"]
-        
+
         # Include raw for debugging (can be removed in production)
         response_data["raw"] = result
-        
+
         return response_data
-    
+
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Brain service timeout")
     except httpx.ConnectError:
