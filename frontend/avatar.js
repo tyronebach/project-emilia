@@ -379,9 +379,13 @@ async function initAvatar() {
             avatar.startIdleAnimation();
 
             console.log('Avatar ready:', vrm.meta?.name || 'VRM Avatar');
+            // Dispatch event for main page
+            window.dispatchEvent(new CustomEvent('avatarLoaded', { detail: { name: vrm.meta?.name || 'VRM Avatar' } }));
         },
         onError: (error) => {
             console.error('Avatar failed to load:', error);
+            // Dispatch error event for main page
+            window.dispatchEvent(new CustomEvent('avatarError', { detail: { error: error.message || error } }));
             if (placeholder) {
                 placeholder.querySelector('.avatar-hint').innerHTML =
                     'Avatar failed to load<br/><small>Check console for details</small>';

@@ -4,6 +4,29 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [3.5.0] - 2026-01-31
+
+### Added
+- **VRM Avatar Panel** - Collapsible avatar display integrated into main dashboard
+- **Rose Model** - Default VRM from 100Avatars (Arweave hosted)
+- **Avatar State Persistence** - Collapse state saved to localStorage
+- **Load Status Indicator** - Shows "Loading...", "Rose ✓", or "Error" in panel header
+
+### Technical
+- Import map for three.js + @pixiv/three-vrm CDN modules
+- Avatar panel above chat filters, collapsible with chevron toggle
+- Custom events `avatarLoaded` / `avatarError` dispatched by avatar.js
+- CSS for `.avatar-panel`, `.avatar-panel.collapsed` transitions
+- Mobile responsive: smaller height, hidden in landscape
+
+### VRM Details
+- Model: Rose (Avatar 057) from 100Avatars R1 collection
+- URL: `https://arweave.net/Ea1KXujzJatQgCFSMzGOzp_UtHqB1pyia--U3AtkMAY`
+- License: CC0 (no attribution required)
+- Features: Idle blink animation, lip sync API stub
+
+---
+
 ## [3.4.0] - 2026-01-31
 
 ### Added

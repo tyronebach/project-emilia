@@ -1,8 +1,8 @@
 # Emilia Web App - Current Status
 
-**Version:** 3.4.1  
+**Version:** 3.5.0  
 **Date:** 2026-01-31  
-**Status:** ✅ Feature Complete (MVP Dashboard)  
+**Status:** ✅ Feature Complete (MVP Dashboard + VRM Avatar)  
 **Tests:** 28 passed
 
 ---
