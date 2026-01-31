@@ -5,6 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emilia - Dashboard Mode</title>
     <link rel="stylesheet" href="style.css">
+
+    <!-- Import Map for three.js and VRM -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/",
+            "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.2.0/lib/three-vrm.module.min.js"
+        }
+    }
+    </script>
 </head>
 <body>
     <div class="app-container dashboard-mode">
@@ -106,6 +117,35 @@
 
             <!-- Center: Chat Panel -->
             <div class="chat-panel-dashboard">
+                <!-- Avatar Panel (Collapsible) -->
+                <div class="avatar-panel" id="avatarPanel">
+                    <div class="avatar-panel-header" id="avatarPanelHeader">
+                        <span class="avatar-panel-title">
+                            <span class="avatar-panel-icon">👤</span>
+                            Avatar
+                        </span>
+                        <div class="avatar-panel-controls">
+                            <span class="avatar-status" id="avatarStatus">Loading...</span>
+                            <button class="avatar-toggle-btn" id="avatarToggleBtn" title="Toggle avatar panel">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="18 15 12 9 6 15"></polyline>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="avatar-panel-content" id="avatarPanelContent">
+                        <div class="avatar-container" id="avatarContainer">
+                            <div class="avatar-placeholder">
+                                <div class="avatar-icon">👤</div>
+                                <p class="avatar-hint">Loading avatar...</p>
+                            </div>
+                            <div id="avatarDisplay" class="avatar-display" style="display: none;">
+                                <!-- VRM canvas will be rendered here by avatar.js -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Chat Filters -->
                 <div class="chat-filters">
                     <label class="filter-checkbox">
@@ -246,10 +286,44 @@
         <!-- Footer -->
         <footer class="app-footer">
             <p>Dashboard Mode: Full Agent Debug View</p>
-            <p class="version">v3.2.0 | Built by Ram 🩷</p>
+            <p class="version">v3.5.0 | Built by Ram 🩷</p>
         </footer>
     </div>
 
     <script src="app.js"></script>
+    <!-- Avatar module (ES module for three.js + VRM) -->
+    <script type="module" src="avatar.js"></script>
+    <script>
+        // Avatar panel collapse toggle
+        document.addEventListener('DOMContentLoaded', function() {
+            const avatarToggleBtn = document.getElementById('avatarToggleBtn');
+            const avatarPanelContent = document.getElementById('avatarPanelContent');
+            const avatarPanel = document.getElementById('avatarPanel');
+            const avatarStatus = document.getElementById('avatarStatus');
+            
+            // Load collapsed state from localStorage
+            const isCollapsed = localStorage.getItem('avatarPanelCollapsed') === 'true';
+            if (isCollapsed) {
+                avatarPanel.classList.add('collapsed');
+            }
+            
+            avatarToggleBtn.addEventListener('click', function() {
+                avatarPanel.classList.toggle('collapsed');
+                const collapsed = avatarPanel.classList.contains('collapsed');
+                localStorage.setItem('avatarPanelCollapsed', collapsed);
+            });
+            
+            // Listen for avatar load events from avatar.js
+            window.addEventListener('avatarLoaded', function(e) {
+                avatarStatus.textContent = 'Rose ✓';
+                avatarStatus.classList.add('loaded');
+            });
+            
+            window.addEventListener('avatarError', function(e) {
+                avatarStatus.textContent = 'Error';
+                avatarStatus.classList.add('error');
+            });
+        });
+    </script>
 </body>
 </html>

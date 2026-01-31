@@ -1,4 +1,4 @@
-# Emilia Web App - v3.4.1 ✅
+# Emilia Web App - v3.5.0 ✅
 
 **Voice + Text Chat with Full Dashboard**
 
