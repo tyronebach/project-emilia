@@ -7,7 +7,7 @@ Integrates with Clawdbot Brain for AI responses
 import os
 import time
 import httpx
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from pydantic import BaseModel
 from pathlib import Path
 from datetime import datetime
@@ -15,6 +15,10 @@ from datetime import datetime
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, PlainTextResponse
+
+
+from parse_chat import parse_chat_completion
+
 
 # Configuration
 STT_SERVICE_URL = os.getenv("STT_SERVICE_URL", "http://192.168.88.252:8765")
@@ -69,6 +73,13 @@ class ChatRequest(BaseModel):
 class SpeakRequest(BaseModel):
     text: str
     voice_id: Optional[str] = None  # Override voice if provided
+
+
+class SessionInfo(BaseModel):
+    session_key: str
+    display_id: str
+    updated_at: Optional[int] = None
+    model: Optional[str] = None
 
 # Female ElevenLabs voices
 VOICE_OPTIONS = {
@@ -272,32 +283,22 @@ async def chat(
             
             result = response.json()
         
-        # Extract response text and metadata
-        response_text = ""
-        reasoning = None
-        thinking = None
-        
-        if "choices" in result and len(result["choices"]) > 0:
-            message = result["choices"][0].get("message", {})
-            response_text = message.get("content", "")
-            
-            # Extract reasoning/thinking if present (extended thinking from GPT-5/Claude)
-            if "reasoning" in message:
-                reasoning = message["reasoning"]
-            if "thinking" in message:
-                thinking = message["thinking"]
-        
+        parsed = parse_chat_completion(result)
+        response_text = parsed["response_text"]
+        reasoning = parsed["reasoning"]
+        thinking = parsed["thinking"]
+
         processing_ms = int((time.time() - start_time) * 1000)
-        
+
         # Build enhanced response
         response_data = {
             "response": response_text,
             "agent_id": CLAWDBOT_AGENT_ID,
             "processing_ms": processing_ms,
             "model": result.get("model", "unknown"),
-            "finish_reason": result.get("choices", [{}])[0].get("finish_reason", "unknown"),
+            "finish_reason": (result.get("choices") or [{}])[0].get("finish_reason", "unknown"),
         }
-        
+
         # Include reasoning/thinking if present
         if reasoning:
             response_data["reasoning"] = reasoning
@@ -321,24 +322,67 @@ async def chat(
         raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
 
 
+@app.get("/api/sessions/list")
+async def list_sessions(token: str = Depends(verify_token)):
+    """List recent Emilia sessions.
+
+    Implementation uses Gateway tool invocation: POST {CLAWDBOT_URL}/tools/invoke with tool=sessions_list.
+    If the gateway doesn't allow the tool (policy) or auth differs, we fail soft and return an empty list.
+    """
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{CLAWDBOT_URL}/tools/invoke",
+                headers={
+                    "Authorization": f"Bearer {CLAWDBOT_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "tool": "sessions_list",
+                    "action": "json",
+                    "args": {"limit": 50, "messageLimit": 0},
+                    "sessionKey": "main",
+                },
+            )
+
+        if resp.status_code != 200:
+            return {"sessions": [], "count": 0, "error": f"gateway:{resp.status_code}"}
+
+        payload = resp.json() or {}
+        result = payload.get("result") or {}
+        sessions = result.get("sessions") or []
+
+        out = []
+        for s in sessions:
+            key = s.get("key") or ""
+            if not key.startswith("agent:emilia:"):
+                continue
+            # typical: agent:emilia:openai-user:web-user-<ts>
+            display_id = key
+            if "web-user-" in key:
+                display_id = key.split("web-user-", 1)[1]
+                display_id = "web-user-" + display_id
+            out.append(
+                {
+                    "session_key": key,
+                    "display_id": display_id,
+                    "updated_at": s.get("updatedAt"),
+                    "model": s.get("model"),
+                }
+            )
+
+        return {"sessions": out, "count": len(out)}
+
+    except Exception as e:
+        return {"sessions": [], "count": 0, "error": str(e)}
+
+
 @app.get("/api/voices")
 async def get_voices(token: str = Depends(verify_token)):
-    """
-    Get list of available TTS voices
-    
-    Returns: {
-        "voices": [...],
-        "default": "rachel"
-    }
-    """
-    voices = [
-        {"key": key, **value}
-        for key, value in VOICE_OPTIONS.items()
-    ]
-    return {
-        "voices": voices,
-        "default": "rachel"
-    }
+    """Get list of available TTS voices."""
+    voices = [{"key": key, **value} for key, value in VOICE_OPTIONS.items()]
+    return {"voices": voices, "default": "rachel"}
 
 
 @app.post("/api/speak")
@@ -556,10 +600,11 @@ async def root():
             "chat": "POST /api/chat (requires auth)",
             "speak": "POST /api/speak (requires auth)",
             "memory_get": "GET /api/memory (requires auth)",
-            "memory_update": "POST /api/memory (requires auth)",
+            "memory_update": "POST /api/memory (requires auth) [DISABLED: returns 403]",
             "memory_list": "GET /api/memory/list (requires auth)",
             "memory_file_get": "GET /api/memory/{filename} (requires auth)",
-            "memory_file_update": "POST /api/memory/{filename} (requires auth)"
+            "memory_file_update": "POST /api/memory/{filename} (requires auth) [DISABLED: returns 403]",
+            "sessions_list": "GET /api/sessions/list (requires auth)"
         }
     }
 
