@@ -48,6 +48,7 @@ const sendButton = document.getElementById('sendButton');
 const voiceSelector = document.getElementById('voiceSelector');
 const ttsToggle = document.getElementById('ttsToggle');
 const sessionSelector = document.getElementById('sessionSelector');
+const sessionsHint = document.getElementById('sessionsHint');
 const refreshSessionsButton = document.getElementById('refreshSessions');
 const newSessionButton = document.getElementById('newSessionButton');
 
@@ -64,6 +65,17 @@ async function loadSessionsList() {
         }
         const data = await response.json();
         const sessions = data.sessions || [];
+
+        if (sessionsHint) {
+            const err = data.error;
+            if (err) {
+                sessionsHint.style.display = '';
+                sessionsHint.textContent = `Sessions limited: ${err}`;
+            } else {
+                sessionsHint.style.display = 'none';
+                sessionsHint.textContent = '';
+            }
+        }
 
         // Always include current session
         const existing = new Set(sessions.map(s => s.display_id));
@@ -82,6 +94,10 @@ async function loadSessionsList() {
         log('Sessions loaded', { count: sessions.length });
     } catch (e) {
         log('Failed to load sessions', { error: e.message });
+        if (sessionsHint) {
+            sessionsHint.style.display = '';
+            sessionsHint.textContent = 'Sessions list unavailable';
+        }
         sessionSelector.innerHTML = `<option value="${escapeHtml(sessionId)}" selected>${escapeHtml(sessionId)}</option>`;
     }
 }
