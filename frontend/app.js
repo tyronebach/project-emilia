@@ -60,6 +60,122 @@ const refreshSessionsButton = document.getElementById('refreshSessions');
 const newSessionButton = document.getElementById('newSessionButton');
 const stopButton = document.getElementById('stopButton');
 
+// ========================================
+// NON-BLOCKING NOTIFICATION SYSTEM
+// ========================================
+
+/**
+ * Show a non-blocking toast notification
+ * @param {string} message - The message to display
+ * @param {string} type - 'error' | 'warning' | 'success' | 'info'
+ * @param {number} duration - Auto-dismiss after ms (0 = no auto-dismiss)
+ */
+function showNotification(message, type = 'info', duration = 5000) {
+    // Create container if it doesn't exist
+    let container = document.getElementById('notification-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'notification-container';
+        container.style.cssText = `
+            position: fixed;
+            bottom: 100px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 360px;
+        `;
+        document.body.appendChild(container);
+    }
+
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+
+    const colors = {
+        error: { bg: '#dc2626', border: '#ef4444' },
+        warning: { bg: '#d97706', border: '#f59e0b' },
+        success: { bg: '#059669', border: '#10b981' },
+        info: { bg: '#4f46e5', border: '#6366f1' }
+    };
+    const { bg, border } = colors[type] || colors.info;
+
+    notification.style.cssText = `
+        background: ${bg};
+        border: 1px solid ${border};
+        border-radius: 8px;
+        padding: 12px 16px;
+        color: white;
+        font-size: 0.9rem;
+        line-height: 1.4;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        animation: slideIn 0.3s ease-out;
+        cursor: pointer;
+        word-wrap: break-word;
+    `;
+
+    notification.textContent = message;
+
+    // Click to dismiss
+    notification.onclick = () => {
+        notification.style.animation = 'slideOut 0.2s ease-in forwards';
+        setTimeout(() => notification.remove(), 200);
+    };
+
+    container.appendChild(notification);
+
+    // Auto-dismiss
+    if (duration > 0) {
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.style.animation = 'slideOut 0.2s ease-in forwards';
+                setTimeout(() => notification.remove(), 200);
+            }
+        }, duration);
+    }
+
+    // Add animation styles if not present
+    if (!document.getElementById('notification-styles')) {
+        const style = document.createElement('style');
+        style.id = 'notification-styles';
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    log(`Notification [${type}]: ${message}`);
+}
+
+/**
+ * Show error notification (for user-facing errors)
+ */
+function showError(message) {
+    showNotification(message, 'error', 8000);
+}
+
+/**
+ * Show warning notification
+ */
+function showWarning(message) {
+    showNotification(message, 'warning', 6000);
+}
+
+/**
+ * Show success notification
+ */
+function showSuccess(message) {
+    showNotification(message, 'success', 4000);
+}
+
 async function loadSessionsList() {
     if (!sessionSelector) return;
     try {
@@ -500,13 +616,13 @@ async function initMicrophone() {
         
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
             setState('permission-denied');
-            alert('Microphone access denied. Please allow microphone access in your browser settings.');
+            showError('Microphone access denied. Please allow microphone access in browser settings.');
         } else if (error.name === 'NotFoundError') {
             setState('error');
-            alert('No microphone found. Please connect a microphone and try again.');
+            showWarning('No microphone found. Please connect a microphone.');
         } else {
             setState('error');
-            alert(`Microphone error: ${error.message}`);
+            showError(`Microphone error: ${error.message}`);
         }
     }
 }
@@ -534,7 +650,7 @@ function startRecording() {
         log('Recording start error', { error: error.message });
         isRecording = false;
         setState('error');
-        alert(`Failed to start recording: ${error.message}`);
+        showError(`Failed to start recording: ${error.message}`);
     }
 }
 
@@ -560,7 +676,7 @@ async function handleRecordingStop() {
     if (audioChunks.length === 0) {
         log('No audio data captured');
         setState('error');
-        alert('No audio data captured. Please try again.');
+        showWarning('No audio captured. Please try again.');
         return;
     }
     
@@ -577,7 +693,7 @@ async function handleRecordingStop() {
     if (audioBlob.size === 0) {
         log('Audio blob is empty');
         setState('error');
-        alert('Captured audio is empty. Please try again.');
+        showWarning('Audio capture is empty. Please try again.');
         return;
     }
     
@@ -586,7 +702,7 @@ async function handleRecordingStop() {
     } catch (error) {
         log('Transcription error', { error: error.message });
         setState('error');
-        alert(`Transcription failed: ${error.message}`);
+        showError(`Transcription failed: ${error.message}`);
     }
 }
 
@@ -670,7 +786,7 @@ async function getAgentResponse(message) {
         addMessage('assistant', `⚠️ Error: ${error.message}`, {});
 
         setState('error');
-        alert(`Chat failed: ${error.message}`);
+        showError(`Chat failed: ${error.message}`);
     }
 }
 
@@ -1062,7 +1178,7 @@ if (newSessionButton) {
             if (conversationEmpty) conversationEmpty.style.display = 'flex';
             log('New session started', { sessionId });
             loadSessionsList();
-            alert(`New session started: ${sessionId}`);
+            showSuccess(`New session started: ${sessionId}`);
         }
     });
 }
@@ -1680,7 +1796,7 @@ getAgentResponse = async function(message) {
         addStateEntry(`Error: ${error.message}`);
 
         setState('error');
-        alert(`Chat failed: ${error.message}`);
+        showError(`Chat failed: ${error.message}`);
     }
 };
 
