@@ -83,6 +83,8 @@ body {
     background: var(--bg-tertiary);
     border-radius: 2rem;
     border: 1px solid var(--border);
+    position: relative;
+    overflow: visible;
 }
 
 .status-dot {
@@ -116,6 +118,56 @@ body {
 .status-indicator.speaking .status-dot {
     background: var(--success);
     animation: pulse 1.5s infinite;
+}
+
+/* Voice Ring Animation */
+.voice-ring {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid var(--success);
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.status-indicator.speaking .voice-ring {
+    animation: voice-ring-pulse 1s ease-out infinite;
+}
+
+@keyframes voice-ring-pulse {
+    0% {
+        transform: translateY(-50%) scale(1);
+        opacity: 0.8;
+    }
+    100% {
+        transform: translateY(-50%) scale(2.5);
+        opacity: 0;
+    }
+}
+
+/* Multiple rings for richer effect */
+.status-indicator.speaking .voice-ring::before,
+.status-indicator.speaking .voice-ring::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    border-radius: 50%;
+    border: 2px solid var(--success);
+}
+
+.status-indicator.speaking .voice-ring::before {
+    animation: voice-ring-pulse 1s ease-out infinite 0.3s;
+}
+
+.status-indicator.speaking .voice-ring::after {
+    animation: voice-ring-pulse 1s ease-out infinite 0.6s;
 }
 
 .status-indicator.error .status-dot {
