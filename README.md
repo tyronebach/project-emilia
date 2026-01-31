@@ -1,4 +1,4 @@
-# Emilia Web App - v3.3 ✅
+# Emilia Web App - v3.4 ✅
 
 **Voice + Text Chat with Avatar Display**
 
@@ -8,7 +8,31 @@ Web interface with **dual input modes** (voice PTT + text typing), STT transcrip
 
 ---
 
-## Features (v3.3)
+## Features (v3.4)
+
+✅ **Streaming Responses** 🆕
+- Real-time text streaming via Server-Sent Events
+- Text appears word-by-word as LLM generates
+- Non-streaming mode preserved for compatibility
+
+✅ **Stop Button** 🆕
+- Interrupt generation mid-stream
+- Stop TTS playback immediately
+- Resets to ready state cleanly
+
+✅ **Replay Button** 🆕
+- Play icon on each assistant message
+- Re-hear any response via TTS
+- Animated playing state while audio plays
+
+✅ **Voice Ring Animation** 🆕
+- Visual ring pulses while Emilia speaks
+- Multiple staggered rings for richer effect
+- Activates on speaking state
+
+✅ **Auto-focus Input** 🆕
+- Text input focused on page load
+- Start typing immediately without clicking
 
 ✅ **Dual Input Modes** 🆕
 - **Text input** - Type messages in text box (Enter to send)

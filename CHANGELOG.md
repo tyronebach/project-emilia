@@ -4,6 +4,24 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [3.4.0] - 2026-01-31
+
+### Added
+- **SSE Streaming** - Chat responses now stream in real-time via Server-Sent Events
+- **Stop Button** - Interrupt generation or TTS playback mid-stream
+- **Replay Button** - Play icon on assistant messages to re-hear TTS
+- **Voice Ring Animation** - Visual ring pulses outward while Emilia speaks
+- **Auto-focus Input** - Text input focused on page load for immediate typing
+
+### Technical
+- `GET /api/chat?stream=1` returns SSE with `{content: "..."}` chunks
+- `AbortController` integration for cancellable fetch requests
+- `currentAudio` tracking for stop functionality
+- CSS `@keyframes voice-ring-pulse` with staggered multi-ring effect
+- `textInput.focus()` in init for auto-focus
+
+---
+
 ## [3.3.0] - 2026-01-31
 
 ### Added
@@ -201,4 +219,4 @@ Format: `MAJOR.MINOR.PATCH`
 
 **Maintainer:** Ram 🩷  
 **Project:** Emilia waifu voice assistant  
-**Repository:** /home/tbach/clawd-minerva/emilia-webapp
+**Repository:** /home/tbach/clawd/emilia-project/emilia-webapp
