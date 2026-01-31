@@ -66,6 +66,15 @@ body {
     gap: 0.75rem;
 }
 
+.sessions-hint {
+    font-size: 0.75rem;
+    color: var(--warning);
+    max-width: 260px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .status-indicator {
     display: inline-flex;
     align-items: center;

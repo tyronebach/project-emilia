@@ -4,6 +4,31 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [3.3.0] - 2026-01-31
+
+### Added
+- **TTS toggle** - Voice checkbox in header (default OFF), persisted to localStorage
+- **Session switcher** - Dropdown to switch between Emilia sessions
+- **Session list API** - `GET /api/sessions/list` calls gateway tools/invoke
+- **Sessions hint** - UI warning when gateway blocks session listing
+- **Parse tests** - pytest suite for `parse_chat.py`
+
+### Changed
+- **Memory viewer read-only** - Removed contentEditable, no more save-on-blur (security)
+- **Parsing** - Handles `message.content` as string OR array of content parts
+- **Meta filter** - Now actually hides `.message-meta` when unchecked
+
+### Fixed
+- TTS no longer fires when toggle is OFF
+- Reasoning/thinking extraction from array-style content parts
+
+### Technical
+- Added `backend/parse_chat.py` module
+- Added `backend/tests/test_parse_chat.py` (2 tests)
+- Use venv for Python dev: `python3 -m venv backend/.venv`
+
+---
+
 ## [3.2.0] - 2026-01-30
 
 ### Added - Dashboard Mode (Full Agent Debug View)

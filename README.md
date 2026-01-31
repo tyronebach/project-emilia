@@ -1,4 +1,4 @@
-# Emilia Web App - v3.1 ✅
+# Emilia Web App - v3.3 ✅
 
 **Voice + Text Chat with Avatar Display**
 
@@ -8,7 +8,7 @@ Web interface with **dual input modes** (voice PTT + text typing), STT transcrip
 
 ---
 
-## Features (v3.1)
+## Features (v3.3)
 
 ✅ **Dual Input Modes** 🆕
 - **Text input** - Type messages in text box (Enter to send)
@@ -37,13 +37,25 @@ Web interface with **dual input modes** (voice PTT + text typing), STT transcrip
 
 **Security note:** this app must *never* route to `main`/Beatrice. The backend is locked to `x-clawdbot-agent-id: emilia` and will fail closed if misconfigured.
 
-✅ **Text-to-Speech (NEW)** 🎙️
+✅ **Text-to-Speech** 🎙️
 - ElevenLabs voice synthesis
-- Auto-play voice responses
+- Auto-play voice responses (when enabled)
 - Sarah voice (mature, reassuring)
 - Fast turbo model (~500ms generation)
 - Speaking state indicator
-- Seamless UX (text → voice)
+- **TTS toggle** - Voice on/off in header (persists to localStorage)
+
+✅ **Session Management** 🆕
+- Session switcher dropdown
+- Switch between existing Emilia sessions
+- Refresh button to reload session list
+- New session button
+
+✅ **Dashboard Mode** 🆕
+- Memory viewer (read-only) - MEMORY.md + daily logs
+- Chat filters - reasoning, thinking, tokens, metadata
+- Stats panel - message count, tokens, latency
+- State log with timestamps
 
 ✅ **Enhanced UI**
 - Clear conversation button
@@ -70,10 +82,10 @@ See: `SECURITY-NOTES.md`
 ### Local Development
 
 ```bash
-cd /home/tbach/clawd-minerva/emilia-webapp
+cd /home/tbach/clawd/emilia-project/emilia-webapp
 
 # Start services
-docker-compose up -d --build
+docker compose up -d --build
 
 # View logs
 docker-compose logs -f
@@ -182,9 +194,18 @@ const AUTH_TOKEN = 'emilia-dev-token-2026';
 ### Backend only:
 ```bash
 cd backend
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 python main.py
 # Runs on http://localhost:8080
+```
+
+### Run tests:
+```bash
+cd backend
+source .venv/bin/activate
+pytest -q
 ```
 
 ### Frontend only:

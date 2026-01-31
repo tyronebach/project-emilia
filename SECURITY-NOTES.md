@@ -34,6 +34,14 @@ This combination is unsafe and can lead to unexpected cross-origin authenticated
 - Dev convenience only:
   - `AUTH_ALLOW_DEV_TOKEN=1` allows using `emilia-dev-token-2026` when `AUTH_TOKEN` is not set.
 
+## Hardening: Memory viewer read-only (2026-01-31)
+**Issue:** Dashboard mode had editable memory fields that could POST to /api/memory endpoints.
+
+**Fix (implemented):**
+- Frontend: removed `contentEditable` on memory panes, disabled save-on-blur
+- Backend: POST /api/memory and POST /api/memory/{filename} return 403
+- Memory is view-only from the webapp
+
 ## Local MVP posture (current)
 - Deployment is local-only; gateway is bound to loopback.
 - Still, the backend must never be able to route to non-Emilia agents.
