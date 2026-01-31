@@ -265,54 +265,142 @@ function addMessage(role, content, meta = {}) {
         log('Error: conversationHistoryEl is null');
         return;
     }
-    
+
     const timestamp = new Date().toLocaleTimeString();
-    
+
     const message = {
         role,
         content,
         timestamp,
         meta
     };
-    
+
     conversationHistory.push(message);
-    
+
     // Hide empty state if this is the first message
     if (conversationHistory.length === 1 && conversationEmpty) {
         conversationEmpty.style.display = 'none';
     }
-    
+
     // Create message element
     const messageEl = document.createElement('div');
     messageEl.className = `message ${role}`;
-    
+
     const roleLabel = role === 'user' ? '👤 You' : '🤖 Emilia';
-    
+
     let metaHtml = '';
     if (Object.keys(meta).length > 0) {
         const metaItems = [];
         if (meta.language) metaItems.push(`🌍 ${meta.language}`);
         if (meta.duration_ms) metaItems.push(`⏱️ ${meta.duration_ms}ms`);
         if (meta.processing_ms) metaItems.push(`🔄 ${meta.processing_ms}ms`);
-        
+
         if (metaItems.length > 0) {
             metaHtml = `<div class="message-meta">${metaItems.join(' • ')}</div>`;
         }
     }
-    
-    messageEl.innerHTML = `
-        <div class="message-header">
-            <span class="message-role">${roleLabel}</span>
-            <span class="message-timestamp">${timestamp}</span>
-        </div>
-        <div class="message-bubble">${escapeHtml(content || '')}</div>
-        ${metaHtml}
-    `;
-    
+
+    // Add replay button for assistant messages
+    let replayButtonHtml = '';
+    if (role === 'assistant' && content && !content.startsWith('⚠️')) {
+        replayButtonHtml = `
+            <button class="replay-button" title="Replay voice" data-text="${escapeHtml(content).replace(/"/g, '&quot;')}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+            </button>
+        `;
+    }
+
+    // Use container for assistant messages with replay button
+    if (role === 'assistant' && replayButtonHtml) {
+        messageEl.innerHTML = `
+            <div class="message-header">
+                <span class="message-role">${roleLabel}</span>
+                <span class="message-timestamp">${timestamp}</span>
+            </div>
+            <div class="message-bubble-container">
+                <div class="message-bubble">${escapeHtml(content || '')}</div>
+                ${replayButtonHtml}
+            </div>
+            ${metaHtml}
+        `;
+
+        // Add click handler for replay button
+        const replayBtn = messageEl.querySelector('.replay-button');
+        if (replayBtn) {
+            replayBtn.addEventListener('click', () => replayMessage(replayBtn, content));
+        }
+    } else {
+        messageEl.innerHTML = `
+            <div class="message-header">
+                <span class="message-role">${roleLabel}</span>
+                <span class="message-timestamp">${timestamp}</span>
+            </div>
+            <div class="message-bubble">${escapeHtml(content || '')}</div>
+            ${metaHtml}
+        `;
+    }
+
     conversationHistoryEl.appendChild(messageEl);
-    
+
     // Auto-scroll to bottom
     conversationHistoryEl.scrollTop = conversationHistoryEl.scrollHeight;
+}
+
+// Replay message audio
+async function replayMessage(buttonEl, text) {
+    if (!text || !text.trim()) return;
+
+    // Disable button and show playing state
+    buttonEl.disabled = true;
+    buttonEl.classList.add('playing');
+
+    log('Replaying message', { textLength: text.length });
+
+    try {
+        const response = await fetch(`${API_URL}/api/speak`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${AUTH_TOKEN}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                text: text,
+                voice_id: selectedVoice
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`TTS API error: ${response.status}`);
+        }
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+
+        const audio = new Audio(audioUrl);
+
+        audio.onended = () => {
+            URL.revokeObjectURL(audioUrl);
+            buttonEl.disabled = false;
+            buttonEl.classList.remove('playing');
+            log('Replay complete');
+        };
+
+        audio.onerror = () => {
+            URL.revokeObjectURL(audioUrl);
+            buttonEl.disabled = false;
+            buttonEl.classList.remove('playing');
+            log('Replay error');
+        };
+
+        await audio.play();
+
+    } catch (error) {
+        log('Replay error', { error: error.message });
+        buttonEl.disabled = false;
+        buttonEl.classList.remove('playing');
+    }
 }
 
 // Clear conversation
@@ -666,7 +754,9 @@ async function getAgentResponseStreaming(message, startTime) {
             <span class="message-role">🤖 Emilia</span>
             <span class="message-timestamp">${timestamp}</span>
         </div>
-        <div class="message-bubble"></div>
+        <div class="message-bubble-container">
+            <div class="message-bubble"></div>
+        </div>
     `;
 
     // Hide empty state if needed
@@ -676,6 +766,7 @@ async function getAgentResponseStreaming(message, startTime) {
 
     conversationHistoryEl.appendChild(messageEl);
     const bubbleEl = messageEl.querySelector('.message-bubble');
+    const bubbleContainer = messageEl.querySelector('.message-bubble-container');
 
     let fullContent = '';
     let processingMs = 0;
@@ -726,6 +817,20 @@ async function getAgentResponseStreaming(message, startTime) {
                 }
             }
         }
+    }
+
+    // Add replay button after streaming completes (if we have content)
+    if (fullContent && !fullContent.startsWith('⚠️')) {
+        const replayBtn = document.createElement('button');
+        replayBtn.className = 'replay-button';
+        replayBtn.title = 'Replay voice';
+        replayBtn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+        `;
+        replayBtn.addEventListener('click', () => replayMessage(replayBtn, fullContent));
+        bubbleContainer.appendChild(replayBtn);
     }
 
     // Add to conversation history
@@ -1607,7 +1712,9 @@ async function getAgentResponseStreamingDashboard(message, startTime) {
             <span class="message-role">🤖 Emilia</span>
             <span class="message-timestamp">${timestamp}</span>
         </div>
-        <div class="message-bubble"></div>
+        <div class="message-bubble-container">
+            <div class="message-bubble"></div>
+        </div>
     `;
 
     // Hide empty state if needed
@@ -1617,6 +1724,7 @@ async function getAgentResponseStreamingDashboard(message, startTime) {
 
     conversationHistoryEl.appendChild(messageEl);
     const bubbleEl = messageEl.querySelector('.message-bubble');
+    const bubbleContainer = messageEl.querySelector('.message-bubble-container');
 
     let fullContent = '';
     let processingMs = 0;
@@ -1663,6 +1771,20 @@ async function getAgentResponseStreamingDashboard(message, startTime) {
                 }
             }
         }
+    }
+
+    // Add replay button after streaming completes (if we have content)
+    if (fullContent && !fullContent.startsWith('⚠️')) {
+        const replayBtn = document.createElement('button');
+        replayBtn.className = 'replay-button';
+        replayBtn.title = 'Replay voice';
+        replayBtn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+        `;
+        replayBtn.addEventListener('click', () => replayMessage(replayBtn, fullContent));
+        bubbleContainer.appendChild(replayBtn);
     }
 
     // Add to conversation history
