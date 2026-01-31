@@ -1223,11 +1223,17 @@ window.addEventListener('load', async () => {
         getUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
     });
     log('Session ID', { sessionId });
-    
+
     // Enable text input (works without mic)
     textInput.disabled = false;
     sendButton.disabled = false;
-    
+
+    // Auto-focus text input for immediate typing
+    if (textInput) {
+        textInput.focus();
+        log('Text input focused');
+    }
+
     await checkHealth();
     await loadSessionsList();
 
