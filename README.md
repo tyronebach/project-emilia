@@ -61,12 +61,19 @@ Web interface with dual input modes (voice PTT + text), streaming responses, TTS
 
 ---
 
+### VRM Avatar
+| Feature | Status | Notes |
+|---------|--------|-------|
+| VRM loader | ✅ | Three.js + @pixiv/three-vrm in avatar.js |
+| Rose model | ✅ | Default from 100Avatars (Arweave) |
+| Idle blink | ✅ | Auto blink animation |
+| Lip sync API | ⚠️ | Stub exists, needs phoneme data |
+
 ## Not Yet Implemented
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| VRM avatar | ❌ | Placeholder div exists, no Three.js integration |
-| Lip sync | ❌ | Needs ElevenLabs phoneme data + viseme mapping |
+| Lip sync (full) | ❌ | Needs ElevenLabs phoneme data + viseme mapping |
 | Live2D | ❌ | Alternative to VRM, not started |
 | Voice selection UI | ❌ | Backend supports it, no frontend picker |
 

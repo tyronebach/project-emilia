@@ -49,12 +49,20 @@
 
 ---
 
+## VRM Avatar Status
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| VRM loader | ✅ | Three.js + @pixiv/three-vrm |
+| Rose model | ✅ | Default: `arweave.net/Ea1KXujzJatQgCFSMzGOzp_UtHqB1pyia--U3AtkMAY` |
+| Idle blink | ✅ | Implemented in avatar.js |
+| Lip sync API | ✅ | Stub exists, needs ElevenLabs phoneme data |
+
 ## Not Implemented
 
 | Feature | Priority | Notes |
 |---------|----------|-------|
-| VRM avatar | Medium | Three.js + @pixiv/three-vrm needed |
-| Lip sync | Medium | ElevenLabs phonemes → viseme blend shapes |
+| Lip sync (full) | Medium | ElevenLabs phonemes → viseme blend shapes |
 | Voice picker UI | Low | Backend ready, no frontend |
 | Live2D | Low | Alternative to VRM |
 
