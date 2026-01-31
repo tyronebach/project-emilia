@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emilia - Voice Assistant</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎙️ Emilia</h1>
+            <p class="subtitle">Voice Assistant (Milestone 2)</p>
+            <div class="header-controls">
+                <div class="status-indicator" id="statusIndicator">
+                    <span class="status-dot"></span>
+                    <span id="statusText">Ready</span>
+                </div>
+                <button id="clearButton" class="icon-button" title="Clear conversation">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                </button>
+                <button id="debugToggle" class="icon-button" title="Toggle debug panel">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                        <line x1="8" y1="21" x2="16" y2="21"></line>
+                        <line x1="12" y1="17" x2="12" y2="21"></line>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <main>
+            <div class="ptt-container">
+                <button 
+                    id="pttButton" 
+                    class="ptt-button"
+                    disabled
+                >
+                    <div class="ptt-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                            <line x1="12" y1="19" x2="12" y2="23"></line>
+                            <line x1="8" y1="23" x2="16" y2="23"></line>
+                        </svg>
+                    </div>
+                    <span class="ptt-text">Hold to Talk</span>
+                </button>
+                <p class="ptt-hint">Press and hold the button or spacebar, then speak</p>
+            </div>
+
+            <!-- Conversation History -->
+            <div class="conversation-container" id="conversationContainer">
+                <div class="conversation-empty" id="conversationEmpty">
+                    <p>🎙️ Start speaking to begin your conversation</p>
+                </div>
+                <div class="conversation-history" id="conversationHistory">
+                    <!-- Messages will be added here dynamically -->
+                </div>
+            </div>
+
+            <!-- Debug Panel (collapsible) -->
+            <div class="debug-panel" id="debugPanel" style="display: none;">
+                <div class="debug-header">
+                    <h4>Debug Info</h4>
+                    <button id="clearDebug" class="text-button">Clear</button>
+                </div>
+                <pre id="debugLog"></pre>
+            </div>
+        </main>
+
+        <footer>
+            <p>Milestone 2: Brain Integration Complete ✓</p>
+            <p class="version">v2.0.0 | Built by Ram 🩷</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
