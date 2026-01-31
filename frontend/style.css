@@ -373,6 +373,63 @@ body {
     align-self: flex-start;
 }
 
+/* Replay Button */
+.replay-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: 0.5rem;
+    flex-shrink: 0;
+}
+
+.replay-button:hover {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--text);
+    transform: scale(1.1);
+}
+
+.replay-button:active {
+    transform: scale(0.95);
+}
+
+.replay-button.playing {
+    background: var(--success);
+    border-color: var(--success);
+    color: var(--text);
+    animation: replay-pulse 1s infinite;
+}
+
+@keyframes replay-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+}
+
+.replay-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Message bubble with replay button */
+.message-bubble-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.25rem;
+}
+
+.message.assistant .message-bubble-container {
+    align-self: flex-start;
+    max-width: 85%;
+}
+
 /* Input Controls */
 .input-controls {
     padding: 1rem 1.5rem;
