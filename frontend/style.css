@@ -519,6 +519,37 @@ body {
     opacity: 1;
 }
 
+/* Stop Button */
+.stop-button {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border: 2px solid var(--danger);
+    background: linear-gradient(135deg, var(--danger), #dc2626);
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+    animation: stop-pulse 1s infinite;
+}
+
+@keyframes stop-pulse {
+    0%, 100% { box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4); }
+    50% { box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6); }
+}
+
+.stop-button:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(239, 68, 68, 0.5);
+}
+
+.stop-button:active {
+    transform: scale(0.95);
+}
+
 .input-hint {
     margin-top: 0.5rem;
     font-size: 0.8rem;
