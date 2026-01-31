@@ -21,6 +21,9 @@ let conversationHistory = [];
 let selectedVoice = 'rachel';
 let sessionId = 'web-user-' + Date.now();
 
+// Streaming configuration
+const STREAMING_ENABLED = true;  // Set to false to disable streaming
+
 // TTS toggle (default OFF)
 const TTS_STORAGE_KEY = 'emilia_tts_enabled';
 let ttsEnabled = false;
@@ -501,63 +504,197 @@ async function transcribeAudio(audioBlob) {
     }
 }
 
-// Get agent response from chat API
+// Get agent response from chat API (with optional streaming)
 async function getAgentResponse(message) {
     setState('thinking');
-    
-    log('Calling chat API...', { message });
-    
+
+    log('Calling chat API...', { message, streaming: STREAMING_ENABLED });
+
     const startTime = Date.now();
-    
+
     try {
-        const response = await fetch(`${API_URL}/api/chat`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${AUTH_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                message: message,
-                session_id: sessionId
-            })
-        });
-        
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Chat API error: ${response.status} - ${error}`);
-        }
-        
-        const result = await response.json();
-        const totalTime = Date.now() - startTime;
-        
-        log('Agent response received', result);
-        
-        // Add assistant message to conversation
-        const assistantMeta = {
-            processing_ms: result.processing_ms
-        };
-        
-        addMessage('assistant', result.response || '(no response)', assistantMeta);
-        
-        // Generate and play TTS audio (optional)
-        if (result.response && result.response.trim()) {
-            if (ttsEnabled) {
-                await speakText(result.response);
-            } else {
-                log('TTS disabled - skipping /api/speak');
-                setState('ready');
-            }
+        if (STREAMING_ENABLED) {
+            // Streaming mode using SSE
+            await getAgentResponseStreaming(message, startTime);
         } else {
-            setState('ready');
+            // Non-streaming mode (original behavior)
+            await getAgentResponseNonStreaming(message, startTime);
         }
-        
     } catch (error) {
         log('Chat error', { error: error.message });
-        
+
         addMessage('assistant', `⚠️ Error: ${error.message}`, {});
-        
+
         setState('error');
         alert(`Chat failed: ${error.message}`);
+    }
+}
+
+// Non-streaming response handler (original behavior)
+async function getAgentResponseNonStreaming(message, startTime) {
+    const response = await fetch(`${API_URL}/api/chat`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${AUTH_TOKEN}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            message: message,
+            session_id: sessionId
+        })
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Chat API error: ${response.status} - ${error}`);
+    }
+
+    const result = await response.json();
+    const totalTime = Date.now() - startTime;
+
+    log('Agent response received', result);
+
+    // Add assistant message to conversation
+    const assistantMeta = {
+        processing_ms: result.processing_ms
+    };
+
+    addMessage('assistant', result.response || '(no response)', assistantMeta);
+
+    // Generate and play TTS audio (optional)
+    if (result.response && result.response.trim()) {
+        if (ttsEnabled) {
+            await speakText(result.response);
+        } else {
+            log('TTS disabled - skipping /api/speak');
+            setState('ready');
+        }
+    } else {
+        setState('ready');
+    }
+}
+
+// Streaming response handler using SSE
+async function getAgentResponseStreaming(message, startTime) {
+    const response = await fetch(`${API_URL}/api/chat?stream=1`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${AUTH_TOKEN}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            message: message,
+            session_id: sessionId
+        })
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Chat API error: ${response.status} - ${error}`);
+    }
+
+    // Create a placeholder message element for streaming
+    const timestamp = new Date().toLocaleTimeString();
+    const messageEl = document.createElement('div');
+    messageEl.className = 'message assistant';
+    messageEl.innerHTML = `
+        <div class="message-header">
+            <span class="message-role">🤖 Emilia</span>
+            <span class="message-timestamp">${timestamp}</span>
+        </div>
+        <div class="message-bubble"></div>
+    `;
+
+    // Hide empty state if needed
+    if (conversationHistory.length === 0 && conversationEmpty) {
+        conversationEmpty.style.display = 'none';
+    }
+
+    conversationHistoryEl.appendChild(messageEl);
+    const bubbleEl = messageEl.querySelector('.message-bubble');
+
+    let fullContent = '';
+    let processingMs = 0;
+
+    // Read the SSE stream
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Keep incomplete line in buffer
+
+        for (const line of lines) {
+            if (line.startsWith('data: ')) {
+                const dataStr = line.slice(6).trim();
+                if (!dataStr || dataStr === '[DONE]') continue;
+
+                try {
+                    const data = JSON.parse(dataStr);
+
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
+                    if (data.content) {
+                        fullContent += data.content;
+                        bubbleEl.textContent = fullContent;
+                        // Auto-scroll
+                        conversationHistoryEl.scrollTop = conversationHistoryEl.scrollHeight;
+                    }
+
+                    if (data.done) {
+                        processingMs = data.processing_ms || (Date.now() - startTime);
+                        log('Streaming complete', {
+                            response: data.response,
+                            processing_ms: processingMs
+                        });
+                    }
+                } catch (e) {
+                    if (e.message !== 'Unexpected end of JSON input') {
+                        log('SSE parse error', { error: e.message, data: dataStr });
+                    }
+                }
+            }
+        }
+    }
+
+    // Add to conversation history
+    conversationHistory.push({
+        role: 'assistant',
+        content: fullContent,
+        timestamp: timestamp,
+        meta: { processing_ms: processingMs }
+    });
+
+    // Add metadata display
+    if (processingMs > 0) {
+        const metaEl = document.createElement('div');
+        metaEl.className = 'message-meta';
+        metaEl.textContent = `🔄 ${processingMs}ms`;
+        messageEl.appendChild(metaEl);
+    }
+
+    log('Agent response received (streaming)', {
+        response: fullContent.substring(0, 100) + '...',
+        processing_ms: processingMs
+    });
+
+    // Generate and play TTS audio (optional)
+    if (fullContent && fullContent.trim()) {
+        if (ttsEnabled) {
+            await speakText(fullContent);
+        } else {
+            log('TTS disabled - skipping /api/speak');
+            setState('ready');
+        }
+    } else {
+        setState('ready');
     }
 }
 
@@ -1284,74 +1421,204 @@ addMessage = function(role, content, meta = {}) {
     }
 };
 
-// Override getAgentResponse to pass full metadata
+// Override getAgentResponse to pass full metadata (supports streaming)
 const originalGetAgentResponse = getAgentResponse;
 getAgentResponse = async function(message) {
     setState('thinking');
     addStateEntry('Sending to LLM');
-    
-    log('Calling chat API...', { message });
-    
+
+    log('Calling chat API...', { message, streaming: STREAMING_ENABLED });
+
     const startTime = Date.now();
-    
+
     try {
-        const response = await fetch(`${API_URL}/api/chat`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${AUTH_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                message: message,
-                session_id: sessionId
-            })
-        });
-        
-        if (!response.ok) {
-            const error = await response.text();
-            throw new Error(`Chat API error: ${response.status} - ${error}`);
-        }
-        
-        const result = await response.json();
-        const totalTime = Date.now() - startTime;
-        
-        log('Agent response received', result);
-        addStateEntry('LLM response received');
-        
-        // Add assistant message to conversation with full metadata
-        const assistantMeta = {
-            processing_ms: result.processing_ms,
-            model: result.model,
-            finish_reason: result.finish_reason,
-            reasoning: result.reasoning,
-            thinking: result.thinking,
-            usage: result.usage
-        };
-        
-        addMessage('assistant', result.response || '(no response)', assistantMeta);
-        
-        // Generate and play TTS audio (optional)
-        if (result.response && result.response.trim()) {
-            if (ttsEnabled) {
-                await speakText(result.response);
+        if (STREAMING_ENABLED) {
+            // Streaming mode
+            await getAgentResponseStreamingDashboard(message, startTime);
+        } else {
+            // Non-streaming mode
+            const response = await fetch(`${API_URL}/api/chat`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${AUTH_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    session_id: sessionId
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.text();
+                throw new Error(`Chat API error: ${response.status} - ${error}`);
+            }
+
+            const result = await response.json();
+            const totalTime = Date.now() - startTime;
+
+            log('Agent response received', result);
+            addStateEntry('LLM response received');
+
+            // Add assistant message to conversation with full metadata
+            const assistantMeta = {
+                processing_ms: result.processing_ms,
+                model: result.model,
+                finish_reason: result.finish_reason,
+                reasoning: result.reasoning,
+                thinking: result.thinking,
+                usage: result.usage
+            };
+
+            addMessage('assistant', result.response || '(no response)', assistantMeta);
+
+            // Generate and play TTS audio (optional)
+            if (result.response && result.response.trim()) {
+                if (ttsEnabled) {
+                    await speakText(result.response);
+                } else {
+                    log('TTS disabled - skipping /api/speak');
+                    setState('ready');
+                }
             } else {
-                log('TTS disabled - skipping /api/speak');
                 setState('ready');
             }
-        } else {
-            setState('ready');
         }
-        
     } catch (error) {
         log('Chat error', { error: error.message });
-        
+
         addMessage('assistant', `⚠️ Error: ${error.message}`, {});
         addStateEntry(`Error: ${error.message}`);
-        
+
         setState('error');
         alert(`Chat failed: ${error.message}`);
     }
 };
+
+// Dashboard streaming response handler
+async function getAgentResponseStreamingDashboard(message, startTime) {
+    const response = await fetch(`${API_URL}/api/chat?stream=1`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${AUTH_TOKEN}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            message: message,
+            session_id: sessionId
+        })
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Chat API error: ${response.status} - ${error}`);
+    }
+
+    addStateEntry('Streaming response...');
+
+    // Create a placeholder message element for streaming
+    const timestamp = new Date().toLocaleTimeString();
+    const messageEl = document.createElement('div');
+    messageEl.className = 'message assistant';
+    messageEl.innerHTML = `
+        <div class="message-header">
+            <span class="message-role">🤖 Emilia</span>
+            <span class="message-timestamp">${timestamp}</span>
+        </div>
+        <div class="message-bubble"></div>
+    `;
+
+    // Hide empty state if needed
+    if (conversationHistory.length === 0 && conversationEmpty) {
+        conversationEmpty.style.display = 'none';
+    }
+
+    conversationHistoryEl.appendChild(messageEl);
+    const bubbleEl = messageEl.querySelector('.message-bubble');
+
+    let fullContent = '';
+    let processingMs = 0;
+
+    // Read the SSE stream
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+            if (line.startsWith('data: ')) {
+                const dataStr = line.slice(6).trim();
+                if (!dataStr || dataStr === '[DONE]') continue;
+
+                try {
+                    const data = JSON.parse(dataStr);
+
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
+                    if (data.content) {
+                        fullContent += data.content;
+                        bubbleEl.textContent = fullContent;
+                        conversationHistoryEl.scrollTop = conversationHistoryEl.scrollHeight;
+                    }
+
+                    if (data.done) {
+                        processingMs = data.processing_ms || (Date.now() - startTime);
+                        addStateEntry('LLM response received');
+                    }
+                } catch (e) {
+                    if (e.message !== 'Unexpected end of JSON input') {
+                        log('SSE parse error', { error: e.message });
+                    }
+                }
+            }
+        }
+    }
+
+    // Add to conversation history
+    conversationHistory.push({
+        role: 'assistant',
+        content: fullContent,
+        timestamp: timestamp,
+        meta: { processing_ms: processingMs }
+    });
+
+    // Add metadata
+    if (processingMs > 0) {
+        const metaEl = document.createElement('div');
+        metaEl.className = 'message-meta';
+        metaEl.textContent = `🔄 ${processingMs}ms`;
+        messageEl.appendChild(metaEl);
+
+        // Update stats
+        updateStats({ processing_ms: processingMs });
+    }
+
+    log('Agent response received (streaming)', {
+        response: fullContent.substring(0, 100) + '...',
+        processing_ms: processingMs
+    });
+
+    // Generate and play TTS audio
+    if (fullContent && fullContent.trim()) {
+        if (ttsEnabled) {
+            await speakText(fullContent);
+        } else {
+            log('TTS disabled - skipping /api/speak');
+            setState('ready');
+        }
+    } else {
+        setState('ready');
+    }
+}
 
 // Initialize dashboard on load
 window.addEventListener('load', async () => {
