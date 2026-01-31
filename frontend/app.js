@@ -24,6 +24,10 @@ let sessionId = 'web-user-' + Date.now();
 // Streaming configuration
 const STREAMING_ENABLED = true;  // Set to false to disable streaming
 
+// Abort controller for cancelling requests
+let currentAbortController = null;
+let currentAudio = null;  // Track currently playing audio
+
 // TTS toggle (default OFF)
 const TTS_STORAGE_KEY = 'emilia_tts_enabled';
 let ttsEnabled = false;
@@ -54,6 +58,7 @@ const sessionSelector = document.getElementById('sessionSelector');
 const sessionsHint = document.getElementById('sessionsHint');
 const refreshSessionsButton = document.getElementById('refreshSessions');
 const newSessionButton = document.getElementById('newSessionButton');
+const stopButton = document.getElementById('stopButton');
 
 async function loadSessionsList() {
     if (!sessionSelector) return;
@@ -140,7 +145,7 @@ function setState(state) {
     if (statusIndicator) {
         statusIndicator.className = `status-indicator ${state}`;
     }
-    
+
     // Helper to safely set PTT text (only if element exists)
     const setPttText = (text) => {
         const pttText = pttButton?.querySelector('.ptt-text');
@@ -148,14 +153,24 @@ function setState(state) {
             pttText.textContent = text;
         }
     };
-    
+
     // Helper to safely set status text
     const setStatusText = (text) => {
         if (statusText) {
             statusText.textContent = text;
         }
     };
-    
+
+    // Show/hide stop button based on state
+    const showStopButton = (state === 'thinking' || state === 'speaking');
+    if (stopButton) {
+        stopButton.style.display = showStopButton ? 'flex' : 'none';
+    }
+    // Hide PTT button when stop button is shown
+    if (pttButton) {
+        pttButton.style.display = showStopButton ? 'none' : 'flex';
+    }
+
     switch(state) {
         case 'initializing':
             setStatusText('Initializing microphone...');
@@ -205,6 +220,41 @@ function setState(state) {
             if (pttButton) pttButton.disabled = false;
             break;
     }
+}
+
+// Stop generation function
+function stopGeneration() {
+    log('Stop button clicked');
+
+    // Abort any pending fetch request
+    if (currentAbortController) {
+        currentAbortController.abort();
+        currentAbortController = null;
+        log('Fetch request aborted');
+    }
+
+    // Stop any playing audio
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+        if (currentAudio.src) {
+            URL.revokeObjectURL(currentAudio.src);
+        }
+        currentAudio = null;
+        log('Audio playback stopped');
+    }
+
+    // Reset state
+    setState('ready');
+
+    // Re-enable input controls
+    if (textInput) textInput.disabled = false;
+    if (sendButton) sendButton.disabled = false;
+}
+
+// Stop button event listener
+if (stopButton) {
+    stopButton.addEventListener('click', stopGeneration);
 }
 
 // Add message to conversation history
@@ -521,6 +571,12 @@ async function getAgentResponse(message) {
             await getAgentResponseNonStreaming(message, startTime);
         }
     } catch (error) {
+        // Handle abort errors gracefully
+        if (error.name === 'AbortError') {
+            log('Request aborted by user');
+            return;
+        }
+
         log('Chat error', { error: error.message });
 
         addMessage('assistant', `⚠️ Error: ${error.message}`, {});
@@ -532,6 +588,9 @@ async function getAgentResponse(message) {
 
 // Non-streaming response handler (original behavior)
 async function getAgentResponseNonStreaming(message, startTime) {
+    // Create abort controller for this request
+    currentAbortController = new AbortController();
+
     const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: {
@@ -541,7 +600,8 @@ async function getAgentResponseNonStreaming(message, startTime) {
         body: JSON.stringify({
             message: message,
             session_id: sessionId
-        })
+        }),
+        signal: currentAbortController.signal
     });
 
     if (!response.ok) {
@@ -576,6 +636,9 @@ async function getAgentResponseNonStreaming(message, startTime) {
 
 // Streaming response handler using SSE
 async function getAgentResponseStreaming(message, startTime) {
+    // Create abort controller for this request
+    currentAbortController = new AbortController();
+
     const response = await fetch(`${API_URL}/api/chat?stream=1`, {
         method: 'POST',
         headers: {
@@ -585,7 +648,8 @@ async function getAgentResponseStreaming(message, startTime) {
         body: JSON.stringify({
             message: message,
             session_id: sessionId
-        })
+        }),
+        signal: currentAbortController.signal
     });
 
     if (!response.ok) {
@@ -701,7 +765,7 @@ async function getAgentResponseStreaming(message, startTime) {
 // Text-to-speech playback
 async function speakText(text) {
     setState('speaking');
-    
+
     if (!ttsEnabled) {
         log('TTS disabled - speakText() skipped');
         setState('ready');
@@ -709,10 +773,13 @@ async function speakText(text) {
     }
 
     log('Generating TTS...', { textLength: text.length, voice: selectedVoice });
-    
+
     const startTime = Date.now();
-    
+
     try {
+        // Create abort controller for TTS request
+        currentAbortController = new AbortController();
+
         const response = await fetch(`${API_URL}/api/speak`, {
             method: 'POST',
             headers: {
@@ -722,44 +789,55 @@ async function speakText(text) {
             body: JSON.stringify({
                 text: text,
                 voice_id: selectedVoice
-            })
+            }),
+            signal: currentAbortController.signal
         });
-        
+
         if (!response.ok) {
             const error = await response.text();
             throw new Error(`TTS API error: ${response.status} - ${error}`);
         }
-        
+
         const audioBlob = await response.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
-        
+
         const generationTime = Date.now() - startTime;
-        log('TTS generated', { 
+        log('TTS generated', {
             generationMs: generationTime,
             size: (audioBlob.size / 1024).toFixed(1) + 'KB'
         });
-        
+
         // Create and play audio element
         const audio = new Audio(audioUrl);
-        
+
+        // Track current audio for stop functionality
+        currentAudio = audio;
+
         // When audio finishes, clean up and set state back to ready
         audio.onended = () => {
             URL.revokeObjectURL(audioUrl);
+            currentAudio = null;
             setState('ready');
             log('TTS playback complete');
         };
-        
+
         // Handle audio errors
         audio.onerror = (e) => {
             URL.revokeObjectURL(audioUrl);
+            currentAudio = null;
             setState('ready');
             log('TTS playback error', { error: e });
         };
-        
+
         // Play the audio
         await audio.play();
-        
+
     } catch (error) {
+        // Handle abort errors gracefully
+        if (error.name === 'AbortError') {
+            log('TTS request aborted');
+            return;
+        }
         log('TTS error', { error: error.message });
         setState('ready');
         // Don't alert for TTS errors - text is already shown
@@ -1497,6 +1575,9 @@ getAgentResponse = async function(message) {
 
 // Dashboard streaming response handler
 async function getAgentResponseStreamingDashboard(message, startTime) {
+    // Create abort controller for this request
+    currentAbortController = new AbortController();
+
     const response = await fetch(`${API_URL}/api/chat?stream=1`, {
         method: 'POST',
         headers: {
@@ -1506,7 +1587,8 @@ async function getAgentResponseStreamingDashboard(message, startTime) {
         body: JSON.stringify({
             message: message,
             session_id: sessionId
-        })
+        }),
+        signal: currentAbortController.signal
     });
 
     if (!response.ok) {
