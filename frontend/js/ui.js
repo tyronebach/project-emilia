@@ -428,6 +428,7 @@ export function finalizeStreamingMessage(messageEl, content, processingMs, times
     
     // Add avatar state if available
     const avatarState = getLastAvatarState();
+    console.log('[finalizeStreamingMessage] avatarState:', avatarState);
     if (avatarState) {
         const mood = avatarState.mood || 'neutral';
         const intensity = avatarState.intensity !== undefined 
@@ -437,12 +438,15 @@ export function finalizeStreamingMessage(messageEl, content, processingMs, times
         metaItems.push(`🎭 ${mood}${intensity ? ' ' + intensity : ''}${anim}`);
     }
     
+    console.log('[finalizeStreamingMessage] metaItems:', metaItems);
+    
     // Add metadata display
     if (metaItems.length > 0) {
         const metaEl = document.createElement('div');
         metaEl.className = 'message-meta';
         metaEl.textContent = metaItems.join(' • ');
         messageEl.appendChild(metaEl);
+        console.log('[finalizeStreamingMessage] appended meta to', messageEl);
     }
 }
 

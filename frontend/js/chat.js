@@ -26,8 +26,13 @@ import { stripAvatarTags } from './utils.js';
  * @param {Array} animations - Array of animation names
  */
 function handleAvatarCommands(moods, animations) {
+    // Build avatar state for UI display
+    const avatarState = {};
+    
     if (moods && moods.length > 0) {
         log('Avatar moods', moods);
+        avatarState.mood = moods[0].mood;
+        avatarState.intensity = moods[0].intensity;
         // Apply the first/primary mood to the avatar
         if (window.avatarController && moods[0]) {
             window.avatarController.setMood(moods[0].mood, moods[0].intensity);
@@ -35,10 +40,16 @@ function handleAvatarCommands(moods, animations) {
     }
     if (animations && animations.length > 0) {
         log('Avatar animations', animations);
+        avatarState.animation = animations[0];
         // Trigger the first animation
         if (window.avatarController && animations[0]) {
             window.avatarController.triggerAnimation(animations[0]);
         }
+    }
+    
+    // Store for UI display
+    if (avatarState.mood || avatarState.animation) {
+        setLastAvatarState(avatarState);
     }
 }
 
