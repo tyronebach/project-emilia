@@ -46,6 +46,13 @@ def mock_httpx_client():
         yield mock
 
 
+@pytest.fixture
+def mock_websocket_tts():
+    """Mock elevenlabs_websocket_tts for TTS with alignment tests."""
+    with patch("main.elevenlabs_websocket_tts") as mock:
+        yield mock
+
+
 # ========================================
 # Health Endpoint Tests
 # ========================================
@@ -281,19 +288,20 @@ class TestSpeakEndpoint:
         )
         assert response.status_code == 400
 
-    def test_speak_success(self, test_client, auth_headers, mock_httpx_client):
-        """Speak should return audio from ElevenLabs."""
-        # Mock ElevenLabs response
+    def test_speak_success(self, test_client, auth_headers, mock_websocket_tts):
+        """Speak should return audio with alignment from ElevenLabs."""
+        import base64
+        # Mock WebSocket TTS response with alignment
         mock_audio_content = b"fake-mp3-audio-data"
-        mock_elevenlabs_response = MagicMock()
-        mock_elevenlabs_response.status_code = 200
-        mock_elevenlabs_response.content = mock_audio_content
-
-        mock_client_instance = AsyncMock()
-        mock_client_instance.post = AsyncMock(return_value=mock_elevenlabs_response)
-        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
-        mock_client_instance.__aexit__ = AsyncMock(return_value=None)
-        mock_httpx_client.return_value = mock_client_instance
+        mock_alignment = {
+            "chars": ["H", "e", "l", "l", "o"],
+            "charStartTimesMs": [0, 50, 100, 150, 200],
+            "charDurationsMs": [50, 50, 50, 50, 100]
+        }
+        mock_websocket_tts.return_value = {
+            "audio": mock_audio_content,
+            "alignment": mock_alignment
+        }
 
         response = test_client.post(
             "/api/speak",
@@ -302,22 +310,21 @@ class TestSpeakEndpoint:
         )
 
         assert response.status_code == 200
-        assert response.headers["content-type"] == "audio/mpeg"
-        assert response.content == mock_audio_content
+        assert response.headers["content-type"] == "application/json"
+        data = response.json()
+        assert "audio" in data
+        assert data["alignment"] == mock_alignment
+        assert data["has_lip_sync"] is True
+        assert base64.b64decode(data["audio"]) == mock_audio_content
         assert "X-Processing-Time-Ms" in response.headers
 
-    def test_speak_with_voice_id(self, test_client, auth_headers, mock_httpx_client):
+    def test_speak_with_voice_id(self, test_client, auth_headers, mock_websocket_tts):
         """Speak should accept voice_id parameter."""
         mock_audio_content = b"fake-mp3-audio-data"
-        mock_elevenlabs_response = MagicMock()
-        mock_elevenlabs_response.status_code = 200
-        mock_elevenlabs_response.content = mock_audio_content
-
-        mock_client_instance = AsyncMock()
-        mock_client_instance.post = AsyncMock(return_value=mock_elevenlabs_response)
-        mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
-        mock_client_instance.__aexit__ = AsyncMock(return_value=None)
-        mock_httpx_client.return_value = mock_client_instance
+        mock_websocket_tts.return_value = {
+            "audio": mock_audio_content,
+            "alignment": None
+        }
 
         response = test_client.post(
             "/api/speak",
@@ -326,11 +333,21 @@ class TestSpeakEndpoint:
         )
 
         assert response.status_code == 200
+        # Verify the voice_id was passed to the TTS function (resolved to ElevenLabs ID)
+        mock_websocket_tts.assert_called_once()
+        call_args = mock_websocket_tts.call_args
+        assert call_args[0][0] == "Hello"  # text
+        # "matilda" gets resolved to its ElevenLabs voice ID
+        assert call_args[0][1] == "XrExE9yKIg1WjnnlVkGX"  # matilda's voice_id
 
-    def test_speak_elevenlabs_timeout(self, test_client, auth_headers, mock_httpx_client):
+    def test_speak_elevenlabs_timeout(self, test_client, auth_headers, mock_websocket_tts, mock_httpx_client):
         """Speak should handle ElevenLabs timeout."""
         import httpx
 
+        # WebSocket fails, triggers REST fallback
+        mock_websocket_tts.side_effect = Exception("WebSocket failed")
+        
+        # REST also times out
         mock_client_instance = AsyncMock()
         mock_client_instance.post = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
         mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
@@ -347,10 +364,14 @@ class TestSpeakEndpoint:
         data = response.json()
         assert "timeout" in data.get("error", data.get("detail", "")).lower()
 
-    def test_speak_elevenlabs_unavailable(self, test_client, auth_headers, mock_httpx_client):
+    def test_speak_elevenlabs_unavailable(self, test_client, auth_headers, mock_websocket_tts, mock_httpx_client):
         """Speak should handle ElevenLabs connection error."""
         import httpx
 
+        # WebSocket fails, triggers REST fallback
+        mock_websocket_tts.side_effect = Exception("WebSocket failed")
+        
+        # REST also fails with connection error
         mock_client_instance = AsyncMock()
         mock_client_instance.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
         mock_client_instance.__aenter__ = AsyncMock(return_value=mock_client_instance)
@@ -367,8 +388,12 @@ class TestSpeakEndpoint:
         data = response.json()
         assert "unavailable" in data.get("error", data.get("detail", "")).lower()
 
-    def test_speak_elevenlabs_error(self, test_client, auth_headers, mock_httpx_client):
+    def test_speak_elevenlabs_error(self, test_client, auth_headers, mock_websocket_tts, mock_httpx_client):
         """Speak should handle ElevenLabs API error."""
+        # WebSocket fails, triggers REST fallback
+        mock_websocket_tts.side_effect = Exception("WebSocket failed")
+        
+        # REST returns error
         mock_elevenlabs_response = MagicMock()
         mock_elevenlabs_response.status_code = 429
         mock_elevenlabs_response.text = "Rate limit exceeded"
@@ -385,8 +410,8 @@ class TestSpeakEndpoint:
             headers=auth_headers
         )
 
-        # Backend may return 429 (pass-through) or 500 (generic error) for ElevenLabs failures
-        assert response.status_code in [429, 500]
+        # Backend returns 500 for generic TTS errors from REST fallback
+        assert response.status_code == 500
 
 
 # ========================================

@@ -1,8 +1,8 @@
-# Emilia Web App - v3.5.0 ✅
+# Emilia Web App - v4.1.0 ✅
 
-**Voice + Text Chat with Full Dashboard**
+**Voice + Text Chat with Animated VRM Avatar**
 
-Web interface with dual input modes (voice PTT + text), streaming responses, TTS voice output, session management, and full agent debug dashboard.
+Web interface with dual input modes (voice PTT + text), streaming responses, TTS voice output with lip sync, animated VRM avatar with expressions and gestures, session management, and full agent debug dashboard.
 
 **Built by Ram for Emilia waifu project**
 
