@@ -1,9 +1,16 @@
 # Avatar Control System — Design Document
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Date:** 2026-01-31  
-**Author:** Ram  
+**Author:** Ram (v1.0), Beatrice (v1.1 revisions)  
 **Status:** Draft
+
+### Revision Notes (v1.1)
+- Removed second LLM for mood detection — Emilia emits mood/animation tags directly
+- Added WebSocket → REST fallback for ElevenLabs TTS
+- Clarified Rose as test model, production avatar TBD after MVP
+- Updated architecture diagram and implementation timeline
+- Added `parse_agent_response()` implementation
 
 ---
 
@@ -42,6 +49,13 @@ Control Emilia's VRM avatar with:
 | Emotion detection | ❌ Not implemented |
 | Animation triggers | ❌ Not implemented |
 
+### Avatar Model
+
+**Current:** Rose (CC0 open-source test model from VRoid Hub)  
+**Production:** TBD after MVP complete — will commission custom Emilia model
+
+Rose uses standard VRM blend shapes (Oculus visemes + standard expressions), so all lip sync and emotion code will transfer to the production model without changes. The VRM spec guarantees blend shape compatibility.
+
 ---
 
 ## Architecture
@@ -71,18 +85,34 @@ Control Emilia's VRM avatar with:
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐      │
-│  │  /api/chat   │───▶│ Mood Parser  │───▶│ Avatar       │      │
-│  │              │    │ (Light LLM)  │    │ Commands     │      │
+│  │  /api/chat   │───▶│  Tag Parser  │───▶│ Avatar       │      │
+│  │              │    │ (regex only) │    │ Commands     │      │
 │  └──────────────┘    └──────────────┘    └──────────────┘      │
 │         │                                       │               │
 │         ▼                                       ▼               │
 │  ┌──────────────┐                        ┌──────────────┐      │
 │  │  ElevenLabs  │───────────────────────▶│ Response     │      │
-│  │  WebSocket   │  (audio + timestamps)  │ Stream       │      │
+│  │  WS (or REST)│  (audio + timestamps)  │ Stream       │      │
 │  └──────────────┘                        └──────────────┘      │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   Clawdbot Gateway (unchanged)                   │
+├─────────────────────────────────────────────────────────────────┤
+│  /tools/invoke sessions_send → Emilia Agent                     │
+│  Emilia emits: [MOOD:happy:0.7] [ANIM:wave] Hello!              │
+│  Backend parses tags, strips them, forwards to TTS              │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+**Flow:**
+1. User message → Backend → Clawdbot Gateway → Emilia Agent
+2. Emilia responds with mood/animation tags embedded
+3. Backend parses tags (regex, no LLM), strips them from text
+4. Clean text → ElevenLabs TTS (WebSocket or REST fallback)
+5. Frontend receives: text + audio + timestamps + avatar commands
 
 ---
 
@@ -148,10 +178,37 @@ Analyze audio waveform in real-time without timestamps.
 #### Option C: Microsoft Azure Speech SDK
 Returns viseme IDs directly with timestamps. Supports 100+ languages.
 
-### Recommended: Option A + Fallback to B
+### Recommended: Option A with REST Fallback
 
-1. **Primary:** Use ElevenLabs WebSocket with `sync_alignment=true`
-2. **Fallback:** Audio-driven analysis for non-ElevenLabs sources
+1. **Primary:** ElevenLabs WebSocket with `sync_alignment=true` for real-time timestamps
+2. **Fallback:** ElevenLabs REST API (no timestamps = no lip sync, but audio works)
+3. **Future:** Audio-driven analysis for non-ElevenLabs sources
+
+#### WebSocket Failure Handling
+
+```python
+async def generate_speech(text: str) -> dict:
+    """Generate TTS with graceful degradation."""
+    try:
+        # Try WebSocket first (has timestamps)
+        result = await elevenlabs_websocket_tts(text)
+        return {
+            "audio": result.audio,
+            "alignment": result.alignment,
+            "has_lip_sync": True
+        }
+    except WebSocketError as e:
+        logger.warning(f"WebSocket TTS failed, falling back to REST: {e}")
+        # Fallback to REST (no timestamps)
+        audio = await elevenlabs_rest_tts(text)
+        return {
+            "audio": audio,
+            "alignment": None,
+            "has_lip_sync": False
+        }
+```
+
+Frontend handles `has_lip_sync: false` by keeping mouth neutral during speech.
 
 ### Phoneme-to-Viseme Mapping Table
 
@@ -298,79 +355,97 @@ Custom expressions (model-dependent):
 - `shy` (blush + eyes down)
 - `love` (heart eyes, if available)
 
-### Mood Detection Approaches
+### Mood Detection: Agent-Emitted Tags (Recommended)
 
-#### Option 1: Rule-Based (Fast, No LLM)
+Instead of inferring mood from text with a second LLM, **Emilia emits mood/animation tags directly** in her response. This is:
+- **Zero additional cost** — no second LLM call
+- **Zero additional latency** — tags are part of the response
+- **More accurate** — Emilia knows her own emotional state
 
-```javascript
-const MOOD_KEYWORDS = {
-  happy: ['happy', 'glad', 'excited', 'wonderful', 'great', '😊', '😄', '❤️'],
-  sad: ['sad', 'sorry', 'unfortunately', 'disappointed', '😢', '😔'],
-  angry: ['angry', 'frustrated', 'annoyed', '😠', '😤'],
-  surprised: ['wow', 'amazing', 'incredible', 'really?', '😮', '😲'],
-  thinking: ['hmm', 'let me think', 'perhaps', 'maybe', '🤔'],
-  shy: ['blush', 'embarrassed', 'nervous', '😳'],
-  love: ['love', 'adore', 'wonderful', '❤️', '💕', '🥰'],
-};
+#### Tag Format
 
-function detectMoodKeywords(text) {
-  const lowerText = text.toLowerCase();
-  for (const [mood, keywords] of Object.entries(MOOD_KEYWORDS)) {
-    if (keywords.some(kw => lowerText.includes(kw))) {
-      return mood;
-    }
-  }
-  return 'neutral';
-}
+Emilia's SOUL.md instructs her to prefix responses with:
+
+```
+[MOOD:<emotion>:<intensity>] [ANIM:<animation>] Response text...
 ```
 
-#### Option 2: Light LLM (Backend, ~50-100ms)
-
-Use a small, fast model to extract mood as structured data.
-
-**Candidate Models:**
-- `gemini-2.0-flash-lite` — Fast, cheap
-- `gpt-4o-mini` — Good balance
-- `phi-3-mini` — Local option
-- Fine-tuned classifier — Best latency
-
-**Prompt Template:**
+**Examples:**
 ```
-Analyze the emotional tone of this text and respond with ONLY a JSON object.
-
-Text: "{response_text}"
-
-Respond with: {"mood": "<emotion>", "intensity": <0.0-1.0>}
-
-Valid emotions: neutral, happy, sad, angry, surprised, thinking, confused, shy, love
-
-Example: {"mood": "happy", "intensity": 0.7}
+[MOOD:happy:0.7] Good morning! I hope you slept well.
+[MOOD:shy:0.6] Oh... you remembered that about me?
+[MOOD:happy:0.8] [ANIM:wave] Hello! It's so nice to see you again!
+[MOOD:thinking:0.5] [ANIM:thinking_pose] Hmm, let me think about that...
 ```
 
-**Backend Integration:**
+#### Backend Parsing
+
 ```python
-async def parse_mood(text: str) -> dict:
-    """Extract mood from text using light LLM."""
-    prompt = MOOD_PROMPT_TEMPLATE.format(response_text=text[:500])
+import re
+
+def parse_avatar_tags(text: str) -> dict:
+    """Parse mood and animation tags from agent response."""
+    result = {
+        "text": text,
+        "mood": "neutral",
+        "intensity": 0.5,
+        "animation": None
+    }
     
-    response = await llm_client.chat(
-        model="gemini-2.0-flash-lite",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=50,
-        temperature=0.1,
-    )
+    # Parse mood tag: [MOOD:emotion:intensity]
+    mood_match = re.match(r'\[MOOD:(\w+):([\d.]+)\]\s*', text)
+    if mood_match:
+        result["mood"] = mood_match.group(1)
+        result["intensity"] = float(mood_match.group(2))
+        text = text[mood_match.end():]
     
-    try:
-        return json.loads(response.content)
-    except:
-        return {"mood": "neutral", "intensity": 0.5}
+    # Parse animation tag: [ANIM:animation]
+    anim_match = re.match(r'\[ANIM:(\w+)\]\s*', text)
+    if anim_match:
+        result["animation"] = anim_match.group(1)
+        text = text[anim_match.end():]
+    
+    result["text"] = text.strip()
+    return result
 ```
 
-#### Option 3: Hybrid (Recommended)
+#### Fallback: Keyword Detection
 
-1. **Fast path:** Check for emoji/keywords first (0ms)
-2. **Slow path:** If no match, call light LLM (50-100ms)
-3. **Streaming:** Start with neutral, update when mood resolves
+If tags are missing (agent error or legacy response), fall back to keyword detection:
+
+```python
+MOOD_KEYWORDS = {
+    'happy': ['happy', 'glad', 'excited', 'wonderful', '😊', '😄'],
+    'sad': ['sad', 'sorry', 'unfortunately', '😢', '😔'],
+    'surprised': ['wow', 'amazing', 'incredible', '😮'],
+    'thinking': ['hmm', 'let me think', 'perhaps', '🤔'],
+    'shy': ['blush', 'embarrassed', '😳'],
+}
+
+def detect_mood_fallback(text: str) -> dict:
+    """Fallback mood detection via keywords."""
+    lower = text.lower()
+    for mood, keywords in MOOD_KEYWORDS.items():
+        if any(kw in lower for kw in keywords):
+            return {"mood": mood, "intensity": 0.6}
+    return {"mood": "neutral", "intensity": 0.5}
+```
+
+#### Complete Parsing Flow
+
+```python
+def parse_agent_response(raw_text: str) -> dict:
+    """Parse agent response with fallback."""
+    result = parse_avatar_tags(raw_text)
+    
+    # If no mood tag found, use keyword fallback
+    if result["mood"] == "neutral" and not raw_text.startswith("[MOOD:"):
+        fallback = detect_mood_fallback(result["text"])
+        result["mood"] = fallback["mood"]
+        result["intensity"] = fallback["intensity"]
+    
+    return result
+```
 
 ### Expression Blending
 
@@ -554,43 +629,41 @@ const ANIMATION_TRIGGERS = {
 
 ### Enhanced Chat Response
 
-Modify `/api/chat` to include avatar commands:
+Modify `/api/chat` to parse agent-emitted avatar tags:
 
 ```python
-@app.get("/api/chat")
+@app.post("/api/chat")
 async def chat(
     message: str,
     session_id: str = "default",
-    stream: bool = False,
 ):
-    # Get LLM response
-    llm_response = await get_llm_response(message, session_id)
+    # Get LLM response (includes mood/anim tags)
+    raw_response = await get_llm_response(message, session_id)
     
-    # Parse mood (parallel with TTS)
-    mood_task = asyncio.create_task(parse_mood(llm_response.text))
+    # Parse avatar tags from response
+    parsed = parse_agent_response(raw_response.text)
     
-    # Generate TTS with timestamps
-    tts_task = asyncio.create_task(
-        generate_tts_with_alignment(llm_response.text)
-    )
-    
-    # Detect animation triggers
-    animation = detect_animation_trigger(llm_response.text)
-    
-    # Wait for parallel tasks
-    mood, tts_result = await asyncio.gather(mood_task, tts_task)
+    # Generate TTS with timestamps (uses cleaned text, no tags)
+    tts_result = await generate_speech(parsed["text"])
     
     return {
-        "text": llm_response.text,
-        "audio": tts_result.audio_base64,
-        "alignment": tts_result.alignment,
+        "text": parsed["text"],
+        "audio": tts_result["audio"],
+        "alignment": tts_result.get("alignment"),
+        "has_lip_sync": tts_result["has_lip_sync"],
         "avatar": {
-            "mood": mood["mood"],
-            "intensity": mood["intensity"],
-            "animation": animation,
+            "mood": parsed["mood"],
+            "intensity": parsed["intensity"],
+            "animation": parsed["animation"],
         }
     }
 ```
+
+**Key points:**
+- Agent response arrives with tags: `[MOOD:happy:0.7] [ANIM:wave] Hello!`
+- `parse_agent_response()` extracts mood/animation and cleans the text
+- TTS receives clean text (no tags in audio)
+- Frontend receives structured avatar commands
 
 ### ElevenLabs WebSocket Proxy
 
@@ -657,19 +730,20 @@ interface ChatResponse {
    - Tune interpolation speeds
    - Handle edge cases (silence, long pauses)
 
-### Phase 2: Emotion System (2-3 days)
+### Phase 2: Emotion System (1-2 days)
 
-1. **Day 1:** Mood detection
-   - Implement keyword-based detection
-   - Add light LLM fallback
-   
-2. **Day 2:** Expression blending
+1. **Day 1:** Backend parsing + expression blending
+   - Implement `parse_agent_response()` for mood/anim tags
+   - Add keyword fallback for missing tags
    - Connect mood to VRM expressions
    - Implement smooth transitions
    
-3. **Day 3:** Integration
+2. **Day 2:** Integration + testing
    - Wire into chat response pipeline
-   - Test end-to-end
+   - Test end-to-end with various moods
+   - Verify fallback behavior
+
+**Note:** Emilia's SOUL.md already updated to emit mood/animation tags. No additional LLM integration needed.
 
 ### Phase 3: Animation System (2-3 days)
 
@@ -738,12 +812,23 @@ viseme_I, viseme_O, viseme_U
 
 | Component | Approach | Latency | Complexity |
 |-----------|----------|---------|------------|
-| Lip sync | ElevenLabs timestamps + viseme mapping | Real-time | Medium |
-| Mood | Keyword detection + light LLM fallback | 0-100ms | Low |
+| Lip sync | ElevenLabs WebSocket timestamps + viseme mapping | Real-time | Medium |
+| Lip sync fallback | REST API (no sync, neutral mouth) | Real-time | Low |
+| Mood | Agent-emitted tags + keyword fallback | 0ms | Low |
 | Idle | Procedural (blink, breathe, sway) | N/A | Low |
-| Animations | Trigger detection + procedural/Mixamo | Instant | Medium |
+| Animations | Agent-emitted triggers + procedural | Instant | Low |
 
-**Total estimated implementation time:** 8-12 days
+**Total estimated implementation time:** 7-10 days
+
+### Clawdbot Integration
+
+| Change | Location | Impact |
+|--------|----------|--------|
+| Mood/animation tags | `/home/tbach/clawd-emilia/SOUL.md` | ✅ Done |
+| Backend parsing | `emilia-webapp/backend/main.py` | Pending |
+| No second LLM | N/A | Zero additional cost |
+
+**Architecture:** All avatar logic runs in backend Docker container. Clawdbot gateway unchanged except for Emilia's persona file.
 
 ---
 
