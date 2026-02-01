@@ -73,6 +73,7 @@ export function applyTtsUiState() {
 
 /**
  * Text-to-speech playback - returns true if audio was generated successfully
+ * Now supports lip sync via ElevenLabs character timestamps
  */
 export async function speakText(text) {
     setState('speaking');
@@ -109,7 +110,12 @@ export async function speakText(text) {
             throw new Error(`TTS API error: ${response.status} - ${error}`);
         }
 
-        const audioBlob = await response.blob();
+        // Parse JSON response with audio and alignment data
+        const data = await response.json();
+        
+        // Decode base64 audio
+        const audioBytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
+        const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
         const audioUrl = URL.createObjectURL(audioBlob);
         
         // Cache audio URL for replay (keyed by text hash)
@@ -119,8 +125,17 @@ export async function speakText(text) {
         const generationTime = Date.now() - startTime;
         log('TTS generated', {
             generationMs: generationTime,
-            size: (audioBlob.size / 1024).toFixed(1) + 'KB'
+            size: (audioBlob.size / 1024).toFixed(1) + 'KB',
+            hasLipSync: data.has_lip_sync
         });
+
+        // Set up lip sync if alignment data is available
+        if (data.alignment && window.lipSyncEngine) {
+            window.lipSyncEngine.setAlignment(data.alignment);
+            log('Lip sync alignment loaded', { chars: data.alignment.chars?.length || 0 });
+        } else if (!data.alignment) {
+            log('No lip sync alignment data available');
+        }
 
         // Create and play audio element
         const audio = new Audio(audioUrl);
@@ -128,10 +143,14 @@ export async function speakText(text) {
         // Track current audio for stop functionality
         state.setCurrentAudio(audio);
 
-        // When audio finishes, set state back to ready
+        // When audio finishes, set state back to ready and stop lip sync
         audio.onended = () => {
             state.setCurrentAudio(null);
             setState('ready');
+            // Stop lip sync
+            if (window.lipSyncEngine) {
+                window.lipSyncEngine.stop();
+            }
             log('TTS playback complete');
         };
 
@@ -139,11 +158,20 @@ export async function speakText(text) {
         audio.onerror = (e) => {
             state.setCurrentAudio(null);
             setState('ready');
+            // Stop lip sync on error
+            if (window.lipSyncEngine) {
+                window.lipSyncEngine.stop();
+            }
             log('TTS playback error', { error: e });
         };
 
-        // Play the audio
+        // Play the audio and start lip sync
         await audio.play();
+        
+        // Start lip sync after audio starts playing
+        if (window.lipSyncEngine && data.alignment) {
+            window.lipSyncEngine.startSync(audio);
+        }
         
         return true;
 
@@ -151,6 +179,10 @@ export async function speakText(text) {
         // Handle abort errors gracefully
         if (error.name === 'AbortError') {
             log('TTS request aborted');
+            // Stop lip sync on abort
+            if (window.lipSyncEngine) {
+                window.lipSyncEngine.stop();
+            }
             return false;
         }
         log('TTS error', { error: error.message });
@@ -161,6 +193,7 @@ export async function speakText(text) {
 
 /**
  * Replay message audio - uses cached audio if available
+ * Note: Replay does not support lip sync (no alignment data cached)
  */
 export async function replayMessage(buttonEl, text) {
     if (!text || !text.trim()) return;
@@ -193,10 +226,15 @@ export async function replayMessage(buttonEl, text) {
                 throw new Error(`TTS API error: ${response.status}`);
             }
 
-            const audioBlob = await response.blob();
+            // Parse JSON response
+            const data = await response.json();
+            
+            // Decode base64 audio
+            const audioBytes = Uint8Array.from(atob(data.audio), c => c.charCodeAt(0));
+            const audioBlob = new Blob([audioBytes], { type: 'audio/mpeg' });
             audioUrl = URL.createObjectURL(audioBlob);
             
-            // Cache for future replays
+            // Cache for future replays (audio only, not alignment)
             state.audioCache.set(cacheKey, audioUrl);
         } catch (error) {
             log('Replay TTS error', { error: error.message });
@@ -208,7 +246,7 @@ export async function replayMessage(buttonEl, text) {
         log('Replaying message (using cached audio)');
     }
 
-    // Play the audio
+    // Play the audio (no lip sync for replays)
     try {
         const audio = new Audio(audioUrl);
 
@@ -254,6 +292,12 @@ export function stopGeneration() {
         }
         state.setCurrentAudio(null);
         log('Audio playback stopped');
+    }
+
+    // Stop lip sync
+    if (window.lipSyncEngine) {
+        window.lipSyncEngine.stop();
+        log('Lip sync stopped');
     }
 
     // Reset state

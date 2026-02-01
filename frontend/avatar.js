@@ -6,7 +6,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import { LipSyncEngine } from './js/lip-sync.js';
 import { AvatarExpressionController } from './js/avatar-controller.js';
+import { IdleAnimationSystem } from './js/idle-animations.js';
+import { AnimationTriggerSystem } from './js/animation-trigger.js';
 
 // Default VRM URL for testing
 const DEFAULT_VRM_URL = 'https://arweave.net/Ea1KXujzJatQgCFSMzGOzp_UtHqB1pyia--U3AtkMAY';
@@ -22,6 +25,12 @@ class AvatarRenderer {
         this.clock = new THREE.Clock();
         this.isInitialized = false;
         this.animationFrameId = null;
+        this.lipSyncEngine = null;  // Lip sync engine instance
+        
+        // Animation systems (initialized after VRM loads)
+        this.idleAnimations = null;
+        this.animationTrigger = null;
+        this.expressionController = null;
 
         // Options with defaults
         this.options = {
@@ -194,10 +203,27 @@ class AvatarRenderer {
                         });
                     }
 
-                    // Create expression controller for mood/animation control
+                    // Initialize animation systems (idle, triggered, expressions)
+                    this.idleAnimations = new IdleAnimationSystem(vrm);
+                    this.animationTrigger = new AnimationTriggerSystem(vrm);
                     this.expressionController = new AvatarExpressionController(vrm);
-                    // Expose globally for chat module to access
-                    window.avatarController = this.expressionController;
+                    
+                    // Expose globally for external access
+                    window.idleAnimations = this.idleAnimations;
+                    window.animationTrigger = this.animationTrigger;
+                    window.expressionController = this.expressionController;
+                    window.avatarController = this.expressionController; // Legacy alias
+                    
+                    // Convenience functions
+                    window.triggerAnimation = (name) => this.animationTrigger.trigger(name);
+                    window.setAvatarExpression = (name, intensity) => this.expressionController.setExpression(name, intensity);
+                    
+                    console.log('Animation systems initialized');
+
+                    // Initialize lip sync engine
+                    this.lipSyncEngine = new LipSyncEngine(vrm);
+                    window.lipSyncEngine = this.lipSyncEngine;  // Expose globally for TTS module
+                    console.log('Lip sync engine initialized');
 
                     console.log('VRM loaded successfully:', vrm.meta?.name || 'Unknown');
 
@@ -234,9 +260,19 @@ class AvatarRenderer {
 
             const deltaTime = this.clock.getDelta();
 
-            // Update avatar expression controller
-            if (this.expressionController) {
-                this.expressionController.update(deltaTime);
+            // Update idle animations (blink, breathe, micro-movements)
+            if (this.idleAnimations) {
+                this.idleAnimations.update(deltaTime);
+            }
+            
+            // Update triggered animations (nod, wave, etc.)
+            if (this.animationTrigger) {
+                this.animationTrigger.update(deltaTime);
+            }
+            
+            // Update lip sync (viseme animations synced to TTS audio)
+            if (this.lipSyncEngine) {
+                this.lipSyncEngine.update(deltaTime);
             }
 
             // Update VRM
@@ -279,26 +315,23 @@ class AvatarRenderer {
 
     /**
      * Start idle blink animation
+     * Note: IdleAnimationSystem now handles this automatically in the render loop
      */
     startIdleAnimation() {
-        // Random blink every 2-5 seconds
-        const scheduleBlink = () => {
-            const delay = 2000 + Math.random() * 3000;
-            this.blinkTimeout = setTimeout(() => {
-                this.blink();
-                scheduleBlink();
-            }, delay);
-        };
-        scheduleBlink();
+        // Legacy: IdleAnimationSystem handles idle animations automatically
+        // This method is kept for backwards compatibility
+        if (this.idleAnimations) {
+            this.idleAnimations.resume();
+        }
     }
 
     /**
      * Stop idle animation
      */
     stopIdleAnimation() {
-        if (this.blinkTimeout) {
-            clearTimeout(this.blinkTimeout);
-            this.blinkTimeout = null;
+        // Legacy: IdleAnimationSystem handles idle animations automatically
+        if (this.idleAnimations) {
+            this.idleAnimations.pause();
         }
     }
 
