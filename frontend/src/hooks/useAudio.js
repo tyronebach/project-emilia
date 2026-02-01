@@ -4,20 +4,35 @@ import { fetchWithAuth } from '../utils/api';
 
 export function useAudio() {
   const { setStatus, addMessage } = useApp();
-  const { sendMessage } = useChat();
   
   const [isRecording, setIsRecording] = useState(false);
+  const [transcription, setTranscription] = useState(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
+  const streamRef = useRef(null);
   
+  /**
+   * Start recording audio
+   */
   const startRecording = useCallback(async () => {
     if (isRecording) return;
     
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true
+        }
       });
+      
+      streamRef.current = stream;
+      
+      // Prefer opus codec
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
+      
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       
       chunksRef.current = [];
       
@@ -27,50 +42,66 @@ export function useAudio() {
         }
       };
       
-      mediaRecorder.onstop = async () => {
-        // Stop all tracks
-        stream.getTracks().forEach(track => track.stop());
-        
-        // Create blob from chunks
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        
-        // Send to transcription API
-        await transcribeAudio(blob);
-      };
-      
       mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start(100); // Collect data every 100ms
+      mediaRecorder.start(100);
       
       setIsRecording(true);
       setStatus('recording');
-      console.log('Recording started');
+      console.log('[useAudio] Recording started');
     } catch (error) {
-      console.error('Failed to start recording:', error);
+      console.error('[useAudio] Failed to start recording:', error);
       setStatus('error');
       setTimeout(() => setStatus('ready'), 2000);
     }
   }, [isRecording, setStatus]);
   
+  /**
+   * Stop recording and transcribe
+   */
   const stopRecording = useCallback(() => {
-    if (!isRecording || !mediaRecorderRef.current) return;
+    if (!isRecording || !mediaRecorderRef.current) return null;
     
-    mediaRecorderRef.current.stop();
-    setIsRecording(false);
-    setStatus('thinking'); // Will be processing the audio
-    console.log('Recording stopped');
+    return new Promise((resolve) => {
+      const mediaRecorder = mediaRecorderRef.current;
+      
+      mediaRecorder.onstop = async () => {
+        // Stop all tracks
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
+        
+        // Create blob from chunks
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        chunksRef.current = [];
+        
+        console.log('[useAudio] Recording stopped, blob size:', blob.size);
+        
+        // Transcribe
+        const text = await transcribeAudio(blob);
+        resolve(text);
+      };
+      
+      mediaRecorder.stop();
+      setIsRecording(false);
+      setStatus('thinking');
+    });
   }, [isRecording, setStatus]);
   
+  /**
+   * Transcribe audio blob
+   */
   const transcribeAudio = useCallback(async (blob) => {
     try {
       const formData = new FormData();
       formData.append('file', blob, 'recording.webm');
       
-      const response = await fetchWithAuth('/api/transcribe', {
+      const response = await fetch('/api/transcribe', {
         method: 'POST',
-        body: formData,
         headers: {
-          // Don't set Content-Type - let browser set it with boundary
-        }
+          'Authorization': 'Bearer emilia-dev-token-2026'
+        },
+        body: formData
       });
       
       if (!response.ok) {
@@ -79,34 +110,46 @@ export function useAudio() {
       
       const result = await response.json();
       
-      if (result.text && result.text.trim()) {
-        // Add user message with transcription
-        addMessage('user', result.text, { source: 'voice' });
-        
-        // Get AI response (import sendMessage dynamically to avoid circular dep)
-        const { sendMessage } = await import('./useChat').then(m => ({ sendMessage: null }));
-        // Note: This is handled by InputControls which has access to both hooks
-      }
+      console.log('[useAudio] Transcription:', result.text);
+      setTranscription(result.text);
       
-      console.log('Transcription:', result.text);
+      return result.text || null;
     } catch (error) {
-      console.error('Transcription error:', error);
+      console.error('[useAudio] Transcription error:', error);
       setStatus('error');
       setTimeout(() => setStatus('ready'), 2000);
+      return null;
     }
-  }, [addMessage, setStatus]);
+  }, [setStatus]);
+  
+  /**
+   * Cancel recording without transcribing
+   */
+  const cancelRecording = useCallback(() => {
+    if (!isRecording || !mediaRecorderRef.current) return;
+    
+    // Stop recording without processing
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    
+    mediaRecorderRef.current.stop();
+    mediaRecorderRef.current = null;
+    chunksRef.current = [];
+    
+    setIsRecording(false);
+    setStatus('ready');
+    console.log('[useAudio] Recording cancelled');
+  }, [isRecording, setStatus]);
   
   return {
     startRecording,
     stopRecording,
-    isRecording
+    cancelRecording,
+    isRecording,
+    transcription
   };
-}
-
-// Import useChat at module level but use lazily
-function useChat() {
-  // Placeholder - the actual hook is used in InputControls
-  return { sendMessage: async () => {} };
 }
 
 export default useAudio;

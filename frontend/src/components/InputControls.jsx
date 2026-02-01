@@ -49,8 +49,18 @@ function InputControls() {
     startRecording();
   };
   
-  const handlePTTEnd = () => {
-    stopRecording();
+  const handlePTTEnd = async () => {
+    if (!isRecording) return;
+    
+    const transcription = await stopRecording();
+    
+    if (transcription && transcription.trim()) {
+      // Add user message with voice source
+      addMessage('user', transcription, { source: 'voice' });
+      
+      // Send to chat API
+      await sendMessage(transcription);
+    }
   };
   
   return (
@@ -113,7 +123,7 @@ function InputControls() {
         <button
           onMouseDown={handlePTTStart}
           onMouseUp={handlePTTEnd}
-          onMouseLeave={handlePTTEnd}
+          onMouseLeave={() => isRecording && handlePTTEnd()}
           onTouchStart={handlePTTStart}
           onTouchEnd={handlePTTEnd}
           disabled={isDisabled}
@@ -138,10 +148,10 @@ function InputControls() {
           {isRecording && (
             <>
               <span className="w-2 h-2 bg-error rounded-full animate-pulse" />
-              <span>Recording...</span>
+              <span>Recording... release to send</span>
             </>
           )}
-          {status === 'thinking' && (
+          {status === 'thinking' && !isRecording && (
             <>
               <span className="w-2 h-2 bg-warning rounded-full animate-pulse" />
               <span>Thinking...</span>
