@@ -266,6 +266,83 @@ function showSuccess(message) {
     showNotification(message, 'success', 4000);
 }
 
+async function loadSessionHistory(targetSessionId) {
+    try {
+        log('Loading session history', { sessionId: targetSessionId });
+        const response = await fetch(`${API_URL}/api/sessions/history/${encodeURIComponent(targetSessionId)}`, {
+            headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` }
+        });
+        if (!response.ok) {
+            log('Session history API error', { status: response.status });
+            return;
+        }
+        const data = await response.json();
+        
+        if (data.error) {
+            log('Session history error', { error: data.error });
+            return;
+        }
+        
+        // Clear current UI
+        conversationHistory = [];
+        if (conversationHistoryEl) conversationHistoryEl.innerHTML = '';
+        
+        const messages = data.messages || [];
+        
+        if (messages.length === 0) {
+            if (conversationEmpty) conversationEmpty.style.display = 'flex';
+            log('Session history loaded (empty)', { count: 0 });
+            return;
+        }
+        
+        // Hide empty state
+        if (conversationEmpty) conversationEmpty.style.display = 'none';
+        
+        // Add each message to UI
+        for (const msg of messages) {
+            // Format timestamp if present
+            let displayTimestamp = '';
+            if (msg.timestamp) {
+                try {
+                    displayTimestamp = new Date(msg.timestamp).toLocaleTimeString();
+                } catch (e) {
+                    displayTimestamp = '';
+                }
+            }
+            
+            // Create message element directly (simpler than addMessage to avoid side effects)
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${msg.role}`;
+            const roleLabel = msg.role === 'user' ? '👤 You' : '🤖 Emilia';
+            
+            messageEl.innerHTML = `
+                <div class="message-header">
+                    <span class="message-role">${roleLabel}</span>
+                    <span class="message-timestamp">${displayTimestamp}</span>
+                </div>
+                <div class="message-bubble">${escapeHtml(msg.content || '')}</div>
+            `;
+            
+            conversationHistoryEl.appendChild(messageEl);
+            
+            // Add to history array
+            conversationHistory.push({
+                role: msg.role,
+                content: msg.content,
+                timestamp: displayTimestamp,
+                meta: {}
+            });
+        }
+        
+        // Scroll to bottom
+        conversationHistoryEl.scrollTop = conversationHistoryEl.scrollHeight;
+        
+        log('Session history loaded', { count: messages.length });
+    } catch (error) {
+        log('Failed to load session history', { error: error.message });
+    }
+}
+
 async function loadSessionsList() {
     if (!sessionSelector) return;
     try {
@@ -330,7 +407,7 @@ if (refreshSessionsButton) {
 }
 
 if (sessionSelector) {
-    sessionSelector.addEventListener('change', (e) => {
+    sessionSelector.addEventListener('change', async (e) => {
         const value = e.target.value;
         if (value) {
             sessionId = value;
@@ -341,10 +418,8 @@ if (sessionSelector) {
                 // ignore
             }
             log('Session switched', { sessionId });
-            // Clear UI and reload history for new session
-            conversationHistory = [];
-            if (conversationHistoryEl) conversationHistoryEl.innerHTML = '';
-            if (conversationEmpty) conversationEmpty.style.display = 'flex';
+            // Load history for the new session
+            await loadSessionHistory(sessionId);
             showSuccess(`Switched to session: ${getSessionDisplayName(sessionId)}`);
         }
     });
@@ -1569,6 +1644,9 @@ window.addEventListener('load', async () => {
 
     await checkHealth();
     await loadSessionsList();
+    
+    // Load chat history for current session
+    await loadSessionHistory(sessionId);
 
     if (ttsEnabled) {
         await loadVoices();
