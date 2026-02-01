@@ -416,16 +416,19 @@ function addMessage(role, content, meta = {}) {
         }
     }
 
-    // Add replay button for assistant messages
+    // Add replay button for assistant messages ONLY if audio is cached
     let replayButtonHtml = '';
     if (role === 'assistant' && content && !content.startsWith('⚠️')) {
-        replayButtonHtml = `
-            <button class="replay-button" title="Replay voice" data-text="${escapeHtml(content).replace(/"/g, '&quot;')}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                </svg>
-            </button>
-        `;
+        const cacheKey = getAudioCacheKey(content);
+        if (audioCache.has(cacheKey)) {
+            replayButtonHtml = `
+                <button class="replay-button" title="Replay voice" data-text="${escapeHtml(content).replace(/"/g, '&quot;')}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                </button>
+            `;
+        }
     }
 
     // Use container for assistant messages with replay button
@@ -464,60 +467,84 @@ function addMessage(role, content, meta = {}) {
     conversationHistoryEl.scrollTop = conversationHistoryEl.scrollHeight;
 }
 
-// Replay message audio
+// Audio cache - stores generated audio URLs by message text hash
+const audioCache = new Map();
+
+function getAudioCacheKey(text) {
+    // Simple hash for cache key
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+        const char = text.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return hash.toString();
+}
+
+// Replay message audio - uses cached audio if available
 async function replayMessage(buttonEl, text) {
     if (!text || !text.trim()) return;
     
-    // Respect TTS toggle - don't call ElevenLabs if TTS is off
-    if (!ttsEnabled) {
-        log('Replay skipped - TTS is disabled');
-        return;
-    }
+    const cacheKey = getAudioCacheKey(text);
+    let audioUrl = audioCache.get(cacheKey);
 
     // Disable button and show playing state
     buttonEl.disabled = true;
     buttonEl.classList.add('playing');
 
-    log('Replaying message', { textLength: text.length });
+    // If no cached audio, we need to generate it
+    if (!audioUrl) {
+        log('Replaying message (generating audio)', { textLength: text.length });
 
-    try {
-        const response = await fetch(`${API_URL}/api/speak`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${AUTH_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                text: text,
-                voice_id: selectedVoice
-            })
-        });
+        try {
+            const response = await fetch(`${API_URL}/api/speak`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${AUTH_TOKEN}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    text: text,
+                    voice_id: selectedVoice
+                })
+            });
 
-        if (!response.ok) {
-            throw new Error(`TTS API error: ${response.status}`);
+            if (!response.ok) {
+                throw new Error(`TTS API error: ${response.status}`);
+            }
+
+            const audioBlob = await response.blob();
+            audioUrl = URL.createObjectURL(audioBlob);
+            
+            // Cache for future replays
+            audioCache.set(cacheKey, audioUrl);
+        } catch (error) {
+            log('Replay TTS error', { error: error.message });
+            buttonEl.disabled = false;
+            buttonEl.classList.remove('playing');
+            return;
         }
+    } else {
+        log('Replaying message (using cached audio)');
+    }
 
-        const audioBlob = await response.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-
+    // Play the audio
+    try {
         const audio = new Audio(audioUrl);
 
         audio.onended = () => {
-            URL.revokeObjectURL(audioUrl);
             buttonEl.disabled = false;
             buttonEl.classList.remove('playing');
             log('Replay complete');
         };
 
         audio.onerror = () => {
-            URL.revokeObjectURL(audioUrl);
             buttonEl.disabled = false;
             buttonEl.classList.remove('playing');
             log('Replay error');
         };
 
         await audio.play();
-
     } catch (error) {
         log('Replay error', { error: error.message });
         buttonEl.disabled = false;
@@ -958,18 +985,20 @@ async function getAgentResponseStreaming(message, startTime) {
     // Use clean content (tags stripped)
     const cleanContent = finalData?.response || stripAvatarTags(fullContent);
 
-    // Add replay button after streaming completes (if we have content)
-    if (cleanContent && !cleanContent.startsWith('⚠️')) {
-        const replayBtn = document.createElement('button');
-        replayBtn.className = 'replay-button';
-        replayBtn.title = 'Replay voice';
-        replayBtn.innerHTML = `
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5 3 19 12 5 21 5 3"></polygon>
-            </svg>
-        `;
-        replayBtn.addEventListener('click', () => replayMessage(replayBtn, cleanContent));
-        bubbleContainer.appendChild(replayBtn);
+    // Helper to add replay button (only called after audio is generated)
+    function addReplayButton() {
+        if (!bubbleContainer.querySelector('.replay-button')) {
+            const replayBtn = document.createElement('button');
+            replayBtn.className = 'replay-button';
+            replayBtn.title = 'Replay voice';
+            replayBtn.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+            `;
+            replayBtn.addEventListener('click', () => replayMessage(replayBtn, cleanContent));
+            bubbleContainer.appendChild(replayBtn);
+        }
     }
 
     // Add to conversation history
@@ -993,10 +1022,13 @@ async function getAgentResponseStreaming(message, startTime) {
         processing_ms: processingMs
     });
 
-    // Generate and play TTS audio (optional)
+    // Generate and play TTS audio - only add replay button if audio generated
     if (cleanContent && cleanContent.trim()) {
         if (ttsEnabled) {
-            await speakText(cleanContent);
+            const audioGenerated = await speakText(cleanContent);
+            if (audioGenerated) {
+                addReplayButton();
+            }
         } else {
             log('TTS disabled - skipping /api/speak');
             setState('ready');
@@ -1006,14 +1038,14 @@ async function getAgentResponseStreaming(message, startTime) {
     }
 }
 
-// Text-to-speech playback
+// Text-to-speech playback - returns true if audio was generated successfully
 async function speakText(text) {
     setState('speaking');
 
     if (!ttsEnabled) {
         log('TTS disabled - speakText() skipped');
         setState('ready');
-        return;
+        return false;
     }
 
     log('Generating TTS...', { textLength: text.length, voice: selectedVoice });
@@ -1044,6 +1076,10 @@ async function speakText(text) {
 
         const audioBlob = await response.blob();
         const audioUrl = URL.createObjectURL(audioBlob);
+        
+        // Cache audio URL for replay (keyed by text hash)
+        const cacheKey = getAudioCacheKey(text);
+        audioCache.set(cacheKey, audioUrl);
 
         const generationTime = Date.now() - startTime;
         log('TTS generated', {
@@ -1057,9 +1093,8 @@ async function speakText(text) {
         // Track current audio for stop functionality
         currentAudio = audio;
 
-        // When audio finishes, clean up and set state back to ready
+        // When audio finishes, set state back to ready (don't revoke - keep cached)
         audio.onended = () => {
-            URL.revokeObjectURL(audioUrl);
             currentAudio = null;
             setState('ready');
             log('TTS playback complete');
@@ -1067,7 +1102,6 @@ async function speakText(text) {
 
         // Handle audio errors
         audio.onerror = (e) => {
-            URL.revokeObjectURL(audioUrl);
             currentAudio = null;
             setState('ready');
             log('TTS playback error', { error: e });
@@ -1075,16 +1109,20 @@ async function speakText(text) {
 
         // Play the audio
         await audio.play();
+        
+        // Audio started successfully - return true so caller can add replay button
+        return true;
 
     } catch (error) {
         // Handle abort errors gracefully
         if (error.name === 'AbortError') {
             log('TTS request aborted');
-            return;
+            return false;
         }
         log('TTS error', { error: error.message });
         setState('ready');
         // Don't alert for TTS errors - text is already shown
+        return false;
     }
 }
 
@@ -1158,12 +1196,8 @@ function applyTtsUiState() {
             voiceSelector.innerHTML = '<option value="rachel">(Voice off)</option>';
         }
     }
-    
-    // Hide/show replay buttons based on TTS state
-    const replayButtons = document.querySelectorAll('.replay-button');
-    replayButtons.forEach(btn => {
-        btn.style.display = ttsEnabled ? '' : 'none';
-    });
+    // Note: Replay buttons are always visible once audio is generated
+    // They don't depend on current TTS toggle state
 }
 
 // Voice selector change
@@ -1968,18 +2002,20 @@ async function getAgentResponseStreamingDashboard(message, startTime) {
     // Use clean content (tags stripped)
     const cleanContent = finalData?.response || stripAvatarTags(fullContent);
 
-    // Add replay button after streaming completes (if we have content)
-    if (cleanContent && !cleanContent.startsWith('⚠️')) {
-        const replayBtn = document.createElement('button');
-        replayBtn.className = 'replay-button';
-        replayBtn.title = 'Replay voice';
-        replayBtn.innerHTML = `
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <polygon points="5 3 19 12 5 21 5 3"></polygon>
-            </svg>
-        `;
-        replayBtn.addEventListener('click', () => replayMessage(replayBtn, cleanContent));
-        bubbleContainer.appendChild(replayBtn);
+    // Helper to add replay button (only called after audio is generated)
+    function addReplayButton2() {
+        if (!bubbleContainer.querySelector('.replay-button')) {
+            const replayBtn = document.createElement('button');
+            replayBtn.className = 'replay-button';
+            replayBtn.title = 'Replay voice';
+            replayBtn.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+            `;
+            replayBtn.addEventListener('click', () => replayMessage(replayBtn, cleanContent));
+            bubbleContainer.appendChild(replayBtn);
+        }
     }
 
     // Build metadata from final data
@@ -2015,10 +2051,13 @@ async function getAgentResponseStreamingDashboard(message, startTime) {
         usage: finalData?.usage
     });
 
-    // Generate and play TTS audio
+    // Generate and play TTS audio - only add replay button if audio generated
     if (cleanContent && cleanContent.trim()) {
         if (ttsEnabled) {
-            await speakText(cleanContent);
+            const audioGenerated = await speakText(cleanContent);
+            if (audioGenerated) {
+                addReplayButton2();
+            }
         } else {
             log('TTS disabled - skipping /api/speak');
             setState('ready');
