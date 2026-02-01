@@ -12,7 +12,8 @@ import { IdleAnimationSystem } from './js/idle-animations.js';
 import { AnimationTriggerSystem } from './js/animation-trigger.js';
 
 // Default VRM URL for testing
-const DEFAULT_VRM_URL = 'https://arweave.net/Ea1KXujzJatQgCFSMzGOzp_UtHqB1pyia--U3AtkMAY';
+// Local Emilia model (VRM 1.0)
+const DEFAULT_VRM_URL = './emilia.vrm';
 
 class AvatarRenderer {
     constructor(containerId, options = {}) {
