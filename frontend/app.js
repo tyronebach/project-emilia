@@ -19,7 +19,95 @@ let stream = null;
 let micInitialized = false;
 let conversationHistory = [];
 let selectedVoice = 'rachel';
-let sessionId = 'web-user-' + Date.now();
+
+// Session persistence configuration
+const SESSION_STORAGE_KEY = 'emilia-session-id';
+const HIDDEN_SESSIONS_KEY = 'emilia-hidden-sessions';
+const SESSION_NAMES_KEY = 'emilia-session-names';
+const DEFAULT_SESSION_ID = 'thai-emilia-main';
+
+// Initialize sessionId from localStorage or use default
+let sessionId = (function() {
+    try {
+        const stored = localStorage.getItem(SESSION_STORAGE_KEY);
+        if (stored && stored.trim()) {
+            return stored;
+        }
+    } catch (e) {
+        // ignore
+    }
+    return DEFAULT_SESSION_ID;
+})();
+
+// Persist the initial session ID
+try {
+    localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+} catch (e) {
+    // ignore
+}
+
+// Helper functions for session persistence
+function getHiddenSessions() {
+    try {
+        const stored = localStorage.getItem(HIDDEN_SESSIONS_KEY);
+        return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function setHiddenSessions(sessions) {
+    try {
+        localStorage.setItem(HIDDEN_SESSIONS_KEY, JSON.stringify(sessions));
+    } catch (e) {
+        // ignore
+    }
+}
+
+function hideSession(sessionIdToHide) {
+    const hidden = getHiddenSessions();
+    if (!hidden.includes(sessionIdToHide)) {
+        hidden.push(sessionIdToHide);
+        setHiddenSessions(hidden);
+    }
+}
+
+function unhideSession(sessionIdToUnhide) {
+    const hidden = getHiddenSessions();
+    const index = hidden.indexOf(sessionIdToUnhide);
+    if (index > -1) {
+        hidden.splice(index, 1);
+        setHiddenSessions(hidden);
+    }
+}
+
+function getSessionNames() {
+    try {
+        const stored = localStorage.getItem(SESSION_NAMES_KEY);
+        return stored ? JSON.parse(stored) : {};
+    } catch (e) {
+        return {};
+    }
+}
+
+function setSessionName(id, name) {
+    const names = getSessionNames();
+    if (name && name.trim()) {
+        names[id] = name.trim();
+    } else {
+        delete names[id];
+    }
+    try {
+        localStorage.setItem(SESSION_NAMES_KEY, JSON.stringify(names));
+    } catch (e) {
+        // ignore
+    }
+}
+
+function getSessionDisplayName(id) {
+    const names = getSessionNames();
+    return names[id] || id;
+}
 
 // Streaming configuration
 const STREAMING_ENABLED = true;  // Set to false to disable streaming
@@ -47,7 +135,9 @@ const conversationEmpty = document.getElementById('conversationEmpty');
 const conversationHistoryEl = document.getElementById('conversationHistory');
 const debugPanel = document.getElementById('debugPanel');
 const debugLog = document.getElementById('debugLog');
-const clearButton = document.getElementById('clearButton');
+// clearButton removed - use "New Session" instead
+const deleteSessionButton = document.getElementById('deleteSessionButton');
+const renameSessionButton = document.getElementById('renameSessionButton');
 const debugToggle = document.getElementById('debugToggle');
 const clearDebug = document.getElementById('clearDebug');
 const textInput = document.getElementById('textInput');
@@ -188,7 +278,7 @@ async function loadSessionsList() {
             throw new Error(`Failed to load sessions: ${response.status}`);
         }
         const data = await response.json();
-        const sessions = data.sessions || [];
+        let sessions = data.sessions || [];
 
         if (sessionsHint) {
             const err = data.error;
@@ -201,28 +291,35 @@ async function loadSessionsList() {
             }
         }
 
-        // Always include current session
+        // Filter out hidden sessions
+        const hiddenSessions = getHiddenSessions();
+        sessions = sessions.filter(s => !hiddenSessions.includes(s.display_id));
+
+        // Always include current session (even if it was hidden, show it since it's active)
         const existing = new Set(sessions.map(s => s.display_id));
         if (!existing.has(sessionId)) {
             sessions.unshift({ display_id: sessionId, session_key: sessionId });
         }
 
+        // Build dropdown with custom names and action buttons
         sessionSelector.innerHTML = sessions
             .map(s => {
                 const value = s.display_id;
+                const displayName = getSessionDisplayName(value);
                 const selected = value === sessionId ? 'selected' : '';
-                return `<option value="${escapeHtml(value)}" ${selected}>${escapeHtml(value)}</option>`;
+                return `<option value="${escapeHtml(value)}" ${selected}>${escapeHtml(displayName)}</option>`;
             })
             .join('');
 
-        log('Sessions loaded', { count: sessions.length });
+        log('Sessions loaded', { count: sessions.length, hidden: hiddenSessions.length });
     } catch (e) {
         log('Failed to load sessions', { error: e.message });
         if (sessionsHint) {
             sessionsHint.style.display = '';
             sessionsHint.textContent = 'Sessions list unavailable';
         }
-        sessionSelector.innerHTML = `<option value="${escapeHtml(sessionId)}" selected>${escapeHtml(sessionId)}</option>`;
+        const displayName = getSessionDisplayName(sessionId);
+        sessionSelector.innerHTML = `<option value="${escapeHtml(sessionId)}" selected>${escapeHtml(displayName)}</option>`;
     }
 }
 
@@ -237,7 +334,18 @@ if (sessionSelector) {
         const value = e.target.value;
         if (value) {
             sessionId = value;
+            // Persist to localStorage
+            try {
+                localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+            } catch (err) {
+                // ignore
+            }
             log('Session switched', { sessionId });
+            // Clear UI and reload history for new session
+            conversationHistory = [];
+            if (conversationHistoryEl) conversationHistoryEl.innerHTML = '';
+            if (conversationEmpty) conversationEmpty.style.display = 'flex';
+            showSuccess(`Switched to session: ${getSessionDisplayName(sessionId)}`);
         }
     });
 }
@@ -1235,7 +1343,13 @@ applyTtsUiState();
 if (newSessionButton) {
     newSessionButton.addEventListener('click', () => {
         if (confirm('Start new session? This will clear Emilia\'s memory of this conversation.')) {
-            sessionId = 'web-user-' + Date.now();
+            sessionId = 'thai-' + Date.now();
+            // Persist to localStorage
+            try {
+                localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+            } catch (err) {
+                // ignore
+            }
             conversationHistory = [];
             if (conversationHistoryEl) conversationHistoryEl.innerHTML = '';
             if (conversationEmpty) conversationEmpty.style.display = 'flex';
@@ -1313,8 +1427,48 @@ document.addEventListener('keyup', (e) => {
     }
 });
 
-// Clear conversation button
-clearButton.addEventListener('click', clearConversation);
+// Session management buttons
+if (deleteSessionButton) {
+    deleteSessionButton.addEventListener('click', () => {
+        if (sessionId === DEFAULT_SESSION_ID) {
+            showWarning('Cannot delete the default session');
+            return;
+        }
+        if (confirm(`Hide session "${getSessionDisplayName(sessionId)}" from the list?\n\nNote: This hides the session locally but doesn't delete server data.`)) {
+            hideSession(sessionId);
+            // Switch to default session
+            sessionId = DEFAULT_SESSION_ID;
+            try {
+                localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+            } catch (err) {
+                // ignore
+            }
+            conversationHistory = [];
+            if (conversationHistoryEl) conversationHistoryEl.innerHTML = '';
+            if (conversationEmpty) conversationEmpty.style.display = 'flex';
+            loadSessionsList();
+            showSuccess('Session hidden. Switched to default session.');
+            log('Session hidden', { hidden: sessionId });
+        }
+    });
+}
+
+if (renameSessionButton) {
+    renameSessionButton.addEventListener('click', () => {
+        const currentName = getSessionDisplayName(sessionId);
+        const newName = prompt(`Rename session "${currentName}" to:`, currentName === sessionId ? '' : currentName);
+        if (newName !== null) {
+            setSessionName(sessionId, newName);
+            loadSessionsList();
+            if (newName.trim()) {
+                showSuccess(`Session renamed to: ${newName}`);
+            } else {
+                showSuccess('Session name reset to default');
+            }
+            log('Session renamed', { sessionId, newName });
+        }
+    });
+}
 
 // Debug toggle button
 debugToggle.addEventListener('click', () => {
@@ -1425,10 +1579,13 @@ window.addEventListener('load', async () => {
     await initMicrophone();
 });
 
-// Debug: expose retry function globally
+// Debug: expose functions globally
 window.retryMicrophone = initMicrophone;
-window.clearConversation = clearConversation;
-log('Debug: window.retryMicrophone() and window.clearConversation() available');
+window.hideSession = hideSession;
+window.unhideSession = unhideSession;
+window.setSessionName = setSessionName;
+window.getHiddenSessions = getHiddenSessions;
+log('Debug: window.retryMicrophone(), hideSession(), unhideSession(), setSessionName() available');
 
 // ========================================
 // DASHBOARD MODE EXTENSIONS
