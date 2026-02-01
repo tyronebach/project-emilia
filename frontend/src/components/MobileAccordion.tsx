@@ -2,6 +2,7 @@ import * as Accordion from '@radix-ui/react-accordion';
 import { useState, useEffect, useRef, ReactNode } from 'react';
 import { ChevronDown, User, MessageCircle, BarChart3, Lightbulb } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useAppStore } from '../store';
 import { useSession } from '../hooks/useSession';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
 import { Badge } from './ui/badge';
@@ -12,6 +13,7 @@ import type { AppStatus, Memory, Message } from '../types';
 // Avatar content for mobile accordion
 function AvatarContent() {
   const { avatarRendererRef, status } = useApp();
+  const setAvatarRenderer = useAppStore((state) => state.setAvatarRenderer);
   const [loading, setLoading] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +29,8 @@ function AvatarContent() {
         console.log('VRM loaded:', metaName || 'Unknown');
         setLoading(false);
         setError(null);
+        // Sync renderer to store AFTER VRM loads
+        setAvatarRenderer(renderer);
       },
       onError: (err: Error) => {
         setError(err.message || 'Failed to load avatar');
@@ -43,8 +47,9 @@ function AvatarContent() {
     return () => {
       renderer.dispose();
       avatarRendererRef.current = null;
+      setAvatarRenderer(null);
     };
-  }, [avatarRendererRef]);
+  }, [avatarRendererRef, setAvatarRenderer]);
   
   const getStatusBadge = () => {
     if (status === 'thinking') {
@@ -127,10 +132,12 @@ function StatsContent() {
   
   const getStatusColor = (s: AppStatus): string => {
     switch (s) {
+      case 'initializing': return 'bg-warning animate-pulse';
       case 'ready': return 'bg-success';
+      case 'recording': return 'bg-error animate-pulse';
+      case 'processing': return 'bg-warning animate-pulse';
       case 'thinking': return 'bg-warning animate-pulse';
       case 'speaking': return 'bg-accent animate-pulse';
-      case 'recording': return 'bg-error animate-pulse';
       case 'error': return 'bg-error';
       default: return 'bg-text-secondary';
     }

@@ -23,11 +23,29 @@ interface AppState {
   applyAvatarCommand: (command: AvatarCommand) => void;
 }
 
+// Safe localStorage getter
+const getStoredSessionId = (): string => {
+  try {
+    const stored = localStorage.getItem('emilia-session-id');
+    return stored || 'thai-emilia-main';
+  } catch {
+    return 'thai-emilia-main';
+  }
+};
+
 export const useAppStore = create<AppState>((set, get) => ({
   // Session
-  sessionId: localStorage.getItem('emilia-session-id') || 'thai-emilia-main',
+  sessionId: getStoredSessionId(),
   setSessionId: (id) => {
-    localStorage.setItem('emilia-session-id', id);
+    if (!id) {
+      console.warn('[Store] Attempted to set undefined sessionId');
+      return;
+    }
+    try {
+      localStorage.setItem('emilia-session-id', id);
+    } catch (e) {
+      console.warn('[Store] Failed to save sessionId to localStorage:', e);
+    }
     set({ sessionId: id });
   },
   

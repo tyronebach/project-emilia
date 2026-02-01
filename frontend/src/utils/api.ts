@@ -12,12 +12,19 @@ interface FetchOptions extends RequestInit {
   body?: string | FormData;
 }
 
+interface TokenUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+}
+
 interface StreamResponse {
   response?: string;
   processing_ms?: number;
   model?: string;
-  moods?: string[];
+  moods?: Array<{ mood: string; intensity: number }>;
   animations?: string[];
+  usage?: TokenUsage;
 }
 
 /**
@@ -138,7 +145,8 @@ export async function streamChat(
                 processing_ms: data.processing_ms,
                 model: data.model,
                 moods: data.moods,
-                animations: data.animations
+                animations: data.animations,
+                usage: data.usage
               });
             }
           } catch (e) {

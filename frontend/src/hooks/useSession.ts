@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { fetchWithAuth } from '../utils/api';
 import type { Message, Session } from '../types';
@@ -8,6 +8,7 @@ export function useSession() {
   
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const fetchingRef = useRef<string | null>(null);
   
   /**
    * Fetch list of sessions
@@ -36,7 +37,13 @@ export function useSession() {
    * Fetch history for current session
    */
   const fetchHistory = useCallback(async (sid: string = sessionId): Promise<Message[]> => {
+    // Prevent duplicate fetches
+    if (fetchingRef.current === sid) {
+      return [];
+    }
+    
     try {
+      fetchingRef.current = sid;
       setIsLoading(true);
       const response = await fetchWithAuth(`/api/sessions/history/${encodeURIComponent(sid)}`);
       
@@ -66,6 +73,7 @@ export function useSession() {
       return [];
     } finally {
       setIsLoading(false);
+      fetchingRef.current = null;
     }
   }, [sessionId, setMessages]);
   
@@ -126,14 +134,16 @@ export function useSession() {
   // Load sessions on mount
   useEffect(() => {
     fetchSessions();
-  }, [fetchSessions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   // Load history when sessionId changes
   useEffect(() => {
     if (sessionId) {
-      fetchHistory();
+      fetchHistory(sessionId);
     }
-  }, [sessionId, fetchHistory]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
   
   return {
     sessions,

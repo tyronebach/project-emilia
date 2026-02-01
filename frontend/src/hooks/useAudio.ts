@@ -15,9 +15,12 @@ export function useAudio() {
    */
   const transcribeAudio = useCallback(async (blob: Blob): Promise<string | null> => {
     try {
-      const formData = new FormData();
-      formData.append('file', blob, 'recording.webm');
+      setStatus('processing');
       
+      const formData = new FormData();
+      formData.append('audio', blob, 'recording.webm');
+      
+      // Note: Don't set Content-Type header - browser sets it automatically with correct boundary for FormData
       const response = await fetch('/api/transcribe', {
         method: 'POST',
         headers: {

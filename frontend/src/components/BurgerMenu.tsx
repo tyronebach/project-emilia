@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { Menu, Trash2, ArrowLeftRight, Plus, ChevronRight } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useApp } from '../context/AppContext';
@@ -88,22 +88,24 @@ function BurgerMenu({ open, onOpenChange }: BurgerMenuProps) {
                 ) : sessions.length === 0 ? (
                   <div className="px-4 py-2 text-xs text-text-secondary">No sessions found</div>
                 ) : (
-                  sessions.map((session) => {
-                    const sid = typeof session === 'string' ? session : session.session_id;
-                    return (
-                      <DropdownMenu.Item
-                        key={sid}
-                        className={`px-4 py-1.5 text-sm outline-none cursor-pointer truncate transition-colors ${
-                          sid === sessionId
-                            ? 'text-accent bg-accent/10'
-                            : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
-                        }`}
-                        onSelect={() => handleSwitchSession(sid)}
-                      >
-                        {sid}
-                      </DropdownMenu.Item>
-                    );
-                  })
+                  <Fragment>
+                    {sessions.map((session, index) => {
+                      const sid = typeof session === 'string' ? session : session.session_id;
+                      return (
+                        <DropdownMenu.Item
+                          key={`${sid}-${index}`}
+                          className={`px-4 py-1.5 text-sm outline-none cursor-pointer truncate transition-colors ${
+                            sid === sessionId
+                              ? 'text-accent bg-accent/10'
+                              : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+                          }`}
+                          onSelect={() => handleSwitchSession(sid)}
+                        >
+                          {sid}
+                        </DropdownMenu.Item>
+                      );
+                    })}
+                  </Fragment>
                 )}
               </DropdownMenu.SubContent>
             </DropdownMenu.Portal>

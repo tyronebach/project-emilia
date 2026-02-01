@@ -1,47 +1,58 @@
 import { useState, useEffect } from 'react';
-import { Lightbulb } from 'lucide-react';
+import { Lightbulb, RefreshCw } from 'lucide-react';
 import { Badge } from './ui/badge';
-import type { Memory } from '../types';
+import { Button } from './ui/button';
 
 interface MemoryPanelProps {
   className?: string;
 }
 
 function MemoryPanel({ className = '' }: MemoryPanelProps) {
-  const [memories, setMemories] = useState<Memory[]>([]);
+  const [memoryContent, setMemoryContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   
   // Fetch memories on mount
-  useEffect(() => {
-    const fetchMemories = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch('/api/memory');
-        if (response.ok) {
-          const data = await response.json();
-          setMemories(data.memories || []);
-        } else if (response.status === 404) {
-          setMemories([]);
-        } else {
-          throw new Error('Failed to fetch memories');
+  const fetchMemories = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/memory', {
+        headers: {
+          'Authorization': 'Bearer emilia-dev-token-2026'
         }
-      } catch (_err) {
-        setMemories([]);
-      } finally {
-        setLoading(false);
+      });
+      if (response.ok) {
+        // API returns plain text (markdown)
+        const text = await response.text();
+        setMemoryContent(text);
+      } else if (response.status === 404) {
+        setMemoryContent('');
+      } else {
+        throw new Error('Failed to fetch memories');
       }
-    };
-    
+    } catch (_err) {
+      setMemoryContent('');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  useEffect(() => {
     fetchMemories();
   }, []);
   
   return (
     <div className={`bg-bg-secondary rounded-xl overflow-hidden ${className}`}>
       <div className="h-12 px-4 flex items-center justify-between bg-bg-tertiary/50">
-        <span className="text-sm font-medium text-text-primary">Memory</span>
-        <Badge variant="secondary">
-          {memories.length} entries
-        </Badge>
+        <span className="text-sm font-medium text-text-primary">📝 Memory</span>
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="h-8 w-8"
+          onClick={fetchMemories}
+          disabled={loading}
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
       
       <div className="p-4 max-h-48 overflow-y-auto">
@@ -49,7 +60,7 @@ function MemoryPanel({ className = '' }: MemoryPanelProps) {
           <div className="flex items-center justify-center py-4">
             <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           </div>
-        ) : memories.length === 0 ? (
+        ) : !memoryContent ? (
           <div className="text-center py-4">
             <Lightbulb className="w-8 h-8 mx-auto text-text-secondary/50 mb-2" />
             <p className="text-sm text-text-secondary">No memories yet</p>
@@ -58,18 +69,9 @@ function MemoryPanel({ className = '' }: MemoryPanelProps) {
             </p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {memories.map((memory, index) => (
-              <div key={index} className="bg-bg-tertiary rounded-lg p-3">
-                <div className="text-sm text-text-primary">{memory.content}</div>
-                {memory.timestamp && (
-                  <div className="text-xs text-text-secondary mt-1">
-                    {new Date(memory.timestamp).toLocaleDateString()}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <pre className="text-xs text-text-primary whitespace-pre-wrap font-mono bg-bg-tertiary rounded-lg p-3 overflow-x-auto">
+            {memoryContent}
+          </pre>
         )}
       </div>
     </div>

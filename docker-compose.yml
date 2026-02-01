@@ -8,10 +8,13 @@ services:
     restart: unless-stopped
     network_mode: host
     
+    env_file:
+      - /home/tbach/.clawdbot/secrets.env
+    
     environment:
       - STT_SERVICE_URL=http://192.168.88.252:8765
       - CLAWDBOT_URL=http://127.0.0.1:18789
-      - CLAWDBOT_TOKEN=REDACTED
+      - CLAWDBOT_TOKEN=${CLAWDBOT_GATEWAY_TOKEN}
       - CLAWDBOT_AGENT_ID=emilia
       - AUTH_TOKEN=emilia-dev-token-2026
       - AUTH_ALLOW_DEV_TOKEN=1

@@ -85,6 +85,10 @@ export function AppProvider({ children }: AppProviderProps) {
     console.log('[AppContext] Status:', status);
   }, [status]);
   
+  useEffect(() => {
+    console.log('[AppContext] SessionId:', sessionId);
+  }, [sessionId]);
+  
   return (
     <AppContext.Provider value={{
       // Session
