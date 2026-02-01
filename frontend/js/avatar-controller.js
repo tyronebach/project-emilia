@@ -95,8 +95,15 @@ export class AvatarExpressionController {
         
         // Also check expressionMap if available (VRM 1.0)
         if (this.expressionManager.expressionMap) {
-            for (const [name] of this.expressionManager.expressionMap) {
-                this.availableExpressions.add(name);
+            // Handle both Map and Object formats
+            if (this.expressionManager.expressionMap instanceof Map) {
+                for (const [name] of this.expressionManager.expressionMap) {
+                    this.availableExpressions.add(name);
+                }
+            } else if (typeof this.expressionManager.expressionMap === 'object') {
+                for (const name of Object.keys(this.expressionManager.expressionMap)) {
+                    this.availableExpressions.add(name);
+                }
             }
         }
     }
