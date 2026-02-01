@@ -540,7 +540,9 @@ async def list_sessions(token: str = Depends(verify_token)):
 
         payload = resp.json() or {}
         result = payload.get("result") or {}
-        sessions = result.get("sessions") or []
+        # Sessions are in result.details.sessions (not result.sessions)
+        details = result.get("details") or {}
+        sessions = details.get("sessions") or []
 
         out = []
         for s in sessions:
