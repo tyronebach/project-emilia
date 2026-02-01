@@ -569,6 +569,89 @@ async def list_sessions(token: str = Depends(verify_token)):
         return {"sessions": [], "count": 0, "error": str(e)}
 
 
+def _extract_text_content(content: Any) -> str:
+    """Extract text from message content (handles string and array formats)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                text_parts.append(part.get("text", ""))
+            elif isinstance(part, str):
+                text_parts.append(part)
+        return "".join(text_parts)
+    return ""
+
+
+@app.get("/api/sessions/history/{session_id:path}")
+async def get_session_history(
+    session_id: str,
+    token: str = Depends(verify_token),
+    limit: int = Query(50, ge=1, le=200)
+):
+    """Get chat history for a session.
+    
+    Calls gateway tools/invoke with sessions_history tool.
+    Returns messages array with role, content, timestamp.
+    """
+    # Build full session key
+    full_key = f"agent:emilia:openai-user:{session_id}"
+    
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{CLAWDBOT_URL}/tools/invoke",
+                headers={
+                    "Authorization": f"Bearer {CLAWDBOT_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "tool": "sessions_history",
+                    "action": "json",
+                    "args": {"sessionKey": full_key, "limit": limit},
+                    "sessionKey": "main",
+                },
+            )
+        
+        if resp.status_code != 200:
+            return {"messages": [], "session_key": full_key, "error": f"gateway:{resp.status_code}"}
+        
+        payload = resp.json() or {}
+        result = payload.get("result") or {}
+        details = result.get("details") or {}
+        raw_messages = details.get("messages") or []
+        
+        messages = []
+        for msg in raw_messages:
+            role = msg.get("role")
+            if role not in ("user", "assistant"):
+                continue  # Skip system messages
+            
+            # Extract text content
+            raw_content = msg.get("content", "")
+            text_content = _extract_text_content(raw_content)
+            
+            # Strip mood/animation tags for assistant messages
+            if role == "assistant":
+                text_content, _, _ = extract_avatar_commands(text_content)
+            
+            # Skip empty messages
+            if not text_content.strip():
+                continue
+            
+            messages.append({
+                "role": role,
+                "content": text_content,
+                "timestamp": msg.get("timestamp")
+            })
+        
+        return {"messages": messages, "session_key": full_key}
+    
+    except Exception as e:
+        return {"messages": [], "session_key": full_key, "error": str(e)}
+
+
 @app.get("/api/voices")
 async def get_voices(token: str = Depends(verify_token)):
     """Get list of available TTS voices."""
