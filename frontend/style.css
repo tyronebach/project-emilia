@@ -1579,24 +1579,111 @@ pre.editable:focus {
     height: 100% !important;
 }
 
-/* Mobile: Avatar panel adjustments */
+/* Mobile: Avatar-first layout */
 @media (max-width: 768px) {
     .avatar-panel {
         margin-bottom: 0.5rem;
+        border-radius: 12px;
     }
     
     .avatar-panel-content {
-        max-height: 250px;
+        max-height: 45vh;
     }
     
     .avatar-panel .avatar-container {
-        height: 220px;
+        height: 42vh;
+        min-height: 280px;
+        max-height: 400px;
+    }
+    
+    /* Collapsible chat history on mobile */
+    .conversation-container {
+        position: relative;
+        min-height: 150px;
+        max-height: 35vh;
+        transition: max-height 0.3s ease;
+    }
+    
+    .conversation-container.collapsed {
+        max-height: 48px;
+        min-height: 48px;
+        overflow: hidden;
+    }
+    
+    .conversation-container.collapsed .conversation-history {
+        display: none;
+    }
+    
+    .conversation-container.collapsed .conversation-empty {
+        display: none;
+    }
+    
+    /* Chat collapse toggle button */
+    .chat-collapse-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        background: var(--bg-tertiary);
+        border: none;
+        border-radius: 8px 8px 0 0;
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        cursor: pointer;
+        width: 100%;
+        transition: background 0.2s ease;
+    }
+    
+    .chat-collapse-toggle:hover {
+        background: var(--bg-hover);
+    }
+    
+    .chat-collapse-toggle .toggle-icon {
+        transition: transform 0.3s ease;
+    }
+    
+    .conversation-container.collapsed .chat-collapse-toggle .toggle-icon {
+        transform: rotate(180deg);
+    }
+    
+    /* Sticky input on mobile */
+    .input-controls {
+        position: sticky;
+        bottom: 0;
+        background: var(--bg-secondary);
+        border-top: 1px solid var(--border-color);
+        padding: 0.75rem;
+        z-index: 10;
     }
 }
 
-/* Landscape mobile: Hide avatar panel */
+/* Hide chat collapse toggle on desktop */
+.chat-collapse-toggle {
+    display: none;
+}
+
+/* Landscape mobile: Compact layout */
 @media (max-height: 500px) and (orientation: landscape) {
     .avatar-panel {
-        display: none;
+        position: fixed;
+        right: 1rem;
+        top: 60px;
+        width: 200px;
+        z-index: 100;
+        margin: 0;
+    }
+    
+    .avatar-panel .avatar-container {
+        height: 180px;
+        min-height: 180px;
+    }
+    
+    .avatar-panel-content {
+        max-height: 200px;
+    }
+    
+    .chat-panel-dashboard {
+        margin-right: 220px;
     }
 }
