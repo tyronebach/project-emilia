@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy application
 COPY main.py .
+COPY parse_chat.py .
 
 # Expose port
 EXPOSE 8080
