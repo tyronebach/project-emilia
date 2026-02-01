@@ -5,6 +5,7 @@
 
 import { API_URL, AUTH_TOKEN, STREAMING_ENABLED } from './config.js';
 import * as state from './state.js';
+import { setLastAvatarState } from './state.js';
 import { 
     log, 
     setState, 
@@ -47,6 +48,9 @@ function handleAvatarCommands(moods, animations) {
  */
 function handleAvatarEvent(avatarData) {
     log('Avatar SSE event', avatarData);
+    
+    // Store for display
+    setLastAvatarState(avatarData);
     
     if (!window.avatarController) {
         log('Avatar controller not ready');

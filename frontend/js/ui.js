@@ -3,7 +3,7 @@
  * DOM manipulation, message rendering, notifications, logging
  */
 
-import { conversationHistory, audioCache } from './state.js';
+import { conversationHistory, audioCache, lastAvatarState } from './state.js';
 import { escapeHtml, getTimestamp, hashString } from './utils.js';
 
 // DOM element references (populated by initElements)
@@ -419,11 +419,28 @@ export function finalizeStreamingMessage(messageEl, content, processingMs, times
         meta: { processing_ms: processingMs }
     });
 
-    // Add metadata display
+    // Build metadata items
+    const metaItems = [];
+    
     if (processingMs > 0) {
+        metaItems.push(`🔄 ${processingMs}ms`);
+    }
+    
+    // Add avatar state if available
+    if (lastAvatarState) {
+        const mood = lastAvatarState.mood || 'neutral';
+        const intensity = lastAvatarState.intensity !== undefined 
+            ? Math.round(lastAvatarState.intensity * 100) + '%' 
+            : '';
+        const anim = lastAvatarState.animation ? ` → ${lastAvatarState.animation}` : '';
+        metaItems.push(`🎭 ${mood}${intensity ? ' ' + intensity : ''}${anim}`);
+    }
+    
+    // Add metadata display
+    if (metaItems.length > 0) {
         const metaEl = document.createElement('div');
         metaEl.className = 'message-meta';
-        metaEl.textContent = `🔄 ${processingMs}ms`;
+        metaEl.textContent = metaItems.join(' • ');
         messageEl.appendChild(metaEl);
     }
 }

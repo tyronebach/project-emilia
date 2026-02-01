@@ -62,6 +62,9 @@ export let dashboardStats = {
     latencyCount: 0,
 };
 
+// Avatar state (last mood/animation for display)
+export let lastAvatarState = null;
+
 export let memoryRefreshInterval = null;
 export let currentMemoryTab = 'main';
 export let currentMemoryFile = null;
@@ -96,6 +99,7 @@ export function setCurrentAudio(val) { currentAudio = val; }
 export function setMemoryRefreshInterval(val) { memoryRefreshInterval = val; }
 export function setCurrentMemoryTab(val) { currentMemoryTab = val; }
 export function setCurrentMemoryFile(val) { currentMemoryFile = val; }
+export function setLastAvatarState(val) { lastAvatarState = val; }
 
 // Clear audio chunks
 export function clearAudioChunks() { audioChunks = []; }
