@@ -63,7 +63,9 @@ export let dashboardStats = {
 };
 
 // Avatar state (last mood/animation for display)
-export let lastAvatarState = null;
+let _lastAvatarState = null;
+export function getLastAvatarState() { return _lastAvatarState; }
+export function setLastAvatarState(val) { _lastAvatarState = val; }
 
 export let memoryRefreshInterval = null;
 export let currentMemoryTab = 'main';
@@ -99,7 +101,6 @@ export function setCurrentAudio(val) { currentAudio = val; }
 export function setMemoryRefreshInterval(val) { memoryRefreshInterval = val; }
 export function setCurrentMemoryTab(val) { currentMemoryTab = val; }
 export function setCurrentMemoryFile(val) { currentMemoryFile = val; }
-export function setLastAvatarState(val) { lastAvatarState = val; }
 
 // Clear audio chunks
 export function clearAudioChunks() { audioChunks = []; }

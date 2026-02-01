@@ -3,7 +3,7 @@
  * DOM manipulation, message rendering, notifications, logging
  */
 
-import { conversationHistory, audioCache, lastAvatarState } from './state.js';
+import { conversationHistory, audioCache, getLastAvatarState } from './state.js';
 import { escapeHtml, getTimestamp, hashString } from './utils.js';
 
 // DOM element references (populated by initElements)
@@ -427,12 +427,13 @@ export function finalizeStreamingMessage(messageEl, content, processingMs, times
     }
     
     // Add avatar state if available
-    if (lastAvatarState) {
-        const mood = lastAvatarState.mood || 'neutral';
-        const intensity = lastAvatarState.intensity !== undefined 
-            ? Math.round(lastAvatarState.intensity * 100) + '%' 
+    const avatarState = getLastAvatarState();
+    if (avatarState) {
+        const mood = avatarState.mood || 'neutral';
+        const intensity = avatarState.intensity !== undefined 
+            ? Math.round(avatarState.intensity * 100) + '%' 
             : '';
-        const anim = lastAvatarState.animation ? ` → ${lastAvatarState.animation}` : '';
+        const anim = avatarState.animation ? ` → ${avatarState.animation}` : '';
         metaItems.push(`🎭 ${mood}${intensity ? ' ' + intensity : ''}${anim}`);
     }
     
