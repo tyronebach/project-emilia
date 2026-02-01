@@ -867,7 +867,7 @@ async def root():
     """Root endpoint"""
     return {
         "service": "Emilia Web App API",
-        "version": "3.2.0",
+        "version": "3.3.0",
         "endpoints": {
             "health": "/api/health",
             "transcribe": "POST /api/transcribe (requires auth)",
@@ -878,7 +878,8 @@ async def root():
             "memory_list": "GET /api/memory/list (requires auth)",
             "memory_file_get": "GET /api/memory/{filename} (requires auth)",
             "memory_file_update": "POST /api/memory/{filename} (requires auth) [DISABLED: returns 403]",
-            "sessions_list": "GET /api/sessions/list (requires auth)"
+            "sessions_list": "GET /api/sessions/list (requires auth)",
+            "sessions_history": "GET /api/sessions/history/{session_id} (requires auth)"
         }
     }
 
