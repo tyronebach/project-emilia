@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { Volume2, VolumeX } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import type { AppStatus } from '../types';
+import { Button } from './ui/button';
 import BurgerMenu from './BurgerMenu';
 
 function Header() {
@@ -35,27 +37,20 @@ function Header() {
       {/* Right: Controls */}
       <div className="flex items-center gap-2">
         {/* TTS Toggle */}
-        <button
+        <Button
+          variant={ttsEnabled ? 'default' : 'secondary'}
+          size="icon"
           onClick={() => setTtsEnabled(!ttsEnabled)}
-          className={`p-2 rounded-lg transition-colors ${
-            ttsEnabled 
-              ? 'bg-accent text-white' 
-              : 'bg-bg-tertiary text-text-secondary hover:text-text-primary'
-          }`}
           title={ttsEnabled ? 'TTS Enabled' : 'TTS Disabled'}
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            {ttsEnabled ? (
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                    d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-            ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                    d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
-            )}
-          </svg>
-        </button>
+          {ttsEnabled ? (
+            <Volume2 className="w-5 h-5" />
+          ) : (
+            <VolumeX className="w-5 h-5" />
+          )}
+        </Button>
         
-        {/* Burger Menu (Radix DropdownMenu) */}
+        {/* Burger Menu */}
         <BurgerMenu open={menuOpen} onOpenChange={setMenuOpen} />
       </div>
     </header>
