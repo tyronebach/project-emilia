@@ -1,4 +1,11 @@
-import { createContext, useContext, useState, useRef, useCallback, useEffect, ReactNode, MutableRefObject } from 'react';
+/**
+ * AppContext - Compatibility layer using Zustand stores
+ * This provides backward compatibility while using Zustand under the hood
+ */
+
+import { createContext, useContext, useRef, ReactNode, MutableRefObject, useEffect } from 'react';
+import { useAppStore } from '../store';
+import { useChatStore } from '../store/chatStore';
 import type { AppStatus, Message, AvatarState, AvatarCommand } from '../types';
 import type { AvatarRenderer } from '../avatar/AvatarRenderer';
 
@@ -36,80 +43,42 @@ interface AppProviderProps {
 }
 
 export function AppProvider({ children }: AppProviderProps) {
-  // Session management
-  const [sessionId, setSessionIdState] = useState(() => {
-    return localStorage.getItem('emilia-session-id') || 'thai-emilia-main';
-  });
+  // Get values from Zustand stores
+  const sessionId = useAppStore((state) => state.sessionId);
+  const setSessionId = useAppStore((state) => state.setSessionId);
+  const status = useAppStore((state) => state.status);
+  const setStatus = useAppStore((state) => state.setStatus);
+  const ttsEnabled = useAppStore((state) => state.ttsEnabled);
+  const setTtsEnabled = useAppStore((state) => state.setTtsEnabled);
+  const avatarState = useAppStore((state) => state.avatarState);
+  const setAvatarState = useAppStore((state) => state.setAvatarState);
+  const setAvatarRenderer = useAppStore((state) => state.setAvatarRenderer);
+  const applyAvatarCommand = useAppStore((state) => state.applyAvatarCommand);
   
-  // TTS toggle
-  const [ttsEnabled, setTtsEnabledState] = useState(() => {
-    return localStorage.getItem('emilia-tts-enabled') === 'true';
-  });
+  const messages = useChatStore((state) => state.messages);
+  const addMessage = useChatStore((state) => state.addMessage);
+  const updateMessage = useChatStore((state) => state.updateMessage);
+  const clearMessages = useChatStore((state) => state.clearMessages);
+  const setMessagesStore = useChatStore((state) => state.setMessages);
   
-  // Chat messages
-  const [messages, setMessages] = useState<Message[]>([]);
-  
-  // App status: ready | recording | thinking | speaking | error
-  const [status, setStatus] = useState<AppStatus>('ready');
-  
-  // Avatar state (mood, intensity, animation)
-  const [avatarState, setAvatarState] = useState<AvatarState | null>(null);
-  
-  // Reference to avatar renderer instance
+  // Ref for avatar renderer (kept for backward compatibility)
   const avatarRendererRef = useRef<AvatarRenderer | null>(null);
   
-  // Persist sessionId to localStorage
-  const setSessionId = useCallback((id: string) => {
-    setSessionIdState(id);
-    localStorage.setItem('emilia-session-id', id);
-  }, []);
+  // Sync ref with store
+  useEffect(() => {
+    const current = avatarRendererRef.current;
+    setAvatarRenderer(current);
+  }, [setAvatarRenderer]);
   
-  // Persist ttsEnabled to localStorage
-  const setTtsEnabled = useCallback((enabled: boolean) => {
-    setTtsEnabledState(enabled);
-    localStorage.setItem('emilia-tts-enabled', enabled ? 'true' : 'false');
-  }, []);
-  
-  // Add a message to the chat
-  const addMessage = useCallback((role: 'user' | 'assistant', content: string, meta: Partial<Message['meta']> = {}) => {
-    const message: Message = {
-      id: Date.now() + Math.random(),
-      role,
-      content,
-      timestamp: new Date(),
-      meta
-    };
-    setMessages(prev => [...prev, message]);
-    return message.id as number;
-  }, []);
-  
-  // Update a message (for streaming)
-  const updateMessage = useCallback((id: number | string, updates: Partial<Message>) => {
-    setMessages(prev => prev.map(msg => 
-      msg.id === id ? { ...msg, ...updates } : msg
-    ));
-  }, []);
-  
-  // Clear all messages
-  const clearMessages = useCallback(() => {
-    setMessages([]);
-  }, []);
-  
-  // Apply avatar command (mood/animation)
-  const applyAvatarCommand = useCallback((command: AvatarCommand) => {
-    setAvatarState(command);
-    
-    const renderer = avatarRendererRef.current;
-    if (!renderer) return;
-    
-    if (command.mood && renderer.expressionController) {
-      renderer.expressionController.setMood(command.mood, command.intensity || 1.0);
+  // Wrapper for setMessages to support both formats
+  const setMessages = (messagesOrFn: Message[] | ((prev: Message[]) => Message[])) => {
+    if (typeof messagesOrFn === 'function') {
+      const currentMessages = useChatStore.getState().messages;
+      setMessagesStore(messagesOrFn(currentMessages));
+    } else {
+      setMessagesStore(messagesOrFn);
     }
-    
-    if (command.animation && renderer.animationTrigger) {
-      renderer.animationTrigger.trigger(command.animation);
-    }
-  }, []);
+  };
   
   // Debug logging
   useEffect(() => {
