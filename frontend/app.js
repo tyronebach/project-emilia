@@ -1394,7 +1394,7 @@ let dashboardStats = {
     totalTokens: 0,
     totalLatency: 0,
     latencyCount: 0,
-    currentModel: '-'
+    // Model removed - gateway API doesn't expose real model
 };
 
 let memoryRefreshInterval = null;
@@ -1642,15 +1642,12 @@ function updateStats(responseData) {
         dashboardStats.totalTokens += responseData.usage.total_tokens;
     }
     
-    if (responseData.model && responseData.model !== 'unknown') {
-        dashboardStats.currentModel = responseData.model;
-    }
+    // Model removed - gateway API doesn't expose real model
     
     // Update UI
     const statMessages = document.getElementById('statMessages');
     const statTokens = document.getElementById('statTokens');
     const statLatency = document.getElementById('statLatency');
-    const statModel = document.getElementById('statModel');
     
     if (statMessages) statMessages.textContent = dashboardStats.messageCount;
     if (statTokens) statTokens.textContent = dashboardStats.totalTokens.toLocaleString();
@@ -1658,7 +1655,6 @@ function updateStats(responseData) {
         const avgLatency = Math.round(dashboardStats.totalLatency / dashboardStats.latencyCount);
         statLatency.textContent = `${avgLatency}ms`;
     }
-    if (statModel) statModel.textContent = dashboardStats.currentModel;
 }
 
 // State logging
