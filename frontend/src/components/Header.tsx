@@ -11,8 +11,10 @@ function Header() {
   
   // Status indicator colors
   const statusColors: Record<AppStatus, string> = {
+    initializing: 'bg-warning animate-pulse',
     ready: 'bg-success',
     recording: 'bg-error animate-pulse',
+    processing: 'bg-warning animate-pulse',
     thinking: 'bg-warning animate-pulse',
     speaking: 'bg-accent animate-pulse',
     error: 'bg-error'

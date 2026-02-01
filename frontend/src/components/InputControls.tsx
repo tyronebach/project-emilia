@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Send, Mic } from 'lucide-react';
@@ -14,9 +14,7 @@ function InputControls() {
   const { sendMessage, isLoading } = useChat();
   const { startRecording, stopRecording, isRecording } = useAudio();
   
-  const inputRef = useRef<HTMLInputElement>(null);
-  
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<ChatInput>({
+  const { register, handleSubmit, reset, setFocus, formState: { errors } } = useForm<ChatInput>({
     resolver: zodResolver(chatInputSchema),
     defaultValues: { message: '' }
   });
@@ -26,10 +24,10 @@ function InputControls() {
   
   // Focus input on mount and after sending
   useEffect(() => {
-    if (!isDisabled && inputRef.current) {
-      inputRef.current.focus();
+    if (!isDisabled) {
+      setFocus('message');
     }
-  }, [isDisabled]);
+  }, [isDisabled, setFocus]);
   
   // Handle send
   const onSubmit = async (data: ChatInput) => {
@@ -66,13 +64,48 @@ function InputControls() {
   };
   
   return (
-    <div className="bg-bg-secondary rounded-xl p-3 md:p-4 shrink-0">
+    <div className="bg-bg-secondary rounded-xl p-3 md:p-4 shrink-0 relative">
+      {/* Status bar - positioned above input */}
+      {(isRecording || status === 'initializing' || status === 'processing' || status === 'thinking' || status === 'speaking') && (
+        <div className="absolute -top-8 left-0 right-0 text-xs text-text-secondary flex items-center justify-center gap-2 bg-bg-primary/80 py-1 px-3 rounded-t-lg">
+          {status === 'initializing' && (
+            <>
+              <span className="w-2 h-2 bg-warning rounded-full animate-pulse" />
+              <span>Initializing microphone...</span>
+            </>
+          )}
+          {isRecording && (
+            <>
+              <span className="w-2 h-2 bg-error rounded-full animate-pulse" />
+              <span>Recording... release to send</span>
+            </>
+          )}
+          {status === 'processing' && !isRecording && (
+            <>
+              <span className="w-2 h-2 bg-warning rounded-full animate-pulse" />
+              <span>Transcribing...</span>
+            </>
+          )}
+          {status === 'thinking' && !isRecording && (
+            <>
+              <span className="w-2 h-2 bg-warning rounded-full animate-pulse" />
+              <span>Thinking...</span>
+            </>
+          )}
+          {status === 'speaking' && (
+            <>
+              <span className="w-2 h-2 bg-accent rounded-full animate-pulse" />
+              <span>Speaking...</span>
+            </>
+          )}
+        </div>
+      )}
+      
       <form onSubmit={handleSubmit(onSubmit)} className="flex items-end gap-2">
         {/* Text input */}
         <div className="flex-1 relative">
           <Input
             {...register('message')}
-            ref={inputRef}
             placeholder="Type a message..."
             disabled={isDisabled}
             className="bg-bg-tertiary text-text-primary placeholder-text-secondary 
@@ -126,30 +159,6 @@ function InputControls() {
           <Mic className="w-5 h-5" />
         </Button>
       </form>
-      
-      {/* Status bar */}
-      {(isRecording || status === 'thinking' || status === 'speaking') && (
-        <div className="mt-2 text-xs text-text-secondary flex items-center gap-2">
-          {isRecording && (
-            <>
-              <span className="w-2 h-2 bg-error rounded-full animate-pulse" />
-              <span>Recording... release to send</span>
-            </>
-          )}
-          {status === 'thinking' && !isRecording && (
-            <>
-              <span className="w-2 h-2 bg-warning rounded-full animate-pulse" />
-              <span>Thinking...</span>
-            </>
-          )}
-          {status === 'speaking' && (
-            <>
-              <span className="w-2 h-2 bg-accent rounded-full animate-pulse" />
-              <span>Speaking...</span>
-            </>
-          )}
-        </div>
-      )}
     </div>
   );
 }

@@ -1,16 +1,22 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { streamChat } from '../utils/api';
+import { useStatsStore } from '../store/statsStore';
+import type { TokenUsage } from '../types';
 
 interface StreamResponse {
   response?: string;
   processing_ms?: number;
   model?: string;
+  moods?: Array<{ mood: string; intensity: number }>;
+  animations?: string[];
+  usage?: TokenUsage;
 }
 
 export function useChat() {
   const { 
     sessionId, 
+    status,
     setStatus, 
     addMessage, 
     updateMessage,
@@ -19,8 +25,15 @@ export function useChat() {
     avatarRendererRef
   } = useApp();
   
+  const { updateStats, addStateEntry } = useStatsStore();
+  
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  
+  // Log state changes
+  useEffect(() => {
+    addStateEntry(status, '');
+  }, [status, addStateEntry]);
   
   /**
    * Speak text using TTS
@@ -130,14 +143,23 @@ export function useChat() {
         (data) => {
           finalResponse = data;
           
-          // Final update with clean response and metadata
+          // Final update with clean response and metadata (including mood/animation/usage)
           updateMessage(messageId, {
             content: data.response || fullContent,
             meta: {
               processing_ms: data.processing_ms,
               model: data.model,
+              moods: data.moods,
+              animations: data.animations,
+              usage: data.usage,
               streaming: false
             }
+          });
+          
+          // Update stats
+          updateStats({
+            processing_ms: data.processing_ms,
+            usage: data.usage
           });
         },
         // onError

@@ -206,4 +206,87 @@ When ready, apply this patch:
 
 ---
 
+## Tool Restrictions: Gateway-Level Enforcement (2026-01-31, Beatrice)
+
+### Not Just Prompt Omission
+
+A common concern: "If we just hide tools from the agent's system prompt, can a jailbroken agent still call them?"
+
+**Answer: No.** Clawdbot enforces tool restrictions at the **gateway level**, not just the prompt.
+
+From the Clawdbot docs:
+> "`deny` always wins. If `allow` is non-empty, everything else is treated as blocked."
+
+### How Enforcement Works
+
+1. Agent attempts to call a tool (e.g., `exec`)
+2. Gateway checks agent's tool policy (`agents.list[].tools.deny`)
+3. If tool is in deny list → **call blocked**, error returned to agent
+4. Agent cannot proceed — gateway refuses the request
+
+```
+Agent: attempts exec(command="rm -rf /")
+Gateway: "Tool 'exec' blocked by agent tool policy"
+Agent: receives error, cannot execute
+```
+
+This is **runtime enforcement** in the gateway code, not prompt engineering.
+
+### Two Layers of Protection
+
+For sandboxed + tool-restricted avatars:
+
+| Layer | Protection |
+|-------|------------|
+| **Tool deny list** | Gateway blocks tool calls before execution |
+| **Sandbox** | Even if a tool somehow ran, it's containerized with no host access |
+
+### Verification
+
+Check effective tool policy for an agent:
+
+```bash
+clawdbot sandbox explain --agent emilia-thai
+```
+
+Shows:
+- Effective sandbox mode
+- Tool allow/deny lists
+- Where each policy came from (global vs agent)
+
+### Implication for Waifu Avatars
+
+With this config:
+
+```json
+{
+  "id": "emilia-thai",
+  "tools": {
+    "deny": ["exec", "write", "edit", "browser", "gateway", "nodes", "cron", "sessions_send"]
+  }
+}
+```
+
+A jailbroken emilia-thai:
+- ❌ Cannot call `exec` (gateway blocks it)
+- ❌ Cannot write files (gateway blocks it)
+- ❌ Cannot message other agents (gateway blocks it)
+- ✅ Can only use allowed tools (read, memory_search, etc.)
+
+**This is real security, not security theater.**
+
+### Sandbox Latency
+
+Concern: Does sandboxing slow down chat?
+
+**No significant impact:**
+- First request: ~1-2s container startup (cold start)
+- Subsequent requests: minimal overhead (container stays warm)
+- With `scope: "agent"`: one container per avatar, reused across sessions
+- Real bottleneck: LLM API call (100ms-10s), not sandbox overhead
+
+For a chat app, latency difference is imperceptible.
+
+---
+
 *Document maintained by Ram (original) and Beatrice (security assessment).*

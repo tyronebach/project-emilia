@@ -2,7 +2,13 @@
  * Shared type definitions for Emilia frontend
  */
 
-export type AppStatus = 'ready' | 'recording' | 'thinking' | 'speaking' | 'error';
+export type AppStatus = 'initializing' | 'ready' | 'recording' | 'processing' | 'thinking' | 'speaking' | 'error';
+
+export interface TokenUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+}
 
 export interface MessageMeta {
   processing_ms?: number;
@@ -10,6 +16,9 @@ export interface MessageMeta {
   streaming?: boolean;
   error?: boolean;
   source?: 'text' | 'voice';
+  moods?: Array<{ mood: string; intensity: number }>;
+  animations?: string[];
+  usage?: TokenUsage;
 }
 
 export interface Message {

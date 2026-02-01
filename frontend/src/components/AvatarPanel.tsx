@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, AlertTriangle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useAppStore } from '../store';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
 import { Badge } from './ui/badge';
 import type { VRM } from '@pixiv/three-vrm';
 
 function AvatarPanel() {
   const { avatarRendererRef, avatarState, status } = useApp();
+  const setAvatarRenderer = useAppStore((state) => state.setAvatarRenderer);
   const [collapsed, setCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
@@ -24,6 +26,8 @@ function AvatarPanel() {
         console.log('VRM loaded:', metaName || 'Unknown');
         setLoading(false);
         setError(null);
+        // Sync renderer to store AFTER VRM loads (so expressionController exists)
+        setAvatarRenderer(renderer);
       },
       onError: (err: Error) => {
         console.error('VRM load error:', err);
@@ -40,15 +44,16 @@ function AvatarPanel() {
     renderer.loadVRM();
     renderer.startRenderLoop();
     
-    // Store reference
+    // Store reference (for backward compat)
     avatarRendererRef.current = renderer;
     
     // Cleanup
     return () => {
       renderer.dispose();
       avatarRendererRef.current = null;
+      setAvatarRenderer(null);
     };
-  }, [avatarRendererRef]);
+  }, [avatarRendererRef, setAvatarRenderer]);
   
   // Status badge
   const getStatusBadge = () => {

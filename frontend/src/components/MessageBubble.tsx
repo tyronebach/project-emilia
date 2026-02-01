@@ -45,20 +45,44 @@ function MessageBubble({ message }: MessageBubbleProps) {
         </div>
         
         {/* Meta info */}
-        <div className={`flex items-center gap-2 mt-1 text-xs text-text-secondary ${
+        <div className={`flex items-center gap-2 mt-1 text-xs text-text-secondary flex-wrap ${
           isUser ? 'justify-end' : 'justify-start'
         }`}>
           <span>{timeString}</span>
           {processingTime && (
             <>
               <span>•</span>
-              <span>{processingTime}</span>
+              <span>🔄 {processingTime}</span>
+            </>
+          )}
+          {meta?.moods?.[0] && (
+            <>
+              <span>•</span>
+              <span>🎭 {meta.moods[0].mood}{meta.moods[0].intensity ? ` ${Math.round(meta.moods[0].intensity * 100)}%` : ''}</span>
+            </>
+          )}
+          {meta?.animations?.[0] && (
+            <>
+              <span>•</span>
+              <span>→ {meta.animations[0]}</span>
+            </>
+          )}
+          {meta?.usage?.total_tokens && (
+            <>
+              <span>•</span>
+              <span>🎯 {meta.usage.prompt_tokens || 0}+{meta.usage.completion_tokens || 0}={meta.usage.total_tokens}</span>
+            </>
+          )}
+          {meta?.model && (
+            <>
+              <span>•</span>
+              <span>🤖 {meta.model}</span>
             </>
           )}
           {meta?.source && meta.source !== 'text' && (
             <>
               <span>•</span>
-              <span className="capitalize">{meta.source}</span>
+              <span className="capitalize">🎤 {meta.source}</span>
             </>
           )}
         </div>

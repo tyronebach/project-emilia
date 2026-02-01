@@ -570,20 +570,21 @@ async def list_sessions(token: str = Depends(verify_token)):
 
         payload = resp.json() or {}
         result = payload.get("result") or {}
-        # Sessions are in result.details.sessions (not result.sessions)
         details = result.get("details") or {}
         sessions = details.get("sessions") or []
 
         out = []
         for s in sessions:
             key = s.get("key") or ""
+            # Only show emilia agent sessions
             if not key.startswith("agent:emilia:"):
                 continue
-            # typical: agent:emilia:openai-user:web-user-<ts>
+            # Format display name: agent:emilia:openai-user:X -> X
             display_id = key
-            if "web-user-" in key:
-                display_id = key.split("web-user-", 1)[1]
-                display_id = "web-user-" + display_id
+            if "openai-user:" in key:
+                display_id = key.split("openai-user:", 1)[1]
+            elif key.startswith("agent:emilia:"):
+                display_id = key.replace("agent:emilia:", "")
             out.append(
                 {
                     "session_key": key,
