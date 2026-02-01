@@ -4,6 +4,41 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [4.1.0] - 2026-01-31
+
+### Added - Avatar Animation System 🎭
+- **Lip Sync** - Real-time viseme animation from ElevenLabs character timestamps
+  - WebSocket TTS with `with_timestamps: character` for per-character alignment
+  - Viseme mapping from phonemes (aa, ih, ou, ee, oh, ff, th, etc.)
+  - Smooth interpolation and decay for natural mouth movement
+  
+- **Expression System** - Dynamic facial expressions from mood tags
+  - SSE event parsing for `[mood:happy]`, `[mood:thinking]`, etc.
+  - Expression controller with blend support and priorities
+  - Expressions: happy, sad, surprised, angry, thinking, neutral
+  
+- **Idle Animations** - Continuous micro-movements for lifelike avatar
+  - Blink: Randomized 2-6 second intervals with natural timing
+  - Breathe: Subtle spine rotation on sine wave
+  - Sway: Micro head movements for organic feel
+  
+- **Triggered Animations** - On-demand gestures and poses
+  - Nod: Affirmative head gesture
+  - Wave: Friendly greeting animation
+  - Thinking pose: Head tilt with hand gesture
+  - Easing curves and blend support
+
+### Technical
+- `frontend/js/lip-sync.js` - LipSyncEngine with viseme queue and timing
+- `frontend/js/avatar-controller.js` - AvatarExpressionController for moods
+- `frontend/js/idle-animations.js` - IdleAnimationSystem with pause/resume
+- `frontend/js/animation-trigger.js` - AnimationTriggerSystem for gestures
+- Updated `frontend/avatar.js` to integrate all animation modules
+- Backend returns `alignment` data in `/api/speak` JSON response
+- Global window functions: `triggerAnimation()`, `setAvatarExpression()`
+
+---
+
 ## [3.5.0] - 2026-01-31
 
 ### Added
