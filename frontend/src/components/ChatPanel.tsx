@@ -5,7 +5,7 @@ import MessageBubble from './MessageBubble';
 function ChatPanel() {
   const { messages, status } = useApp();
   const [collapsed, setCollapsed] = useState(false);
-  const messagesEndRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

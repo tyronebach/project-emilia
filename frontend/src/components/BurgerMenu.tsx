@@ -3,7 +3,12 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useApp } from '../context/AppContext';
 import { useSession } from '../hooks/useSession';
 
-function BurgerMenu({ open, onOpenChange }) {
+interface BurgerMenuProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+function BurgerMenu({ open, onOpenChange }: BurgerMenuProps) {
   const { clearMessages } = useApp();
   const { sessions, sessionId, switchSession, createSession, fetchSessions, isLoading } = useSession();
   const [showSessions, setShowSessions] = useState(false);
@@ -21,7 +26,7 @@ function BurgerMenu({ open, onOpenChange }) {
     }
   };
   
-  const handleSwitchSession = async (sid) => {
+  const handleSwitchSession = async (sid: string) => {
     await switchSession(sid);
     setShowSessions(false);
     onOpenChange(false);
@@ -94,19 +99,22 @@ function BurgerMenu({ open, onOpenChange }) {
                 ) : sessions.length === 0 ? (
                   <div className="px-4 py-2 text-xs text-text-secondary">No sessions found</div>
                 ) : (
-                  sessions.map((session) => (
-                    <DropdownMenu.Item
-                      key={session.session_id || session}
-                      className={`px-4 py-1.5 text-sm outline-none cursor-pointer truncate transition-colors ${
-                        (session.session_id || session) === sessionId
-                          ? 'text-accent bg-accent/10'
-                          : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
-                      }`}
-                      onSelect={() => handleSwitchSession(session.session_id || session)}
-                    >
-                      {session.session_id || session}
-                    </DropdownMenu.Item>
-                  ))
+                  sessions.map((session) => {
+                    const sid = typeof session === 'string' ? session : session.session_id;
+                    return (
+                      <DropdownMenu.Item
+                        key={sid}
+                        className={`px-4 py-1.5 text-sm outline-none cursor-pointer truncate transition-colors ${
+                          sid === sessionId
+                            ? 'text-accent bg-accent/10'
+                            : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+                        }`}
+                        onSelect={() => handleSwitchSession(sid)}
+                      >
+                        {sid}
+                      </DropdownMenu.Item>
+                    );
+                  })
                 )}
               </DropdownMenu.SubContent>
             </DropdownMenu.Portal>

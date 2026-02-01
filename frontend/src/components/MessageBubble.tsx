@@ -1,6 +1,11 @@
 import { useMemo } from 'react';
+import type { Message } from '../types';
 
-function MessageBubble({ message }) {
+interface MessageBubbleProps {
+  message: Message;
+}
+
+function MessageBubble({ message }: MessageBubbleProps) {
   const { role, content, timestamp, meta } = message;
   const isUser = role === 'user';
   

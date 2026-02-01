@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import type { AppStatus } from '../types';
 import BurgerMenu from './BurgerMenu';
 
 function Header() {
@@ -7,7 +8,7 @@ function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   
   // Status indicator colors
-  const statusColors = {
+  const statusColors: Record<AppStatus, string> = {
     ready: 'bg-success',
     recording: 'bg-error animate-pulse',
     thinking: 'bg-warning animate-pulse',
@@ -22,7 +23,7 @@ function Header() {
         <h1 className="text-lg md:text-xl font-semibold text-text-primary">
           Emilia
         </h1>
-        <span className={`w-2 h-2 rounded-full ${statusColors[status] || statusColors.ready}`} 
+        <span className={`w-2 h-2 rounded-full ${statusColors[status]}`} 
               title={`Status: ${status}`} />
       </div>
       

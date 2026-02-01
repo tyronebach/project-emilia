@@ -1,12 +1,14 @@
 import * as Accordion from '@radix-ui/react-accordion';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, ReactNode } from 'react';
 import { useApp } from '../context/AppContext';
 import { useSession } from '../hooks/useSession';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
 import MessageBubble from './MessageBubble';
+import type { VRM } from '@pixiv/three-vrm';
+import type { AppStatus, Memory, Message } from '../types';
 
 // Chevron icon component
-function ChevronIcon({ className }) {
+function ChevronIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -16,26 +18,28 @@ function ChevronIcon({ className }) {
 
 // Avatar content for mobile accordion
 function AvatarContent() {
-  const { avatarRendererRef, avatarState, status } = useApp();
+  const { avatarRendererRef, status } = useApp();
   const [loading, setLoading] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
-  const [error, setError] = useState(null);
-  const containerRef = useRef(null);
+  const [error, setError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
     if (!containerRef.current) return;
     
     const renderer = new AvatarRenderer(containerRef.current, {
       vrmUrl: '/emilia.vrm',
-      onLoad: () => {
+      onLoad: (vrm: VRM) => {
+        const metaName = (vrm.meta as { name?: string })?.name;
+        console.log('VRM loaded:', metaName || 'Unknown');
         setLoading(false);
         setError(null);
       },
-      onError: (err) => {
+      onError: (err: Error) => {
         setError(err.message || 'Failed to load avatar');
         setLoading(false);
       },
-      onProgress: (percent) => setLoadProgress(percent)
+      onProgress: (percent: number) => setLoadProgress(percent)
     });
     
     renderer.init();
@@ -82,7 +86,7 @@ function AvatarContent() {
 // Chat content for mobile accordion
 function ChatContent() {
   const { messages, status } = useApp();
-  const messagesEndRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -96,7 +100,7 @@ function ChatContent() {
         </div>
       ) : (
         <>
-          {messages.map((message) => (
+          {messages.map((message: Message) => (
             <MessageBubble key={message.id} message={message} />
           ))}
           {status === 'thinking' && (
@@ -125,8 +129,19 @@ function StatsContent() {
   const { messages, status } = useApp();
   const { sessionId } = useSession();
   
-  const userMessages = messages.filter(m => m.role === 'user').length;
-  const assistantMessages = messages.filter(m => m.role === 'assistant').length;
+  const userMessages = messages.filter((m: Message) => m.role === 'user').length;
+  const assistantMessages = messages.filter((m: Message) => m.role === 'assistant').length;
+  
+  const getStatusColor = (s: AppStatus): string => {
+    switch (s) {
+      case 'ready': return 'bg-success';
+      case 'thinking': return 'bg-warning animate-pulse';
+      case 'speaking': return 'bg-accent animate-pulse';
+      case 'recording': return 'bg-error animate-pulse';
+      case 'error': return 'bg-error';
+      default: return 'bg-text-secondary';
+    }
+  };
   
   return (
     <div className="p-4 space-y-3 max-h-[calc(100vh-220px)] overflow-y-auto">
@@ -149,12 +164,7 @@ function StatsContent() {
       <div>
         <div className="text-xs text-text-secondary uppercase tracking-wide mb-1">Status</div>
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${
-            status === 'idle' ? 'bg-success' :
-            status === 'thinking' ? 'bg-warning animate-pulse' :
-            status === 'speaking' ? 'bg-accent animate-pulse' :
-            'bg-text-secondary'
-          }`} />
+          <span className={`w-2 h-2 rounded-full ${getStatusColor(status)}`} />
           <span className="text-sm text-text-primary capitalize">{status}</span>
         </div>
       </div>
@@ -164,7 +174,7 @@ function StatsContent() {
 
 // Memory content for mobile accordion
 function MemoryContent() {
-  const [memories, setMemories] = useState([]);
+  const [memories, setMemories] = useState<Memory[]>([]);
   
   useEffect(() => {
     const fetchMemories = async () => {
@@ -174,7 +184,7 @@ function MemoryContent() {
           const data = await response.json();
           setMemories(data.memories || []);
         }
-      } catch (err) {
+      } catch (_err) {
         // Silent fail
       }
     };
@@ -193,9 +203,9 @@ function MemoryContent() {
         </div>
       ) : (
         <div className="space-y-2">
-          {memories.map((memory, index) => (
+          {memories.map((memory: Memory, index: number) => (
             <div key={index} className="bg-bg-tertiary rounded-lg p-3">
-              <div className="text-sm text-text-primary">{memory.content || memory}</div>
+              <div className="text-sm text-text-primary">{memory.content}</div>
             </div>
           ))}
         </div>
@@ -230,7 +240,15 @@ const MemoryIcon = () => (
 );
 
 // Accordion Item wrapper
-function AccordionItem({ value, icon, title, children, badge }) {
+interface AccordionItemProps {
+  value: string;
+  icon: ReactNode;
+  title: string;
+  children: ReactNode;
+  badge?: ReactNode;
+}
+
+function AccordionItem({ value, icon, title, children, badge }: AccordionItemProps) {
   return (
     <Accordion.Item value={value} className="bg-bg-secondary rounded-xl overflow-hidden">
       <Accordion.Header>

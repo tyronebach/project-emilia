@@ -3,16 +3,30 @@
  * Handles authenticated requests and SSE streaming
  */
 
+import type { AvatarCommand } from '../types';
+
 const API_URL = '';
 const AUTH_TOKEN = 'emilia-dev-token-2026';
+
+interface FetchOptions extends RequestInit {
+  body?: string | FormData;
+}
+
+interface StreamResponse {
+  response?: string;
+  processing_ms?: number;
+  model?: string;
+  moods?: string[];
+  animations?: string[];
+}
 
 /**
  * Make an authenticated fetch request
  */
-export async function fetchWithAuth(url, options = {}) {
-  const headers = {
+export async function fetchWithAuth(url: string, options: FetchOptions = {}): Promise<Response> {
+  const headers: Record<string, string> = {
     'Authorization': `Bearer ${AUTH_TOKEN}`,
-    ...options.headers,
+    ...options.headers as Record<string, string>,
   };
   
   // Only set Content-Type for JSON if not FormData
@@ -29,7 +43,7 @@ export async function fetchWithAuth(url, options = {}) {
 /**
  * Strip avatar tags from response text
  */
-export function stripAvatarTags(text) {
+export function stripAvatarTags(text: string): string {
   if (!text) return '';
   return text
     .replace(/<mood:[^>]+>/g, '')
@@ -39,14 +53,15 @@ export function stripAvatarTags(text) {
 
 /**
  * Stream chat response via SSE
- * @param {string} message - User message
- * @param {string} sessionId - Session ID
- * @param {function} onChunk - Called with each text chunk
- * @param {function} onAvatar - Called with avatar commands
- * @param {function} onDone - Called when stream completes
- * @param {function} onError - Called on error
  */
-export async function streamChat(message, sessionId, onChunk, onAvatar, onDone, onError) {
+export async function streamChat(
+  message: string,
+  sessionId: string,
+  onChunk: (chunk: string) => void,
+  onAvatar: (data: AvatarCommand) => void,
+  onDone: (data: StreamResponse) => void,
+  onError: (error: Error) => void
+): Promise<void> {
   try {
     const response = await fetchWithAuth(`${API_URL}/api/chat?stream=1`, {
       method: 'POST',
@@ -61,10 +76,14 @@ export async function streamChat(message, sessionId, onChunk, onAvatar, onDone, 
       throw new Error(`Chat API error: ${response.status} - ${errorText}`);
     }
     
-    const reader = response.body.getReader();
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body');
+    }
+    
     const decoder = new TextDecoder();
     let buffer = '';
-    let currentEventType = null;
+    let currentEventType: string | null = null;
     let fullContent = '';
     
     while (true) {
@@ -123,8 +142,8 @@ export async function streamChat(message, sessionId, onChunk, onAvatar, onDone, 
               });
             }
           } catch (e) {
-            if (e.message !== 'Unexpected end of JSON input') {
-              console.error('SSE parse error:', e.message, dataStr);
+            if ((e as Error).message !== 'Unexpected end of JSON input') {
+              console.error('SSE parse error:', (e as Error).message, dataStr);
             }
           }
           
@@ -133,7 +152,7 @@ export async function streamChat(message, sessionId, onChunk, onAvatar, onDone, 
       }
     }
   } catch (error) {
-    onError(error);
+    onError(error as Error);
   }
 }
 

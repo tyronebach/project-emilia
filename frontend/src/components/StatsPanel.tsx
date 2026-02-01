@@ -1,12 +1,28 @@
 import { useApp } from '../context/AppContext';
 import { useSession } from '../hooks/useSession';
+import type { AppStatus } from '../types';
 
-function StatsPanel({ className = '' }) {
+interface StatsPanelProps {
+  className?: string;
+}
+
+function StatsPanel({ className = '' }: StatsPanelProps) {
   const { messages, status } = useApp();
   const { sessionId } = useSession();
   
   const userMessages = messages.filter(m => m.role === 'user').length;
   const assistantMessages = messages.filter(m => m.role === 'assistant').length;
+  
+  const getStatusColor = (s: AppStatus): string => {
+    switch (s) {
+      case 'ready': return 'bg-success';
+      case 'thinking': return 'bg-warning animate-pulse';
+      case 'speaking': return 'bg-accent animate-pulse';
+      case 'recording': return 'bg-error animate-pulse';
+      case 'error': return 'bg-error';
+      default: return 'bg-text-secondary';
+    }
+  };
   
   return (
     <div className={`bg-bg-secondary rounded-xl overflow-hidden ${className}`}>
@@ -37,12 +53,7 @@ function StatsPanel({ className = '' }) {
         <div>
           <div className="text-xs text-text-secondary uppercase tracking-wide mb-1">Status</div>
           <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${
-              status === 'idle' ? 'bg-success' :
-              status === 'thinking' ? 'bg-warning animate-pulse' :
-              status === 'speaking' ? 'bg-accent animate-pulse' :
-              'bg-text-secondary'
-            }`} />
+            <span className={`w-2 h-2 rounded-full ${getStatusColor(status)}`} />
             <span className="text-sm text-text-primary capitalize">{status}</span>
           </div>
         </div>

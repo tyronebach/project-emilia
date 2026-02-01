@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
+import type { VRM } from '@pixiv/three-vrm';
 
 function AvatarPanel() {
   const { avatarRendererRef, avatarState, status } = useApp();
   const [collapsed, setCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
-  const [error, setError] = useState(null);
-  const containerRef = useRef(null);
+  const [error, setError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   
   // Initialize avatar renderer
   useEffect(() => {
@@ -16,17 +17,18 @@ function AvatarPanel() {
     
     const renderer = new AvatarRenderer(containerRef.current, {
       vrmUrl: '/emilia.vrm',
-      onLoad: (vrm) => {
-        console.log('VRM loaded:', vrm.meta?.name);
+      onLoad: (vrm: VRM) => {
+        const metaName = (vrm.meta as { name?: string })?.name;
+        console.log('VRM loaded:', metaName || 'Unknown');
         setLoading(false);
         setError(null);
       },
-      onError: (err) => {
+      onError: (err: Error) => {
         console.error('VRM load error:', err);
         setError(err.message || 'Failed to load avatar');
         setLoading(false);
       },
-      onProgress: (percent) => {
+      onProgress: (percent: number) => {
         setLoadProgress(percent);
       }
     });

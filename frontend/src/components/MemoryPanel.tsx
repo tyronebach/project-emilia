@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
+import type { Memory } from '../types';
 
-function MemoryPanel({ className = '' }) {
-  const [memories, setMemories] = useState([]);
+interface MemoryPanelProps {
+  className?: string;
+}
+
+function MemoryPanel({ className = '' }: MemoryPanelProps) {
+  const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   
   // Fetch memories on mount
   useEffect(() => {
@@ -20,7 +24,7 @@ function MemoryPanel({ className = '' }) {
         } else {
           throw new Error('Failed to fetch memories');
         }
-      } catch (err) {
+      } catch (_err) {
         // Silent fail - API may not be implemented
         setMemories([]);
       } finally {
@@ -60,7 +64,7 @@ function MemoryPanel({ className = '' }) {
           <div className="space-y-2">
             {memories.map((memory, index) => (
               <div key={index} className="bg-bg-tertiary rounded-lg p-3">
-                <div className="text-sm text-text-primary">{memory.content || memory}</div>
+                <div className="text-sm text-text-primary">{memory.content}</div>
                 {memory.timestamp && (
                   <div className="text-xs text-text-secondary mt-1">
                     {new Date(memory.timestamp).toLocaleDateString()}

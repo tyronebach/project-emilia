@@ -2,17 +2,32 @@ import { useState, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { fetchWithAuth } from '../utils/api';
 
+/**
+ * Convert base64 string to Blob
+ */
+function base64ToBlob(base64: string, contentType: string): Blob {
+  const byteChars = atob(base64);
+  const byteNumbers = new Array(byteChars.length);
+  
+  for (let i = 0; i < byteChars.length; i++) {
+    byteNumbers[i] = byteChars.charCodeAt(i);
+  }
+  
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type: contentType });
+}
+
 export function useTTS() {
   const { setStatus, avatarRendererRef } = useApp();
   
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const audioRef = useRef(null);
-  const currentTextRef = useRef('');
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const currentTextRef = useRef<string>('');
   
   /**
    * Speak text via TTS API
    */
-  const speak = useCallback(async (text) => {
+  const speak = useCallback(async (text: string): Promise<boolean> => {
     if (!text || !text.trim()) return false;
     
     try {
@@ -66,8 +81,8 @@ export function useTTS() {
           resolve(true);
         };
         
-        audio.onerror = (e) => {
-          console.error('Audio playback error:', e);
+        audio.onerror = () => {
+          console.error('Audio playback error');
           if (renderer?.lipSyncEngine) {
             renderer.lipSyncEngine.stop();
           }
@@ -78,8 +93,8 @@ export function useTTS() {
           resolve(false);
         };
         
-        audio.play().catch((e) => {
-          console.error('Audio play failed:', e);
+        audio.play().catch(() => {
+          console.error('Audio play failed');
           setIsSpeaking(false);
           setStatus('ready');
           resolve(false);
@@ -96,7 +111,7 @@ export function useTTS() {
   /**
    * Stop current playback
    */
-  const stop = useCallback(() => {
+  const stop = useCallback((): void => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -114,7 +129,7 @@ export function useTTS() {
   /**
    * Replay last spoken text
    */
-  const replay = useCallback(() => {
+  const replay = useCallback((): Promise<boolean> => {
     if (currentTextRef.current) {
       return speak(currentTextRef.current);
     }
@@ -127,21 +142,6 @@ export function useTTS() {
     replay,
     isSpeaking
   };
-}
-
-/**
- * Convert base64 string to Blob
- */
-function base64ToBlob(base64, contentType) {
-  const byteChars = atob(base64);
-  const byteNumbers = new Array(byteChars.length);
-  
-  for (let i = 0; i < byteChars.length; i++) {
-    byteNumbers[i] = byteChars.charCodeAt(i);
-  }
-  
-  const byteArray = new Uint8Array(byteNumbers);
-  return new Blob([byteArray], { type: contentType });
 }
 
 export default useTTS;
