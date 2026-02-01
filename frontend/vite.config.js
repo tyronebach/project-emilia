@@ -9,5 +9,19 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:8080'
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split Three.js into its own chunk
+          three: ['three'],
+          vrm: ['@pixiv/three-vrm'],
+          react: ['react', 'react-dom']
+        }
+      }
+    },
+    // Suppress chunk size warning since Three.js is large
+    chunkSizeWarningLimit: 1000
   }
 })
