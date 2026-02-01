@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import { AvatarExpressionController } from './js/avatar-controller.js';
 
 // Default VRM URL for testing
 const DEFAULT_VRM_URL = 'https://arweave.net/Ea1KXujzJatQgCFSMzGOzp_UtHqB1pyia--U3AtkMAY';
@@ -193,6 +194,11 @@ class AvatarRenderer {
                         });
                     }
 
+                    // Create expression controller for mood/animation control
+                    this.expressionController = new AvatarExpressionController(vrm);
+                    // Expose globally for chat module to access
+                    window.avatarController = this.expressionController;
+
                     console.log('VRM loaded successfully:', vrm.meta?.name || 'Unknown');
 
                     if (this.options.onLoad) this.options.onLoad(vrm);
@@ -227,6 +233,11 @@ class AvatarRenderer {
             this.animationFrameId = requestAnimationFrame(animate);
 
             const deltaTime = this.clock.getDelta();
+
+            // Update avatar expression controller
+            if (this.expressionController) {
+                this.expressionController.update(deltaTime);
+            }
 
             // Update VRM
             if (this.vrm) {
