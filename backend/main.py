@@ -228,10 +228,12 @@ async def list_users(token: str = Depends(verify_token)):
     users = data.get("users") or {}
     items = []
     for user_id, user in users.items():
+        avatar_ids = user.get("avatars") or []
         items.append(
             {
                 "id": user_id,
                 "display_name": user.get("display_name", user_id),
+                "avatar_count": len(avatar_ids),
             }
         )
     return {"users": items, "count": len(items)}
@@ -389,6 +391,7 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, agent_id: st
                     {"role": "user", "content": request.message}
                 ],
                 "stream": True,
+                "stream_options": {"include_usage": True},
                 "user": request.session_id
             }
 
@@ -649,7 +652,7 @@ async def list_sessions(token: str = Depends(verify_token)):
                     "tool": "sessions_list",
                     "action": "json",
                     "args": {"limit": 50, "messageLimit": 0},
-                    "sessionKey": "main",
+                    "agentId": list(ALLOWED_CLAWDBOT_AGENT_IDS)[0] if ALLOWED_CLAWDBOT_AGENT_IDS else "emilia-thai",
                 },
             )
 
@@ -664,8 +667,12 @@ async def list_sessions(token: str = Depends(verify_token)):
         out = []
         for s in sessions:
             key = s.get("key") or ""
-            # Only show emilia agent sessions
-            if not key.startswith("agent:emilia:"):
+            # Only show sessions for allowed emilia agents
+            is_emilia_session = any(
+                key.startswith(f"agent:{agent_id}:") 
+                for agent_id in ALLOWED_CLAWDBOT_AGENT_IDS
+            )
+            if not is_emilia_session:
                 continue
             # Format display name: agent:emilia:openai-user:X -> X
             display_id = key
@@ -714,8 +721,11 @@ async def get_session_history(
     Calls gateway tools/invoke with sessions_history tool.
     Returns messages array with role, content, timestamp.
     """
-    # Build full session key
-    full_key = f"agent:emilia:openai-user:{session_id}"
+    # Build full session key (avoid double-prefixing)
+    if session_id.startswith("agent:"):
+        full_key = session_id
+    else:
+        full_key = f"agent:emilia:openai-user:{session_id}"
     
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
@@ -961,7 +971,7 @@ async def speak(
     
     return JSONResponse(
         content={
-            "audio": audio_b64,
+            "audio_base64": audio_b64,
             "alignment": alignment_data,
             "has_lip_sync": has_lip_sync,
             "processing_ms": processing_ms,
