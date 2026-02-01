@@ -1,9 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useSession } from '../hooks/useSession';
 
 function BurgerMenu({ onClose }) {
-  const { sessionId, clearMessages } = useApp();
+  const { clearMessages } = useApp();
+  const { sessions, sessionId, switchSession, createSession, fetchSessions, isLoading } = useSession();
   const menuRef = useRef(null);
+  const [showSessions, setShowSessions] = useState(false);
   
   // Close on click outside
   useEffect(() => {
@@ -34,6 +37,20 @@ function BurgerMenu({ onClose }) {
     onClose();
   };
   
+  const handleNewSession = async () => {
+    const name = prompt('Enter session name (or leave empty for auto-name):');
+    if (name !== null) {
+      await createSession(name || undefined);
+      onClose();
+    }
+  };
+  
+  const handleSwitchSession = async (sid) => {
+    await switchSession(sid);
+    setShowSessions(false);
+    onClose();
+  };
+  
   return (
     <div 
       ref={menuRef}
@@ -60,23 +77,50 @@ function BurgerMenu({ onClose }) {
         
         <button
           onClick={() => {
-            // TODO: Implement session switching
-            onClose();
+            setShowSessions(!showSessions);
+            if (!showSessions) fetchSessions();
           }}
-          className="w-full text-left px-4 py-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors flex items-center gap-2"
+          className="w-full text-left px-4 py-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors flex items-center justify-between"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+          <span className="flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+            Switch Session
+          </span>
+          <svg className={`w-4 h-4 transition-transform ${showSessions ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
-          Switch Session
         </button>
         
+        {/* Sessions List */}
+        {showSessions && (
+          <div className="border-t border-bg-tertiary mt-1 pt-1 max-h-48 overflow-y-auto">
+            {isLoading ? (
+              <div className="px-4 py-2 text-xs text-text-secondary">Loading...</div>
+            ) : sessions.length === 0 ? (
+              <div className="px-4 py-2 text-xs text-text-secondary">No sessions found</div>
+            ) : (
+              sessions.map((session) => (
+                <button
+                  key={session.session_id || session}
+                  onClick={() => handleSwitchSession(session.session_id || session)}
+                  className={`w-full text-left px-6 py-1.5 text-sm transition-colors truncate ${
+                    (session.session_id || session) === sessionId
+                      ? 'text-accent bg-accent/10'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+                  }`}
+                >
+                  {session.session_id || session}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+        
         <button
-          onClick={() => {
-            // TODO: Implement new session
-            onClose();
-          }}
+          onClick={handleNewSession}
           className="w-full text-left px-4 py-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors flex items-center gap-2"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
