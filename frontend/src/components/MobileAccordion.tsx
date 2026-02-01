@@ -1,20 +1,13 @@
 import * as Accordion from '@radix-ui/react-accordion';
 import { useState, useEffect, useRef, ReactNode } from 'react';
+import { ChevronDown, User, MessageCircle, BarChart3, Lightbulb } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useSession } from '../hooks/useSession';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
+import { Badge } from './ui/badge';
 import MessageBubble from './MessageBubble';
 import type { VRM } from '@pixiv/three-vrm';
 import type { AppStatus, Memory, Message } from '../types';
-
-// Chevron icon component
-function ChevronIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-    </svg>
-  );
-}
 
 // Avatar content for mobile accordion
 function AvatarContent() {
@@ -55,10 +48,10 @@ function AvatarContent() {
   
   const getStatusBadge = () => {
     if (status === 'thinking') {
-      return <span className="text-xs bg-warning/20 text-warning px-2 py-0.5 rounded ml-2">Thinking...</span>;
+      return <Badge variant="outline" className="ml-2 bg-warning/20 text-warning border-warning/30">Thinking...</Badge>;
     }
     if (status === 'speaking') {
-      return <span className="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded ml-2">Speaking</span>;
+      return <Badge variant="outline" className="ml-2 bg-accent/20 text-accent border-accent/30">Speaking</Badge>;
     }
     return null;
   };
@@ -195,10 +188,7 @@ function MemoryContent() {
     <div className="p-4 max-h-[calc(100vh-220px)] overflow-y-auto">
       {memories.length === 0 ? (
         <div className="text-center py-4">
-          <svg className="w-8 h-8 mx-auto text-text-secondary/50 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} 
-                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
+          <Lightbulb className="w-8 h-8 mx-auto text-text-secondary/50 mb-2" />
           <p className="text-sm text-text-secondary">No memories yet</p>
         </div>
       ) : (
@@ -213,31 +203,6 @@ function MemoryContent() {
     </div>
   );
 }
-
-// Icon components
-const AvatarIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-  </svg>
-);
-
-const ChatIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-  </svg>
-);
-
-const StatsIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-  </svg>
-);
-
-const MemoryIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-  </svg>
-);
 
 // Accordion Item wrapper
 interface AccordionItemProps {
@@ -258,7 +223,7 @@ function AccordionItem({ value, icon, title, children, badge }: AccordionItemPro
             {title}
             {badge}
           </span>
-          <ChevronIcon className="w-4 h-4 text-text-secondary transition-transform duration-200 group-data-[state=open]:rotate-180" />
+          <ChevronDown className="w-4 h-4 text-text-secondary transition-transform duration-200 group-data-[state=open]:rotate-180" />
         </Accordion.Trigger>
       </Accordion.Header>
       <Accordion.Content className="overflow-hidden data-[state=open]:animate-slideDown data-[state=closed]:animate-slideUp">
@@ -280,7 +245,7 @@ function MobileAccordion() {
     >
       <AccordionItem 
         value="avatar" 
-        icon={<AvatarIcon />} 
+        icon={<User className="w-4 h-4" />} 
         title="Avatar"
       >
         <AvatarContent />
@@ -288,12 +253,12 @@ function MobileAccordion() {
       
       <AccordionItem 
         value="chat" 
-        icon={<ChatIcon />} 
+        icon={<MessageCircle className="w-4 h-4" />} 
         title="Chat"
         badge={
-          <span className="text-xs bg-bg-tertiary text-text-secondary px-2 py-0.5 rounded ml-2">
+          <Badge variant="secondary" className="ml-2">
             {messages.length}
-          </span>
+          </Badge>
         }
       >
         <ChatContent />
@@ -301,7 +266,7 @@ function MobileAccordion() {
       
       <AccordionItem 
         value="stats" 
-        icon={<StatsIcon />} 
+        icon={<BarChart3 className="w-4 h-4" />} 
         title="Stats"
       >
         <StatsContent />
@@ -309,7 +274,7 @@ function MobileAccordion() {
       
       <AccordionItem 
         value="memory" 
-        icon={<MemoryIcon />} 
+        icon={<Lightbulb className="w-4 h-4" />} 
         title="Memory"
       >
         <MemoryContent />

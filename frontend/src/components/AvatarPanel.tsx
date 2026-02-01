@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
+import { ChevronDown, AlertTriangle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
+import { Badge } from './ui/badge';
 import type { VRM } from '@pixiv/three-vrm';
 
 function AvatarPanel() {
@@ -51,13 +53,13 @@ function AvatarPanel() {
   // Status badge
   const getStatusBadge = () => {
     if (status === 'thinking') {
-      return <span className="text-xs bg-warning/20 text-warning px-2 py-0.5 rounded">Thinking...</span>;
+      return <Badge variant="outline" className="bg-warning/20 text-warning border-warning/30">Thinking...</Badge>;
     }
     if (status === 'speaking') {
-      return <span className="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded">Speaking</span>;
+      return <Badge variant="outline" className="bg-accent/20 text-accent border-accent/30">Speaking</Badge>;
     }
     if (avatarState?.mood) {
-      return <span className="text-xs bg-bg-tertiary text-text-secondary px-2 py-0.5 rounded">{avatarState.mood}</span>;
+      return <Badge variant="secondary">{avatarState.mood}</Badge>;
     }
     return null;
   };
@@ -77,12 +79,9 @@ function AvatarPanel() {
         </div>
         
         {/* Collapse arrow (mobile only) */}
-        <svg 
+        <ChevronDown 
           className={`w-4 h-4 text-text-secondary transition-transform md:hidden ${collapsed ? '' : 'rotate-180'}`}
-          fill="none" stroke="currentColor" viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        />
       </div>
       
       {/* Avatar Canvas */}
@@ -101,10 +100,7 @@ function AvatarPanel() {
         {/* Error overlay */}
         {error && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-bg-primary/90 z-10">
-            <svg className="w-8 h-8 text-error mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
+            <AlertTriangle className="w-8 h-8 text-error mb-2" />
             <span className="text-sm text-error">{error}</span>
           </div>
         )}
