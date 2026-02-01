@@ -467,6 +467,12 @@ function addMessage(role, content, meta = {}) {
 // Replay message audio
 async function replayMessage(buttonEl, text) {
     if (!text || !text.trim()) return;
+    
+    // Respect TTS toggle - don't call ElevenLabs if TTS is off
+    if (!ttsEnabled) {
+        log('Replay skipped - TTS is disabled');
+        return;
+    }
 
     // Disable button and show playing state
     buttonEl.disabled = true;
@@ -1152,6 +1158,12 @@ function applyTtsUiState() {
             voiceSelector.innerHTML = '<option value="rachel">(Voice off)</option>';
         }
     }
+    
+    // Hide/show replay buttons based on TTS state
+    const replayButtons = document.querySelectorAll('.replay-button');
+    replayButtons.forEach(btn => {
+        btn.style.display = ttsEnabled ? '' : 'none';
+    });
 }
 
 // Voice selector change
