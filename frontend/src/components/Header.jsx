@@ -54,19 +54,9 @@ function Header() {
           </svg>
         </button>
         
-        {/* Burger Menu */}
-        <button
-          onClick={() => setMenuOpen(!menuOpen)}
-          className="p-2 rounded-lg bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
+        {/* Burger Menu (Radix DropdownMenu) */}
+        <BurgerMenu open={menuOpen} onOpenChange={setMenuOpen} />
       </div>
-      
-      {/* Dropdown Menu */}
-      {menuOpen && <BurgerMenu onClose={() => setMenuOpen(false)} />}
     </header>
   );
 }

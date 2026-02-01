@@ -12,6 +12,20 @@
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-error: #ef4444;
+  
+  /* Accordion animations */
+  --animate-slideDown: slideDown 200ms ease-out;
+  --animate-slideUp: slideUp 200ms ease-out;
+  
+  @keyframes slideDown {
+    from { height: 0; opacity: 0; }
+    to { height: var(--radix-accordion-content-height); opacity: 1; }
+  }
+  
+  @keyframes slideUp {
+    from { height: var(--radix-accordion-content-height); opacity: 1; }
+    to { height: 0; opacity: 0; }
+  }
 }
 
 /* Global styles */
