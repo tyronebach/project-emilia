@@ -1,20 +1,53 @@
 import { useState, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
-import { fetchWithAuth } from '../utils/api';
 
 export function useAudio() {
-  const { setStatus, addMessage } = useApp();
+  const { setStatus } = useApp();
   
   const [isRecording, setIsRecording] = useState(false);
-  const [transcription, setTranscription] = useState(null);
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const streamRef = useRef(null);
+  const [transcription, setTranscription] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  
+  /**
+   * Transcribe audio blob
+   */
+  const transcribeAudio = useCallback(async (blob: Blob): Promise<string | null> => {
+    try {
+      const formData = new FormData();
+      formData.append('file', blob, 'recording.webm');
+      
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer emilia-dev-token-2026'
+        },
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Transcription failed: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      console.log('[useAudio] Transcription:', result.text);
+      setTranscription(result.text);
+      
+      return result.text || null;
+    } catch (error) {
+      console.error('[useAudio] Transcription error:', error);
+      setStatus('error');
+      setTimeout(() => setStatus('ready'), 2000);
+      return null;
+    }
+  }, [setStatus]);
   
   /**
    * Start recording audio
    */
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (): Promise<void> => {
     if (isRecording) return;
     
     try {
@@ -58,11 +91,11 @@ export function useAudio() {
   /**
    * Stop recording and transcribe
    */
-  const stopRecording = useCallback(() => {
+  const stopRecording = useCallback((): Promise<string | null> | null => {
     if (!isRecording || !mediaRecorderRef.current) return null;
     
     return new Promise((resolve) => {
-      const mediaRecorder = mediaRecorderRef.current;
+      const mediaRecorder = mediaRecorderRef.current!;
       
       mediaRecorder.onstop = async () => {
         // Stop all tracks
@@ -86,46 +119,12 @@ export function useAudio() {
       setIsRecording(false);
       setStatus('thinking');
     });
-  }, [isRecording, setStatus]);
-  
-  /**
-   * Transcribe audio blob
-   */
-  const transcribeAudio = useCallback(async (blob) => {
-    try {
-      const formData = new FormData();
-      formData.append('file', blob, 'recording.webm');
-      
-      const response = await fetch('/api/transcribe', {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Bearer emilia-dev-token-2026'
-        },
-        body: formData
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Transcription failed: ${response.status}`);
-      }
-      
-      const result = await response.json();
-      
-      console.log('[useAudio] Transcription:', result.text);
-      setTranscription(result.text);
-      
-      return result.text || null;
-    } catch (error) {
-      console.error('[useAudio] Transcription error:', error);
-      setStatus('error');
-      setTimeout(() => setStatus('ready'), 2000);
-      return null;
-    }
-  }, [setStatus]);
+  }, [isRecording, setStatus, transcribeAudio]);
   
   /**
    * Cancel recording without transcribing
    */
-  const cancelRecording = useCallback(() => {
+  const cancelRecording = useCallback((): void => {
     if (!isRecording || !mediaRecorderRef.current) return;
     
     // Stop recording without processing

@@ -1,17 +1,18 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { fetchWithAuth } from '../utils/api';
+import type { Message, Session } from '../types';
 
 export function useSession() {
   const { sessionId, setSessionId, setMessages, clearMessages } = useApp();
   
-  const [sessions, setSessions] = useState([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   
   /**
    * Fetch list of sessions
    */
-  const fetchSessions = useCallback(async () => {
+  const fetchSessions = useCallback(async (): Promise<Session[]> => {
     try {
       setIsLoading(true);
       const response = await fetchWithAuth('/api/sessions/list');
@@ -34,7 +35,7 @@ export function useSession() {
   /**
    * Fetch history for current session
    */
-  const fetchHistory = useCallback(async (sid = sessionId) => {
+  const fetchHistory = useCallback(async (sid: string = sessionId): Promise<Message[]> => {
     try {
       setIsLoading(true);
       const response = await fetchWithAuth(`/api/sessions/history/${encodeURIComponent(sid)}`);
@@ -50,7 +51,7 @@ export function useSession() {
       const data = await response.json();
       
       // Convert to message format
-      const messages = (data.messages || []).map((msg, idx) => ({
+      const messages: Message[] = (data.messages || []).map((msg: { role: 'user' | 'assistant'; content: string; timestamp?: string; meta?: Message['meta'] }, idx: number) => ({
         id: idx,
         role: msg.role,
         content: msg.content,
@@ -71,7 +72,7 @@ export function useSession() {
   /**
    * Switch to a different session
    */
-  const switchSession = useCallback(async (newSessionId) => {
+  const switchSession = useCallback(async (newSessionId: string): Promise<void> => {
     if (newSessionId === sessionId) return;
     
     clearMessages();
@@ -86,7 +87,7 @@ export function useSession() {
   /**
    * Create a new session
    */
-  const createSession = useCallback(async (name = null) => {
+  const createSession = useCallback(async (name: string | null = null): Promise<string> => {
     const newSessionId = name || `session-${Date.now()}`;
     clearMessages();
     setSessionId(newSessionId);
@@ -97,7 +98,7 @@ export function useSession() {
   /**
    * Delete a session
    */
-  const deleteSession = useCallback(async (sid) => {
+  const deleteSession = useCallback(async (sid: string): Promise<boolean> => {
     try {
       const response = await fetchWithAuth(`/api/sessions/${encodeURIComponent(sid)}`, {
         method: 'DELETE'

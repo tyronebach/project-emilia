@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, FormEvent } from 'react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../hooks/useChat';
 import { useAudio } from '../hooks/useAudio';
@@ -9,7 +9,7 @@ function InputControls() {
   const { startRecording, stopRecording, isRecording } = useAudio();
   
   const [text, setText] = useState('');
-  const inputRef = useRef(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   
   // Disable input when processing
   const isDisabled = status === 'thinking' || status === 'speaking' || isLoading;
@@ -36,7 +36,7 @@ function InputControls() {
   };
   
   // Handle Enter key
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -63,6 +63,13 @@ function InputControls() {
     }
   };
   
+  // Handle textarea auto-resize
+  const handleInput = (e: FormEvent<HTMLTextAreaElement>) => {
+    const target = e.target as HTMLTextAreaElement;
+    target.style.height = 'auto';
+    target.style.height = Math.min(target.scrollHeight, 128) + 'px';
+  };
+  
   return (
     <div className="bg-bg-secondary rounded-xl p-3 md:p-4 shrink-0">
       <div className="flex items-end gap-2">
@@ -71,8 +78,9 @@ function InputControls() {
           <textarea
             ref={inputRef}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
+            onInput={handleInput}
             placeholder="Type a message..."
             disabled={isDisabled}
             rows={1}
@@ -82,10 +90,6 @@ function InputControls() {
                        focus:outline-none focus:ring-2 focus:ring-accent
                        min-h-[40px] max-h-32"
             style={{ height: 'auto' }}
-            onInput={(e) => {
-              e.target.style.height = 'auto';
-              e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
-            }}
           />
           
           {/* Send button (inside input on desktop) */}

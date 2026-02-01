@@ -3,7 +3,9 @@
  * Controls VRM facial expressions based on mood commands
  */
 
-const MOOD_TO_EXPRESSION = {
+import type { VRM, VRMExpressionManager } from '@pixiv/three-vrm';
+
+const MOOD_TO_EXPRESSION: Record<string, string> = {
   'happy': 'happy',
   'joy': 'happy',
   'sad': 'sad',
@@ -33,25 +35,29 @@ const VRM_EXPRESSIONS = [
 ];
 
 export class ExpressionController {
-  constructor(vrm) {
+  // VRM reference kept for potential future use
+  public readonly vrm: VRM;
+  private expressionManager: VRMExpressionManager | null;
+  
+  private currentMood: string = 'neutral';
+  private currentIntensity: number = 0;
+  private targetMood: string = 'neutral';
+  private targetIntensity: number = 0;
+  
+  private blendSpeed: number = 0.08;
+  private activeExpressions: Map<string, number> = new Map();
+  private availableExpressions: Set<string> = new Set();
+  
+  constructor(vrm: VRM) {
     this.vrm = vrm;
-    this.expressionManager = vrm?.expressionManager;
-    
-    this.currentMood = 'neutral';
-    this.currentIntensity = 0;
-    this.targetMood = 'neutral';
-    this.targetIntensity = 0;
-    
-    this.blendSpeed = 0.08;
-    this.activeExpressions = new Map();
-    this.availableExpressions = new Set();
+    this.expressionManager = vrm?.expressionManager ?? null;
     
     this._detectExpressions();
     
     console.log('[ExpressionController] Available:', Array.from(this.availableExpressions));
   }
   
-  _detectExpressions() {
+  private _detectExpressions(): void {
     if (!this.expressionManager) return;
     
     for (const expr of VRM_EXPRESSIONS) {
@@ -60,12 +66,13 @@ export class ExpressionController {
         if (value !== undefined) {
           this.availableExpressions.add(expr);
         }
-      } catch (e) {}
+      } catch (_e) { /* ignore */ }
     }
     
     // Check expressionMap for VRM 1.0
-    if (this.expressionManager.expressionMap) {
-      const map = this.expressionManager.expressionMap;
+    const em = this.expressionManager as VRMExpressionManager & { expressionMap?: Map<string, unknown> | Record<string, unknown> };
+    if (em.expressionMap) {
+      const map = em.expressionMap;
       if (map instanceof Map) {
         for (const [name] of map) {
           this.availableExpressions.add(name);
@@ -78,7 +85,7 @@ export class ExpressionController {
     }
   }
   
-  _getVrmExpression(mood) {
+  private _getVrmExpression(mood: string): string | null {
     const normalized = mood.toLowerCase();
     
     if (MOOD_TO_EXPRESSION[normalized]) {
@@ -96,7 +103,7 @@ export class ExpressionController {
   /**
    * Set target mood
    */
-  setMood(mood, intensity = 1) {
+  setMood(mood: string, intensity: number = 1): void {
     if (!this.expressionManager) return;
     
     const vrmExpr = this._getVrmExpression(mood);
@@ -116,7 +123,7 @@ export class ExpressionController {
   /**
    * Trigger animation via expression
    */
-  triggerAnimation(name) {
+  triggerAnimation(name: string): void {
     console.log(`[ExpressionController] Animation: ${name}`);
     
     switch (name.toLowerCase()) {
@@ -141,16 +148,18 @@ export class ExpressionController {
     }
   }
   
-  _playBlinkSequence(count, intervalMs) {
+  private _playBlinkSequence(count: number, intervalMs: number): void {
     if (!this.expressionManager) return;
     
     let i = 0;
-    const doBlink = () => {
+    const em = this.expressionManager;
+    
+    const doBlink = (): void => {
       if (i >= count) return;
       
-      this.expressionManager.setValue('blink', 1);
+      em.setValue('blink', 1);
       setTimeout(() => {
-        this.expressionManager.setValue('blink', 0);
+        em.setValue('blink', 0);
         i++;
         if (i < count) setTimeout(doBlink, intervalMs);
       }, 80);
@@ -161,10 +170,10 @@ export class ExpressionController {
   /**
    * Update - call each frame
    */
-  update(deltaTime) {
+  update(_deltaTime: number): void {
     if (!this.expressionManager) return;
     
-    const blendAmount = Math.min(1, this.blendSpeed * (deltaTime * 60));
+    const blendAmount = Math.min(1, this.blendSpeed * (_deltaTime * 60));
     
     if (this.currentMood !== this.targetMood || 
         Math.abs(this.currentIntensity - this.targetIntensity) > 0.01) {
@@ -197,14 +206,14 @@ export class ExpressionController {
     }
   }
   
-  _setExpression(name, value) {
+  private _setExpression(name: string, value: number): void {
     if (!this.expressionManager) return;
     try {
       this.expressionManager.setValue(name, value);
-    } catch (e) {}
+    } catch (_e) { /* ignore */ }
   }
   
-  reset() {
+  reset(): void {
     this.targetMood = 'neutral';
     this.targetIntensity = 0;
     

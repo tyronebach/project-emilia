@@ -3,3 +3,4 @@ export { LipSyncEngine } from './LipSyncEngine';
 export { ExpressionController } from './ExpressionController';
 export { IdleAnimations } from './IdleAnimations';
 export { AnimationTrigger } from './AnimationTrigger';
+export type * from './types';

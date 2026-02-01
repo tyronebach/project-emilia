@@ -2,6 +2,12 @@ import { useState, useCallback, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { streamChat } from '../utils/api';
 
+interface StreamResponse {
+  response?: string;
+  processing_ms?: number;
+  model?: string;
+}
+
 export function useChat() {
   const { 
     sessionId, 
@@ -14,12 +20,12 @@ export function useChat() {
   } = useApp();
   
   const [isLoading, setIsLoading] = useState(false);
-  const abortControllerRef = useRef(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   
   /**
    * Speak text using TTS
    */
-  const speakText = useCallback(async (text) => {
+  const speakText = useCallback(async (text: string): Promise<void> => {
     if (!text || !text.trim()) return;
     
     try {
@@ -64,7 +70,7 @@ export function useChat() {
       }
       
       // Play and wait
-      await new Promise((resolve) => {
+      await new Promise<void>((resolve) => {
         audio.onended = () => {
           if (renderer?.lipSyncEngine) {
             renderer.lipSyncEngine.stop();
@@ -81,7 +87,7 @@ export function useChat() {
           resolve();
         };
         
-        audio.play().catch(resolve);
+        audio.play().catch(() => resolve());
       });
     } catch (error) {
       console.error('TTS error:', error);
@@ -93,7 +99,7 @@ export function useChat() {
   /**
    * Send message and handle streaming response
    */
-  const sendMessage = useCallback(async (message) => {
+  const sendMessage = useCallback(async (message: string): Promise<void> => {
     if (isLoading) return;
     
     setIsLoading(true);
@@ -106,7 +112,7 @@ export function useChat() {
       // Create placeholder message for streaming
       const messageId = addMessage('assistant', '', { streaming: true });
       let fullContent = '';
-      let finalResponse = null;
+      let finalResponse: StreamResponse = {};
       
       await streamChat(
         message,

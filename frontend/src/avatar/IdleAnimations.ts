@@ -3,24 +3,38 @@
  * Handles blinking, breathing, and subtle micro-movements
  */
 
+import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm';
+import type { Bone, Rotation3D, Position1D } from './types';
+
 export class IdleAnimations {
-  constructor(vrm) {
+  private vrm: VRM;
+  private isPaused: boolean = false;
+  
+  // Blink state
+  private blinkTimer: number = 0;
+  private blinkInterval: number;
+  private isBlinking: boolean = false;
+  private blinkProgress: number = 0;
+  private blinkDuration: number = 150;
+  
+  // Breathing state
+  private breathTimer: number = 0;
+  private breathCycle: number = 4000;
+  
+  // Micro-movement state
+  private microMovementTimer: number = 0;
+  
+  // Cached bones
+  private headBone: Bone;
+  private spineBone: Bone;
+  
+  // Original positions
+  private originalHeadRotation: Rotation3D | null;
+  private originalSpinePosition: Position1D | null;
+  
+  constructor(vrm: VRM) {
     this.vrm = vrm;
-    this.isPaused = false;
-    
-    // Blink state
-    this.blinkTimer = 0;
     this.blinkInterval = 3000 + Math.random() * 2000;
-    this.isBlinking = false;
-    this.blinkProgress = 0;
-    this.blinkDuration = 150;
-    
-    // Breathing state
-    this.breathTimer = 0;
-    this.breathCycle = 4000;
-    
-    // Micro-movement state
-    this.microMovementTimer = 0;
     
     // Cache bones
     this.headBone = this.getBone('head');
@@ -43,17 +57,17 @@ export class IdleAnimations {
     });
   }
   
-  getBone(name) {
+  private getBone(name: VRMHumanBoneName): Bone {
     try {
       if (this.vrm?.humanoid) {
         return this.vrm.humanoid.getNormalizedBoneNode(name) ||
                this.vrm.humanoid.getRawBoneNode(name);
       }
-    } catch (e) {}
+    } catch (_e) { /* ignore */ }
     return null;
   }
   
-  update(deltaTime) {
+  update(deltaTime: number): void {
     if (this.isPaused) return;
     
     const deltaMs = deltaTime * 1000;
@@ -63,7 +77,7 @@ export class IdleAnimations {
     this.updateMicroMovements(deltaMs);
   }
   
-  updateBlink(deltaMs) {
+  private updateBlink(deltaMs: number): void {
     if (this.isBlinking) {
       this.blinkProgress += deltaMs;
       const t = this.blinkProgress / this.blinkDuration;
@@ -86,28 +100,28 @@ export class IdleAnimations {
     }
   }
   
-  triggerBlink() {
+  triggerBlink(): void {
     this.isBlinking = true;
     this.blinkProgress = 0;
     this.blinkTimer = 0;
   }
   
-  setBlinkValue(value) {
+  private setBlinkValue(value: number): void {
     if (!this.vrm?.expressionManager) return;
     
     const em = this.vrm.expressionManager;
     
     try {
-      if (em.getExpression?.('blink') || em.getValue?.('blink') !== undefined) {
+      if (em.getValue?.('blink') !== undefined) {
         em.setValue('blink', value);
       } else {
         em.setValue('blinkLeft', value);
         em.setValue('blinkRight', value);
       }
-    } catch (e) {}
+    } catch (_e) { /* ignore */ }
   }
   
-  updateBreathing(deltaMs) {
+  private updateBreathing(deltaMs: number): void {
     this.breathTimer += deltaMs;
     
     const breathPhase = (this.breathTimer / this.breathCycle) * Math.PI * 2;
@@ -122,7 +136,7 @@ export class IdleAnimations {
     }
   }
   
-  updateMicroMovements(deltaMs) {
+  private updateMicroMovements(deltaMs: number): void {
     this.microMovementTimer += deltaMs;
     
     if (!this.headBone || !this.originalHeadRotation) return;
@@ -140,15 +154,15 @@ export class IdleAnimations {
     }
   }
   
-  pause() {
+  pause(): void {
     this.isPaused = true;
   }
   
-  resume() {
+  resume(): void {
     this.isPaused = false;
   }
   
-  resetHead() {
+  resetHead(): void {
     if (this.headBone && this.originalHeadRotation) {
       this.headBone.rotation.x = this.originalHeadRotation.x;
       this.headBone.rotation.y = this.originalHeadRotation.y;

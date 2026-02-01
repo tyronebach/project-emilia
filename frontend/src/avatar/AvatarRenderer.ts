@@ -5,48 +5,69 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import { VRMLoaderPlugin, VRMUtils, VRM } from '@pixiv/three-vrm';
 import { LipSyncEngine } from './LipSyncEngine';
 import { ExpressionController } from './ExpressionController';
 import { IdleAnimations } from './IdleAnimations';
 import { AnimationTrigger } from './AnimationTrigger';
+import type { AvatarRendererOptions } from './types';
 
 const DEFAULT_VRM_URL = '/emilia.vrm';
 
+interface ResolvedOptions {
+  vrmUrl: string;
+  backgroundColor: number;
+  cameraDistance: number;
+  cameraHeight: number;
+  enableShadows: boolean;
+  onLoad: ((vrm: VRM) => void) | null;
+  onError: ((error: Error) => void) | null;
+  onProgress: ((percent: number) => void) | null;
+}
+
 export class AvatarRenderer {
-  constructor(container, options = {}) {
+  private container: HTMLElement;
+  private scene: THREE.Scene | null = null;
+  private camera: THREE.PerspectiveCamera | null = null;
+  private renderer: THREE.WebGLRenderer | null = null;
+  private vrm: VRM | null = null;
+  private clock: THREE.Clock;
+  private isInitialized: boolean = false;
+  private animationFrameId: number | null = null;
+  
+  // Animation systems
+  public lipSyncEngine: LipSyncEngine | null = null;
+  private idleAnimations: IdleAnimations | null = null;
+  public animationTrigger: AnimationTrigger | null = null;
+  public expressionController: ExpressionController | null = null;
+  
+  // Options
+  private options: ResolvedOptions;
+  
+  // Resize handling
+  private resizeHandler: (() => void) | null = null;
+  private resizeObserver: ResizeObserver | null = null;
+  
+  constructor(container: HTMLElement, options: AvatarRendererOptions = {}) {
     this.container = container;
-    this.scene = null;
-    this.camera = null;
-    this.renderer = null;
-    this.vrm = null;
     this.clock = new THREE.Clock();
-    this.isInitialized = false;
-    this.animationFrameId = null;
     
-    // Animation systems
-    this.lipSyncEngine = null;
-    this.idleAnimations = null;
-    this.animationTrigger = null;
-    this.expressionController = null;
-    
-    // Options
     this.options = {
       vrmUrl: options.vrmUrl || DEFAULT_VRM_URL,
-      backgroundColor: options.backgroundColor || 0x1e293b,
-      cameraDistance: options.cameraDistance || 0.6,
-      cameraHeight: options.cameraHeight || 1.4,
+      backgroundColor: options.backgroundColor ?? 0x1e293b,
+      cameraDistance: options.cameraDistance ?? 0.6,
+      cameraHeight: options.cameraHeight ?? 1.4,
       enableShadows: options.enableShadows !== false,
-      onLoad: options.onLoad || null,
-      onError: options.onError || null,
-      onProgress: options.onProgress || null
+      onLoad: options.onLoad ?? null,
+      onError: options.onError ?? null,
+      onProgress: options.onProgress ?? null
     };
   }
   
   /**
    * Initialize renderer and scene
    */
-  init() {
+  init(): boolean {
     if (!this.container) {
       console.error('Avatar container not found');
       return false;
@@ -90,7 +111,9 @@ export class AvatarRenderer {
   /**
    * Setup scene lighting
    */
-  setupLighting() {
+  private setupLighting(): void {
+    if (!this.scene) return;
+    
     // Ambient
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     this.scene.add(ambientLight);
@@ -119,8 +142,8 @@ export class AvatarRenderer {
   /**
    * Setup resize handler
    */
-  setupResizeHandler() {
-    this.resizeHandler = () => {
+  private setupResizeHandler(): void {
+    this.resizeHandler = (): void => {
       if (!this.container || !this.camera || !this.renderer) return;
       
       const width = this.container.clientWidth;
@@ -144,7 +167,7 @@ export class AvatarRenderer {
   /**
    * Load VRM model
    */
-  async loadVRM(url = null) {
+  async loadVRM(url: string | null = null): Promise<VRM> {
     const vrmUrl = url || this.options.vrmUrl;
     console.log(`Loading VRM from: ${vrmUrl}`);
     
@@ -155,7 +178,7 @@ export class AvatarRenderer {
       loader.load(
         vrmUrl,
         (gltf) => {
-          const vrm = gltf.userData.vrm;
+          const vrm = gltf.userData.vrm as VRM | undefined;
           
           if (!vrm) {
             const error = new Error('No VRM data found');
@@ -165,19 +188,19 @@ export class AvatarRenderer {
           }
           
           // Remove previous VRM
-          if (this.vrm) {
+          if (this.vrm && this.scene) {
             VRMUtils.deepDispose(this.vrm.scene);
             this.scene.remove(this.vrm.scene);
           }
           
           this.vrm = vrm;
           VRMUtils.rotateVRM0(vrm);
-          this.scene.add(vrm.scene);
+          this.scene?.add(vrm.scene);
           
           // Shadows
           if (this.options.enableShadows) {
             vrm.scene.traverse((obj) => {
-              if (obj.isMesh) {
+              if ((obj as THREE.Mesh).isMesh) {
                 obj.castShadow = true;
                 obj.receiveShadow = true;
               }
@@ -190,7 +213,8 @@ export class AvatarRenderer {
           this.expressionController = new ExpressionController(vrm);
           this.lipSyncEngine = new LipSyncEngine(vrm);
           
-          console.log('VRM loaded:', vrm.meta?.name || 'Unknown');
+          const metaName = (vrm.meta as { name?: string })?.name;
+          console.log('VRM loaded:', metaName || 'Unknown');
           
           if (this.options.onLoad) this.options.onLoad(vrm);
           resolve(vrm);
@@ -203,8 +227,9 @@ export class AvatarRenderer {
         },
         (error) => {
           console.error('VRM load failed:', error);
-          if (this.options.onError) this.options.onError(error);
-          reject(error);
+          const err = error instanceof Error ? error : new Error(String(error));
+          if (this.options.onError) this.options.onError(err);
+          reject(err);
         }
       );
     });
@@ -213,10 +238,10 @@ export class AvatarRenderer {
   /**
    * Start render loop
    */
-  startRenderLoop() {
+  startRenderLoop(): void {
     if (!this.isInitialized) return;
     
-    const animate = () => {
+    const animate = (): void => {
       this.animationFrameId = requestAnimationFrame(animate);
       
       const deltaTime = this.clock.getDelta();
@@ -228,7 +253,9 @@ export class AvatarRenderer {
       if (this.vrm) this.vrm.update(deltaTime);
       
       // Render
-      this.renderer.render(this.scene, this.camera);
+      if (this.renderer && this.scene && this.camera) {
+        this.renderer.render(this.scene, this.camera);
+      }
     };
     
     animate();
@@ -238,7 +265,7 @@ export class AvatarRenderer {
   /**
    * Stop render loop
    */
-  stopRenderLoop() {
+  stopRenderLoop(): void {
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
@@ -248,7 +275,7 @@ export class AvatarRenderer {
   /**
    * Cleanup
    */
-  dispose() {
+  dispose(): void {
     this.stopRenderLoop();
     
     if (this.resizeHandler) {
