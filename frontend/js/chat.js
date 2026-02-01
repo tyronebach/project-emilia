@@ -21,13 +21,44 @@ import { stripAvatarTags } from './utils.js';
 
 /**
  * Handle avatar commands from response
+ * @param {Array} moods - Array of {mood, intensity} objects
+ * @param {Array} animations - Array of animation names
  */
 function handleAvatarCommands(moods, animations) {
     if (moods && moods.length > 0) {
         log('Avatar moods', moods);
+        // Apply the first/primary mood to the avatar
+        if (window.avatarController && moods[0]) {
+            window.avatarController.setMood(moods[0].mood, moods[0].intensity);
+        }
     }
     if (animations && animations.length > 0) {
         log('Avatar animations', animations);
+        // Trigger the first animation
+        if (window.avatarController && animations[0]) {
+            window.avatarController.triggerAnimation(animations[0]);
+        }
+    }
+}
+
+/**
+ * Handle avatar SSE event (sent early in stream)
+ * @param {Object} avatarData - {mood, intensity, animation}
+ */
+function handleAvatarEvent(avatarData) {
+    log('Avatar SSE event', avatarData);
+    
+    if (!window.avatarController) {
+        log('Avatar controller not ready');
+        return;
+    }
+    
+    if (avatarData.mood) {
+        window.avatarController.setMood(avatarData.mood, avatarData.intensity || 1.0);
+    }
+    
+    if (avatarData.animation) {
+        window.avatarController.triggerAnimation(avatarData.animation);
     }
 }
 
@@ -144,6 +175,7 @@ async function getAgentResponseStreaming(message, startTime) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let currentEventType = null;  // Track named events (e.g., 'avatar')
 
     while (true) {
         const { done, value } = await reader.read();
@@ -154,12 +186,28 @@ async function getAgentResponseStreaming(message, startTime) {
         buffer = lines.pop();
 
         for (const line of lines) {
+            // Parse event type lines (e.g., "event: avatar")
+            if (line.startsWith('event: ')) {
+                currentEventType = line.slice(7).trim();
+                continue;
+            }
+            
             if (line.startsWith('data: ')) {
                 const dataStr = line.slice(6).trim();
-                if (!dataStr || dataStr === '[DONE]') continue;
+                if (!dataStr || dataStr === '[DONE]') {
+                    currentEventType = null;
+                    continue;
+                }
 
                 try {
                     const data = JSON.parse(dataStr);
+
+                    // Handle named events
+                    if (currentEventType === 'avatar') {
+                        handleAvatarEvent(data);
+                        currentEventType = null;
+                        continue;
+                    }
 
                     if (data.error) {
                         throw new Error(data.error);
@@ -193,6 +241,9 @@ async function getAgentResponseStreaming(message, startTime) {
                         log('SSE parse error', { error: e.message, data: dataStr });
                     }
                 }
+                
+                // Reset event type after processing data
+                currentEventType = null;
             }
         }
     }

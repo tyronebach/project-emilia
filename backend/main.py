@@ -7,6 +7,10 @@ Integrates with Clawdbot Brain for AI responses
 import os
 import time
 import httpx
+import base64
+import json
+import asyncio
+import websockets
 from typing import Optional, List, Any, Dict
 from pydantic import BaseModel
 from pathlib import Path
@@ -300,7 +304,13 @@ def _extract_text_from_delta(delta: dict) -> str:
 
 
 async def _stream_chat_sse(request: ChatRequest, start_time: float):
-    """Generator for SSE streaming chat responses."""
+    """Generator for SSE streaming chat responses.
+    
+    Emits events:
+    - event: avatar - Avatar commands (mood/animation) extracted early from stream
+    - data: {"content": "..."} - Streaming text chunks (tags stripped)
+    - data: {"done": true, ...} - Final event with metadata
+    """
     import json as json_module
 
     try:
@@ -334,6 +344,7 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float):
                 full_content = ""
                 model_name = "unknown"
                 usage_data = None
+                avatar_event_sent = False
                 
                 async for line in response.aiter_lines():
                     if not line:
@@ -381,7 +392,26 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float):
                                 content = _extract_text_from_delta(delta)
                                 if content:
                                     full_content += content
-                                    yield f"data: {json_module.dumps({'content': content})}\n\n"
+                                    
+                                    # Check for avatar commands early and send them as soon as detected
+                                    # This allows the frontend to start the expression change immediately
+                                    if not avatar_event_sent:
+                                        _, early_moods, early_animations = extract_avatar_commands(full_content)
+                                        if early_moods or early_animations:
+                                            avatar_data = {}
+                                            if early_moods:
+                                                # Send the first/primary mood
+                                                avatar_data["mood"] = early_moods[0]["mood"]
+                                                avatar_data["intensity"] = early_moods[0]["intensity"]
+                                            if early_animations:
+                                                avatar_data["animation"] = early_animations[0]
+                                            yield f"event: avatar\ndata: {json_module.dumps(avatar_data)}\n\n"
+                                            avatar_event_sent = True
+                                    
+                                    # Strip avatar tags from content before sending to frontend
+                                    clean_chunk, _, _ = extract_avatar_commands(content)
+                                    if clean_chunk:
+                                        yield f"data: {json_module.dumps({'content': clean_chunk})}\n\n"
                         except json_module.JSONDecodeError:
                             continue
     except httpx.TimeoutException:
@@ -659,20 +689,140 @@ async def get_voices(token: str = Depends(verify_token)):
     return {"voices": voices, "default": "rachel"}
 
 
+async def elevenlabs_websocket_tts(text: str, voice_id: str) -> dict:
+    """
+    Generate TTS via ElevenLabs WebSocket API with character-level timestamps.
+    
+    Returns: {
+        "audio": bytes,
+        "alignment": {
+            "chars": ["H", "e", "l", "l", "o"],
+            "charStartTimesMs": [0, 50, 100, 150, 200],
+            "charDurationsMs": [50, 50, 50, 50, 100]
+        }
+    }
+    """
+    ws_url = f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input?model_id={ELEVENLABS_MODEL}"
+    
+    audio_chunks = []
+    alignment_data = None
+    
+    try:
+        async with websockets.connect(
+            ws_url,
+            additional_headers={"xi-api-key": ELEVENLABS_API_KEY},
+            close_timeout=5
+        ) as ws:
+            # Send initial configuration with alignment enabled
+            init_message = {
+                "text": " ",  # Initial space to start the stream
+                "voice_settings": {
+                    "stability": 0.5,
+                    "similarity_boost": 0.75
+                },
+                "generation_config": {
+                    "chunk_length_schedule": [120, 160, 250, 290]
+                },
+                "xi_api_key": ELEVENLABS_API_KEY
+            }
+            await ws.send(json.dumps(init_message))
+            
+            # Send the actual text with alignment
+            text_message = {
+                "text": text,
+                "try_trigger_generation": True,
+                "flush": True
+            }
+            await ws.send(json.dumps(text_message))
+            
+            # Send empty string to signal end of input
+            await ws.send(json.dumps({"text": ""}))
+            
+            # Receive audio chunks and alignment data
+            async for message in ws:
+                try:
+                    data = json.loads(message)
+                    
+                    # Audio chunk (base64 encoded)
+                    if "audio" in data and data["audio"]:
+                        audio_bytes = base64.b64decode(data["audio"])
+                        if audio_bytes:  # Skip empty chunks
+                            audio_chunks.append(audio_bytes)
+                    
+                    # Alignment/timing data
+                    if "alignment" in data and data["alignment"]:
+                        alignment_data = data["alignment"]
+                    
+                    # Normalized alignment format (some API versions use this)
+                    if "normalizedAlignment" in data and data["normalizedAlignment"]:
+                        alignment_data = data["normalizedAlignment"]
+                    
+                    # Check if stream is done
+                    if data.get("isFinal"):
+                        break
+                        
+                except json.JSONDecodeError:
+                    continue
+        
+        # Combine all audio chunks
+        full_audio = b"".join(audio_chunks)
+        
+        return {
+            "audio": full_audio,
+            "alignment": alignment_data
+        }
+        
+    except Exception as e:
+        print(f"WebSocket TTS error: {e}")
+        raise
+
+
+async def elevenlabs_rest_tts(text: str, voice_id: str) -> bytes:
+    """
+    Fallback: Generate TTS via ElevenLabs REST API (no timestamps).
+    """
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+            headers={
+                "xi-api-key": ELEVENLABS_API_KEY,
+                "Content-Type": "application/json"
+            },
+            json={
+                "text": text,
+                "model_id": ELEVENLABS_MODEL,
+                "voice_settings": {
+                    "stability": 0.5,
+                    "similarity_boost": 0.75
+                }
+            }
+        )
+        
+        if response.status_code != 200:
+            raise Exception(f"ElevenLabs API error: {response.text}")
+        
+        return response.content
+
+
 @app.post("/api/speak")
 async def speak(
     request: SpeakRequest,
     token: str = Depends(verify_token)
 ):
     """
-    Convert text to speech via ElevenLabs
+    Convert text to speech via ElevenLabs with optional lip sync data.
     
     Body: {
         "text": "Hello, how are you?",
         "voice_id": "rachel" (optional, key from /api/voices)
     }
     
-    Returns: audio/mpeg (MP3 stream)
+    Returns: {
+        "audio": "base64-encoded-mp3",
+        "alignment": {...} or null,
+        "has_lip_sync": true/false,
+        "processing_ms": 123
+    }
     """
     if not ELEVENLABS_API_KEY:
         raise HTTPException(status_code=503, detail="ElevenLabs API key not configured")
@@ -687,50 +837,53 @@ async def speak(
     
     start_time = time.time()
     
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-                headers={
-                    "xi-api-key": ELEVENLABS_API_KEY,
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "text": request.text,
-                    "model_id": ELEVENLABS_MODEL,
-                    "voice_settings": {
-                        "stability": 0.5,
-                        "similarity_boost": 0.75
-                    }
-                }
-            )
-            
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"ElevenLabs API error: {response.text}"
-                )
-            
-            processing_ms = int((time.time() - start_time) * 1000)
-            
-            # Log timing for debugging
-            print(f"TTS generated in {processing_ms}ms for {len(request.text)} chars")
-            
-            return Response(
-                content=response.content,
-                media_type="audio/mpeg",
-                headers={
-                    "X-Processing-Time-Ms": str(processing_ms),
-                    "X-Text-Length": str(len(request.text))
-                }
-            )
+    audio_bytes = None
+    alignment_data = None
+    has_lip_sync = False
     
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="ElevenLabs service timeout")
-    except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="ElevenLabs service unavailable")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"TTS failed: {str(e)}")
+    # Try WebSocket API first (with alignment)
+    try:
+        result = await elevenlabs_websocket_tts(request.text, voice_id)
+        audio_bytes = result["audio"]
+        alignment_data = result.get("alignment")
+        has_lip_sync = alignment_data is not None
+        print(f"WebSocket TTS: got {len(audio_bytes)} bytes, alignment: {has_lip_sync}")
+    except Exception as ws_error:
+        print(f"WebSocket TTS failed, falling back to REST: {ws_error}")
+        
+        # Fallback to REST API (no alignment)
+        try:
+            audio_bytes = await elevenlabs_rest_tts(request.text, voice_id)
+            has_lip_sync = False
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail="ElevenLabs service timeout")
+        except httpx.ConnectError:
+            raise HTTPException(status_code=503, detail="ElevenLabs service unavailable")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"TTS failed: {str(e)}")
+    
+    processing_ms = int((time.time() - start_time) * 1000)
+    
+    # Log timing for debugging
+    print(f"TTS generated in {processing_ms}ms for {len(request.text)} chars, lip_sync={has_lip_sync}")
+    
+    # Encode audio as base64 for JSON response
+    audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
+    
+    return JSONResponse(
+        content={
+            "audio": audio_b64,
+            "alignment": alignment_data,
+            "has_lip_sync": has_lip_sync,
+            "processing_ms": processing_ms,
+            "text_length": len(request.text)
+        },
+        headers={
+            "X-Processing-Time-Ms": str(processing_ms),
+            "X-Text-Length": str(len(request.text)),
+            "X-Has-Lip-Sync": str(has_lip_sync).lower()
+        }
+    )
 
 
 @app.get("/api/memory")
