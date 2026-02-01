@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, PlainTextResponse, StreamingResponse
 
 
-from parse_chat import parse_chat_completion
+from parse_chat import parse_chat_completion, extract_avatar_commands
 
 
 # Configuration
@@ -277,6 +277,28 @@ async def transcribe(
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 
+def _extract_text_from_delta(delta: dict) -> str:
+    """Extract text content from a streaming delta, handling both string and array formats."""
+    content = delta.get("content")
+    
+    # String content (simple case)
+    if isinstance(content, str):
+        return content
+    
+    # Array content (extended thinking / content blocks)
+    if isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            # Only extract text type, skip thinking/reasoning
+            if part.get("type") == "text" and isinstance(part.get("text"), str):
+                text_parts.append(part["text"])
+        return "".join(text_parts)
+    
+    return ""
+
+
 async def _stream_chat_sse(request: ChatRequest, start_time: float):
     """Generator for SSE streaming chat responses."""
     import json as json_module
@@ -310,28 +332,53 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float):
                     return
 
                 full_content = ""
+                model_name = "unknown"
+                usage_data = None
+                
                 async for line in response.aiter_lines():
                     if not line:
                         continue
                     if line.startswith("data: "):
                         data_str = line[6:]
                         if data_str.strip() == "[DONE]":
+                            # Parse avatar commands from full content
+                            clean_content, moods, animations = extract_avatar_commands(full_content)
+                            
                             # Send final event with metadata
                             processing_ms = int((time.time() - start_time) * 1000)
                             final_event = {
                                 "done": True,
-                                "response": full_content,
+                                "response": clean_content,
                                 "agent_id": CLAWDBOT_AGENT_ID,
-                                "processing_ms": processing_ms
+                                "processing_ms": processing_ms,
+                                "model": model_name,
                             }
+                            
+                            # Include avatar commands if present
+                            if moods:
+                                final_event["moods"] = moods
+                            if animations:
+                                final_event["animations"] = animations
+                            if usage_data:
+                                final_event["usage"] = usage_data
+                                
                             yield f"data: {json_module.dumps(final_event)}\n\n"
                             break
                         try:
                             chunk = json_module.loads(data_str)
+                            
+                            # Extract model name from first chunk
+                            if chunk.get("model"):
+                                model_name = chunk.get("model")
+                            
+                            # Extract usage if present (some providers send at end)
+                            if chunk.get("usage"):
+                                usage_data = chunk.get("usage")
+                            
                             choices = chunk.get("choices", [])
                             if choices:
                                 delta = choices[0].get("delta", {})
-                                content = delta.get("content", "")
+                                content = _extract_text_from_delta(delta)
                                 if content:
                                     full_content += content
                                     yield f"data: {json_module.dumps({'content': content})}\n\n"
@@ -421,6 +468,8 @@ async def chat(
         response_text = parsed["response_text"]
         reasoning = parsed["reasoning"]
         thinking = parsed["thinking"]
+        moods = parsed.get("moods", [])
+        animations = parsed.get("animations", [])
 
         processing_ms = int((time.time() - start_time) * 1000)
 
@@ -438,6 +487,12 @@ async def chat(
             response_data["reasoning"] = reasoning
         if thinking:
             response_data["thinking"] = thinking
+            
+        # Include avatar commands if present
+        if moods:
+            response_data["moods"] = moods
+        if animations:
+            response_data["animations"] = animations
 
         # Include usage stats if present
         if "usage" in result:

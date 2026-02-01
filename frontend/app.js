@@ -886,6 +886,7 @@ async function getAgentResponseStreaming(message, startTime) {
 
     let fullContent = '';
     let processingMs = 0;
+    let finalData = null;
 
     // Read the SSE stream
     const reader = response.body.getReader();
@@ -914,16 +915,29 @@ async function getAgentResponseStreaming(message, startTime) {
 
                     if (data.content) {
                         fullContent += data.content;
-                        bubbleEl.textContent = fullContent;
+                        // Strip avatar tags for display during streaming
+                        bubbleEl.textContent = stripAvatarTags(fullContent);
                         // Auto-scroll
                         conversationHistoryEl.scrollTop = conversationHistoryEl.scrollHeight;
                     }
 
                     if (data.done) {
+                        finalData = data;
                         processingMs = data.processing_ms || (Date.now() - startTime);
+                        
+                        // Use clean response from server if available
+                        if (data.response) {
+                            bubbleEl.textContent = data.response;
+                            fullContent = data.response;
+                        }
+                        
+                        // Handle avatar commands
+                        handleAvatarCommands(data.moods, data.animations);
+                        
                         log('Streaming complete', {
                             response: data.response,
-                            processing_ms: processingMs
+                            processing_ms: processingMs,
+                            model: data.model
                         });
                     }
                 } catch (e) {
@@ -935,8 +949,11 @@ async function getAgentResponseStreaming(message, startTime) {
         }
     }
 
+    // Use clean content (tags stripped)
+    const cleanContent = finalData?.response || stripAvatarTags(fullContent);
+
     // Add replay button after streaming completes (if we have content)
-    if (fullContent && !fullContent.startsWith('⚠️')) {
+    if (cleanContent && !cleanContent.startsWith('⚠️')) {
         const replayBtn = document.createElement('button');
         replayBtn.className = 'replay-button';
         replayBtn.title = 'Replay voice';
@@ -945,14 +962,14 @@ async function getAgentResponseStreaming(message, startTime) {
                 <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>
         `;
-        replayBtn.addEventListener('click', () => replayMessage(replayBtn, fullContent));
+        replayBtn.addEventListener('click', () => replayMessage(replayBtn, cleanContent));
         bubbleContainer.appendChild(replayBtn);
     }
 
     // Add to conversation history
     conversationHistory.push({
         role: 'assistant',
-        content: fullContent,
+        content: cleanContent,
         timestamp: timestamp,
         meta: { processing_ms: processingMs }
     });
@@ -966,14 +983,14 @@ async function getAgentResponseStreaming(message, startTime) {
     }
 
     log('Agent response received (streaming)', {
-        response: fullContent.substring(0, 100) + '...',
+        response: cleanContent.substring(0, 100) + '...',
         processing_ms: processingMs
     });
 
     // Generate and play TTS audio (optional)
-    if (fullContent && fullContent.trim()) {
+    if (cleanContent && cleanContent.trim()) {
         if (ttsEnabled) {
-            await speakText(fullContent);
+            await speakText(cleanContent);
         } else {
             log('TTS disabled - skipping /api/speak');
             setState('ready');
@@ -1579,6 +1596,39 @@ function stopMemoryAutoRefresh() {
     }
 }
 
+// Avatar command patterns for stripping from display
+const MOOD_PATTERN = /\[MOOD:[^\]]+\]/g;
+const ANIM_PATTERN = /\[ANIM:[^\]]+\]/g;
+
+/**
+ * Strip avatar control tags from text for display
+ */
+function stripAvatarTags(text) {
+    if (!text) return text;
+    let clean = text.replace(MOOD_PATTERN, '');
+    clean = clean.replace(ANIM_PATTERN, '');
+    return clean.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Handle avatar commands from response
+ * @param {Array} moods - Array of {mood: string, intensity: number}
+ * @param {Array} animations - Array of animation names
+ */
+function handleAvatarCommands(moods, animations) {
+    // Log for now - avatar integration can be added later
+    if (moods && moods.length > 0) {
+        log('Avatar moods', moods);
+        // TODO: Send to avatar controller
+        // e.g., avatarController.setMood(moods[0].mood, moods[0].intensity);
+    }
+    if (animations && animations.length > 0) {
+        log('Avatar animations', animations);
+        // TODO: Send to avatar controller
+        // e.g., avatarController.playAnimation(animations[0]);
+    }
+}
+
 // Stats functions
 function updateStats(responseData) {
     dashboardStats.messageCount++;
@@ -1592,7 +1642,7 @@ function updateStats(responseData) {
         dashboardStats.totalTokens += responseData.usage.total_tokens;
     }
     
-    if (responseData.model) {
+    if (responseData.model && responseData.model !== 'unknown') {
         dashboardStats.currentModel = responseData.model;
     }
     
@@ -1850,6 +1900,7 @@ async function getAgentResponseStreamingDashboard(message, startTime) {
 
     let fullContent = '';
     let processingMs = 0;
+    let finalData = null;
 
     // Read the SSE stream
     const reader = response.body.getReader();
@@ -1878,13 +1929,24 @@ async function getAgentResponseStreamingDashboard(message, startTime) {
 
                     if (data.content) {
                         fullContent += data.content;
-                        bubbleEl.textContent = fullContent;
+                        // Strip avatar tags for display during streaming
+                        bubbleEl.textContent = stripAvatarTags(fullContent);
                         conversationHistoryEl.scrollTop = conversationHistoryEl.scrollHeight;
                     }
 
                     if (data.done) {
+                        finalData = data;
                         processingMs = data.processing_ms || (Date.now() - startTime);
                         addStateEntry('LLM response received');
+                        
+                        // Use clean response from server if available
+                        if (data.response) {
+                            bubbleEl.textContent = data.response;
+                            fullContent = data.response;
+                        }
+                        
+                        // Handle avatar commands
+                        handleAvatarCommands(data.moods, data.animations);
                     }
                 } catch (e) {
                     if (e.message !== 'Unexpected end of JSON input') {
@@ -1895,8 +1957,11 @@ async function getAgentResponseStreamingDashboard(message, startTime) {
         }
     }
 
+    // Use clean content (tags stripped)
+    const cleanContent = finalData?.response || stripAvatarTags(fullContent);
+
     // Add replay button after streaming completes (if we have content)
-    if (fullContent && !fullContent.startsWith('⚠️')) {
+    if (cleanContent && !cleanContent.startsWith('⚠️')) {
         const replayBtn = document.createElement('button');
         replayBtn.className = 'replay-button';
         replayBtn.title = 'Replay voice';
@@ -1905,38 +1970,47 @@ async function getAgentResponseStreamingDashboard(message, startTime) {
                 <polygon points="5 3 19 12 5 21 5 3"></polygon>
             </svg>
         `;
-        replayBtn.addEventListener('click', () => replayMessage(replayBtn, fullContent));
+        replayBtn.addEventListener('click', () => replayMessage(replayBtn, cleanContent));
         bubbleContainer.appendChild(replayBtn);
     }
+
+    // Build metadata from final data
+    const assistantMeta = {
+        processing_ms: processingMs,
+        model: finalData?.model,
+        usage: finalData?.usage
+    };
 
     // Add to conversation history
     conversationHistory.push({
         role: 'assistant',
-        content: fullContent,
+        content: cleanContent,
         timestamp: timestamp,
-        meta: { processing_ms: processingMs }
+        meta: assistantMeta
     });
 
-    // Add metadata
+    // Add metadata display
     if (processingMs > 0) {
         const metaEl = document.createElement('div');
         metaEl.className = 'message-meta';
         metaEl.textContent = `🔄 ${processingMs}ms`;
         messageEl.appendChild(metaEl);
-
-        // Update stats
-        updateStats({ processing_ms: processingMs });
     }
+    
+    // Update stats with model and usage from final event
+    updateStats(assistantMeta);
 
     log('Agent response received (streaming)', {
-        response: fullContent.substring(0, 100) + '...',
-        processing_ms: processingMs
+        response: cleanContent.substring(0, 100) + '...',
+        processing_ms: processingMs,
+        model: finalData?.model,
+        usage: finalData?.usage
     });
 
     // Generate and play TTS audio
-    if (fullContent && fullContent.trim()) {
+    if (cleanContent && cleanContent.trim()) {
         if (ttsEnabled) {
-            await speakText(fullContent);
+            await speakText(cleanContent);
         } else {
             log('TTS disabled - skipping /api/speak');
             setState('ready');
