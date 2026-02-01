@@ -1,15 +1,25 @@
-import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, FormEvent } from 'react';
+import { useRef, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Send, Mic } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../hooks/useChat';
 import { useAudio } from '../hooks/useAudio';
+import { chatInputSchema, ChatInput } from '../schemas/chat';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
 
 function InputControls() {
   const { status, addMessage } = useApp();
   const { sendMessage, isLoading } = useChat();
   const { startRecording, stopRecording, isRecording } = useAudio();
   
-  const [text, setText] = useState('');
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<ChatInput>({
+    resolver: zodResolver(chatInputSchema),
+    defaultValues: { message: '' }
+  });
   
   // Disable input when processing
   const isDisabled = status === 'thinking' || status === 'speaking' || isLoading;
@@ -22,25 +32,17 @@ function InputControls() {
   }, [isDisabled]);
   
   // Handle send
-  const handleSend = async () => {
-    const trimmedText = text.trim();
+  const onSubmit = async (data: ChatInput) => {
+    const trimmedText = data.message.trim();
     if (!trimmedText || isDisabled) return;
     
-    setText('');
+    reset();
     
     // Add user message
     addMessage('user', trimmedText, { source: 'text' });
     
     // Send to API
     await sendMessage(trimmedText);
-  };
-  
-  // Handle Enter key
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
   };
   
   // Handle PTT (push-to-talk)
@@ -63,88 +65,67 @@ function InputControls() {
     }
   };
   
-  // Handle textarea auto-resize
-  const handleInput = (e: FormEvent<HTMLTextAreaElement>) => {
-    const target = e.target as HTMLTextAreaElement;
-    target.style.height = 'auto';
-    target.style.height = Math.min(target.scrollHeight, 128) + 'px';
-  };
-  
   return (
     <div className="bg-bg-secondary rounded-xl p-3 md:p-4 shrink-0">
-      <div className="flex items-end gap-2">
+      <form onSubmit={handleSubmit(onSubmit)} className="flex items-end gap-2">
         {/* Text input */}
         <div className="flex-1 relative">
-          <textarea
+          <Input
+            {...register('message')}
             ref={inputRef}
-            value={text}
-            onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onInput={handleInput}
             placeholder="Type a message..."
             disabled={isDisabled}
-            rows={1}
-            className="w-full bg-bg-tertiary text-text-primary placeholder-text-secondary 
-                       rounded-lg px-3 py-2 pr-12 resize-none
-                       disabled:opacity-50 disabled:cursor-not-allowed
-                       focus:outline-none focus:ring-2 focus:ring-accent
-                       min-h-[40px] max-h-32"
-            style={{ height: 'auto' }}
+            className="bg-bg-tertiary text-text-primary placeholder-text-secondary 
+                       pr-12 disabled:opacity-50 disabled:cursor-not-allowed
+                       focus:ring-2 focus:ring-accent
+                       min-h-[40px]"
           />
           
           {/* Send button (inside input on desktop) */}
-          <button
-            onClick={handleSend}
-            disabled={!text.trim() || isDisabled}
-            className="absolute right-2 bottom-2 p-1.5 rounded-lg
-                       bg-accent text-white disabled:opacity-50 disabled:cursor-not-allowed
-                       hover:bg-accent-hover transition-colors
-                       hidden md:block"
+          <Button
+            type="submit"
+            size="icon"
+            disabled={isDisabled}
+            className="absolute right-1 top-1/2 -translate-y-1/2 hidden md:flex
+                       h-8 w-8"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-            </svg>
-          </button>
+            <Send className="w-4 h-4" />
+          </Button>
+          
+          {errors.message && (
+            <span className="text-xs text-error absolute -bottom-5 left-0">
+              {errors.message.message}
+            </span>
+          )}
         </div>
         
         {/* Send button (mobile) */}
-        <button
-          onClick={handleSend}
-          disabled={!text.trim() || isDisabled}
-          className="p-3 rounded-lg bg-accent text-white 
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     hover:bg-accent-hover transition-colors
-                     md:hidden shrink-0"
+        <Button
+          type="submit"
+          size="icon"
+          disabled={isDisabled}
+          className="md:hidden shrink-0 h-10 w-10"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-          </svg>
-        </button>
+          <Send className="w-5 h-5" />
+        </Button>
         
         {/* PTT button */}
-        <button
+        <Button
+          type="button"
+          variant={isRecording ? 'destructive' : 'secondary'}
+          size="icon"
           onMouseDown={handlePTTStart}
           onMouseUp={handlePTTEnd}
           onMouseLeave={() => isRecording && handlePTTEnd()}
           onTouchStart={handlePTTStart}
           onTouchEnd={handlePTTEnd}
           disabled={isDisabled}
-          className={`p-3 rounded-lg transition-colors shrink-0
-                     disabled:opacity-50 disabled:cursor-not-allowed
-                     ${isRecording 
-                       ? 'bg-error text-white animate-pulse' 
-                       : 'bg-bg-tertiary text-text-secondary hover:text-text-primary hover:bg-bg-primary'
-                     }`}
+          className={`shrink-0 h-10 w-10 ${isRecording ? 'animate-pulse' : ''}`}
           title="Hold to speak"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-          </svg>
-        </button>
-      </div>
+          <Mic className="w-5 h-5" />
+        </Button>
+      </form>
       
       {/* Status bar */}
       {(isRecording || status === 'thinking' || status === 'speaking') && (
