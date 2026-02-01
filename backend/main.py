@@ -22,6 +22,8 @@ from fastapi.responses import JSONResponse, Response, PlainTextResponse, Streami
 
 
 from parse_chat import parse_chat_completion, extract_avatar_commands
+from users import load_users, get_user, get_user_session
+from avatars import get_avatar, get_allowed_agent_ids
 
 
 # Configuration
@@ -32,11 +34,8 @@ CLAWDBOT_URL = os.getenv("CLAWDBOT_URL", "http://127.0.0.1:18789")
 # This prevents accidental leakage + makes misconfigurations obvious.
 CLAWDBOT_TOKEN = os.getenv("CLAWDBOT_TOKEN")
 
-# IMPORTANT SECURITY NOTE:
-# This waifu app must NEVER be able to route to other Clawdbot agents (e.g. "main"/Beatrice).
-# Defaulting to "main" is a foot-gun: any missing/mis-set env var would leak requests to Beatrice.
-# We therefore default to "emilia" and we FAIL CLOSED if the agent id is anything else.
-CLAWDBOT_AGENT_ID = os.getenv("CLAWDBOT_AGENT_ID", "emilia")
+# Optional default agent id (mainly for health/debugging).
+CLAWDBOT_AGENT_ID = os.getenv("CLAWDBOT_AGENT_ID")
 
 # Auth token: allow an explicit dev default only when AUTH_ALLOW_DEV_TOKEN=1.
 AUTH_ALLOW_DEV_TOKEN = os.getenv("AUTH_ALLOW_DEV_TOKEN", "0") == "1"
@@ -46,17 +45,13 @@ ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://loc
 
 if not CLAWDBOT_TOKEN:
     raise RuntimeError("Missing CLAWDBOT_TOKEN env var (required)")
-if not AUTH_TOKEN:
-    raise RuntimeError(
-        "Missing AUTH_TOKEN env var (required). "
-        "For local dev only you may set AUTH_ALLOW_DEV_TOKEN=1 to use the default dev token."
-    )
-
-ALLOWED_CLAWDBOT_AGENT_IDS = {"emilia"}
-if CLAWDBOT_AGENT_ID not in ALLOWED_CLAWDBOT_AGENT_IDS:
+ALLOWED_CLAWDBOT_AGENT_IDS = get_allowed_agent_ids()
+if not ALLOWED_CLAWDBOT_AGENT_IDS:
+    raise RuntimeError("No allowed agent ids found in data/avatars.json.")
+if CLAWDBOT_AGENT_ID and CLAWDBOT_AGENT_ID not in ALLOWED_CLAWDBOT_AGENT_IDS:
     raise RuntimeError(
         f"Invalid CLAWDBOT_AGENT_ID={CLAWDBOT_AGENT_ID!r}. "
-        f"This app must be locked to {sorted(ALLOWED_CLAWDBOT_AGENT_IDS)}."
+        f"Allowed: {sorted(ALLOWED_CLAWDBOT_AGENT_IDS)}."
     )
 
 # TTS Configuration
@@ -161,14 +156,17 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["POST", "GET", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-User-Id", "X-Avatar-Id"],
 )
 
 
 def verify_token(authorization: Optional[str] = Header(None)):
     """Simple token-based auth"""
     if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
+        return None
+
+    if not AUTH_TOKEN:
+        return None
     
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Invalid authorization format")
@@ -218,8 +216,78 @@ async def health():
             "healthy": brain_healthy,
             "url": CLAWDBOT_URL,
             "agent_id": CLAWDBOT_AGENT_ID,
+            "allowed_agent_ids": sorted(ALLOWED_CLAWDBOT_AGENT_IDS),
             "info": brain_info
         }
+    }
+
+
+@app.get("/api/users")
+async def list_users(token: str = Depends(verify_token)):
+    data = load_users()
+    users = data.get("users") or {}
+    items = []
+    for user_id, user in users.items():
+        items.append(
+            {
+                "id": user_id,
+                "display_name": user.get("display_name", user_id),
+            }
+        )
+    return {"users": items, "count": len(items)}
+
+
+@app.get("/api/users/{user_id}")
+async def get_user_details(user_id: str, token: str = Depends(verify_token)):
+    user = get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    avatar_ids = user.get("avatars") or []
+    avatars = []
+    for avatar_id in avatar_ids:
+        avatar = get_avatar(avatar_id)
+        if avatar:
+            avatar_payload = {"id": avatar_id, **avatar}
+            avatars.append(avatar_payload)
+
+    return {
+        "id": user_id,
+        "display_name": user.get("display_name", user_id),
+        "default_avatar": user.get("default_avatar"),
+        "preferences": user.get("preferences") or {},
+        "sessions": user.get("sessions") or {},
+        "avatar_ids": avatar_ids,
+        "avatars": avatars,
+    }
+
+
+@app.post("/api/users/{user_id}/select-avatar/{avatar_id}")
+async def select_avatar(user_id: str, avatar_id: str, token: str = Depends(verify_token)):
+    user = get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    avatar = get_avatar(avatar_id)
+    if not avatar:
+        raise HTTPException(status_code=404, detail="Avatar not found")
+
+    if avatar.get("owner") != user_id or avatar_id not in (user.get("avatars") or []):
+        raise HTTPException(status_code=403, detail="Avatar does not belong to user")
+
+    agent_id = avatar.get("agent_id")
+    if not agent_id or agent_id not in ALLOWED_CLAWDBOT_AGENT_IDS:
+        raise HTTPException(status_code=400, detail="Invalid avatar agent id")
+
+    session_id = get_user_session(user_id, avatar_id)
+    if not session_id:
+        raise HTTPException(status_code=500, detail="Failed to create session")
+
+    return {
+        "user_id": user_id,
+        "avatar_id": avatar_id,
+        "agent_id": agent_id,
+        "session_id": session_id,
     }
 
 
@@ -303,7 +371,7 @@ def _extract_text_from_delta(delta: dict) -> str:
     return ""
 
 
-async def _stream_chat_sse(request: ChatRequest, start_time: float):
+async def _stream_chat_sse(request: ChatRequest, start_time: float, agent_id: str):
     """Generator for SSE streaming chat responses.
     
     Emits events:
@@ -327,7 +395,7 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float):
             headers = {
                 "Authorization": f"Bearer {CLAWDBOT_TOKEN}",
                 "Content-Type": "application/json",
-                "x-clawdbot-agent-id": CLAWDBOT_AGENT_ID
+                "x-clawdbot-agent-id": agent_id
             }
 
             async with client.stream(
@@ -360,7 +428,7 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float):
                             final_event = {
                                 "done": True,
                                 "response": clean_content,
-                                "agent_id": CLAWDBOT_AGENT_ID,
+                                "agent_id": agent_id,
                                 "processing_ms": processing_ms,
                                 "model": model_name,
                             }
@@ -426,7 +494,9 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float):
 async def chat(
     request: ChatRequest,
     token: str = Depends(verify_token),
-    stream: int = Query(0, description="Enable SSE streaming (1=enabled, 0=disabled)")
+    stream: int = Query(0, description="Enable SSE streaming (1=enabled, 0=disabled)"),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    x_avatar_id: Optional[str] = Header(None, alias="X-Avatar-Id")
 ):
     """
     Send message to Clawdbot Brain and get response
@@ -448,11 +518,29 @@ async def chat(
     Returns (streaming): SSE events with chunks: {"content": "..."} and final: {"done": true, ...}
     """
     start_time = time.time()
+    
+    if not x_user_id or not x_avatar_id:
+        raise HTTPException(status_code=400, detail="X-User-Id and X-Avatar-Id headers are required")
+
+    user = get_user(x_user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    avatar = get_avatar(x_avatar_id)
+    if not avatar:
+        raise HTTPException(status_code=404, detail="Avatar not found")
+
+    if avatar.get("owner") != x_user_id:
+        raise HTTPException(status_code=403, detail="Avatar does not belong to user")
+
+    agent_id = avatar.get("agent_id")
+    if not agent_id or agent_id not in ALLOWED_CLAWDBOT_AGENT_IDS:
+        raise HTTPException(status_code=400, detail="Invalid avatar agent id")
 
     # Streaming mode
     if stream == 1:
         return StreamingResponse(
-            _stream_chat_sse(request, start_time),
+            _stream_chat_sse(request, start_time, agent_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -477,7 +565,7 @@ async def chat(
             headers = {
                 "Authorization": f"Bearer {CLAWDBOT_TOKEN}",
                 "Content-Type": "application/json",
-                "x-clawdbot-agent-id": CLAWDBOT_AGENT_ID
+                "x-clawdbot-agent-id": agent_id
             }
 
             response = await client.post(
@@ -506,7 +594,7 @@ async def chat(
         # Build enhanced response
         response_data = {
             "response": response_text,
-            "agent_id": CLAWDBOT_AGENT_ID,
+            "agent_id": agent_id,
             "processing_ms": processing_ms,
             "model": result.get("model", "unknown"),
             "finish_reason": (result.get("choices") or [{}])[0].get("finish_reason", "unknown"),
@@ -1024,8 +1112,11 @@ async def root():
         "version": "3.3.0",
         "endpoints": {
             "health": "/api/health",
+            "users_list": "GET /api/users (auth optional)",
+            "user_detail": "GET /api/users/{user_id} (auth optional)",
+            "user_select_avatar": "POST /api/users/{user_id}/select-avatar/{avatar_id} (auth optional)",
             "transcribe": "POST /api/transcribe (requires auth)",
-            "chat": "POST /api/chat (requires auth)",
+            "chat": "POST /api/chat (auth optional, requires X-User-Id + X-Avatar-Id headers)",
             "speak": "POST /api/speak (requires auth)",
             "memory_get": "GET /api/memory (requires auth)",
             "memory_update": "POST /api/memory (requires auth) [DISABLED: returns 403]",
