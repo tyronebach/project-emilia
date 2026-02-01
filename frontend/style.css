@@ -1581,14 +1581,33 @@ pre.editable:focus {
 
 /* Mobile: Avatar-first layout */
 @media (max-width: 768px) {
-    /* Hide footer on mobile */
-    .app-footer {
+    /* Hide footer and Memory panel on mobile */
+    .app-footer,
+    .memory-panel {
+        display: none !important;
+    }
+    
+    /* Hide Stats panel on mobile */
+    .stats-panel {
+        display: none !important;
+    }
+    
+    /* Compact app header */
+    .app-header {
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .header-left h1 {
+        font-size: 1rem;
+    }
+    
+    .subtitle {
         display: none;
     }
     
-    /* Burger menu button */
+    /* Burger menu button - MUST show on mobile */
     .burger-menu-btn {
-        display: flex;
+        display: flex !important;
         align-items: center;
         justify-content: center;
         background: var(--bg-tertiary);
@@ -1597,15 +1616,16 @@ pre.editable:focus {
         padding: 0.5rem;
         color: var(--text-primary);
         cursor: pointer;
+        margin-left: 0.5rem;
     }
     
     .burger-menu-btn:hover {
         background: var(--bg-hover);
     }
     
-    /* Header controls as dropdown on mobile */
+    /* Header controls as dropdown on mobile - MUST hide by default */
     .header-controls-inner {
-        display: none;
+        display: none !important;
         position: absolute;
         top: 100%;
         right: 0;
@@ -1615,13 +1635,13 @@ pre.editable:focus {
         padding: 1rem;
         flex-direction: column;
         gap: 0.75rem;
-        min-width: 200px;
+        min-width: 220px;
         z-index: 1000;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
     
     .header-controls-inner.open {
-        display: flex;
+        display: flex !important;
     }
     
     .header-controls-inner .voice-selector {
@@ -1644,63 +1664,69 @@ pre.editable:focus {
         position: relative;
     }
     
-    /* Avatar panel */
+    /* Avatar panel - compact header */
     .avatar-panel {
-        margin-bottom: 0.5rem;
-        border-radius: 12px;
+        margin-bottom: 0.25rem;
+        border-radius: 8px;
+    }
+    
+    .avatar-panel-header {
+        padding: 0.5rem 0.75rem;
+    }
+    
+    .avatar-panel-title {
+        font-size: 0.85rem;
     }
     
     .avatar-panel-content {
-        max-height: 45vh;
+        max-height: 50vh;
     }
     
     .avatar-panel .avatar-container {
-        height: 42vh;
-        min-height: 280px;
-        max-height: 400px;
+        height: 48vh;
+        min-height: 300px;
+        max-height: 450px;
+    }
+    
+    /* Chat section - compact */
+    .chat-panel-dashboard {
+        padding: 0;
     }
     
     /* Collapsible chat history on mobile */
     .conversation-container {
         position: relative;
-        min-height: 150px;
-        max-height: 35vh;
+        min-height: 100px;
+        max-height: 30vh;
         transition: max-height 0.3s ease;
-    }
-    
-    .conversation-container.collapsed {
-        max-height: 48px;
-        min-height: 48px;
+        border-radius: 8px;
         overflow: hidden;
     }
     
-    .conversation-container.collapsed .conversation-history {
-        display: none;
+    .conversation-container.collapsed {
+        max-height: 40px;
+        min-height: 40px;
     }
     
+    .conversation-container.collapsed .conversation-history,
     .conversation-container.collapsed .conversation-empty {
         display: none;
     }
     
-    /* Chat collapse toggle button */
+    /* Chat collapse toggle button - MUST show */
     .chat-collapse-toggle {
-        display: flex;
+        display: flex !important;
         align-items: center;
         justify-content: center;
         gap: 0.5rem;
-        padding: 0.75rem;
+        padding: 0.5rem;
         background: var(--bg-tertiary);
         border: none;
-        border-radius: 8px 8px 0 0;
+        border-bottom: 1px solid var(--border-color);
         color: var(--text-secondary);
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         cursor: pointer;
         width: 100%;
-        transition: background 0.2s ease;
-    }
-    
-    .chat-collapse-toggle:hover {
-        background: var(--bg-hover);
     }
     
     .chat-collapse-toggle .toggle-icon {
@@ -1717,8 +1743,23 @@ pre.editable:focus {
         bottom: 0;
         background: var(--bg-secondary);
         border-top: 1px solid var(--border-color);
-        padding: 0.75rem;
+        padding: 0.5rem;
         z-index: 10;
+    }
+    
+    .text-input-group {
+        gap: 0.5rem;
+    }
+    
+    #textInput {
+        padding: 0.6rem 0.75rem;
+        font-size: 0.9rem;
+    }
+    
+    /* PTT button smaller */
+    .ptt-button-compact {
+        width: 56px;
+        height: 56px;
     }
 }
 
