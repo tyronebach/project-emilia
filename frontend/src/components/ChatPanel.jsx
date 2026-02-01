@@ -15,8 +15,8 @@ function ChatPanel() {
   }, [messages, collapsed]);
   
   return (
-    <div className={`bg-bg-secondary rounded-xl overflow-hidden transition-all duration-300 flex-1 min-h-0 flex flex-col ${
-      collapsed ? 'h-12 flex-none' : ''
+    <div className={`bg-bg-secondary rounded-xl overflow-hidden transition-all duration-300 flex flex-col ${
+      collapsed ? 'h-12 flex-none' : 'flex-1 min-h-0'
     }`}>
       {/* Header (clickable to collapse) */}
       <div 
@@ -41,7 +41,7 @@ function ChatPanel() {
       
       {/* Messages */}
       {!collapsed && (
-        <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4 space-y-3">
           {messages.length === 0 ? (
             <div className="h-full flex items-center justify-center text-text-secondary text-sm">
               Send a message to start chatting with Emilia
