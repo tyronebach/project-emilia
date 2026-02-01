@@ -165,8 +165,20 @@ export class AvatarExpressionController {
     triggerAnimation(animationName) {
         console.log(`[AvatarController] Triggering animation: ${animationName}`);
         
-        // For now, animations are handled through expression sequences
-        // VRM doesn't have built-in pose animations, so we simulate with expressions
+        // Use AnimationTriggerSystem for bone-based animations if available
+        if (window.animationTrigger) {
+            const boneAnimations = ['nod', 'head_shake', 'shake', 'thinking_pose', 'thinking', 'wave', 'surprised'];
+            const normalizedName = animationName.toLowerCase();
+            
+            if (boneAnimations.includes(normalizedName)) {
+                window.animationTrigger.trigger(normalizedName);
+                this.currentAnimation = animationName;
+                this.animationProgress = 0;
+                return;
+            }
+        }
+        
+        // Fall back to expression-based animations
         switch (animationName.toLowerCase()) {
             case 'nod':
                 // Quick blink + slight expression change to simulate acknowledgment
