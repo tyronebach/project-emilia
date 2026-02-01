@@ -302,6 +302,20 @@ window.addEventListener('load', async () => {
             log('Debug log cleared');
         });
     }
+    
+    // Chat collapse toggle (mobile)
+    const chatCollapseToggle = document.getElementById('chatCollapseToggle');
+    const conversationContainer = document.getElementById('conversationContainer');
+    if (chatCollapseToggle && conversationContainer) {
+        chatCollapseToggle.addEventListener('click', () => {
+            conversationContainer.classList.toggle('collapsed');
+            const toggleText = chatCollapseToggle.querySelector('.toggle-text');
+            if (toggleText) {
+                const isCollapsed = conversationContainer.classList.contains('collapsed');
+                toggleText.textContent = isCollapsed ? 'Show Chat' : 'Chat History';
+            }
+        });
+    }
 
     // Initialize dashboard mode if present
     initDashboard();
