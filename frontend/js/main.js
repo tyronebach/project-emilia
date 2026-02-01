@@ -316,6 +316,30 @@ window.addEventListener('load', async () => {
             }
         });
     }
+    
+    // Burger menu toggle (mobile)
+    const burgerMenuBtn = document.getElementById('burgerMenuBtn');
+    const headerControlsInner = document.getElementById('headerControlsInner');
+    if (burgerMenuBtn && headerControlsInner) {
+        burgerMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            headerControlsInner.classList.toggle('open');
+        });
+        
+        // Close menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!headerControlsInner.contains(e.target) && !burgerMenuBtn.contains(e.target)) {
+                headerControlsInner.classList.remove('open');
+            }
+        });
+        
+        // Close menu when an action is taken
+        headerControlsInner.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
+                setTimeout(() => headerControlsInner.classList.remove('open'), 100);
+            }
+        });
+    }
 
     // Initialize dashboard mode if present
     initDashboard();

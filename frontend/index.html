@@ -32,47 +32,59 @@
                     <span id="statusText">Ready</span>
                 </div>
                 
-                <!-- Session Selector -->
-                <select id="sessionSelector" class="voice-selector" title="Select session">
-                    <option value="">Session: (loading...)</option>
-                </select>
-                <span id="sessionsHint" class="sessions-hint" style="display:none"></span>
-                <button id="refreshSessions" class="icon-button" title="Refresh sessions">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="23 4 23 10 17 10"></polyline>
-                        <polyline points="1 20 1 14 7 14"></polyline>
-                        <path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10M1 14l5.36 4.36A9 9 0 0 0 20.49 15"></path>
+                <!-- Burger Menu Button (mobile only) -->
+                <button class="burger-menu-btn" id="burgerMenuBtn" title="Menu">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
                     </svg>
                 </button>
-
-                <!-- TTS Toggle -->
-                <label class="filter-checkbox" title="Toggle voice output (ElevenLabs)">
-                    <input type="checkbox" id="ttsToggle" />
-                    <span>Voice</span>
-                </label>
-
-                <!-- Voice Selector (enabled when Voice toggle on) -->
-                <select id="voiceSelector" class="voice-selector" title="Select voice" disabled>
-                    <option value="rachel">(Voice off)</option>
-                </select>
                 
-                <button id="newSessionButton" class="icon-button" title="New session (clears Emilia memory)">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 5v14M5 12h14"></path>
-                    </svg>
-                </button>
-                <button id="renameSessionButton" class="icon-button" title="Rename current session">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                    </svg>
-                </button>
-                <button id="deleteSessionButton" class="icon-button" title="Hide current session from list">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                        <line x1="1" y1="1" x2="23" y2="23"></line>
-                    </svg>
-                </button>
+                <!-- Controls Container (becomes dropdown on mobile) -->
+                <div class="header-controls-inner" id="headerControlsInner">
+                    <!-- Session Selector -->
+                    <select id="sessionSelector" class="voice-selector" title="Select session">
+                        <option value="">Session: (loading...)</option>
+                    </select>
+                    <span id="sessionsHint" class="sessions-hint" style="display:none"></span>
+                    <button id="refreshSessions" class="icon-button" title="Refresh sessions">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <polyline points="1 20 1 14 7 14"></polyline>
+                            <path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10M1 14l5.36 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                    </button>
+
+                    <!-- TTS Toggle -->
+                    <label class="filter-checkbox" title="Toggle voice output (ElevenLabs)">
+                        <input type="checkbox" id="ttsToggle" />
+                        <span>Voice</span>
+                    </label>
+
+                    <!-- Voice Selector (enabled when Voice toggle on) -->
+                    <select id="voiceSelector" class="voice-selector" title="Select voice" disabled>
+                        <option value="rachel">(Voice off)</option>
+                    </select>
+                    
+                    <button id="newSessionButton" class="icon-button" title="New session (clears Emilia memory)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 5v14M5 12h14"></path>
+                        </svg>
+                    </button>
+                    <button id="renameSessionButton" class="icon-button" title="Rename current session">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                    </button>
+                    <button id="deleteSessionButton" class="icon-button" title="Hide current session from list">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                            <line x1="1" y1="1" x2="23" y2="23"></line>
+                        </svg>
+                    </button>
+                </div>
                 <button id="debugToggle" class="icon-button" title="Toggle debug panel">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
