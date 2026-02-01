@@ -8,7 +8,7 @@ Web interface with dual input modes (voice PTT + text), streaming responses, TTS
 
 ---
 
-## Current Features (v3.4.1)
+## Current Features
 
 ### Core Chat
 | Feature | Status | Notes |
@@ -187,20 +187,24 @@ Backend (FastAPI :8080)
 ```
 emilia-webapp/
 ├── backend/
-│   ├── main.py              # FastAPI server (25k+ lines)
+│   ├── main.py              # FastAPI server
 │   ├── parse_chat.py        # Response parsing module
 │   ├── tests/               # pytest suite
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── frontend/
 │   ├── index.html           # Main dashboard UI
-│   ├── app.js               # Core app logic (63k)
+│   ├── app.js               # Core app logic
 │   ├── style.css            # Dark theme + responsive
-│   └── avatar.js            # VRM loader (placeholder)
+│   └── avatar.js            # VRM loader
+├── docs/
+│   ├── ARCHITECTURE.md      # System design
+│   ├── SECURITY.md          # Security notes
+│   ├── AVATAR-CONTROL.md    # Avatar system design
+│   └── archive/             # Historical milestones
 ├── docker-compose.yml
 ├── nginx.conf
 ├── CHANGELOG.md
-├── SECURITY-NOTES.md
 └── README.md
 ```
 
@@ -208,7 +212,7 @@ emilia-webapp/
 
 ## Security Notes
 
-See `SECURITY-NOTES.md` for full details.
+See `docs/SECURITY.md` for full details.
 
 **Key points:**
 - Memory viewer is **read-only** (POST returns 403)
@@ -219,6 +223,6 @@ See `SECURITY-NOTES.md` for full details.
 
 ---
 
-**Version:** 3.4.1 | 2026-01-31  
-**Tests:** 28 passed  
+**Version:** 3.5.0 | 2026-01-31  
+**Tests:** 41 passed  
 **Built by:** Ram 🩷
