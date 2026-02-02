@@ -621,7 +621,7 @@ async def speak(
 
         async with websockets.connect(
             ws_url,
-            extra_headers={"xi-api-key": ELEVENLABS_API_KEY}
+            additional_headers={"xi-api-key": ELEVENLABS_API_KEY}
         ) as ws:
             # Send initial config
             await ws.send(json.dumps({
