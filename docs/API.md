@@ -243,20 +243,32 @@ Form: audio=<file>
 
 ### Get MEMORY.md
 ```
-GET /api/memory
-Headers: X-Agent-Id
+GET /api/memory?agent_id={agent_id}
 ```
+Returns the MEMORY.md file for the specified agent as plain text (text/markdown).
 
 ### List Memory Files
 ```
-GET /api/memory/list
-Headers: X-Agent-Id
+GET /api/memory/list?agent_id={agent_id}
+```
+Returns:
+```json
+{
+  "workspace": "/home/tbach/clawd-emilia-thai",
+  "files": ["MEMORY.md", "2026-01-30.md", "2026-02-01.md"]
+}
 ```
 
 ### Get Memory File
 ```
-GET /api/memory/{filename}
-Headers: X-Agent-Id
+GET /api/memory/{filename}?agent_id={agent_id}
+```
+Returns:
+```json
+{
+  "filename": "2026-02-01.md",
+  "content": "# Daily memory content..."
+}
 ```
 
 ---

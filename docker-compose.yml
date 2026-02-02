@@ -20,11 +20,12 @@ services:
       - ALLOWED_ORIGINS=http://localhost:3000,http://192.168.88.237:3000,https://localhost:3443,https://192.168.88.237:3443
       - ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
       - ELEVENLABS_MODEL=eleven_turbo_v2_5
-      - EMILIA_WORKSPACE=/home/tbach/clawd-emilia
       - CLAWDBOT_AGENTS_DIR=/home/tbach/.clawdbot/agents
 
     volumes:
-      - /home/tbach/clawd-emilia:/home/tbach/clawd-emilia:rw
+      - /home/tbach/clawd-emilia-thai:/home/tbach/clawd-emilia-thai:rw
+      - /home/tbach/clawd-emilia-emily:/home/tbach/clawd-emilia-emily:rw
+      - /home/tbach/clawd-rem:/home/tbach/clawd-rem:rw
       - /home/tbach/.clawdbot/agents:/home/tbach/.clawdbot/agents:ro
       - ./data:/data:rw
 

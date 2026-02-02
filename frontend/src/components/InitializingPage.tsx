@@ -5,6 +5,7 @@ import { useChatStore } from '../store/chatStore';
 import { useAppStore } from '../store';
 import { useChat } from '../hooks/useChat';
 import { getSession } from '../utils/api';
+import { preloadVRM } from '../avatar/preloadVRM';
 
 interface InitializingPageProps {
   userId: string;
@@ -23,11 +24,19 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
   const setSessionId = useAppStore((state) => state.setSessionId);
   const { sendMessage } = useChat();
 
-  const [status, setStatus] = useState<'verifying' | 'initializing' | 'error'>('verifying');
+  const [status, setStatus] = useState<'verifying' | 'initializing' | 'preloading' | 'error'>('verifying');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Track if we've already started initialization to prevent duplicate runs
   const hasStartedRef = useRef(false);
+
+  // Preload avatar while waiting (fire-and-forget)
+  useEffect(() => {
+    // Start preloading immediately in parallel with session verification
+    preloadVRM('/emilia.vrm').catch((err) => {
+      console.warn('[InitializingPage] Avatar preload failed (non-critical):', err);
+    });
+  }, []);
 
   useEffect(() => {
     // Prevent duplicate initialization - this is critical!
@@ -132,7 +141,7 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
               }
             </p>
             <p className="text-xs text-text-secondary/70 text-center">
-              First time may take 10-15 seconds
+              Preloading avatar in background...
             </p>
           </>
         )}

@@ -42,14 +42,8 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
 ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
 
-# Memory Configuration
-EMILIA_WORKSPACE = os.getenv("EMILIA_WORKSPACE", "/home/tbach/clawd-emilia")
-MEMORY_MD_PATH = Path(EMILIA_WORKSPACE) / "MEMORY.md"
+# Agent Configuration
 AGENTS_DIR = Path(os.getenv("CLAWDBOT_AGENTS_DIR", "/home/tbach/.clawdbot/agents"))
-
-# Data Directory
-DATA_DIR = Path(__file__).parent.parent / "data"
-AVATARS_JSON_PATH = DATA_DIR / "avatars.json"
 
 
 # ============ REQUEST MODELS ============
@@ -89,7 +83,7 @@ def verify_token(authorization: str = Header(None)) -> str:
         raise HTTPException(status_code=500, detail="Server auth not configured")
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
-    
+
     scheme, _, token = authorization.partition(" ")
     if scheme.lower() != "bearer" or token != AUTH_TOKEN:
         raise HTTPException(status_code=401, detail="Invalid token")
@@ -126,7 +120,7 @@ async def get_user(user_id: str, token: str = Depends(verify_token)):
     user = db.get_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     agents = db.get_user_agents(user_id)
     return {
         **user,
@@ -140,7 +134,7 @@ async def get_user_agents(user_id: str, token: str = Depends(verify_token)):
     user = db.get_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     agents = db.get_user_agents(user_id)
     return {"agents": agents, "count": len(agents)}
 
@@ -156,7 +150,7 @@ async def get_user_agent_sessions(
         raise HTTPException(status_code=404, detail="User not found")
     if not db.user_can_access_agent(user_id, agent_id):
         raise HTTPException(status_code=403, detail="User cannot access this agent")
-    
+
     sessions = db.get_user_sessions(user_id, agent_id)
     return {"sessions": sessions, "count": len(sessions)}
 
@@ -169,7 +163,7 @@ async def get_agent(agent_id: str, token: str = Depends(verify_token)):
     agent = db.get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    
+
     owners = db.get_agent_owners(agent_id)
     return {
         **agent,
@@ -188,7 +182,7 @@ async def list_sessions(
     """List sessions for user, optionally filtered by agent"""
     if not db.get_user(x_user_id):
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     sessions = db.get_user_sessions(x_user_id, x_agent_id)
     return {"sessions": sessions, "count": len(sessions)}
 
@@ -204,7 +198,7 @@ async def create_session(
         raise HTTPException(status_code=404, detail="User not found")
     if not db.user_can_access_agent(x_user_id, request.agent_id):
         raise HTTPException(status_code=403, detail="User cannot access this agent")
-    
+
     session = db.create_session(request.agent_id, x_user_id, request.name)
     return session
 
@@ -228,7 +222,7 @@ async def update_session(
     """Update session name"""
     if not db.user_can_access_session(x_user_id, session_id):
         raise HTTPException(status_code=403, detail="Cannot access this session")
-    
+
     session = db.update_session(session_id, request.name)
     return session
 
@@ -242,7 +236,7 @@ async def delete_session(
     """Delete a session"""
     if not db.user_can_access_session(x_user_id, session_id):
         raise HTTPException(status_code=403, detail="Cannot access this session")
-    
+
     success = db.delete_session(session_id)
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -286,26 +280,26 @@ async def get_session_history(
     """Get chat history for a session from Clawdbot's JSONL files"""
     if not db.user_can_access_session(x_user_id, session_id):
         raise HTTPException(status_code=403, detail="Cannot access this session")
-    
+
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     agent = db.get_agent(session["agent_id"])
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    
+
     clawdbot_agent_id = agent["clawdbot_agent_id"]
-    
+
     # Find session in Clawdbot's sessions.json to get the JSONL file UUID
     sessions_file = AGENTS_DIR / clawdbot_agent_id / "sessions" / "sessions.json"
     if not sessions_file.exists():
         return {"messages": [], "session_id": session_id}
-    
+
     try:
         with open(sessions_file) as f:
             sessions_data = json.load(f)
-        
+
         # Look for session by checking display_id matches
         jsonl_uuid = None
         for key, info in sessions_data.items():
@@ -313,51 +307,51 @@ async def get_session_history(
             if display_id == session_id:
                 jsonl_uuid = info.get("sessionId")
                 break
-        
+
         if not jsonl_uuid:
             return {"messages": [], "session_id": session_id}
-        
+
         # Read the JSONL file
         jsonl_file = AGENTS_DIR / clawdbot_agent_id / "sessions" / f"{jsonl_uuid}.jsonl"
         if not jsonl_file.exists():
             return {"messages": [], "session_id": session_id}
-        
+
         messages = []
         with open(jsonl_file) as f:
             for line in f:
                 if not line.strip():
                     continue
                 entry = json.loads(line)
-                
+
                 if entry.get("type") != "message":
                     continue
-                
+
                 msg = entry.get("message", {})
                 role = msg.get("role")
                 if role not in ("user", "assistant"):
                     continue
-                
+
                 raw_content = msg.get("content", "")
                 text_content = _extract_text_content(raw_content)
-                
+
                 if role == "assistant":
                     text_content, _, _ = extract_avatar_commands(text_content)
-                
+
                 if not text_content.strip():
                     continue
-                
+
                 messages.append({
                     "role": role,
                     "content": text_content,
                     "timestamp": entry.get("timestamp")
                 })
-        
+
         return {
             "messages": messages[-limit:],
             "session_id": session_id,
             "count": len(messages)
         }
-        
+
     except Exception as e:
         print(f"Error reading history: {e}")
         return {"messages": [], "session_id": session_id, "error": str(e)}
@@ -388,20 +382,20 @@ async def chat(
 ):
     """Send message to agent"""
     start_time = time.time()
-    
+
     user = db.get_user(x_user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     if not db.user_can_access_agent(x_user_id, x_agent_id):
         raise HTTPException(status_code=403, detail="User cannot access this agent")
-    
+
     agent = db.get_agent(x_agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    
+
     clawdbot_agent_id = agent["clawdbot_agent_id"]
-    
+
     # Get or create session
     if x_session_id:
         session = db.get_session(x_session_id)
@@ -409,13 +403,13 @@ async def chat(
             raise HTTPException(status_code=403, detail="Cannot access this session")
     else:
         session = db.get_or_create_default_session(x_user_id, x_agent_id)
-    
+
     session_id = session["id"]
-    
+
     # Update session last_used
     db.update_session_last_used(session_id)
     db.increment_session_message_count(session_id)
-    
+
     if stream == 1:
         return StreamingResponse(
             _stream_chat_sse(request, start_time, clawdbot_agent_id, session_id),
@@ -426,7 +420,7 @@ async def chat(
                 "X-Accel-Buffering": "no"
             }
         )
-    
+
     # Non-streaming
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -436,7 +430,7 @@ async def chat(
                 "stream": False,
                 "user": session_id
             }
-            
+
             response = await client.post(
                 f"{CLAWDBOT_URL}/v1/chat/completions",
                 headers={
@@ -446,15 +440,15 @@ async def chat(
                 },
                 json=payload
             )
-            
+
             if response.status_code != 200:
                 raise HTTPException(status_code=response.status_code, detail=response.text)
-            
+
             result = response.json()
-        
+
         parsed = parse_chat_completion(result)
         processing_ms = int((time.time() - start_time) * 1000)
-        
+
         return {
             "response": parsed["response_text"],
             "session_id": session_id,
@@ -464,7 +458,7 @@ async def chat(
             "animations": parsed.get("animations", []),
             "usage": result.get("usage")
         }
-        
+
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Timeout")
     except httpx.ConnectError:
@@ -482,7 +476,7 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                 "stream_options": {"include_usage": True},
                 "user": session_id
             }
-            
+
             async with client.stream(
                 "POST",
                 f"{CLAWDBOT_URL}/v1/chat/completions",
@@ -496,60 +490,60 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                 if response.status_code != 200:
                     yield f"data: {json.dumps({'error': 'API error'})}\n\n"
                     return
-                
+
                 full_content = ""
                 moods = []
                 animations = []
                 usage = None
-                
+
                 async for line in response.aiter_lines():
                     if not line.startswith("data: "):
                         continue
-                    
+
                     data_str = line[6:].strip()
                     if data_str == "[DONE]":
                         continue
-                    
+
                     try:
                         data = json.loads(data_str)
-                        
+
                         if "usage" in data:
                             usage = data["usage"]
-                        
+
                         choices = data.get("choices", [])
                         if not choices:
                             continue
-                        
+
                         delta = choices[0].get("delta", {})
                         chunk = delta.get("content", "")
-                        
+
                         if chunk:
                             full_content += chunk
                             clean_chunk, chunk_moods, chunk_anims = extract_avatar_commands(chunk)
-                            
+
                             if chunk_moods:
                                 moods.extend(chunk_moods)
                                 for m in chunk_moods:
                                     yield f"event: avatar\ndata: {json.dumps({'mood': m['mood'], 'intensity': m['intensity']})}\n\n"
-                            
+
                             if chunk_anims:
                                 animations.extend(chunk_anims)
                                 for a in chunk_anims:
                                     yield f"event: avatar\ndata: {json.dumps({'animation': a})}\n\n"
-                            
+
                             if clean_chunk:
                                 yield f"data: {json.dumps({'content': clean_chunk})}\n\n"
-                        
+
                         if choices[0].get("finish_reason"):
                             break
-                            
+
                     except json.JSONDecodeError:
                         continue
-                
+
                 # Final response
                 clean_full, _, _ = extract_avatar_commands(full_content)
                 processing_ms = int((time.time() - start_time) * 1000)
-                
+
                 final = {
                     "done": True,
                     "response": clean_full,
@@ -560,9 +554,9 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                 }
                 if usage:
                     final["usage"] = usage
-                
+
                 yield f"data: {json.dumps(final)}\n\n"
-                
+
     except Exception as e:
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
@@ -577,18 +571,18 @@ async def transcribe(
     """Transcribe audio via STT service"""
     try:
         audio_data = await audio.read()
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{STT_SERVICE_URL}/transcribe",
                 files={"audio": (audio.filename or "audio.webm", audio_data, audio.content_type)}
             )
-            
+
             if response.status_code != 200:
                 raise HTTPException(status_code=response.status_code, detail="STT failed")
-            
+
             return response.json()
-            
+
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="STT timeout")
     except httpx.ConnectError:
@@ -606,25 +600,25 @@ async def speak(
     """Text-to-speech via ElevenLabs"""
     if not ELEVENLABS_API_KEY:
         raise HTTPException(status_code=503, detail="TTS not configured")
-    
+
     voice_id = request.voice_id or ELEVENLABS_VOICE_ID
-    
+
     # Get agent-specific voice if available
     if x_agent_id:
         agent = db.get_agent(x_agent_id)
         if agent and agent.get("voice_id"):
             voice_id = agent["voice_id"]
-    
+
     text = request.text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="Empty text")
-    
+
     ws_url = f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input?model_id={ELEVENLABS_MODEL}&output_format=mp3_44100_128"
-    
+
     try:
         audio_chunks = []
         alignment_data = None
-        
+
         async with websockets.connect(
             ws_url,
             extra_headers={"xi-api-key": ELEVENLABS_API_KEY}
@@ -636,7 +630,7 @@ async def speak(
                 "generation_config": {"chunk_length_schedule": [120, 160, 250, 290]},
                 "xi_api_key": ELEVENLABS_API_KEY
             }))
-            
+
             # Send text with alignment request
             await ws.send(json.dumps({
                 "text": text,
@@ -644,40 +638,40 @@ async def speak(
                 "flush": True,
                 "alignment": True
             }))
-            
+
             await ws.send(json.dumps({"text": ""}))
-            
+
             # Receive audio
             while True:
                 try:
                     msg = await asyncio.wait_for(ws.recv(), timeout=30.0)
                     data = json.loads(msg)
-                    
+
                     if data.get("audio"):
                         audio_chunks.append(base64.b64decode(data["audio"]))
-                    
+
                     if data.get("alignment"):
                         alignment_data = data["alignment"]
-                    
+
                     if data.get("isFinal"):
                         break
-                        
+
                 except asyncio.TimeoutError:
                     break
-        
+
         if not audio_chunks:
             raise HTTPException(status_code=500, detail="No audio generated")
-        
+
         audio_bytes = b"".join(audio_chunks)
         audio_base64 = base64.b64encode(audio_bytes).decode()
-        
+
         return {
             "audio_base64": audio_base64,
             "alignment": alignment_data,
             "voice_id": voice_id,
             "duration_estimate": len(audio_bytes) / (44100 * 2 / 8)
         }
-        
+
     except websockets.exceptions.WebSocketException as e:
         raise HTTPException(status_code=503, detail=f"TTS WebSocket error: {e}")
 
@@ -685,50 +679,86 @@ async def speak(
 # ============ MEMORY ============
 
 @app.get("/api/memory")
-async def get_memory(token: str = Depends(verify_token)):
+async def get_memory(
+    token: str = Depends(verify_token),
+    agent_id: str = Query(..., description="Agent ID to get memory for")
+):
     """Get agent's MEMORY.md content"""
-    if not MEMORY_MD_PATH.exists():
+    agent = db.get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if not agent.get("workspace"):
+        raise HTTPException(status_code=404, detail="Agent workspace not configured")
+
+    workspace = Path(agent["workspace"])
+    memory_path = workspace / "MEMORY.md"
+
+    if not memory_path.exists():
         raise HTTPException(status_code=404, detail="Memory file not found")
-    
-    content = MEMORY_MD_PATH.read_text(encoding="utf-8")
+
+    content = memory_path.read_text(encoding="utf-8")
     return PlainTextResponse(content, media_type="text/markdown")
 
 
 @app.get("/api/memory/list")
-async def list_memory_files(token: str = Depends(verify_token)):
-    """List available memory files (MEMORY.md + daily files)"""
+async def list_memory_files(
+    token: str = Depends(verify_token),
+    agent_id: str = Query(..., description="Agent ID to list memory files for")
+):
+    """List available memory files (MEMORY.md + daily files) for specific agent"""
+    agent = db.get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if not agent.get("workspace"):
+        raise HTTPException(status_code=404, detail="Agent workspace not configured")
+
+    workspace = Path(agent["workspace"])
     files = []
-    workspace = MEMORY_MD_PATH.parent
-    
+
     # Add MEMORY.md if exists
-    if MEMORY_MD_PATH.exists():
+    memory_md = workspace / "MEMORY.md"
+    if memory_md.exists():
         files.append("MEMORY.md")
-    
+
     # Add daily files from memory/ directory
     memory_dir = workspace / "memory"
     if memory_dir.exists() and memory_dir.is_dir():
         for f in memory_dir.iterdir():
             if f.is_file() and f.suffix == ".md":
                 files.append(f.name)
-    
+
     return {"workspace": str(workspace), "files": files}
 
 
 @app.get("/api/memory/{filename:path}")
-async def get_memory_file(filename: str, token: str = Depends(verify_token)):
-    """Get specific memory file content"""
-    workspace = MEMORY_MD_PATH.parent
-    
+async def get_memory_file(
+    filename: str,
+    token: str = Depends(verify_token),
+    agent_id: str = Query(..., description="Agent ID to get memory file for")
+):
+    """Get specific memory file content for specific agent"""
+    agent = db.get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    if not agent.get("workspace"):
+        raise HTTPException(status_code=404, detail="Agent workspace not configured")
+
+    workspace = Path(agent["workspace"])
+
     # Handle MEMORY.md specially
     if filename == "MEMORY.md":
-        if not MEMORY_MD_PATH.exists():
+        memory_path = workspace / "MEMORY.md"
+        if not memory_path.exists():
             raise HTTPException(status_code=404, detail="Memory file not found")
-        content = MEMORY_MD_PATH.read_text(encoding="utf-8")
+        content = memory_path.read_text(encoding="utf-8")
         return {"filename": filename, "content": content}
-    
+
     # Daily files are in memory/ directory
     file_path = workspace / "memory" / filename
-    
+
     # Security check - prevent path traversal
     try:
         file_path = file_path.resolve()
@@ -736,73 +766,44 @@ async def get_memory_file(filename: str, token: str = Depends(verify_token)):
             raise HTTPException(status_code=403, detail="Access denied")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    
+
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Memory file not found")
-    
+
     content = file_path.read_text(encoding="utf-8")
     return {"filename": filename, "content": content}
 
 
 # ============ ADMIN ============
 
-def load_avatars_config():
-    """Load avatars configuration from JSON file"""
-    if not AVATARS_JSON_PATH.exists():
-        return {"avatars": {}}
-    try:
-        return json.loads(AVATARS_JSON_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {"avatars": {}}
-
-
-def save_avatars_config(config: dict):
-    """Save avatars configuration to JSON file"""
-    AVATARS_JSON_PATH.write_text(json.dumps(config, indent=2), encoding="utf-8")
-
-
 @app.get("/api/admin/agents")
-async def get_admin_agents():
-    """Get all agents with their configuration"""
-    config = load_avatars_config()
-    avatars = config.get("avatars", {})
-    
-    agents = []
-    for agent_id, data in avatars.items():
-        agents.append({
-            "id": agent_id,
-            "display_name": data.get("display_name", agent_id),
-            "voice_id": data.get("voice_id", ""),
-            "vrm_model": data.get("vrm_model", ""),
-            "owner": data.get("owner", ""),
-        })
-    
+async def get_admin_agents(token: str = Depends(verify_token)):
+    """Get all agents with their configuration from database"""
+    agents = db.get_agents()
     return {"agents": agents}
 
 
 class AgentUpdate(BaseModel):
+    display_name: Optional[str] = None
     voice_id: Optional[str] = None
     vrm_model: Optional[str] = None
+    workspace: Optional[str] = None
 
 
 @app.put("/api/admin/agents/{agent_id}")
-async def update_admin_agent(agent_id: str, update: AgentUpdate):
-    """Update agent configuration"""
-    config = load_avatars_config()
-    avatars = config.get("avatars", {})
-    
-    if agent_id not in avatars:
+async def update_admin_agent(
+    agent_id: str,
+    update: AgentUpdate,
+    token: str = Depends(verify_token)
+):
+    """Update agent configuration in database"""
+    agent = db.get_agent(agent_id)
+    if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    
-    # Update fields if provided
-    if update.voice_id is not None:
-        avatars[agent_id]["voice_id"] = update.voice_id
-    if update.vrm_model is not None:
-        avatars[agent_id]["vrm_model"] = update.vrm_model
-    
-    config["avatars"] = avatars
-    save_avatars_config(config)
-    
+
+    # Update agent in database
+    db.update_agent(agent_id, update.dict(exclude_unset=True))
+
     return {"status": "ok", "agent_id": agent_id}
 
 

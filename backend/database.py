@@ -34,7 +34,7 @@ def init_db():
     """Initialize database schema"""
     with get_db() as conn:
         cur = conn.cursor()
-        
+
         # Users table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -44,7 +44,7 @@ def init_db():
                 created_at INTEGER DEFAULT (strftime('%s', 'now'))
             )
         """)
-        
+
         # Agents table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS agents (
@@ -53,10 +53,11 @@ def init_db():
                 clawdbot_agent_id TEXT NOT NULL,
                 vrm_model TEXT DEFAULT 'emilia.vrm',
                 voice_id TEXT,
+                workspace TEXT,
                 created_at INTEGER DEFAULT (strftime('%s', 'now'))
             )
         """)
-        
+
         # User-Agent access (many-to-many)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS user_agents (
@@ -65,7 +66,7 @@ def init_db():
                 PRIMARY KEY (user_id, agent_id)
             )
         """)
-        
+
         # Sessions table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
@@ -77,7 +78,7 @@ def init_db():
                 message_count INTEGER DEFAULT 0
             )
         """)
-        
+
         # Session participants (many-to-many)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS session_participants (
@@ -86,11 +87,11 @@ def init_db():
                 PRIMARY KEY (session_id, user_id)
             )
         """)
-        
+
         # Indexes for common queries
         cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_used ON sessions(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_session_participants_user ON session_participants(user_id)")
-        
+
         conn.commit()
 
 
@@ -132,18 +133,47 @@ def get_agent(agent_id: str) -> Optional[dict]:
         return conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
 
 
+def get_agents() -> list[dict]:
+    """Get all agents"""
+    with get_db() as conn:
+        return conn.execute("SELECT * FROM agents ORDER BY display_name").fetchall()
+
+
+def update_agent(agent_id: str, updates: dict):
+    """Update agent fields"""
+    if not updates:
+        return
+
+    set_clauses = []
+    params = []
+    for key, value in updates.items():
+        if key in ["display_name", "voice_id", "vrm_model", "clawdbot_agent_id", "workspace"]:
+            set_clauses.append(f"{key} = ?")
+            params.append(value)
+
+    if not set_clauses:
+        return
+
+    params.append(agent_id)
+    sql = f"UPDATE agents SET {', '.join(set_clauses)} WHERE id = ?"
+
+    with get_db() as conn:
+        conn.execute(sql, params)
+
+
 def create_agent(
     agent_id: str,
     display_name: str,
     clawdbot_agent_id: str,
     vrm_model: str = "emilia.vrm",
-    voice_id: str = None
+    voice_id: str = None,
+    workspace: str = None
 ) -> dict:
     """Create a new agent"""
     with get_db() as conn:
         conn.execute(
-            "INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id) VALUES (?, ?, ?, ?, ?)",
-            (agent_id, display_name, clawdbot_agent_id, vrm_model, voice_id)
+            "INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace) VALUES (?, ?, ?, ?, ?, ?)",
+            (agent_id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace)
         )
         return get_agent(agent_id)
 
@@ -215,7 +245,7 @@ def get_user_sessions(user_id: str, agent_id: str = None) -> list[dict]:
                 WHERE sp.user_id = ?
                 ORDER BY s.last_used DESC
             """, (user_id,)).fetchall()
-        
+
         # Add participants to each session
         for session in sessions:
             participants = conn.execute(
@@ -223,7 +253,7 @@ def get_user_sessions(user_id: str, agent_id: str = None) -> list[dict]:
                 (session["id"],)
             ).fetchall()
             session["participants"] = [p["user_id"] for p in participants]
-        
+
         return sessions
 
 
@@ -231,20 +261,20 @@ def create_session(agent_id: str, user_id: str, name: str = None) -> dict:
     """Create a new session"""
     session_id = generate_session_id()
     now = int(time.time())
-    
+
     with get_db() as conn:
         # Create session
         conn.execute(
             "INSERT INTO sessions (id, agent_id, name, created_at, last_used) VALUES (?, ?, ?, ?, ?)",
             (session_id, agent_id, name, now, now)
         )
-        
+
         # Add creator as participant
         conn.execute(
             "INSERT INTO session_participants (session_id, user_id) VALUES (?, ?)",
             (session_id, user_id)
         )
-    
+
     return get_session(session_id)
 
 
@@ -309,13 +339,13 @@ def delete_sessions_by_agent(agent_id: str) -> int:
         sessions = conn.execute(
             "SELECT id FROM sessions WHERE agent_id = ?", (agent_id,)
         ).fetchall()
-        
+
         count = 0
         for s in sessions:
             conn.execute("DELETE FROM session_participants WHERE session_id = ?", (s['id'],))
             conn.execute("DELETE FROM sessions WHERE id = ?", (s['id'],))
             count += 1
-        
+
         return count
 
 
@@ -357,7 +387,7 @@ def seed_data():
         create_user("thai", "Thai", '{"tts_enabled": true, "theme": "dark"}')
     if not get_user("emily"):
         create_user("emily", "Emily", '{"tts_enabled": true, "theme": "dark"}')
-    
+
     # Agents
     if not get_agent("emilia-thai"):
         create_agent(
@@ -369,7 +399,7 @@ def seed_data():
         )
     if not get_agent("emilia-emily"):
         create_agent(
-            "emilia-emily", 
+            "emilia-emily",
             "Emilia",
             "emilia-emily",
             "emilia.vrm",
@@ -383,7 +413,7 @@ def seed_data():
             "emilia.vrm",
             "gNLojYp5VOiuqC8CTCmi"
         )
-    
+
     # User-Agent access
     add_user_agent_access("thai", "emilia-thai")
     add_user_agent_access("thai", "rem")

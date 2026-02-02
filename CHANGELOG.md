@@ -4,6 +4,46 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.3.0] - 2026-02-02
+
+### Changed - Multi-Agent Memory System 🗂️
+
+#### Database-Driven Agent Configuration
+- **Removed JSON Configuration** - Deleted `avatars.json` and `backend/avatars.py` module
+- **SQLite as Single Source of Truth** - All agent data now stored in database
+- **Added `workspace` Field** - Each agent has its own workspace path in database
+  - `emilia-thai` → `/home/tbach/clawd-emilia-thai`
+  - `emilia-emily` → `/home/tbach/clawd-emilia-emily`
+  - `rem` → `/home/tbach/clawd-rem`
+
+#### Memory Endpoints Refactored
+- **Agent-Specific Memory Access** - Memory files now served per agent from their workspace
+- **Query Parameter Required** - All memory endpoints now require `?agent_id={agent_id}`
+  - `GET /api/memory?agent_id={agent_id}` - Get agent's MEMORY.md
+  - `GET /api/memory/list?agent_id={agent_id}` - List agent's memory files
+  - `GET /api/memory/{filename}?agent_id={agent_id}` - Get specific memory file
+- **Removed Hardcoded Workspace** - No longer uses `EMILIA_WORKSPACE` environment variable
+
+#### Frontend Updates
+- **API Calls Updated** - All memory functions now pass `agent_id` from current agent
+- **Agent Validation** - Memory functions validate agent is selected before making requests
+
+#### Docker Configuration
+- **Multiple Workspace Mounts** - docker-compose.yml now mounts all three agent workspaces
+- **Removed Legacy Config** - Removed obsolete `EMILIA_WORKSPACE` environment variable
+
+#### Database Schema
+- Added `workspace TEXT` column to `agents` table
+- Added `get_agents()` function to retrieve all agents
+- Added `update_agent()` function with field validation for `workspace`, `display_name`, `voice_id`, `vrm_model`, `clawdbot_agent_id`
+- Updated `create_agent()` to accept `workspace` parameter
+
+#### Documentation
+- Updated API.md with correct memory endpoint signatures and examples
+- Added response examples showing workspace paths and file listings
+
+---
+
 ## [5.2.0] - 2026-02-02
 
 ### Fixed - New Chat Flow & Session Routing 🔧

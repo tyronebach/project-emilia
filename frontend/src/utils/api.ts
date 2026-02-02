@@ -65,12 +65,12 @@ interface StreamResponse {
 function getHeaders(): Record<string, string> {
   const { currentUser, currentAgent } = useUserStore.getState();
   const { sessionId } = useAppStore.getState();
-  
+
   const headers: Record<string, string> = {
     'Authorization': `Bearer ${AUTH_TOKEN}`,
     'Content-Type': 'application/json',
   };
-  
+
   if (currentUser?.id) {
     headers['X-User-Id'] = currentUser.id;
   }
@@ -80,7 +80,7 @@ function getHeaders(): Record<string, string> {
   if (sessionId) {
     headers['X-Session-Id'] = sessionId;
   }
-  
+
   return headers;
 }
 
@@ -89,12 +89,12 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}): Pro
     ...getHeaders(),
     ...(options.headers as Record<string, string> || {}),
   };
-  
+
   // Don't set Content-Type for FormData
   if (options.body instanceof FormData) {
     delete headers['Content-Type'];
   }
-  
+
   return fetch(url, { ...options, headers });
 }
 
@@ -129,7 +129,7 @@ export async function getSessions(agentId?: string): Promise<Session[]> {
   if (agentId) {
     headers['X-Agent-Id'] = agentId;
   }
-  
+
   const response = await fetch(`${API_URL}/api/sessions`, { headers });
   if (!response.ok) throw new Error(`Failed to fetch sessions: ${response.status}`);
   const data = await response.json();
@@ -280,7 +280,11 @@ export async function streamChat(
 // ============ MEMORY API ============
 
 export async function getMemory(): Promise<string> {
-  const response = await fetchWithAuth(`${API_URL}/api/memory`);
+  const { currentAgent } = useUserStore.getState();
+  if (!currentAgent?.id) {
+    throw new Error('No agent selected');
+  }
+  const response = await fetchWithAuth(`${API_URL}/api/memory?agent_id=${encodeURIComponent(currentAgent.id)}`);
   if (!response.ok) {
     if (response.status === 404) return '';
     throw new Error(`Failed to fetch memory: ${response.status}`);
@@ -296,7 +300,11 @@ export interface MemoryListResponse {
 
 
 export async function listMemoryFiles(): Promise<string[]> {
-  const response = await fetchWithAuth(`${API_URL}/api/memory/list`);
+  const { currentAgent } = useUserStore.getState();
+  if (!currentAgent?.id) {
+    throw new Error('No agent selected');
+  }
+  const response = await fetchWithAuth(`${API_URL}/api/memory/list?agent_id=${encodeURIComponent(currentAgent.id)}`);
   if (!response.ok) {
     throw new Error(`Failed to list memory files: ${response.status}`);
   }
@@ -306,7 +314,11 @@ export async function listMemoryFiles(): Promise<string[]> {
 
 
 export async function getMemoryFile(filename: string): Promise<string> {
-  const response = await fetchWithAuth(`${API_URL}/api/memory/${encodeURIComponent(filename)}`);
+  const { currentAgent } = useUserStore.getState();
+  if (!currentAgent?.id) {
+    throw new Error('No agent selected');
+  }
+  const response = await fetchWithAuth(`${API_URL}/api/memory/${encodeURIComponent(filename)}?agent_id=${encodeURIComponent(currentAgent.id)}`);
   if (!response.ok) {
     if (response.status === 404) return '';
     throw new Error(`Failed to fetch memory file: ${response.status}`);
