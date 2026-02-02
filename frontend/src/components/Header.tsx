@@ -1,14 +1,21 @@
-import { useState } from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
+import { Menu, Activity, Brain } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useUserStore } from '../store/userStore';
 import type { AppStatus } from '../types';
 import { Button } from './ui/button';
-import BurgerMenu from './BurgerMenu';
 
-function Header() {
-  const { status, ttsEnabled, setTtsEnabled, sessionId } = useApp();
-  const [menuOpen, setMenuOpen] = useState(false);
-  
+interface HeaderProps {
+  onMenuClick: () => void;
+  onDebugClick: () => void;
+  onMemoryClick: () => void;
+  debugOpen: boolean;
+  memoryOpen: boolean;
+}
+
+function Header({ onMenuClick, onDebugClick, onMemoryClick, debugOpen, memoryOpen }: HeaderProps) {
+  const { status } = useApp();
+  const currentAvatar = useUserStore((state) => state.currentAvatar);
+
   // Status indicator colors
   const statusColors: Record<AppStatus, string> = {
     initializing: 'bg-warning animate-pulse',
@@ -17,43 +24,52 @@ function Header() {
     processing: 'bg-warning animate-pulse',
     thinking: 'bg-warning animate-pulse',
     speaking: 'bg-accent animate-pulse',
-    error: 'bg-error'
+    error: 'bg-error',
   };
-  
+
   return (
-    <header className="bg-bg-secondary border-b border-bg-tertiary px-3 py-2 md:px-4 md:py-3 flex items-center justify-between shrink-0">
-      {/* Left: Logo/Title */}
+    <header className="absolute top-0 left-0 right-0 h-14 px-4 flex items-center justify-between z-30 bg-gradient-to-b from-black/50 to-transparent">
+      {/* Left: Menu button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onMenuClick}
+        className="text-text-primary hover:bg-white/10"
+      >
+        <Menu className="w-6 h-6" />
+      </Button>
+
+      {/* Center: Avatar name + status */}
       <div className="flex items-center gap-2">
-        <h1 className="text-lg md:text-xl font-semibold text-text-primary">
-          Emilia
-        </h1>
-        <span className={`w-2 h-2 rounded-full ${statusColors[status]}`} 
-              title={`Status: ${status}`} />
+        <span className="text-lg font-medium text-text-primary">
+          {currentAvatar?.display_name || 'Emilia'}
+        </span>
+        <span
+          className={`w-2 h-2 rounded-full ${statusColors[status]}`}
+          title={`Status: ${status}`}
+        />
       </div>
-      
-      {/* Center: Session name (hidden on mobile) */}
-      <div className="hidden md:block text-text-secondary text-sm truncate max-w-xs">
-        {sessionId}
-      </div>
-      
-      {/* Right: Controls */}
-      <div className="flex items-center gap-2">
-        {/* TTS Toggle */}
+
+      {/* Right: Debug + Memory buttons */}
+      <div className="flex items-center gap-1">
         <Button
-          variant={ttsEnabled ? 'default' : 'secondary'}
+          variant="ghost"
           size="icon"
-          onClick={() => setTtsEnabled(!ttsEnabled)}
-          title={ttsEnabled ? 'TTS Enabled' : 'TTS Disabled'}
+          onClick={onMemoryClick}
+          className={`text-text-primary hover:bg-white/10 ${memoryOpen ? 'bg-white/15' : ''}`}
+          title="Agent Memory"
         >
-          {ttsEnabled ? (
-            <Volume2 className="w-5 h-5" />
-          ) : (
-            <VolumeX className="w-5 h-5" />
-          )}
+          <Brain className="w-5 h-5" />
         </Button>
-        
-        {/* Burger Menu */}
-        <BurgerMenu open={menuOpen} onOpenChange={setMenuOpen} />
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onDebugClick}
+          className={`text-text-primary hover:bg-white/10 ${debugOpen ? 'bg-white/15' : ''}`}
+          title="Debug Panel"
+        >
+          <Activity className="w-5 h-5" />
+        </Button>
       </div>
     </header>
   );

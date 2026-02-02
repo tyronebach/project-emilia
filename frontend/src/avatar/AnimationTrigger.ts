@@ -37,17 +37,27 @@ export class AnimationTrigger {
 
     console.log('[AnimationTrigger] Initialized', {
       hasHead: !!this.headBone,
-      hasArm: !!this.rightUpperArmBone
+      hasRightUpperArm: !!this.rightUpperArmBone,
+      hasRightLowerArm: !!this.rightLowerArmBone,
+      humanoidAvailable: !!this.vrm?.humanoid
     });
   }
 
   private getBone(name: VRMHumanBoneName): Bone {
     try {
       if (this.vrm?.humanoid) {
-        return this.vrm.humanoid.getNormalizedBoneNode(name) ||
-               this.vrm.humanoid.getRawBoneNode(name);
+        // Try raw bone first (for direct manipulation), then normalized
+        const raw = this.vrm.humanoid.getRawBoneNode(name);
+        const normalized = this.vrm.humanoid.getNormalizedBoneNode(name);
+        const bone = raw || normalized;
+        if (!bone) {
+          console.log(`[AnimationTrigger] Bone '${name}' not found (raw: ${!!raw}, normalized: ${!!normalized})`);
+        }
+        return bone;
       }
-    } catch (_e) { /* ignore */ }
+    } catch (e) {
+      console.error(`[AnimationTrigger] Error getting bone '${name}':`, e);
+    }
     return null;
   }
 
@@ -77,9 +87,15 @@ export class AnimationTrigger {
    * Trigger a named animation
    */
   trigger(name: string): void {
-    console.log('[AnimationTrigger] Triggering:', name);
+    console.log('[AnimationTrigger] trigger() called with:', name);
+    console.log('[AnimationTrigger] Current state:', {
+      hasHead: !!this.headBone,
+      hasArm: !!this.rightUpperArmBone,
+      currentAnimation: this.currentAnimation
+    });
 
     if (this.currentAnimation && name !== this.currentAnimation) {
+      console.log('[AnimationTrigger] Queuing animation:', name);
       this.animationQueue.push(name);
       return;
     }
@@ -153,17 +169,29 @@ export class AnimationTrigger {
 
   private animateNod(): void {
     if (!this.headBone) {
-      this.finishAnimation();
+      // Fallback: blink rapidly to indicate acknowledgment
+      if (this.vrm?.expressionManager) {
+        const t = this.animationTimer / 600;
+        if (t < 1) {
+          const blinkPhase = Math.sin(t * Math.PI * 2);
+          this.vrm.expressionManager.setValue('blink', blinkPhase > 0 ? blinkPhase : 0);
+        } else {
+          this.vrm.expressionManager.setValue('blink', 0);
+          this.finishAnimation();
+        }
+      } else {
+        this.finishAnimation();
+      }
       return;
     }
 
-    const t = this.animationTimer / 1000;
+    const t = this.animationTimer / 800; // Slightly faster nod
     const orig = this.originalRotations.head || { x: 0, y: 0, z: 0 };
 
-    if (t < 0.3) {
-      this.headBone.rotation.x = orig.x + (-0.15 * (t / 0.3));
-    } else if (t < 0.6) {
-      this.headBone.rotation.x = orig.x + (-0.15 + 0.15 * ((t - 0.3) / 0.3));
+    // Two nods for better visibility
+    if (t < 1) {
+      const nodAmount = Math.sin(t * Math.PI * 2) * 0.18; // More pronounced
+      this.headBone.rotation.x = orig.x + nodAmount;
     } else {
       this.finishAnimation();
     }
@@ -212,36 +240,60 @@ export class AnimationTrigger {
 
   private animateWave(): void {
     const t = this.animationTimer / 2000;
+    const hasArmBones = this.rightUpperArmBone && this.rightLowerArmBone;
 
-    if (this.rightUpperArmBone && this.rightLowerArmBone) {
+    console.log('[AnimationTrigger] animateWave t=', t.toFixed(2), 'hasArm:', hasArmBones);
+
+    if (hasArmBones) {
       const origUpper = this.originalRotations.rightUpperArm || { x: 0, y: 0, z: 0 };
       const origLower = this.originalRotations.rightLowerArm || { x: 0, y: 0, z: 0 };
 
       if (t < 0.2) {
         const easeT = t / 0.2;
-        this.rightUpperArmBone.rotation.z = origUpper.z + (-1.2 * easeT);
-        this.rightLowerArmBone.rotation.y = origLower.y + (0.5 * easeT);
+        this.rightUpperArmBone!.rotation.z = origUpper.z + (-1.2 * easeT);
+        this.rightLowerArmBone!.rotation.y = origLower.y + (0.5 * easeT);
       } else if (t < 0.8) {
         const waveT = (t - 0.2) / 0.6;
-        this.rightUpperArmBone.rotation.z = origUpper.z - 1.2;
-        this.rightLowerArmBone.rotation.y = origLower.y + 0.5 + (Math.sin(waveT * Math.PI * 4) * 0.3);
+        this.rightUpperArmBone!.rotation.z = origUpper.z - 1.2;
+        this.rightLowerArmBone!.rotation.y = origLower.y + 0.5 + (Math.sin(waveT * Math.PI * 4) * 0.3);
       } else if (t < 1) {
         const easeT = (t - 0.8) / 0.2;
-        this.rightUpperArmBone.rotation.z = origUpper.z + (-1.2 * (1 - easeT));
-        this.rightLowerArmBone.rotation.y = origLower.y + (0.5 * (1 - easeT));
+        this.rightUpperArmBone!.rotation.z = origUpper.z + (-1.2 * (1 - easeT));
+        this.rightLowerArmBone!.rotation.y = origLower.y + (0.5 * (1 - easeT));
       }
     }
 
-    // Happy expression
-    if (this.vrm?.expressionManager && t < 1) {
-      const v = t < 0.1 ? t / 0.1 : (t > 0.9 ? (1 - t) / 0.1 : 1);
-      this.vrm.expressionManager.setValue('happy', v * 0.5);
+    // Happy expression (always do this as fallback visual feedback)
+    if (this.vrm?.expressionManager) {
+      if (t < 1) {
+        const v = t < 0.1 ? t / 0.1 : (t > 0.9 ? (1 - t) / 0.1 : 1);
+        this.vrm.expressionManager.setValue('happy', v * 0.7);
+      } else {
+        this.vrm.expressionManager.setValue('happy', 0);
+      }
+    }
+
+    // Also do a head nod for wave if no arm bones (more noticeable)
+    if (!hasArmBones && this.headBone) {
+      const orig = this.originalRotations.head || { x: 0, y: 0, z: 0 };
+      // Side-to-side wave motion with head + slight tilt
+      if (t < 0.2) {
+        const easeT = t / 0.2;
+        this.headBone.rotation.y = orig.y + (0.15 * easeT);
+        this.headBone.rotation.z = orig.z + (0.08 * easeT);
+      } else if (t < 0.8) {
+        // Oscillate side to side
+        const waveT = (t - 0.2) / 0.6;
+        this.headBone.rotation.y = orig.y + 0.15 * Math.cos(waveT * Math.PI * 3);
+        this.headBone.rotation.z = orig.z + 0.08 * Math.cos(waveT * Math.PI * 3);
+      } else if (t < 1) {
+        const easeT = (t - 0.8) / 0.2;
+        this.headBone.rotation.y = orig.y + (0.15 * (1 - easeT));
+        this.headBone.rotation.z = orig.z + (0.08 * (1 - easeT));
+      }
     }
 
     if (t >= 1) {
-      if (this.vrm?.expressionManager) {
-        this.vrm.expressionManager.setValue('happy', 0);
-      }
       this.finishAnimation();
     }
   }

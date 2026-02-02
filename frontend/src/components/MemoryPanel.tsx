@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Lightbulb, RefreshCw } from 'lucide-react';
-import { Badge } from './ui/badge';
+import { fetchWithAuth } from '../utils/api';
 import { Button } from './ui/button';
 
 interface MemoryPanelProps {
@@ -12,14 +12,10 @@ function MemoryPanel({ className = '' }: MemoryPanelProps) {
   const [loading, setLoading] = useState(false);
   
   // Fetch memories on mount
-  const fetchMemories = async () => {
+  const fetchMemories = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/memory', {
-        headers: {
-          'Authorization': 'Bearer emilia-dev-token-2026'
-        }
-      });
+      const response = await fetchWithAuth('/api/memory');
       if (response.ok) {
         // API returns plain text (markdown)
         const text = await response.text();
@@ -34,11 +30,11 @@ function MemoryPanel({ className = '' }: MemoryPanelProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
   
   useEffect(() => {
     fetchMemories();
-  }, []);
+  }, [fetchMemories]);
   
   return (
     <div className={`bg-bg-secondary rounded-xl overflow-hidden ${className}`}>

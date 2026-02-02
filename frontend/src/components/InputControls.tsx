@@ -1,79 +1,82 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Send, Mic } from 'lucide-react';
+import { Mic, Send } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../hooks/useChat';
 import { useAudio } from '../hooks/useAudio';
 import { chatInputSchema, ChatInput } from '../schemas/chat';
 import { Button } from './ui/button';
-import { Input } from './ui/input';
 
+/**
+ * ChatGPT-style floating input bar
+ * Mic button first, then text input, then send button
+ */
 function InputControls() {
   const { status, addMessage } = useApp();
   const { sendMessage, isLoading } = useChat();
   const { startRecording, stopRecording, isRecording } = useAudio();
-  
-  const { register, handleSubmit, reset, setFocus, formState: { errors } } = useForm<ChatInput>({
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setFocus,
+    formState: { errors },
+  } = useForm<ChatInput>({
     resolver: zodResolver(chatInputSchema),
-    defaultValues: { message: '' }
+    defaultValues: { message: '' },
   });
-  
+
   // Disable input when processing
   const isDisabled = status === 'thinking' || status === 'speaking' || isLoading;
-  
+
   // Focus input on mount and after sending
   useEffect(() => {
-    if (!isDisabled) {
+    if (!isDisabled && !isRecording) {
       setFocus('message');
     }
-  }, [isDisabled, setFocus]);
-  
+  }, [isDisabled, isRecording, setFocus]);
+
   // Handle send
   const onSubmit = async (data: ChatInput) => {
     const trimmedText = data.message.trim();
     if (!trimmedText || isDisabled) return;
-    
+
     reset();
-    
+
     // Add user message
     addMessage('user', trimmedText, { source: 'text' });
-    
+
     // Send to API
     await sendMessage(trimmedText);
   };
-  
+
   // Handle PTT (push-to-talk)
   const handlePTTStart = () => {
     if (isDisabled) return;
     startRecording();
   };
-  
+
   const handlePTTEnd = async () => {
     if (!isRecording) return;
-    
+
     const transcription = await stopRecording();
-    
+
     if (transcription && transcription.trim()) {
       // Add user message with voice source
       addMessage('user', transcription, { source: 'voice' });
-      
+
       // Send to chat API
       await sendMessage(transcription);
     }
   };
-  
+
   return (
-    <div className="bg-bg-secondary rounded-xl p-3 md:p-4 shrink-0 relative">
-      {/* Status bar - positioned above input */}
-      {(isRecording || status === 'initializing' || status === 'processing' || status === 'thinking' || status === 'speaking') && (
-        <div className="absolute -top-8 left-0 right-0 text-xs text-text-secondary flex items-center justify-center gap-2 bg-bg-primary/80 py-1 px-3 rounded-t-lg">
-          {status === 'initializing' && (
-            <>
-              <span className="w-2 h-2 bg-warning rounded-full animate-pulse" />
-              <span>Initializing microphone...</span>
-            </>
-          )}
+    <div className="absolute bottom-0 left-0 right-0 z-20 bg-bg-primary border-t border-bg-tertiary">
+      {/* Status indicator above input */}
+      {(isRecording || status === 'processing' || status === 'thinking' || status === 'speaking') && (
+        <div className="flex items-center justify-center gap-2 py-2 text-xs text-text-secondary border-b border-bg-tertiary/50">
           {isRecording && (
             <>
               <span className="w-2 h-2 bg-error rounded-full animate-pulse" />
@@ -100,52 +103,16 @@ function InputControls() {
           )}
         </div>
       )}
-      
-      <form onSubmit={handleSubmit(onSubmit)} className="flex items-end gap-2">
-        {/* Text input */}
-        <div className="flex-1 relative">
-          <Input
-            {...register('message')}
-            placeholder="Type a message..."
-            disabled={isDisabled}
-            className="bg-bg-tertiary text-text-primary placeholder-text-secondary 
-                       pr-12 disabled:opacity-50 disabled:cursor-not-allowed
-                       focus:ring-2 focus:ring-accent
-                       min-h-[40px]"
-          />
-          
-          {/* Send button (inside input on desktop) */}
-          <Button
-            type="submit"
-            size="icon"
-            disabled={isDisabled}
-            className="absolute right-1 top-1/2 -translate-y-1/2 hidden md:flex
-                       h-8 w-8"
-          >
-            <Send className="w-4 h-4" />
-          </Button>
-          
-          {errors.message && (
-            <span className="text-xs text-error absolute -bottom-5 left-0">
-              {errors.message.message}
-            </span>
-          )}
-        </div>
-        
-        {/* Send button (mobile) */}
-        <Button
-          type="submit"
-          size="icon"
-          disabled={isDisabled}
-          className="md:hidden shrink-0 h-10 w-10"
-        >
-          <Send className="w-5 h-5" />
-        </Button>
-        
-        {/* PTT button */}
+
+      {/* Full-width input bar */}
+      <form
+        onSubmit={handleSubmit(onSubmit)}
+        className="flex items-center gap-2 px-4 py-3"
+      >
+        {/* Mic button (first) */}
         <Button
           type="button"
-          variant={isRecording ? 'destructive' : 'secondary'}
+          variant={isRecording ? 'destructive' : 'ghost'}
           size="icon"
           onMouseDown={handlePTTStart}
           onMouseUp={handlePTTEnd}
@@ -153,12 +120,41 @@ function InputControls() {
           onTouchStart={handlePTTStart}
           onTouchEnd={handlePTTEnd}
           disabled={isDisabled}
-          className={`shrink-0 h-10 w-10 ${isRecording ? 'animate-pulse' : ''}`}
+          className={`shrink-0 h-10 w-10 rounded-full ${isRecording ? 'animate-pulse' : ''}`}
           title="Hold to speak"
         >
           <Mic className="w-5 h-5" />
         </Button>
+
+        {/* Text input */}
+        <div className="flex-1 bg-bg-tertiary rounded-full px-4 py-2">
+          <input
+            {...register('message')}
+            placeholder="Message..."
+            disabled={isDisabled}
+            className="w-full bg-transparent text-text-primary placeholder-text-secondary/50 
+                       text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            autoComplete="off"
+          />
+        </div>
+
+        {/* Send button */}
+        <Button
+          type="submit"
+          size="icon"
+          disabled={isDisabled}
+          className="shrink-0 h-10 w-10 rounded-full"
+        >
+          <Send className="w-5 h-5" />
+        </Button>
       </form>
+
+      {/* Error display */}
+      {errors.message && (
+        <div className="text-xs text-error text-center pb-2">
+          {errors.message.message}
+        </div>
+      )}
     </div>
   );
 }

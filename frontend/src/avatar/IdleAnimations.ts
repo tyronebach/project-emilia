@@ -60,8 +60,9 @@ export class IdleAnimations {
   private getBone(name: VRMHumanBoneName): Bone {
     try {
       if (this.vrm?.humanoid) {
-        return this.vrm.humanoid.getNormalizedBoneNode(name) ||
-               this.vrm.humanoid.getRawBoneNode(name);
+        // Try raw bone first (for direct manipulation), then normalized
+        return this.vrm.humanoid.getRawBoneNode(name) ||
+               this.vrm.humanoid.getNormalizedBoneNode(name);
       }
     } catch (_e) { /* ignore */ }
     return null;

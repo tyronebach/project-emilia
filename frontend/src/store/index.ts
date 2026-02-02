@@ -27,9 +27,9 @@ interface AppState {
 const getStoredSessionId = (): string => {
   try {
     const stored = localStorage.getItem('emilia-session-id');
-    return stored || 'thai-emilia-main';
+    return stored || '';  // No hardcoded default - must come from backend
   } catch {
-    return 'thai-emilia-main';
+    return '';
   }
 };
 
@@ -66,17 +66,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   avatarRenderer: null,
   setAvatarRenderer: (renderer) => set({ avatarRenderer: renderer }),
   applyAvatarCommand: (command) => {
+    console.log('[Store] applyAvatarCommand:', command);
     set({ avatarState: command });
-    
+
     const renderer = get().avatarRenderer;
+    console.log('[Store] renderer:', !!renderer);
     if (!renderer) return;
-    
+
     if (command.mood && renderer.expressionController) {
+      console.log('[Store] Setting mood:', command.mood, command.intensity || 1.0);
       renderer.expressionController.setMood(command.mood, command.intensity || 1.0);
     }
-    
+
     if (command.animation && renderer.animationTrigger) {
+      console.log('[Store] Triggering animation:', command.animation);
       renderer.animationTrigger.trigger(command.animation);
     }
   },
 }));
+
+export { useUserStore } from './userStore';

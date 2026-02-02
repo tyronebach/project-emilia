@@ -29,23 +29,23 @@ function MessageBubble({ message }: MessageBubbleProps) {
     <div className={`flex items-start gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
       {/* Avatar */}
       <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-        isUser ? 'bg-accent/30' : 'bg-accent/20'
+        isUser ? 'bg-zinc-600/60' : 'bg-slate-600/60'
       }`}>
         <span className="text-xs text-text-primary">{isUser ? 'U' : 'E'}</span>
       </div>
       
       {/* Bubble */}
-      <div className={`max-w-[80%] md:max-w-[70%] ${isUser ? 'items-end' : 'items-start'}`}>
-        <div className={`rounded-lg px-3 py-2 ${
+      <div className={`max-w-[85%] md:max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}>
+        <div className={`rounded-2xl px-4 py-2 ${
           isUser 
-            ? 'bg-accent text-white rounded-tr-none' 
-            : 'bg-bg-tertiary text-text-primary rounded-tl-none'
+            ? 'bg-zinc-700/70 rounded-tr-sm' 
+            : 'bg-slate-700/70 rounded-tl-sm'
         }`}>
-          <p className="text-sm whitespace-pre-wrap break-words">{content}</p>
+          <p className="text-sm whitespace-pre-wrap break-words text-text-primary">{content}</p>
         </div>
         
         {/* Meta info */}
-        <div className={`flex items-center gap-2 mt-1 text-xs text-text-secondary flex-wrap ${
+        <div className={`flex items-center gap-2 mt-1 text-xs text-text-secondary/70 flex-wrap ${
           isUser ? 'justify-end' : 'justify-start'
         }`}>
           <span>{timeString}</span>
@@ -65,12 +65,6 @@ function MessageBubble({ message }: MessageBubbleProps) {
             <>
               <span>•</span>
               <span>→ {meta.animations[0]}</span>
-            </>
-          )}
-          {meta?.usage?.total_tokens && (
-            <>
-              <span>•</span>
-              <span>🎯 {meta.usage.prompt_tokens || 0}+{meta.usage.completion_tokens || 0}={meta.usage.total_tokens}</span>
             </>
           )}
           {meta?.model && (

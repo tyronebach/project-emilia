@@ -1,37 +1,59 @@
+import { useState } from 'react';
 import { AppProvider } from './context/AppContext';
 import Header from './components/Header';
+import Drawer from './components/Drawer';
 import AvatarPanel from './components/AvatarPanel';
 import ChatPanel from './components/ChatPanel';
 import InputControls from './components/InputControls';
-import MobileAccordion from './components/MobileAccordion';
-import StatsPanel from './components/StatsPanel';
-import MemoryPanel from './components/MemoryPanel';
+import DebugPanel from './components/DebugPanel';
+import MemoryModal from './components/MemoryModal';
 
+/**
+ * Main App Layout
+ * 
+ * Structure:
+ * - Full-screen avatar background
+ * - Header overlay at top (with drawer toggle + debug/memory buttons)
+ * - Chat history overlay on bottom half (semi-transparent)
+ * - Floating input bar at bottom
+ * - Side drawer for sessions/settings
+ * - Debug panel (right side modal)
+ * - Memory modal (top half modal)
+ */
 function App() {
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+
   return (
     <AppProvider>
-      <div className="h-screen bg-bg-primary text-text-primary flex flex-col overflow-hidden">
-        <Header />
-        <main className="flex-1 flex flex-col min-h-0 p-2 gap-2">
-          {/* Mobile: Accordion layout */}
-          <div className="md:hidden flex-1 min-h-0 flex flex-col overflow-hidden">
-            <MobileAccordion />
-          </div>
-          
-          {/* Desktop: Side-by-side layout */}
-          <div className="hidden md:flex flex-1 min-h-0 gap-4 p-2">
-            <div className="flex-1 flex flex-col gap-4 min-h-0">
-              <AvatarPanel />
-              <ChatPanel />
-            </div>
-            <div className="w-80 flex flex-col gap-4 shrink-0">
-              <StatsPanel />
-              <MemoryPanel className="flex-1" />
-            </div>
-          </div>
-          
-          <InputControls />
-        </main>
+      <div className="h-screen w-screen bg-bg-primary text-text-primary overflow-hidden relative">
+        {/* Full-screen Avatar Background */}
+        <AvatarPanel />
+
+        {/* Header Overlay */}
+        <Header 
+          onMenuClick={() => setDrawerOpen(true)} 
+          onDebugClick={() => setDebugOpen(!debugOpen)}
+          onMemoryClick={() => setMemoryOpen(!memoryOpen)}
+          debugOpen={debugOpen}
+          memoryOpen={memoryOpen}
+        />
+
+        {/* Chat History Overlay (bottom half) */}
+        <ChatPanel />
+
+        {/* Floating Input Bar */}
+        <InputControls />
+
+        {/* Side Drawer */}
+        <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
+        {/* Debug Panel */}
+        <DebugPanel open={debugOpen} onClose={() => setDebugOpen(false)} />
+
+        {/* Memory Modal */}
+        <MemoryModal open={memoryOpen} onClose={() => setMemoryOpen(false)} />
       </div>
     </AppProvider>
   );
