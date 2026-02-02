@@ -39,9 +39,10 @@ export function useChat() {
 
   /**
    * Speak text using TTS
+   * Returns audio_base64 for storage in message meta
    */
-  const speakText = useCallback(async (text: string): Promise<void> => {
-    if (!text?.trim()) return;
+  const speakText = useCallback(async (text: string): Promise<string | null> => {
+    if (!text?.trim()) return null;
 
     try {
       setStatus('speaking');
@@ -86,8 +87,12 @@ export function useChat() {
         };
         audio.play().catch(() => resolve());
       });
+
+      // Return the base64 for storage
+      return result.audio_base64;
     } catch (error) {
       console.error('TTS error:', error);
+      return null;
     } finally {
       setStatus('ready');
     }
@@ -147,9 +152,23 @@ export function useChat() {
         }
       );
 
-      // TTS if enabled
+      // TTS if enabled - store audio in message meta for replay
       if (ttsEnabled && finalResponse?.response) {
-        await speakText(finalResponse.response);
+        const audio_base64 = await speakText(finalResponse.response);
+        if (audio_base64) {
+          updateMessage(messageId, {
+            meta: {
+              ...finalResponse,
+              processing_ms: finalResponse.processing_ms,
+              model: finalResponse.model,
+              moods: finalResponse.moods,
+              animations: finalResponse.animations,
+              usage: finalResponse.usage,
+              streaming: false,
+              audio_base64,
+            }
+          });
+        }
       } else {
         setStatus('ready');
       }

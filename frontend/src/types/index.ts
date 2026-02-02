@@ -19,6 +19,7 @@ export interface MessageMeta {
   moods?: Array<{ mood: string; intensity: number }>;
   animations?: string[];
   usage?: TokenUsage;
+  audio_base64?: string;  // Stored TTS audio for replay
 }
 
 export interface Message {
