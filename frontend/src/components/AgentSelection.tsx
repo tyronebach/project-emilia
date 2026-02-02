@@ -32,24 +32,31 @@ function AgentSelection({ userId }: AgentSelectionProps) {
       });
     }
     setAgent(agent);
-    
+
     // Try to get existing sessions for this agent
-    let targetSessionId = 'new';
     try {
       const sessions = await getSessions(agent.id);
       if (sessions.length > 0) {
         // Use most recent session
-        targetSessionId = sessions[0].id;
+        navigate({
+          to: '/user/$userId/chat/$sessionId',
+          params: { userId, sessionId: sessions[0].id }
+        });
+      } else {
+        // No sessions - go to new chat page
+        navigate({
+          to: '/user/$userId/chat/new',
+          params: { userId }
+        });
       }
     } catch (e) {
       console.error('Failed to fetch sessions:', e);
+      // On error, default to new chat page
+      navigate({
+        to: '/user/$userId/chat/new',
+        params: { userId }
+      });
     }
-    
-    // Navigate to chat with proper route params
-    navigate({ 
-      to: '/user/$userId/chat/$sessionId',
-      params: { userId, sessionId: targetSessionId }
-    });
   };
 
   return (

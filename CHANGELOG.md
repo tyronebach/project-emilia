@@ -4,6 +4,40 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.2.0] - 2026-02-02
+
+### Fixed - New Chat Flow & Session Routing 🔧
+
+#### Multi-Page Chat Initialization
+- **Separate Pages for Each State** - Eliminated race conditions with dedicated routes:
+  - `/user/:userId/chat/new` - New chat page with "Chat with Agent" button
+  - `/user/:userId/chat/initializing/:sessionId` - Loading screen during session setup
+  - `/user/:userId/chat/:sessionId` - Main chat view for existing sessions
+
+#### InitializingPage Fixes
+- **Single Execution Guarantee** - Added `hasStartedRef` to prevent duplicate initialization runs
+- **Direct Session Lookup** - Uses `getSession(sessionId)` instead of fetching all sessions (more efficient)
+- **Removed Dependency Array Issue** - No longer re-runs when sessions list updates
+- **Console Logging** - Added debug logs for troubleshooting flow
+
+#### App.tsx Session Validation
+- **Fresh API Validation** - Always fetches fresh session data before redirecting
+- **One-Time Validation** - Uses `hasValidatedRef` to validate once per sessionId
+- **No More Redirect Loops** - Fixed loop where new sessions would bounce between routes
+
+#### Routing Improvements
+- **AgentSelection** - Routes to `/chat/new` when user has no existing sessions
+- **Drawer** - Redirects to `/chat/new` after deleting current session
+- **Store** - Allows empty `sessionId` for new session states
+
+### Technical
+- New route files: `chat.new.tsx`, `chat.initializing.$sessionId.tsx`
+- New components: `NewChatPage.tsx`, `InitializingPage.tsx`
+- Updated `routeTree.gen.ts` with new route definitions
+- `AppProvider` wrapper on InitializingRoute for `useChat` hook access
+
+---
+
 ## [5.1.0] - 2026-02-01
 
 ### Added - Frontend Polish & Routing 🎨
@@ -94,17 +128,17 @@ All notable changes to Emilia Web App will be documented in this file.
   - WebSocket TTS with `with_timestamps: character` for per-character alignment
   - Viseme mapping from phonemes (aa, ih, ou, ee, oh, ff, th, etc.)
   - Smooth interpolation and decay for natural mouth movement
-  
+
 - **Expression System** - Dynamic facial expressions from mood tags
   - SSE event parsing for `[mood:happy]`, `[mood:thinking]`, etc.
   - Expression controller with blend support and priorities
   - Expressions: happy, sad, surprised, angry, thinking, neutral
-  
+
 - **Idle Animations** - Continuous micro-movements for lifelike avatar
   - Blink: Randomized 2-6 second intervals with natural timing
   - Breathe: Subtle spine rotation on sine wave
   - Sway: Micro head movements for organic feel
-  
+
 - **Triggered Animations** - On-demand gestures and poses
   - Nod: Affirmative head gesture
   - Wave: Friendly greeting animation
@@ -358,6 +392,6 @@ Format: `MAJOR.MINOR.PATCH`
 
 ---
 
-**Maintainer:** Ram 🩷  
-**Project:** Emilia waifu voice assistant  
+**Maintainer:** Ram 🩷
+**Project:** Emilia waifu voice assistant
 **Repository:** /home/tbach/clawd/emilia-project/emilia-webapp

@@ -1,33 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useNavigate } from '@tanstack/react-router';
-import { Mic, Send, Sparkles } from 'lucide-react';
+import { Mic, Send } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../hooks/useChat';
 import { useAudio } from '../hooks/useAudio';
-import { useSession } from '../hooks/useSession';
-import { useAppStore } from '../store';
-import { useUserStore } from '../store/userStore';
 import { chatInputSchema, ChatInput } from '../schemas/chat';
 import { Button } from './ui/button';
 
 /**
  * ChatGPT-style floating input bar
- * Shows "Start Chat" button if no session exists
+ * Only shown on active chat sessions (not on new chat page)
  */
 function InputControls() {
-  const navigate = useNavigate();
   const { status, addMessage } = useApp();
   const { sendMessage, isLoading } = useChat();
   const { startRecording, stopRecording, isRecording } = useAudio();
-  const { createSession } = useSession();
-  
-  const sessionId = useAppStore((state) => state.sessionId);
-  const currentUser = useUserStore((state) => state.currentUser);
-  const currentAgent = useUserStore((state) => state.currentAgent);
-  
-  const [isStartingChat, setIsStartingChat] = useState(false);
 
   const {
     register,
@@ -40,48 +28,15 @@ function InputControls() {
     defaultValues: { message: '' },
   });
 
-  // Check if we have a valid session
-  const hasSession = !!sessionId && sessionId.length > 0;
-
   // Disable input when processing
-  const isDisabled = status === 'thinking' || status === 'speaking' || isLoading || isStartingChat;
+  const isDisabled = status === 'thinking' || status === 'speaking' || isLoading;
 
-  // Focus input on mount and after sending (only if we have a session)
+  // Focus input on mount and after sending
   useEffect(() => {
-    if (!isDisabled && !isRecording && hasSession) {
+    if (!isDisabled && !isRecording) {
       setFocus('message');
     }
-  }, [isDisabled, isRecording, hasSession, setFocus]);
-
-  // Handle starting a new chat
-  const handleStartChat = async () => {
-    if (!currentAgent?.id || !currentUser?.id || isStartingChat) return;
-    
-    setIsStartingChat(true);
-    try {
-      // Create a new session
-      const newSessionId = await createSession();
-      
-      if (newSessionId) {
-        // Navigate to the new session URL
-        navigate({ 
-          to: '/user/$userId/chat/$sessionId',
-          params: { userId: currentUser.id, sessionId: newSessionId }
-        });
-        
-        // Wait for navigation and store update
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        // Send initial greeting to wake up the agent
-        addMessage('user', 'Hi!', { source: 'text' });
-        await sendMessage('Hi!');
-      }
-    } catch (error) {
-      console.error('Failed to start chat:', error);
-    } finally {
-      setIsStartingChat(false);
-    }
-  };
+  }, [isDisabled, isRecording, setFocus]);
 
   // Handle send
   const onSubmit = async (data: ChatInput) => {
@@ -116,36 +71,6 @@ function InputControls() {
       await sendMessage(transcription);
     }
   };
-
-  // If no session, show "Start Chat" button
-  if (!hasSession) {
-    return (
-      <div className="absolute bottom-0 left-0 right-0 z-20 bg-bg-primary border-t border-bg-tertiary">
-        <div className="flex items-center justify-center px-4 py-6">
-          {isStartingChat ? (
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm text-text-secondary">
-                ✨ Bringing {currentAgent?.display_name || 'Emilia'} to life...
-              </span>
-              <span className="text-xs text-text-secondary/70">
-                First time may take 10-15 seconds
-              </span>
-            </div>
-          ) : (
-            <Button
-              onClick={handleStartChat}
-              disabled={!currentAgent}
-              className="px-8 py-6 text-lg gap-2"
-            >
-              <Sparkles className="w-5 h-5" />
-              Chat with {currentAgent?.display_name || 'Emilia'}
-            </Button>
-          )}
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="absolute bottom-0 left-0 right-0 z-20 bg-bg-primary border-t border-bg-tertiary">
@@ -207,7 +132,7 @@ function InputControls() {
             {...register('message')}
             placeholder="Message..."
             disabled={isDisabled}
-            className="w-full bg-transparent text-text-primary placeholder-text-secondary/50 
+            className="w-full bg-transparent text-text-primary placeholder-text-secondary/50
                        text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             autoComplete="off"
           />

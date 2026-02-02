@@ -56,23 +56,18 @@ function Drawer({ open, onClose }: DrawerProps) {
 
   const handleNewSession = async () => {
     if (!currentUser?.id) return;
-    const name = prompt('Session name (or leave empty):');
-    if (name !== null) {
-      const newSessionId = await createSession(name || undefined);
-      if (newSessionId) {
-        navigate({ 
-          to: '/user/$userId/chat/$sessionId',
-          params: { userId: currentUser.id, sessionId: newSessionId }
-        });
-      }
-      onClose();
-    }
+    // Navigate to the new chat page instead of creating session here
+    navigate({
+      to: '/user/$userId/chat/new',
+      params: { userId: currentUser.id }
+    });
+    onClose();
   };
 
   const handleSwitchSession = async (sid: string) => {
     if (sid !== sessionId && currentUser?.id) {
       // Navigate to the new session URL
-      navigate({ 
+      navigate({
         to: '/user/$userId/chat/$sessionId',
         params: { userId: currentUser.id, sessionId: sid }
       });
@@ -117,7 +112,30 @@ function Drawer({ open, onClose }: DrawerProps) {
     setMenuOpenFor(null);
     if (!confirm('Delete this session?')) return;
     try {
+      const wasCurrentSession = sid === sessionId;
       await deleteSession(sid);
+
+      // If we deleted the current session, navigate appropriately
+      if (wasCurrentSession && currentUser?.id) {
+        // Fetch fresh sessions to see what's left
+        const remainingSessions = await fetchSessions();
+
+        if (remainingSessions.length > 0) {
+          // Navigate to the most recent session (sorted by last_used desc)
+          const latestSession = remainingSessions[0];
+          navigate({
+            to: '/user/$userId/chat/$sessionId',
+            params: { userId: currentUser.id, sessionId: latestSession.id }
+          });
+        } else {
+          // No sessions left, go to new chat page
+          navigate({
+            to: '/user/$userId/chat/new',
+            params: { userId: currentUser.id }
+          });
+        }
+        onClose();
+      }
     } catch (error) {
       console.error('Failed to delete session:', error);
     }
@@ -134,7 +152,7 @@ function Drawer({ open, onClose }: DrawerProps) {
     const date = new Date(timestamp * 1000);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
-    
+
     if (diff < 60000) return 'Just now';
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
@@ -214,7 +232,7 @@ function Drawer({ open, onClose }: DrawerProps) {
                           </div>
                         </div>
                       </button>
-                      
+
                       {/* 3-dot menu button */}
                       <button
                         onClick={(e) => {
@@ -228,7 +246,7 @@ function Drawer({ open, onClose }: DrawerProps) {
 
                       {/* Dropdown menu */}
                       {isMenuOpen && (
-                        <div 
+                        <div
                           className="absolute right-0 top-full mt-1 bg-bg-secondary border border-bg-tertiary rounded-lg shadow-lg z-50 py-1 min-w-[120px]"
                           onClick={(e) => e.stopPropagation()}
                         >
@@ -312,7 +330,7 @@ function Drawer({ open, onClose }: DrawerProps) {
       {/* Rename Modal */}
       {renameModalOpen && (
         <>
-          <div 
+          <div
             className="fixed inset-0 bg-black/70 z-[60]"
             onClick={() => setRenameModalOpen(false)}
           />

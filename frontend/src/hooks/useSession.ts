@@ -10,9 +10,9 @@ export function useSession() {
   const setSessionId = useAppStore((state) => state.setSessionId);
   const clearMessages = useChatStore((state) => state.clearMessages);
   const setMessages = useChatStore((state) => state.setMessages);
-  
+
   const currentAgent = useUserStore((state) => state.currentAgent);
-  
+
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const fetchingRef = useRef<string | null>(null);
@@ -22,7 +22,7 @@ export function useSession() {
    */
   const fetchSessions = useCallback(async (): Promise<Session[]> => {
     if (!currentAgent?.id) return [];
-    
+
     try {
       setIsLoading(true);
       const data = await getSessions(currentAgent.id);
@@ -41,13 +41,13 @@ export function useSession() {
    */
   const fetchHistory = useCallback(async (sid: string): Promise<Message[]> => {
     if (!sid || fetchingRef.current === sid) return [];
-    
+
     try {
       fetchingRef.current = sid;
       setIsLoading(true);
-      
+
       const rawMessages = await getSessionHistory(sid);
-      
+
       const messages: Message[] = rawMessages.map((msg, idx) => ({
         id: idx,
         role: msg.role,
@@ -55,7 +55,7 @@ export function useSession() {
         timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
         meta: {},
       }));
-      
+
       setMessages(messages);
       return messages;
     } catch (error) {
@@ -72,11 +72,11 @@ export function useSession() {
    */
   const switchSession = useCallback(async (newSessionId: string): Promise<void> => {
     if (newSessionId === sessionId) return;
-    
+
     clearMessages();
     setSessionId(newSessionId);
     await fetchHistory(newSessionId);
-    
+
     console.log('Switched to session:', newSessionId);
   }, [sessionId, setSessionId, clearMessages, fetchHistory]);
 
@@ -88,17 +88,17 @@ export function useSession() {
       console.error('No agent selected');
       return null;
     }
-    
+
     try {
       setIsLoading(true);
       const session = await createSession(currentAgent.id, name);
-      
+
       clearMessages();
       setSessionId(session.id);
-      
+
       // Refresh sessions list
       await fetchSessions();
-      
+
       console.log('Created new session:', session.id);
       return session.id;
     } catch (error) {
@@ -115,13 +115,13 @@ export function useSession() {
   const deleteSession = useCallback(async (sid: string): Promise<boolean> => {
     try {
       await deleteSessionApi(sid);
-      
+
       // If deleted current session, clear state
       if (sid === sessionId) {
         clearMessages();
         setSessionId('');
       }
-      
+
       // Refresh sessions list
       await fetchSessions();
       return true;
@@ -140,9 +140,9 @@ export function useSession() {
     }
   }, [currentAgent?.id, fetchSessions]);
 
-  // Load history when sessionId changes
+  // Load history when sessionId changes (but not for empty/new sessions)
   useEffect(() => {
-    if (sessionId) {
+    if (sessionId && sessionId !== '') {
       fetchHistory(sessionId);
     }
   }, [sessionId, fetchHistory]);
