@@ -235,13 +235,148 @@ class TestUserEndpoints:
 
 
 # ========================================
-# Admin Endpoint Tests
+# Transcribe Endpoint Tests
 # ========================================
 
-class TestAdminEndpoints:
-    """Tests for admin/manage endpoints"""
+class TestTranscribeEndpoint:
+    """Tests for POST /api/transcribe"""
 
-    def test_list_all_sessions_requires_auth(self, test_client):
+    def test_transcribe_requires_auth(self, test_client):
+        """Transcribe endpoint should require authorization."""
+        # Create a simple audio file
+        audio_data = b"fake audio data"
+        response = test_client.post(
+            "/api/transcribe",
+            files={"audio": ("test.webm", audio_data, "audio/webm")}
+        )
+        assert response.status_code == 401
+
+    def test_transcribe_requires_file(self, test_client, auth_headers):
+        """Transcribe should require audio file."""
+        response = test_client.post(
+            "/api/transcribe",
+            headers=auth_headers
+        )
+        assert response.status_code == 422  # Validation error
+
+    @patch("routers.chat.httpx.AsyncClient")
+    def test_transcribe_success(self, mock_client_class, test_client, auth_headers):
+        """Transcribe should return text from STT service."""
+        # Mock the STT service response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "text": "Hello world",
+            "language": "en",
+            "duration": 1.5
+        }
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        audio_data = b"fake audio data"
+        response = test_client.post(
+            "/api/transcribe",
+            files={"audio": ("recording.webm", audio_data, "audio/webm")},
+            headers=auth_headers
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["text"] == "Hello world"
+        assert data["language"] == "en"
+
+    @patch("routers.chat.httpx.AsyncClient")
+    def test_transcribe_with_missing_content_type(self, mock_client_class, test_client, auth_headers):
+        """Transcribe should handle missing content type gracefully."""
+        # Mock the STT service response
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"text": "Test", "language": "en"}
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        audio_data = b"fake audio data"
+        # Send without content type (None)
+        response = test_client.post(
+            "/api/transcribe",
+            files={"audio": ("recording.webm", audio_data)},
+            headers=auth_headers
+        )
+
+        # Should succeed with default content type
+        assert response.status_code == 200
+
+    @patch("routers.chat.httpx.AsyncClient")
+    def test_transcribe_stt_service_error(self, mock_client_class, test_client, auth_headers):
+        """Transcribe should handle STT service errors."""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        audio_data = b"fake audio data"
+        response = test_client.post(
+            "/api/transcribe",
+            files={"audio": ("recording.webm", audio_data, "audio/webm")},
+            headers=auth_headers
+        )
+
+        assert response.status_code == 500
+
+    @patch("routers.chat.httpx.AsyncClient")
+    def test_transcribe_timeout(self, mock_client_class, test_client, auth_headers):
+        """Transcribe should handle timeouts."""
+        import httpx
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
+        mock_client_class.return_value = mock_client
+
+        audio_data = b"fake audio data"
+        response = test_client.post(
+            "/api/transcribe",
+            files={"audio": ("recording.webm", audio_data, "audio/webm")},
+            headers=auth_headers
+        )
+
+        assert response.status_code == 504
+
+    @patch("routers.chat.httpx.AsyncClient")
+    def test_transcribe_connection_error(self, mock_client_class, test_client, auth_headers):
+        """Transcribe should handle connection errors."""
+        import httpx
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(side_effect=httpx.ConnectError("Connection failed"))
+        mock_client_class.return_value = mock_client
+
+        audio_data = b"fake audio data"
+        response = test_client.post(
+            "/api/transcribe",
+            files={"audio": ("recording.webm", audio_data, "audio/webm")},
+            headers=auth_headers
+        )
+
+        assert response.status_code == 503
+
+
+# ========================================
         """GET /api/manage/sessions should require auth."""
         response = test_client.get("/api/manage/sessions")
         assert response.status_code == 401
