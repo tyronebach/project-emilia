@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { AppProvider } from './context/AppContext';
+import { AppProvider, useApp } from './context/AppContext';
 import { useAppStore } from './store';
 import { useUserStore } from './store/userStore';
 import { useChatStore } from './store/chatStore';
@@ -12,6 +12,7 @@ import ChatPanel from './components/ChatPanel';
 import InputControls from './components/InputControls';
 import DebugPanel from './components/DebugPanel';
 import MemoryModal from './components/MemoryModal';
+import AwakeningOverlay from './components/AwakeningOverlay';
 
 interface AppProps {
   userId: string;
@@ -89,35 +90,88 @@ function App({ userId, sessionId }: AppProps) {
 
   return (
     <AppProvider>
-      <div className="h-screen w-screen bg-bg-primary text-text-primary overflow-hidden relative">
-        {/* Full-screen Avatar Background */}
-        <AvatarPanel />
-
-        {/* Header Overlay */}
-        <Header
-          onMenuClick={() => setDrawerOpen(true)}
-          onDebugClick={() => setDebugOpen(!debugOpen)}
-          onMemoryClick={() => setMemoryOpen(!memoryOpen)}
-          debugOpen={debugOpen}
-          memoryOpen={memoryOpen}
-        />
-
-        {/* Chat History Overlay (bottom half) */}
-        <ChatPanel />
-
-        {/* Floating Input Bar */}
-        <InputControls />
-
-        {/* Side Drawer */}
-        <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
-
-        {/* Debug Panel */}
-        <DebugPanel open={debugOpen} onClose={() => setDebugOpen(false)} />
-
-        {/* Memory Modal */}
-        <MemoryModal open={memoryOpen} onClose={() => setMemoryOpen(false)} />
-      </div>
+      <AppContent
+        drawerOpen={drawerOpen}
+        setDrawerOpen={setDrawerOpen}
+        debugOpen={debugOpen}
+        setDebugOpen={setDebugOpen}
+        memoryOpen={memoryOpen}
+        setMemoryOpen={setMemoryOpen}
+      />
     </AppProvider>
+  );
+}
+
+/**
+ * Inner component that has access to AppContext
+ * Handles awakening state for first-message experience
+ */
+function AppContent({
+  drawerOpen,
+  setDrawerOpen,
+  debugOpen,
+  setDebugOpen,
+  memoryOpen,
+  setMemoryOpen,
+}: {
+  drawerOpen: boolean;
+  setDrawerOpen: (open: boolean) => void;
+  debugOpen: boolean;
+  setDebugOpen: (open: boolean) => void;
+  memoryOpen: boolean;
+  setMemoryOpen: (open: boolean) => void;
+}) {
+  const { messages, status } = useApp();
+  const [hasAwakened, setHasAwakened] = useState(false);
+
+  // Check if there are any assistant messages with content
+  const hasAssistantMessage = messages.some(m => m.role === 'assistant' && m.content.trim() !== '');
+
+  // Awakening mode: no assistant messages AND thinking
+  const isAwakening = !hasAwakened && !hasAssistantMessage && status === 'thinking';
+
+  // Latch: once we exit awakening, never go back
+  useEffect(() => {
+    if (!isAwakening && !hasAwakened) {
+      // Check if we should latch (we had the opportunity to awaken but conditions changed)
+      if (hasAssistantMessage || (status !== 'thinking' && status !== 'initializing')) {
+        setHasAwakened(true);
+      }
+    }
+  }, [isAwakening, hasAwakened, hasAssistantMessage, status]);
+
+  return (
+    <div className="h-screen w-screen bg-bg-primary text-text-primary overflow-hidden relative">
+      {/* Full-screen Avatar Background */}
+      <AvatarPanel />
+
+      {/* Awakening overlay - shows during first message */}
+      {isAwakening && <AwakeningOverlay />}
+
+      {/* Header Overlay - always visible */}
+      <Header
+        onMenuClick={() => setDrawerOpen(true)}
+        onDebugClick={() => setDebugOpen(!debugOpen)}
+        onMemoryClick={() => setMemoryOpen(!memoryOpen)}
+        debugOpen={debugOpen}
+        memoryOpen={memoryOpen}
+      />
+
+      {/* Chat History Overlay - hidden during awakening */}
+      {!isAwakening && <ChatPanel />}
+
+      {/* Floating Input Bar - hidden during awakening */}
+      {!isAwakening && <InputControls />}
+
+      {/* Side Drawer */}
+      <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
+      {/* Debug Panel */}
+      <DebugPanel open={debugOpen} onClose={() => setDebugOpen(false)} />
+
+      {/* Memory Modal */}
+      <MemoryModal open={memoryOpen} onClose={() => setMemoryOpen(false)} />
+    </div>
   );
 }
 
