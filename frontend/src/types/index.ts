@@ -35,45 +35,11 @@ export interface AvatarState {
   animation?: string;
 }
 
-export interface Session {
-  session_id?: string;
-  session_key?: string;
-  display_id?: string;
-  updated_at?: number;
-  model?: string;
-  [key: string]: unknown;
-}
-
-export interface Memory {
-  content: string;
-  timestamp?: string;
-  [key: string]: unknown;
-}
-
 export interface AvatarCommand {
   mood?: string;
   intensity?: number;
   animation?: string;
 }
 
-export interface User {
-  id: string;
-  display_name: string;
-  avatars?: string[];
-  avatar_count?: number;
-  default_avatar?: string;
-}
-
-export interface Avatar {
-  id: string;
-  display_name: string;
-  agent_id: string;
-  owner: string;
-  vrm_model: string;
-  voice_id: string;
-}
-
-export interface SessionInfo {
-  session_id: string;
-  agent_id: string;
-}
+// Re-export from api.ts for convenience
+export type { User, Agent, Session } from '../utils/api';

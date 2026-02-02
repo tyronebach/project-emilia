@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, Brain, RefreshCw } from 'lucide-react';
-import { fetchWithAuth } from '../utils/api';
+import { getMemory } from '../utils/api';
 import { Button } from './ui/button';
 
 interface MemoryModalProps {
@@ -17,15 +17,8 @@ function MemoryModal({ open, onClose }: MemoryModalProps) {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetchWithAuth('/api/memory');
-      if (response.ok) {
-        const text = await response.text();
-        setMemoryContent(text);
-      } else if (response.status === 404) {
-        setMemoryContent('');
-      } else {
-        throw new Error(`Failed to fetch: ${response.status}`);
-      }
+      const text = await getMemory();
+      setMemoryContent(text);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch memories');
       setMemoryContent('');

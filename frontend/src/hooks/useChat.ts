@@ -7,6 +7,7 @@ import type { TokenUsage } from '../types';
 
 interface StreamResponse {
   response?: string;
+  session_id?: string;
   processing_ms?: number;
   model?: string;
   moods?: Array<{ mood: string; intensity: number }>;
@@ -16,7 +17,6 @@ interface StreamResponse {
 
 export function useChat() {
   const {
-    sessionId,
     status,
     setStatus,
     addMessage,
@@ -27,7 +27,7 @@ export function useChat() {
   } = useApp();
 
   const { updateStats, addStateEntry } = useStatsStore();
-  const currentAvatar = useUserStore((state) => state.currentAvatar);
+  const currentAgent = useUserStore((state) => state.currentAgent);
 
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -41,42 +41,28 @@ export function useChat() {
    * Speak text using TTS
    */
   const speakText = useCallback(async (text: string): Promise<void> => {
-    if (!text || !text.trim()) return;
+    if (!text?.trim()) return;
 
     try {
       setStatus('speaking');
 
-      const headers: Record<string, string> = {};
-      if (currentAvatar?.id) {
-        headers['X-Avatar-Id'] = currentAvatar.id;
-      }
-      
       const response = await fetchWithAuth('/api/speak', {
         method: 'POST',
-        headers,
         body: JSON.stringify({ text })
       });
 
-      if (!response.ok) {
-        throw new Error(`TTS failed: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`TTS failed: ${response.status}`);
       const result = await response.json();
-
-      if (!result.audio_base64) {
-        throw new Error('No audio data');
-      }
+      if (!result.audio_base64) throw new Error('No audio data');
 
       // Decode audio
       const byteChars = atob(result.audio_base64);
-      const byteNumbers = new Array(byteChars.length);
+      const byteArray = new Uint8Array(byteChars.length);
       for (let i = 0; i < byteChars.length; i++) {
-        byteNumbers[i] = byteChars.charCodeAt(i);
+        byteArray[i] = byteChars.charCodeAt(i);
       }
-      const byteArray = new Uint8Array(byteNumbers);
       const blob = new Blob([byteArray], { type: 'audio/mpeg' });
       const audioUrl = URL.createObjectURL(blob);
-
       const audio = new Audio(audioUrl);
 
       // Setup lip sync
@@ -89,21 +75,15 @@ export function useChat() {
       // Play and wait
       await new Promise<void>((resolve) => {
         audio.onended = () => {
-          if (renderer?.lipSyncEngine) {
-            renderer.lipSyncEngine.stop();
-          }
+          renderer?.lipSyncEngine?.stop();
           URL.revokeObjectURL(audioUrl);
           resolve();
         };
-
         audio.onerror = () => {
-          if (renderer?.lipSyncEngine) {
-            renderer.lipSyncEngine.stop();
-          }
+          renderer?.lipSyncEngine?.stop();
           URL.revokeObjectURL(audioUrl);
           resolve();
         };
-
         audio.play().catch(() => resolve());
       });
     } catch (error) {
@@ -111,29 +91,25 @@ export function useChat() {
     } finally {
       setStatus('ready');
     }
-  }, [setStatus, avatarRendererRef, currentAvatar]);
+  }, [setStatus, avatarRendererRef]);
 
   /**
    * Send message and handle streaming response
    */
   const sendMessage = useCallback(async (message: string): Promise<void> => {
-    if (isLoading) return;
+    if (isLoading || !currentAgent) return;
 
     setIsLoading(true);
     setStatus('thinking');
-
-    // Create abort controller
     abortControllerRef.current = new AbortController();
 
     try {
-      // Create placeholder message for streaming
       const messageId = addMessage('assistant', '', { streaming: true });
       let fullContent = '';
       let finalResponse: StreamResponse = {};
 
       await streamChat(
         message,
-        sessionId,
         // onChunk
         (chunk) => {
           fullContent += chunk;
@@ -146,8 +122,6 @@ export function useChat() {
         // onDone
         (data) => {
           finalResponse = data;
-
-          // Final update with clean response and metadata (including mood/animation/usage)
           updateMessage(messageId, {
             content: data.response || fullContent,
             meta: {
@@ -159,11 +133,7 @@ export function useChat() {
               streaming: false
             }
           });
-
-          // Update stats
-          updateStats({
-            processing_ms: data.processing_ms
-          });
+          updateStats({ processing_ms: data.processing_ms });
         },
         // onError
         (error) => {
@@ -177,10 +147,8 @@ export function useChat() {
         }
       );
 
-      // TTS if enabled and we have a response
-      console.log('[useChat] TTS check:', { ttsEnabled, hasResponse: !!finalResponse?.response });
+      // TTS if enabled
       if (ttsEnabled && finalResponse?.response) {
-        console.log('[useChat] Calling speakText');
         await speakText(finalResponse.response);
       } else {
         setStatus('ready');
@@ -193,22 +161,13 @@ export function useChat() {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [sessionId, isLoading, setStatus, addMessage, updateMessage, applyAvatarCommand, ttsEnabled, speakText]);
+  }, [currentAgent, isLoading, setStatus, addMessage, updateMessage, applyAvatarCommand, ttsEnabled, speakText, updateStats]);
 
-  /**
-   * Abort current request
-   */
   const abort = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    abortControllerRef.current?.abort();
   }, []);
 
-  return {
-    sendMessage,
-    isLoading,
-    abort
-  };
+  return { sendMessage, isLoading, abort };
 }
 
 export default useChat;

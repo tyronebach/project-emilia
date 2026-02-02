@@ -14,7 +14,7 @@ interface HeaderProps {
 
 function Header({ onMenuClick, onDebugClick, onMemoryClick, debugOpen, memoryOpen }: HeaderProps) {
   const { status } = useApp();
-  const currentAvatar = useUserStore((state) => state.currentAvatar);
+  const currentAgent = useUserStore((state) => state.currentAgent);
 
   // Status indicator colors
   const statusColors: Record<AppStatus, string> = {
@@ -39,10 +39,10 @@ function Header({ onMenuClick, onDebugClick, onMemoryClick, debugOpen, memoryOpe
         <Menu className="w-6 h-6" />
       </Button>
 
-      {/* Center: Avatar name + status */}
+      {/* Center: Agent name + status */}
       <div className="flex items-center gap-2">
         <span className="text-lg font-medium text-text-primary">
-          {currentAvatar?.display_name || 'Emilia'}
+          {currentAgent?.display_name || 'Emilia'}
         </span>
         <span
           className={`w-2 h-2 rounded-full ${statusColors[status]}`}

@@ -16,7 +16,7 @@ function DebugPanel({ open, onClose }: DebugPanelProps) {
   const { sessionId } = useSession();
   const { totalLatency, latencyCount, stateLog } = useStatsStore();
   const currentUser = useUserStore((state) => state.currentUser);
-  const currentAvatar = useUserStore((state) => state.currentAvatar);
+  const currentAgent = useUserStore((state) => state.currentAgent);
 
   const userMessages = messages.filter((m) => m.role === 'user').length;
   const assistantMessages = messages.filter((m) => m.role === 'assistant').length;
@@ -75,8 +75,8 @@ function DebugPanel({ open, onClose }: DebugPanelProps) {
             <span className="text-text-primary truncate">{currentUser?.display_name || '—'}</span>
           </div>
           <div className="flex justify-between gap-2">
-            <span className="text-text-secondary">Avatar:</span>
-            <span className="text-accent truncate">{currentAvatar?.display_name || '—'}</span>
+            <span className="text-text-secondary">Agent:</span>
+            <span className="text-accent truncate">{currentAgent?.display_name || '—'}</span>
           </div>
           <div className="flex justify-between gap-2">
             <span className="text-text-secondary">TTS:</span>

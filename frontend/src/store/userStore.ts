@@ -1,12 +1,12 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { User, Avatar } from '../types';
+import type { Agent, User } from '../utils/api';
 
 interface UserState {
   currentUser: User | null;
-  currentAvatar: Avatar | null;
+  currentAgent: Agent | null;
   setUser: (user: User | null) => void;
-  setAvatar: (avatar: Avatar | null) => void;
+  setAgent: (agent: Agent | null) => void;
   logout: () => void;
 }
 
@@ -14,17 +14,17 @@ export const useUserStore = create<UserState>()(
   persist(
     (set) => ({
       currentUser: null,
-      currentAvatar: null,
+      currentAgent: null,
       setUser: (user) => set({ currentUser: user }),
-      setAvatar: (avatar) => set({ currentAvatar: avatar }),
-      logout: () => set({ currentUser: null, currentAvatar: null }),
+      setAgent: (agent) => set({ currentAgent: agent }),
+      logout: () => set({ currentUser: null, currentAgent: null }),
     }),
     {
       name: 'emilia-user-store',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         currentUser: state.currentUser,
-        currentAvatar: state.currentAvatar,
+        currentAgent: state.currentAgent,
       }),
     }
   )

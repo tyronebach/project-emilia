@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { X, Plus, MessageSquare, User, Sparkles, Volume2, VolumeX, Settings } from 'lucide-react';
+import { X, Plus, MessageSquare, User, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useSession } from '../hooks/useSession';
 import { useUserStore } from '../store/userStore';
@@ -17,7 +17,7 @@ function Drawer({ open, onClose }: DrawerProps) {
   const { ttsEnabled, setTtsEnabled } = useApp();
   const { sessions, sessionId, switchSession, createSession, fetchSessions, isLoading } = useSession();
   const currentUser = useUserStore((state) => state.currentUser);
-  const currentAvatar = useUserStore((state) => state.currentAvatar);
+  const currentAgent = useUserStore((state) => state.currentAgent);
   const logout = useUserStore((state) => state.logout);
 
   // Fetch sessions when drawer opens
@@ -59,12 +59,29 @@ function Drawer({ open, onClose }: DrawerProps) {
     onClose();
   };
 
-  const handleSelectAvatar = () => {
-    // Navigate to avatar selection if we have a user
+  const handleSelectAgent = () => {
     if (currentUser?.id) {
       navigate({ to: '/user/$userId', params: { userId: currentUser.id } });
     }
     onClose();
+  };
+
+  // Format session display
+  const formatSessionName = (session: typeof sessions[0]) => {
+    if (session.name) return session.name;
+    // Show truncated ID
+    return session.id.slice(0, 8) + '...';
+  };
+
+  const formatLastUsed = (timestamp: number) => {
+    const date = new Date(timestamp * 1000);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return date.toLocaleDateString();
   };
 
   return (
@@ -97,6 +114,7 @@ function Drawer({ open, onClose }: DrawerProps) {
             variant="secondary"
             className="w-full justify-start gap-2"
             onClick={handleNewSession}
+            disabled={!currentAgent}
           >
             <Plus className="w-4 h-4" />
             New Session
@@ -109,25 +127,21 @@ function Drawer({ open, onClose }: DrawerProps) {
             <div className="text-xs text-text-secondary uppercase tracking-wide px-2 py-1">
               Sessions
             </div>
-            {isLoading ? (
+            {!currentAgent ? (
+              <div className="px-2 py-4 text-sm text-text-secondary">Select an agent first</div>
+            ) : isLoading ? (
               <div className="px-2 py-4 text-sm text-text-secondary">Loading...</div>
             ) : sessions.length === 0 ? (
               <div className="px-2 py-4 text-sm text-text-secondary">No sessions yet</div>
             ) : (
               <div className="space-y-1">
-                {sessions.map((session, index) => {
-                  const sid = typeof session === 'string' 
-                    ? session 
-                    : (session.session_key || session.session_id || '');
-                  const displayName = typeof session === 'string' 
-                    ? session 
-                    : (session.display_id || sid);
-                  const isActive = sid === sessionId;
+                {sessions.map((session) => {
+                  const isActive = session.id === sessionId;
 
                   return (
                     <button
-                      key={`${sid}-${index}`}
-                      onClick={() => handleSwitchSession(sid)}
+                      key={session.id}
+                      onClick={() => handleSwitchSession(session.id)}
                       className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${
                         isActive
                           ? 'bg-accent/20 text-accent'
@@ -135,7 +149,12 @@ function Drawer({ open, onClose }: DrawerProps) {
                       }`}
                     >
                       <MessageSquare className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{displayName}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="truncate">{formatSessionName(session)}</div>
+                        <div className="text-xs text-text-secondary/70">
+                          {formatLastUsed(session.last_used)} · {session.message_count} msgs
+                        </div>
+                      </div>
                     </button>
                   );
                 })}
@@ -146,12 +165,12 @@ function Drawer({ open, onClose }: DrawerProps) {
 
         {/* Bottom Actions */}
         <div className="border-t border-bg-tertiary p-3 space-y-2 shrink-0">
-          {/* Current User/Avatar Info */}
+          {/* Current User/Agent Info */}
           {currentUser && (
             <div className="px-2 py-1 text-xs text-text-secondary">
               <div className="truncate">{currentUser.display_name}</div>
-              {currentAvatar && (
-                <div className="truncate text-accent">{currentAvatar.display_name}</div>
+              {currentAgent && (
+                <div className="truncate text-accent">{currentAgent.display_name}</div>
               )}
             </div>
           )}
@@ -166,14 +185,14 @@ function Drawer({ open, onClose }: DrawerProps) {
             Switch User
           </Button>
 
-          {/* Select Avatar */}
+          {/* Select Agent */}
           <Button
             variant="ghost"
             className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary"
-            onClick={handleSelectAvatar}
+            onClick={handleSelectAgent}
           >
             <Sparkles className="w-4 h-4" />
-            Select Avatar
+            Select Agent
           </Button>
 
           {/* TTS Toggle */}
