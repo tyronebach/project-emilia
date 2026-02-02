@@ -4,6 +4,6 @@ import AdminPanel from '../components/AdminPanel';
 
 export const route = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/admin',
+  path: '/settings',
   component: AdminPanel,
 });

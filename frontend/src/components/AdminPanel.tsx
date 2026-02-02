@@ -2,15 +2,15 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, Save, AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from './ui/button';
+import { fetchWithAuth } from '../utils/api';
 
 interface Agent {
   id: string;
   display_name: string;
   voice_id: string;
   vrm_model: string;
+  workspace?: string;
 }
-
-const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080';
 
 function AdminPanel() {
   const navigate = useNavigate();
@@ -27,7 +27,7 @@ function AdminPanel() {
 
   const fetchAgents = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/admin/agents`);
+      const response = await fetchWithAuth('/api/manage/agents');
       if (!response.ok) throw new Error('Failed to fetch agents');
       const data = await response.json();
       setAgents(data.agents || []);
@@ -50,9 +50,8 @@ function AdminPanel() {
     setSuccess(null);
     
     try {
-      const response = await fetch(`${API_URL}/api/admin/agents/${agent.id}`, {
+      const response = await fetchWithAuth(`/api/manage/agents/${agent.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ voice_id: agent.voice_id }),
       });
       
