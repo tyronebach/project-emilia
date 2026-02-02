@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAppStore } from '../store';
+import { useUserStore } from '../store/userStore';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
 import type { VRM } from '@pixiv/three-vrm';
 
@@ -11,17 +12,22 @@ import type { VRM } from '@pixiv/three-vrm';
 function AvatarPanel() {
   const { avatarRendererRef } = useApp();
   const setAvatarRenderer = useAppStore((state) => state.setAvatarRenderer);
+  const currentAgent = useUserStore((state) => state.currentAgent);
   const [loading, setLoading] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const currentVrmRef = useRef<string | null>(null);
+
+  // Get VRM URL from agent or default
+  const vrmUrl = currentAgent?.vrm_model ? `/${currentAgent.vrm_model}` : '/emilia.vrm';
 
   // Initialize avatar renderer
   useEffect(() => {
     if (!containerRef.current) return;
 
     const renderer = new AvatarRenderer(containerRef.current, {
-      vrmUrl: '/emilia.vrm',
+      vrmUrl,
       onLoad: (vrm: VRM) => {
         const metaName = (vrm.meta as { name?: string })?.name;
         console.log('VRM loaded:', metaName || 'Unknown');
@@ -45,8 +51,9 @@ function AvatarPanel() {
     renderer.loadVRM();
     renderer.startRenderLoop();
 
-    // Store reference
+    // Store reference and track loaded VRM
     avatarRendererRef.current = renderer;
+    currentVrmRef.current = vrmUrl;
 
     // Cleanup
     return () => {
@@ -54,7 +61,31 @@ function AvatarPanel() {
       avatarRendererRef.current = null;
       setAvatarRenderer(null);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [avatarRendererRef, setAvatarRenderer]);
+
+  // Hotswap VRM when agent changes
+  useEffect(() => {
+    const renderer = avatarRendererRef.current;
+    if (!renderer || !vrmUrl || vrmUrl === currentVrmRef.current) return;
+
+    console.log('Hotswapping VRM:', currentVrmRef.current, '→', vrmUrl);
+    setLoading(true);
+    setError(null);
+
+    renderer.loadVRM(vrmUrl)
+      .then((vrm) => {
+        const metaName = (vrm.meta as { name?: string })?.name;
+        console.log('VRM hotswapped:', metaName || 'Unknown');
+        currentVrmRef.current = vrmUrl;
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('VRM hotswap error:', err);
+        setError(err.message || 'Failed to load avatar');
+        setLoading(false);
+      });
+  }, [vrmUrl, avatarRendererRef]);
 
   return (
     <div className="absolute inset-0 z-0">
