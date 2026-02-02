@@ -1,70 +1,59 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useApp } from '../context/AppContext';
-import { fetchWithAuth } from '../utils/api';
-import type { Message, Session } from '../types';
+import { useAppStore } from '../store';
+import { useUserStore } from '../store/userStore';
+import { useChatStore } from '../store/chatStore';
+import { getSessions, createSession, getSessionHistory, deleteSession as deleteSessionApi } from '../utils/api';
+import type { Session, Message } from '../types';
 
 export function useSession() {
-  const { sessionId, setSessionId, setMessages, clearMessages } = useApp();
+  const sessionId = useAppStore((state) => state.sessionId);
+  const setSessionId = useAppStore((state) => state.setSessionId);
+  const clearMessages = useChatStore((state) => state.clearMessages);
+  const setMessages = useChatStore((state) => state.setMessages);
+  
+  const currentAgent = useUserStore((state) => state.currentAgent);
   
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const fetchingRef = useRef<string | null>(null);
-  
+
   /**
-   * Fetch list of sessions for current user
+   * Fetch sessions for current agent
    */
   const fetchSessions = useCallback(async (): Promise<Session[]> => {
+    if (!currentAgent?.id) return [];
+    
     try {
       setIsLoading(true);
-      // fetchWithAuth already includes user headers from getUserHeaders()
-      const response = await fetchWithAuth('/api/sessions/list');
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch sessions: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      setSessions(data.sessions || []);
-      return data.sessions || [];
+      const data = await getSessions(currentAgent.id);
+      setSessions(data);
+      return data;
     } catch (error) {
       console.error('fetchSessions error:', error);
       return [];
     } finally {
       setIsLoading(false);
     }
-  }, []);
-  
+  }, [currentAgent?.id]);
+
   /**
-   * Fetch history for current session
+   * Fetch history for a session
    */
-  const fetchHistory = useCallback(async (sid: string = sessionId): Promise<Message[]> => {
-    // Prevent duplicate fetches
-    if (fetchingRef.current === sid) {
-      return [];
-    }
+  const fetchHistory = useCallback(async (sid: string): Promise<Message[]> => {
+    if (!sid || fetchingRef.current === sid) return [];
     
     try {
       fetchingRef.current = sid;
       setIsLoading(true);
-      const response = await fetchWithAuth(`/api/sessions/history/${encodeURIComponent(sid)}`);
       
-      if (!response.ok) {
-        if (response.status === 404) {
-          // New session - no history yet
-          return [];
-        }
-        throw new Error(`Failed to fetch history: ${response.status}`);
-      }
+      const rawMessages = await getSessionHistory(sid);
       
-      const data = await response.json();
-      
-      // Convert to message format
-      const messages: Message[] = (data.messages || []).map((msg: { role: 'user' | 'assistant'; content: string; timestamp?: string; meta?: Message['meta'] }, idx: number) => ({
+      const messages: Message[] = rawMessages.map((msg, idx) => ({
         id: idx,
         role: msg.role,
         content: msg.content,
         timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-        meta: msg.meta || {}
+        meta: {},
       }));
       
       setMessages(messages);
@@ -76,8 +65,8 @@ export function useSession() {
       setIsLoading(false);
       fetchingRef.current = null;
     }
-  }, [sessionId, setMessages]);
-  
+  }, [setMessages]);
+
   /**
    * Switch to a different session
    */
@@ -86,93 +75,78 @@ export function useSession() {
     
     clearMessages();
     setSessionId(newSessionId);
-    
-    // Fetch history for new session
     await fetchHistory(newSessionId);
     
     console.log('Switched to session:', newSessionId);
   }, [sessionId, setSessionId, clearMessages, fetchHistory]);
-  
+
   /**
-   * Create a new session via backend API
+   * Create a new session
    */
-  const createSession = useCallback(async (name: string | null = null): Promise<string> => {
+  const newSession = useCallback(async (name?: string): Promise<string | null> => {
+    if (!currentAgent?.id) {
+      console.error('No agent selected');
+      return null;
+    }
+    
     try {
       setIsLoading(true);
+      const session = await createSession(currentAgent.id, name);
       
-      // Call backend to create session (saves to users.json)
-      const response = await fetchWithAuth('/api/sessions/create', {
-        method: 'POST',
-        body: JSON.stringify({ name: name || undefined })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to create session: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      const newSessionId = data.session_id;
-      
-      // Clear messages and switch to new session
       clearMessages();
-      setSessionId(newSessionId);
+      setSessionId(session.id);
       
-      console.log('Created new session:', newSessionId);
-      return newSessionId;
+      // Refresh sessions list
+      await fetchSessions();
+      
+      console.log('Created new session:', session.id);
+      return session.id;
     } catch (error) {
       console.error('createSession error:', error);
-      // Fallback to local creation
-      const fallbackId = name || `session-${Date.now()}`;
-      clearMessages();
-      setSessionId(fallbackId);
-      return fallbackId;
+      return null;
     } finally {
       setIsLoading(false);
     }
-  }, [setSessionId, clearMessages]);
-  
+  }, [currentAgent?.id, setSessionId, clearMessages, fetchSessions]);
+
   /**
    * Delete a session
    */
   const deleteSession = useCallback(async (sid: string): Promise<boolean> => {
     try {
-      const response = await fetchWithAuth(`/api/sessions/${encodeURIComponent(sid)}`, {
-        method: 'DELETE'
-      });
+      await deleteSessionApi(sid);
       
-      if (!response.ok) {
-        throw new Error(`Failed to delete session: ${response.status}`);
-      }
-      
-      // If deleted current session, create new one
+      // If deleted current session, clear state
       if (sid === sessionId) {
-        await createSession();
+        clearMessages();
+        setSessionId('');
       }
       
       // Refresh sessions list
       await fetchSessions();
-      
       return true;
     } catch (error) {
       console.error('deleteSession error:', error);
       return false;
     }
-  }, [sessionId, createSession, fetchSessions]);
-  
-  // Load sessions on mount
+  }, [sessionId, setSessionId, clearMessages, fetchSessions]);
+
+  // Load sessions when agent changes
   useEffect(() => {
-    fetchSessions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  
+    if (currentAgent?.id) {
+      fetchSessions();
+    } else {
+      setSessions([]);
+    }
+  }, [currentAgent?.id, fetchSessions]);
+
   // Load history when sessionId changes
   useEffect(() => {
     if (sessionId) {
       fetchHistory(sessionId);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
-  
+  }, [sessionId, fetchHistory]);
+
   return {
     sessions,
     sessionId,
@@ -180,8 +154,8 @@ export function useSession() {
     fetchSessions,
     fetchHistory,
     switchSession,
-    createSession,
-    deleteSession
+    createSession: newSession,
+    deleteSession,
   };
 }
 

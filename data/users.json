@@ -12,7 +12,7 @@
         "theme": "dark"
       },
       "sessions": {
-        "emilia-thai": null,
+        "emilia-thai": "thai-emilia-thai-1770004390",
         "rem": "thai-rem-1770003616"
       }
     },
@@ -27,7 +27,7 @@
         "theme": "dark"
       },
       "sessions": {
-        "emilia-emily": null
+        "emilia-emily": "emily-emilia-emily-1770004245"
       }
     }
   }

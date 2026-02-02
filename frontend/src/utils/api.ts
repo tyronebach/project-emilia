@@ -3,78 +3,172 @@
  * Handles authenticated requests and SSE streaming
  */
 
-import type { AvatarCommand, User, SessionInfo } from '../types';
+import type { AvatarCommand } from '../types';
 import { useUserStore } from '../store/userStore';
+import { useAppStore } from '../store';
 
 const API_URL = '';
 const AUTH_TOKEN = 'emilia-dev-token-2026';
 
-interface FetchOptions extends RequestInit {
-  body?: string | FormData;
+// ============ TYPES ============
+
+export interface Agent {
+  id: string;
+  display_name: string;
+  clawdbot_agent_id: string;
+  vrm_model: string;
+  voice_id: string | null;
+  owners?: string[];
 }
 
-interface TokenUsage {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  total_tokens?: number;
+export interface User {
+  id: string;
+  display_name: string;
+  preferences?: string;
+  agents?: Agent[];
+}
+
+export interface Session {
+  id: string;
+  agent_id: string;
+  name: string | null;
+  created_at: number;
+  last_used: number;
+  message_count: number;
+  participants: string[];
+}
+
+export interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: string;
 }
 
 interface StreamResponse {
   response?: string;
+  session_id?: string;
   processing_ms?: number;
   model?: string;
   moods?: Array<{ mood: string; intensity: number }>;
   animations?: string[];
-  usage?: TokenUsage;
-}
-
-function normalizeUser(user: Partial<User> & { id?: string }, fallbackId?: string): User {
-  const id = user.id ?? fallbackId ?? '';
-  return {
-    id,
-    display_name: user.display_name ?? id,
-    avatars: user.avatars ?? [],
-    avatar_count: user.avatar_count,
-    default_avatar: user.default_avatar ?? '',
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
   };
 }
 
-function getUserHeaders(): Record<string, string> {
-  const { currentUser, currentAvatar } = useUserStore.getState();
-  const headers: Record<string, string> = {};
+
+// ============ HELPERS ============
+
+function getHeaders(): Record<string, string> {
+  const { currentUser, currentAgent } = useUserStore.getState();
+  const { sessionId } = useAppStore.getState();
+  
+  const headers: Record<string, string> = {
+    'Authorization': `Bearer ${AUTH_TOKEN}`,
+    'Content-Type': 'application/json',
+  };
+  
   if (currentUser?.id) {
     headers['X-User-Id'] = currentUser.id;
   }
-  if (currentAvatar?.id) {
-    headers['X-Avatar-Id'] = currentAvatar.id;
+  if (currentAgent?.id) {
+    headers['X-Agent-Id'] = currentAgent.id;
   }
+  if (sessionId) {
+    headers['X-Session-Id'] = sessionId;
+  }
+  
   return headers;
 }
 
-/**
- * Make an authenticated fetch request
- */
-export async function fetchWithAuth(url: string, options: FetchOptions = {}): Promise<Response> {
-  const headers: Record<string, string> = {
-    'Authorization': `Bearer ${AUTH_TOKEN}`,
-    ...getUserHeaders(),
-    ...options.headers as Record<string, string>,
+export async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+  const headers = {
+    ...getHeaders(),
+    ...(options.headers as Record<string, string> || {}),
   };
-
-  // Only set Content-Type for JSON if not FormData
-  if (!(options.body instanceof FormData)) {
-    headers['Content-Type'] = 'application/json';
+  
+  // Don't set Content-Type for FormData
+  if (options.body instanceof FormData) {
+    delete headers['Content-Type'];
   }
-
-  return fetch(url, {
-    ...options,
-    headers,
-  });
+  
+  return fetch(url, { ...options, headers });
 }
 
-/**
- * Strip avatar tags from response text
- */
+
+// ============ USER API ============
+
+export async function getUsers(): Promise<User[]> {
+  const response = await fetchWithAuth(`${API_URL}/api/users`);
+  if (!response.ok) throw new Error(`Failed to fetch users: ${response.status}`);
+  const data = await response.json();
+  return data.users || [];
+}
+
+export async function getUser(userId: string): Promise<User> {
+  const response = await fetchWithAuth(`${API_URL}/api/users/${encodeURIComponent(userId)}`);
+  if (!response.ok) throw new Error(`Failed to fetch user: ${response.status}`);
+  return response.json();
+}
+
+export async function getUserAgents(userId: string): Promise<Agent[]> {
+  const response = await fetchWithAuth(`${API_URL}/api/users/${encodeURIComponent(userId)}/agents`);
+  if (!response.ok) throw new Error(`Failed to fetch agents: ${response.status}`);
+  const data = await response.json();
+  return data.agents || [];
+}
+
+
+// ============ SESSION API ============
+
+export async function getSessions(agentId?: string): Promise<Session[]> {
+  const headers = getHeaders();
+  if (agentId) {
+    headers['X-Agent-Id'] = agentId;
+  }
+  
+  const response = await fetch(`${API_URL}/api/sessions`, { headers });
+  if (!response.ok) throw new Error(`Failed to fetch sessions: ${response.status}`);
+  const data = await response.json();
+  return data.sessions || [];
+}
+
+export async function createSession(agentId: string, name?: string): Promise<Session> {
+  const response = await fetchWithAuth(`${API_URL}/api/sessions`, {
+    method: 'POST',
+    body: JSON.stringify({ agent_id: agentId, name }),
+  });
+  if (!response.ok) throw new Error(`Failed to create session: ${response.status}`);
+  return response.json();
+}
+
+export async function getSession(sessionId: string): Promise<Session> {
+  const response = await fetchWithAuth(`${API_URL}/api/sessions/${encodeURIComponent(sessionId)}`);
+  if (!response.ok) throw new Error(`Failed to fetch session: ${response.status}`);
+  return response.json();
+}
+
+export async function getSessionHistory(sessionId: string, limit = 50): Promise<Message[]> {
+  const response = await fetchWithAuth(
+    `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/history?limit=${limit}`
+  );
+  if (!response.ok) throw new Error(`Failed to fetch history: ${response.status}`);
+  const data = await response.json();
+  return data.messages || [];
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const response = await fetchWithAuth(`${API_URL}/api/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) throw new Error(`Failed to delete session: ${response.status}`);
+}
+
+
+// ============ CHAT API ============
+
 export function stripAvatarTags(text: string): string {
   if (!text) return '';
   return text
@@ -83,12 +177,8 @@ export function stripAvatarTags(text: string): string {
     .trim();
 }
 
-/**
- * Stream chat response via SSE
- */
 export async function streamChat(
   message: string,
-  sessionId: string,
   onChunk: (chunk: string) => void,
   onAvatar: (data: AvatarCommand) => void,
   onDone: (data: StreamResponse) => void,
@@ -97,10 +187,7 @@ export async function streamChat(
   try {
     const response = await fetchWithAuth(`${API_URL}/api/chat?stream=1`, {
       method: 'POST',
-      body: JSON.stringify({
-        message,
-        session_id: sessionId
-      })
+      body: JSON.stringify({ message }),
     });
 
     if (!response.ok) {
@@ -109,9 +196,7 @@ export async function streamChat(
     }
 
     const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('No response body');
-    }
+    if (!reader) throw new Error('No response body');
 
     const decoder = new TextDecoder();
     let buffer = '';
@@ -127,16 +212,13 @@ export async function streamChat(
       buffer = lines.pop() || '';
 
       for (const line of lines) {
-        // Parse event type
         if (line.startsWith('event: ')) {
           currentEventType = line.slice(7).trim();
           continue;
         }
 
-        // Parse data
         if (line.startsWith('data: ')) {
           const dataStr = line.slice(6).trim();
-
           if (!dataStr || dataStr === '[DONE]') {
             currentEventType = null;
             continue;
@@ -145,43 +227,35 @@ export async function streamChat(
           try {
             const data = JSON.parse(dataStr);
 
-            // Handle avatar event
             if (currentEventType === 'avatar') {
-              console.log('[API] Avatar event received:', data);
               onAvatar(data);
               currentEventType = null;
               continue;
             }
 
-            // Handle error
-            if (data.error) {
-              throw new Error(data.error);
-            }
+            if (data.error) throw new Error(data.error);
 
-            // Handle content chunk
             if (data.content) {
               fullContent += data.content;
               onChunk(data.content);
             }
 
-            // Handle done
             if (data.done) {
-              console.log('[API] Stream done:', { moods: data.moods, animations: data.animations });
               onDone({
                 response: data.response || stripAvatarTags(fullContent),
+                session_id: data.session_id,
                 processing_ms: data.processing_ms,
                 model: data.model,
                 moods: data.moods,
                 animations: data.animations,
-                usage: data.usage
+                usage: data.usage,
               });
             }
           } catch (e) {
             if ((e as Error).message !== 'Unexpected end of JSON input') {
-              console.error('SSE parse error:', (e as Error).message, dataStr);
+              console.error('SSE parse error:', e);
             }
           }
-
           currentEventType = null;
         }
       }
@@ -191,42 +265,30 @@ export async function streamChat(
   }
 }
 
-export async function getUsers(): Promise<User[]> {
-  const response = await fetchWithAuth(`${API_URL}/api/users`);
+
+// ============ MEMORY API ============
+
+export async function getMemory(): Promise<string> {
+  const response = await fetchWithAuth(`${API_URL}/api/memory`);
   if (!response.ok) {
-    throw new Error(`Users API error: ${response.status}`);
+    if (response.status === 404) return '';
+    throw new Error(`Failed to fetch memory: ${response.status}`);
   }
-  const data = await response.json();
-  if (Array.isArray(data)) {
-    return (data as Array<Partial<User> & { id?: string }>).map((user) => normalizeUser(user));
-  }
-  if (Array.isArray(data?.users)) {
-    return (data.users as Array<Partial<User> & { id?: string }>).map((user) => normalizeUser(user));
-  }
-  return [];
+  return response.text();
 }
 
-export async function getUser(userId: string): Promise<User> {
-  const response = await fetchWithAuth(`${API_URL}/api/users/${encodeURIComponent(userId)}`);
-  if (!response.ok) {
-    throw new Error(`User API error: ${response.status}`);
-  }
-  const data = await response.json();
-  if (data?.user) {
-    return normalizeUser(data.user as Partial<User>, userId);
-  }
-  return normalizeUser(data as Partial<User>, userId);
-}
 
-export async function selectAvatar(userId: string, avatarId: string): Promise<SessionInfo> {
-  const response = await fetchWithAuth(
-    `${API_URL}/api/users/${encodeURIComponent(userId)}/select-avatar/${encodeURIComponent(avatarId)}`,
-    { method: 'POST' }
-  );
-  if (!response.ok) {
-    throw new Error(`Select avatar error: ${response.status}`);
-  }
-  return response.json() as Promise<SessionInfo>;
-}
-
-export default { fetchWithAuth, streamChat, stripAvatarTags, getUsers, getUser, selectAvatar };
+export default {
+  fetchWithAuth,
+  getUsers,
+  getUser,
+  getUserAgents,
+  getSessions,
+  createSession,
+  getSession,
+  getSessionHistory,
+  deleteSession,
+  streamChat,
+  stripAvatarTags,
+  getMemory,
+};
