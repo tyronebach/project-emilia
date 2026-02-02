@@ -138,8 +138,6 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                     return
 
                 full_content = ""
-                moods = []
-                animations = []
                 usage = None
 
                 async for line in response.aiter_lines():
@@ -165,20 +163,8 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
 
                         if chunk:
                             full_content += chunk
-                            clean_chunk, chunk_moods, chunk_anims = extract_avatar_commands(chunk)
-
-                            if chunk_moods:
-                                moods.extend(chunk_moods)
-                                for m in chunk_moods:
-                                    yield f"event: avatar\ndata: {json.dumps({'mood': m['mood'], 'intensity': m['intensity']})}\n\n"
-
-                            if chunk_anims:
-                                animations.extend(chunk_anims)
-                                for a in chunk_anims:
-                                    yield f"event: avatar\ndata: {json.dumps({'animation': a})}\n\n"
-
-                            if clean_chunk:
-                                yield f"data: {json.dumps({'content': clean_chunk})}\n\n"
+                            # Stream raw content - we'll extract tags at the end
+                            yield f"data: {json.dumps({'content': chunk})}\n\n"
 
                         if choices[0].get("finish_reason"):
                             break
@@ -186,9 +172,15 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                     except json.JSONDecodeError:
                         continue
 
-                # Final response
-                clean_full, _, _ = extract_avatar_commands(full_content)
+                # Final response - extract moods/animations from full content
+                clean_full, moods, animations = extract_avatar_commands(full_content)
                 processing_ms = int((time.time() - start_time) * 1000)
+
+                # Send avatar events for extracted moods/animations
+                for m in moods:
+                    yield f"event: avatar\ndata: {json.dumps({'mood': m['mood'], 'intensity': m['intensity']})}\n\n"
+                for a in animations:
+                    yield f"event: avatar\ndata: {json.dumps({'animation': a})}\n\n"
 
                 final = {
                     "done": True,
