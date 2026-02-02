@@ -12,11 +12,15 @@ interface StatsState {
   totalLatency: number;
   latencyCount: number;
   
+  // Per-stage latencies (for P50/P95 calculation)
+  stageLatencies: Record<string, number[]>;
+  
   // State log
   stateLog: StateLogEntry[];
   
   // Actions
   updateStats: (data: { processing_ms?: number }) => void;
+  addStageLatency: (stage: string, latencyMs: number) => void;
   addStateEntry: (state: string, text: string) => void;
   resetStats: () => void;
 }
@@ -35,6 +39,7 @@ export const useStatsStore = create<StatsState>((set) => ({
   messageCount: 0,
   totalLatency: 0,
   latencyCount: 0,
+  stageLatencies: {},
   stateLog: [{ timestamp: new Date(), state: 'ready', text: 'Ready' }],
   
   updateStats: (data) => set((state) => {
@@ -50,6 +55,16 @@ export const useStatsStore = create<StatsState>((set) => ({
     return updates;
   }),
   
+  addStageLatency: (stage, latencyMs) => set((state) => {
+    const stageLatencies = { ...state.stageLatencies };
+    if (!stageLatencies[stage]) {
+      stageLatencies[stage] = [];
+    }
+    // Keep last 100 samples per stage
+    stageLatencies[stage] = [...stageLatencies[stage], latencyMs].slice(-100);
+    return { stageLatencies };
+  }),
+  
   addStateEntry: (stateKey, text) => set((state) => ({
     stateLog: [
       { timestamp: new Date(), state: stateKey, text: text || STATE_LABELS[stateKey] || stateKey },
@@ -61,6 +76,7 @@ export const useStatsStore = create<StatsState>((set) => ({
     messageCount: 0,
     totalLatency: 0,
     latencyCount: 0,
+    stageLatencies: {},
     stateLog: [{ timestamp: new Date(), state: 'ready', text: 'Stats reset' }]
   }),
 }));

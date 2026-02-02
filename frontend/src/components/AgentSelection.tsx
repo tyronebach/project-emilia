@@ -1,11 +1,9 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
-import { Button } from './ui/button';
+import { ArrowLeft, Sparkles } from 'lucide-react';
 import { getUser, getSessions } from '../utils/api';
 import { useUserStore } from '../store/userStore';
-import { useAppStore } from '../store';
 import type { Agent } from '../utils/api';
 
 interface AgentSelectionProps {
@@ -16,7 +14,6 @@ function AgentSelection({ userId }: AgentSelectionProps) {
   const navigate = useNavigate();
   const setUser = useUserStore((state) => state.setUser);
   const setAgent = useUserStore((state) => state.setAgent);
-  const setSessionId = useAppStore((state) => state.setSessionId);
 
   const { data: userData, isLoading, error } = useQuery({
     queryKey: ['user', userId],
@@ -37,33 +34,45 @@ function AgentSelection({ userId }: AgentSelectionProps) {
     setAgent(agent);
     
     // Try to get existing sessions for this agent
+    let targetSessionId = 'new';
     try {
-      // Temporarily set the agent so getSessions can use it
       const sessions = await getSessions(agent.id);
       if (sessions.length > 0) {
         // Use most recent session
-        setSessionId(sessions[0].id);
-      } else {
-        // No sessions - clear session ID, will create on first message
-        setSessionId('');
+        targetSessionId = sessions[0].id;
       }
     } catch (e) {
       console.error('Failed to fetch sessions:', e);
-      setSessionId('');
     }
     
-    navigate({ to: '/chat' });
+    // Navigate to chat with proper route params
+    navigate({ 
+      to: '/user/$userId/chat/$sessionId',
+      params: { userId, sessionId: targetSessionId }
+    });
   };
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary flex items-center justify-center px-4 py-10">
-      <div className="w-full max-w-5xl">
-        <div className="text-center">
-          <p className="text-sm uppercase tracking-[0.2em] text-text-secondary">Select an agent</p>
-          <h2 className="text-3xl md:text-4xl font-semibold mt-2">Pick your companion</h2>
-        </div>
+    <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
+      {/* Back button - top left */}
+      <div className="absolute top-4 left-4">
+        <button
+          onClick={() => navigate({ to: '/' })}
+          className="flex items-center gap-2 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          <span className="text-sm">Back</span>
+        </button>
+      </div>
 
-        <div className="mt-8">
+      {/* Main content - centered */}
+      <div className="flex-1 flex items-center justify-center px-4 py-10">
+        <div className="w-full max-w-3xl">
+          <div className="text-center mb-12">
+            <p className="text-sm uppercase tracking-[0.2em] text-text-secondary">Select an agent</p>
+            <h2 className="text-3xl md:text-4xl font-semibold mt-2">Pick your companion</h2>
+          </div>
+
           {isLoading && (
             <div className="text-center text-text-secondary">Loading agents...</div>
           )}
@@ -74,36 +83,46 @@ function AgentSelection({ userId }: AgentSelectionProps) {
             <div className="text-center text-text-secondary">No agents available.</div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* Agent avatars grid */}
+          <div className="flex justify-center gap-12 flex-wrap">
             {agents.map((agent) => (
-              <Card
+              <AgentAvatar
                 key={agent.id}
-                className="bg-bg-secondary border-bg-tertiary hover:border-accent transition-colors cursor-pointer"
-                onClick={() => handleSelect(agent)}
-              >
-                <CardHeader>
-                  <CardTitle className="text-xl">{agent.display_name}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="h-36 rounded-lg border border-bg-tertiary bg-bg-tertiary/30 flex items-center justify-center text-text-secondary text-sm">
-                    {agent.vrm_model || 'VRM Model'}
-                  </div>
-                  <Button className="w-full">
-                    Select
-                  </Button>
-                </CardContent>
-              </Card>
+                agent={agent}
+                onSelect={() => handleSelect(agent)}
+              />
             ))}
           </div>
         </div>
-
-        <div className="mt-8 text-center">
-          <Button variant="ghost" onClick={() => navigate({ to: '/' })}>
-            ← Back to user selection
-          </Button>
-        </div>
       </div>
     </div>
+  );
+}
+
+interface AgentAvatarProps {
+  agent: Agent;
+  onSelect: () => void;
+}
+
+function AgentAvatar({ agent, onSelect }: AgentAvatarProps) {
+  return (
+    <button
+      onClick={onSelect}
+      className="flex flex-col items-center gap-3 group focus:outline-none"
+    >
+      {/* Avatar circle */}
+      <div className="relative">
+        <div className="w-32 h-32 rounded-full bg-gradient-to-br from-accent/20 to-accent/5 border-2 border-transparent group-hover:border-accent group-focus:border-accent transition-all duration-200 flex items-center justify-center overflow-hidden">
+          {/* Placeholder avatar - can be replaced with VRM thumbnail */}
+          <Sparkles className="w-16 h-16 text-accent/50 group-hover:text-accent transition-colors" />
+        </div>
+      </div>
+
+      {/* Name footer */}
+      <span className="text-lg font-medium text-text-primary group-hover:text-accent transition-colors">
+        {agent.display_name}
+      </span>
+    </button>
   );
 }
 

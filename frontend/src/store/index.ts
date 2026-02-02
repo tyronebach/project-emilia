@@ -11,6 +11,11 @@ interface AppState {
   status: AppStatus;
   setStatus: (status: AppStatus) => void;
   
+  // Errors
+  errors: string[];
+  addError: (error: string) => void;
+  clearErrors: () => void;
+  
   // TTS
   ttsEnabled: boolean;
   setTtsEnabled: (enabled: boolean) => void;
@@ -52,6 +57,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Status
   status: 'ready',
   setStatus: (status) => set({ status }),
+  
+  // Errors
+  errors: [],
+  addError: (error) => set((state) => ({
+    errors: [...state.errors.slice(-9), error] // Keep last 10
+  })),
+  clearErrors: () => set({ errors: [] }),
   
   // TTS
   ttsEnabled: localStorage.getItem('emilia-tts-enabled') === 'true',

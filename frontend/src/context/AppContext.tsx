@@ -29,6 +29,11 @@ interface AppContextType {
   status: AppStatus;
   setStatus: (status: AppStatus) => void;
   
+  // Errors
+  errors: string[];
+  addError: (error: string) => void;
+  clearErrors: () => void;
+  
   // Avatar
   avatarState: AvatarState | null;
   setAvatarState: (state: AvatarState | null) => void;
@@ -54,6 +59,9 @@ export function AppProvider({ children }: AppProviderProps) {
   const setAvatarState = useAppStore((state) => state.setAvatarState);
   const setAvatarRenderer = useAppStore((state) => state.setAvatarRenderer);
   const applyAvatarCommand = useAppStore((state) => state.applyAvatarCommand);
+  const errors = useAppStore((state) => state.errors);
+  const addError = useAppStore((state) => state.addError);
+  const clearErrors = useAppStore((state) => state.clearErrors);
   
   const messages = useChatStore((state) => state.messages);
   const addMessage = useChatStore((state) => state.addMessage);
@@ -109,6 +117,11 @@ export function AppProvider({ children }: AppProviderProps) {
       // Status
       status,
       setStatus,
+      
+      // Errors
+      errors,
+      addError,
+      clearErrors,
       
       // Avatar
       avatarState,
