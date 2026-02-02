@@ -1,228 +1,67 @@
-# Emilia Web App - v4.1.0 ✅
+# Emilia Web App
 
-**Voice + Text Chat with Animated VRM Avatar**
+Voice + text chat with animated VRM avatar.
 
-Web interface with dual input modes (voice PTT + text), streaming responses, TTS voice output with lip sync, animated VRM avatar with expressions and gestures, session management, and full agent debug dashboard.
+## Stack
 
-**Built by Ram for Emilia waifu project**
-
----
-
-## Current Features
-
-### Core Chat
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Text input | ✅ | Type messages, Enter to send |
-| Push-to-Talk | ✅ | Hold button or spacebar |
-| SSE streaming | ✅ | Real-time text as LLM generates |
-| Stop button | ✅ | Interrupt generation or TTS |
-| Replay button | ✅ | Re-hear any assistant message |
-| Auto-focus | ✅ | Input focused on load |
-
-### Voice (TTS)
-| Feature | Status | Notes |
-|---------|--------|-------|
-| ElevenLabs TTS | ✅ | Sarah voice, turbo model |
-| TTS toggle | ✅ | Off by default, persists to localStorage |
-| Voice ring animation | ✅ | Visual pulse while speaking |
-| Speaking indicator | ✅ | Green pulse state |
-
-### Session Management
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Session switcher | ✅ | Dropdown to switch sessions |
-| `/api/sessions/list` | ✅ | Lists available Emilia sessions |
-| New session button | ✅ | Create fresh conversation |
-
-### Dashboard Mode
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Memory viewer | ✅ | **Read-only** - MEMORY.md + daily logs |
-| Chat filters | ✅ | Toggle reasoning, thinking, tokens, metadata |
-| Stats panel | ✅ | Message count, tokens, latency, model |
-| State log | ✅ | Real-time state transitions |
-
-### Security
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Memory read-only | ✅ | POST returns 403, frontend disabled |
-| Emilia-only routing | ✅ | Locked to `x-clawdbot-agent-id: emilia` |
-| CORS allowlist | ✅ | No wildcard with credentials |
-| Token auth | ✅ | Bearer token required |
-
-### UI/UX
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Mobile responsive | ✅ | Touch-friendly, collapsible panels |
-| Dark theme | ✅ | Modern styling |
-| Error handling | ✅ | User-friendly error messages |
-| Debug panel | ✅ | Collapsible dev tools |
-
----
-
-### VRM Avatar
-| Feature | Status | Notes |
-|---------|--------|-------|
-| VRM loader | ✅ | Three.js + @pixiv/three-vrm in avatar.js |
-| Rose model | ✅ | Default from 100Avatars (Arweave) |
-| Idle blink | ✅ | Auto blink animation |
-| Lip sync API | ⚠️ | Stub exists, needs phoneme data |
-
-## Not Yet Implemented
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Lip sync (full) | ❌ | Needs ElevenLabs phoneme data + viseme mapping |
-| Live2D | ❌ | Alternative to VRM, not started |
-| Voice selection UI | ❌ | Backend supports it, no frontend picker |
-
----
+| Layer | Tech |
+|-------|------|
+| Frontend | React 19 + Vite + TanStack Router + Zustand |
+| Backend | FastAPI (modular) + SQLite |
+| Avatar | Three.js + @pixiv/three-vrm |
+| TTS | ElevenLabs WebSocket API |
+| STT | Faster Whisper (remote) |
+| LLM | Clawdbot Gateway |
 
 ## Quick Start
 
 ```bash
-cd /home/tbach/clawd/emilia-project/emilia-webapp
-
-# Start services
+# Start everything
 docker compose up -d --build
 
 # View logs
-docker-compose logs -f
+docker compose logs -f backend
 
-# Open in browser
-open http://localhost:3000
+# Open
+open https://localhost:3443
 ```
 
-**Services:**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8080
-- Health check: http://localhost:8080/api/health
+## URLs
 
----
-
-## API Endpoints
-
-### Chat
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/chat` | GET | Send message, get response (supports `?stream=1` for SSE) |
-| `/api/speak` | POST | TTS synthesis via ElevenLabs |
-
-### Sessions
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/sessions/list` | GET | List available Emilia sessions |
-
-### Memory (Read-Only)
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/memory` | GET | Read MEMORY.md |
-| `/api/memory/list` | GET | List memory/*.md files |
-| `/api/memory/{filename}` | GET | Read specific memory file |
-| `/api/memory` | POST | **Disabled** - returns 403 |
-| `/api/memory/{filename}` | POST | **Disabled** - returns 403 |
-
-### Transcription
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/transcribe` | POST | Audio → text via STT service |
-
-### Health
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/health` | GET | Backend + STT service status |
-
----
+| Service | URL |
+|---------|-----|
+| Frontend | https://localhost:3443 |
+| Backend | http://localhost:8080 |
+| API Docs | http://localhost:8080/docs |
+| Settings | https://localhost:3443/settings |
 
 ## Development
 
-### Backend
 ```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python main.py
-```
+# Backend
+cd backend && source .venv/bin/activate
+python main.py        # Dev server :8080
+pytest -q             # 33 tests
 
-### Run Tests
-```bash
-cd backend
-source .venv/bin/activate
-pytest -q
-# Expected: 28 passed
-```
-
-### Frontend
-```bash
+# Frontend
 cd frontend
-python -m http.server 3000
+npm run dev -- --host # Dev server :3443
+npm test              # 83 tests
+npm run build         # Production build
 ```
 
-### Full Stack
-```bash
-docker-compose up --build
-```
+## Documentation
+
+| File | Purpose |
+|------|---------|
+| [AGENTS.md](./AGENTS.md) | Guide for coding agents |
+| [CHANGELOG.md](./CHANGELOG.md) | Version history |
+| [docs/API.md](./docs/API.md) | Endpoint reference |
+
+## Version
+
+**5.5.1** — See [CHANGELOG.md](./CHANGELOG.md) for details.
 
 ---
 
-## Architecture
-
-```
-User Browser (localhost:3000)
-    ↓
-Frontend (nginx)
-    ↓ REST API / SSE
-Backend (FastAPI :8080)
-    ├─→ Clawdbot Gateway (chat, sessions)
-    ├─→ ElevenLabs (TTS)
-    └─→ STT Service (192.168.88.252:8765)
-```
-
----
-
-## File Structure
-
-```
-emilia-webapp/
-├── backend/
-│   ├── main.py              # FastAPI server
-│   ├── parse_chat.py        # Response parsing module
-│   ├── tests/               # pytest suite
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/
-│   ├── index.html           # Main dashboard UI
-│   ├── app.js               # Core app logic
-│   ├── style.css            # Dark theme + responsive
-│   └── avatar.js            # VRM loader
-├── docs/
-│   ├── ARCHITECTURE.md      # System design
-│   ├── SECURITY.md          # Security notes
-│   ├── AVATAR-CONTROL.md    # Avatar system design
-│   └── archive/             # Historical milestones
-├── docker-compose.yml
-├── nginx.conf
-├── CHANGELOG.md
-└── README.md
-```
-
----
-
-## Security Notes
-
-See `docs/SECURITY.md` for full details.
-
-**Key points:**
-- Memory viewer is **read-only** (POST returns 403)
-- App is locked to Emilia agent only
-- Never routes to main/Beatrice
-- CORS uses explicit allowlist
-- Secrets from environment variables
-
----
-
-**Version:** 3.5.0 | 2026-01-31  
-**Tests:** 41 passed  
-**Built by:** Ram 🩷
+Built by Ram 🩷

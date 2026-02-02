@@ -155,6 +155,10 @@ export async function getSessionHistory(sessionId: string, limit = 50): Promise<
   const response = await fetchWithAuth(
     `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/history?limit=${limit}`
   );
+  // Return empty array for 403/404 instead of throwing (session doesn't exist or not accessible)
+  if (response.status === 403 || response.status === 404) {
+    return [];
+  }
   if (!response.ok) throw new Error(`Failed to fetch history: ${response.status}`);
   const data = await response.json();
   return data.messages || [];

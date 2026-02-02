@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Sparkles } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
+import { useAppStore } from '../store';
 import { useSession } from '../hooks/useSession';
 import { Button } from './ui/button';
 
@@ -17,9 +18,17 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
   const navigate = useNavigate();
   const currentAgent = useUserStore((state) => state.currentAgent);
   const currentUser = useUserStore((state) => state.currentUser);
+  const setSessionId = useAppStore((state) => state.setSessionId);
   const { createSession } = useSession();
 
   const [isCreating, setIsCreating] = useState(false);
+
+  // Clear any stale session ID when on new chat page
+  useEffect(() => {
+    setSessionId('');
+    // Also clean up any old localStorage entries from previous versions
+    localStorage.removeItem('emilia-session-id');
+  }, [setSessionId]);
 
   const handleStartChat = async () => {
     if (!currentAgent?.id || !currentUser?.id || isCreating) return;
