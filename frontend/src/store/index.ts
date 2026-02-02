@@ -6,20 +6,20 @@ interface AppState {
   // Session
   sessionId: string;
   setSessionId: (id: string) => void;
-  
+
   // Status
   status: AppStatus;
   setStatus: (status: AppStatus) => void;
-  
+
   // Errors
   errors: string[];
   addError: (error: string) => void;
   clearErrors: () => void;
-  
+
   // TTS
   ttsEnabled: boolean;
   setTtsEnabled: (enabled: boolean) => void;
-  
+
   // Avatar
   avatarState: AvatarState | null;
   setAvatarState: (state: AvatarState | null) => void;
@@ -42,36 +42,42 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Session
   sessionId: getStoredSessionId(),
   setSessionId: (id) => {
-    if (!id) {
-      console.warn('[Store] Attempted to set undefined sessionId');
+    // Allow empty string for new sessions
+    if (id === undefined || id === null) {
+      console.warn('[Store] Attempted to set undefined/null sessionId');
       return;
     }
     try {
-      localStorage.setItem('emilia-session-id', id);
+      if (id) {
+        localStorage.setItem('emilia-session-id', id);
+      } else {
+        // Clear localStorage for new sessions
+        localStorage.removeItem('emilia-session-id');
+      }
     } catch (e) {
-      console.warn('[Store] Failed to save sessionId to localStorage:', e);
+      console.warn('[Store] Failed to update sessionId in localStorage:', e);
     }
     set({ sessionId: id });
   },
-  
+
   // Status
   status: 'ready',
   setStatus: (status) => set({ status }),
-  
+
   // Errors
   errors: [],
   addError: (error) => set((state) => ({
     errors: [...state.errors.slice(-9), error] // Keep last 10
   })),
   clearErrors: () => set({ errors: [] }),
-  
+
   // TTS
   ttsEnabled: localStorage.getItem('emilia-tts-enabled') === 'true',
   setTtsEnabled: (enabled) => {
     localStorage.setItem('emilia-tts-enabled', String(enabled));
     set({ ttsEnabled: enabled });
   },
-  
+
   // Avatar
   avatarState: null,
   setAvatarState: (state) => set({ avatarState: state }),
