@@ -243,25 +243,25 @@ async def delete_session(
     return {"deleted": True}
 
 
-# ============ ADMIN ROUTES ============
+# ============ MANAGE ROUTES (renamed from admin to avoid ad blockers) ============
 
-@app.get("/api/admin/sessions")
+@app.get("/api/manage/sessions")
 async def list_all_sessions(token: str = Depends(verify_token)):
-    """List all sessions (admin)"""
+    """List all sessions (manage)"""
     sessions = db.get_all_sessions()
     return {"sessions": sessions, "count": len(sessions)}
 
 
-@app.delete("/api/admin/sessions/agent/{agent_id}")
+@app.delete("/api/manage/sessions/agent/{agent_id}")
 async def delete_agent_sessions(agent_id: str, token: str = Depends(verify_token)):
-    """Delete all sessions for an agent (admin)"""
+    """Delete all sessions for an agent (manage)"""
     count = db.delete_sessions_by_agent(agent_id)
     return {"deleted": count, "agent_id": agent_id}
 
 
-@app.delete("/api/admin/sessions/all")
+@app.delete("/api/manage/sessions/all")
 async def delete_all_sessions(token: str = Depends(verify_token)):
-    """Delete ALL sessions (admin) - use with caution"""
+    """Delete ALL sessions (manage) - use with caution"""
     all_sessions = db.get_all_sessions()
     count = 0
     for s in all_sessions:
@@ -776,8 +776,8 @@ async def get_memory_file(
 
 # ============ ADMIN ============
 
-@app.get("/api/admin/agents")
-async def get_admin_agents(token: str = Depends(verify_token)):
+@app.get("/api/manage/agents")
+async def get_manage_agents(token: str = Depends(verify_token)):
     """Get all agents with their configuration from database"""
     agents = db.get_agents()
     return {"agents": agents}
@@ -790,8 +790,8 @@ class AgentUpdate(BaseModel):
     workspace: Optional[str] = None
 
 
-@app.put("/api/admin/agents/{agent_id}")
-async def update_admin_agent(
+@app.put("/api/manage/agents/{agent_id}")
+async def update_manage_agent(
     agent_id: str,
     update: AgentUpdate,
     token: str = Depends(verify_token)
