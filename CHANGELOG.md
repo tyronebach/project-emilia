@@ -4,6 +4,39 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.5.2] - 2026-02-02
+
+### Fixed - Transcription Error Handling 🐛
+
+#### Backend Transcribe Endpoint
+- **Fixed 500 Internal Server Errors** - Resolved unhandled exceptions in `/api/transcribe` endpoint
+  - Added graceful handling for missing `content_type` (defaults to `audio/webm`)
+  - Added graceful handling for missing `filename` (defaults to `recording.webm`)
+  - Added comprehensive exception handler for unexpected errors
+  - Previously, any uncaught exception would return 500 without detail
+
+#### Test Coverage
+- **Added 7 Transcribe Tests** - Comprehensive test suite for transcription endpoint
+  - `test_transcribe_requires_auth` - Validates authorization requirement
+  - `test_transcribe_requires_file` - Validates file upload requirement
+  - `test_transcribe_success` - Tests successful transcription flow
+  - `test_transcribe_with_missing_content_type` - Tests None content type handling
+  - `test_transcribe_stt_service_error` - Tests STT service 500 error handling
+  - `test_transcribe_timeout` - Tests timeout exception handling (504)
+  - `test_transcribe_connection_error` - Tests connection failure handling (503)
+- **Test Results**: 39/39 passing ✅ (was 33/33, added 7 new tests)
+
+#### Files Modified
+- [backend/routers/chat.py](backend/routers/chat.py#L210-L235) - Enhanced error handling in `/api/transcribe`
+- [backend/tests/test_api.py](backend/tests/test_api.py#L235-L380) - Added `TestTranscribeEndpoint` class
+
+### Impact
+- Microphone recording now works reliably without 500 errors
+- Better error messages for debugging transcription issues
+- Full test coverage for all transcribe endpoint error paths
+
+---
+
 ## [5.5.1] - 2026-02-02
 
 ### Fixed - Session History 500 Errors 🐛

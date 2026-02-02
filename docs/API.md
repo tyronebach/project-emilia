@@ -2,6 +2,8 @@
 
 Base URL: `http://localhost:8080`
 
+---
+
 ## Authentication
 
 All endpoints (except `/api/health`) require:
@@ -10,11 +12,11 @@ Authorization: Bearer <token>
 ```
 Dev token: `emilia-dev-token-2026` (when `AUTH_ALLOW_DEV_TOKEN=1`)
 
-Most endpoints also require headers:
+Context headers:
 ```
-X-User-Id: <user_id>
-X-Agent-Id: <agent_id>      # for agent-scoped requests
-X-Session-Id: <session_id>  # for session-scoped requests
+X-User-Id: <user_id>         # Required for most endpoints
+X-Agent-Id: <agent_id>       # For agent-scoped requests
+X-Session-Id: <session_id>   # For session-scoped requests
 ```
 
 ---
@@ -24,7 +26,10 @@ X-Session-Id: <session_id>  # for session-scoped requests
 ```
 GET /api/health
 ```
-No auth. Returns `{"status": "ok", "version": "2.0.0"}`.
+No auth required.
+```json
+{"status": "ok", "version": "2.0.0"}
+```
 
 ---
 
@@ -34,7 +39,6 @@ No auth. Returns `{"status": "ok", "version": "2.0.0"}`.
 ```
 GET /api/users
 ```
-Returns all users with agent counts.
 ```json
 {
   "users": [
@@ -54,8 +58,7 @@ GET /api/users/{user_id}
   "id": "thai",
   "display_name": "Thai",
   "agents": [
-    {"id": "emilia-thai", "display_name": "Emilia", "vrm_model": "emilia.vrm"},
-    {"id": "rem", "display_name": "Rem", "vrm_model": "emilia.vrm"}
+    {"id": "emilia-thai", "display_name": "Emilia", "vrm_model": "emilia.vrm"}
   ]
 }
 ```
@@ -63,6 +66,11 @@ GET /api/users/{user_id}
 ### Get User's Agents
 ```
 GET /api/users/{user_id}/agents
+```
+
+### Get User's Sessions for Agent
+```
+GET /api/users/{user_id}/agents/{agent_id}/sessions
 ```
 
 ---
@@ -77,8 +85,10 @@ GET /api/agents/{agent_id}
 {
   "id": "emilia-thai",
   "display_name": "Emilia",
+  "clawdbot_agent_id": "emilia-thai",
   "vrm_model": "emilia.vrm",
-  "voice_id": "...",
+  "voice_id": "gNLojYp5VOiuqC8CTCmi",
+  "workspace": "/home/tbach/clawd-emilia-thai",
   "owners": ["thai"]
 }
 ```
@@ -87,12 +97,10 @@ GET /api/agents/{agent_id}
 
 ## Sessions
 
-SQLite-backed session management. Sessions link users to agents and track conversation metadata.
-
-### List Sessions (for agent)
+### List Sessions
 ```
 GET /api/sessions
-Headers: X-User-Id, X-Agent-Id
+Headers: X-User-Id, X-Agent-Id (optional)
 ```
 ```json
 {
@@ -114,8 +122,13 @@ Headers: X-User-Id, X-Agent-Id
 ### Create Session
 ```
 POST /api/sessions
-Headers: X-User-Id, X-Agent-Id
+Headers: X-User-Id
 Body: {"agent_id": "emilia-thai", "name": "Optional Name"}
+```
+
+### Get Session
+```
+GET /api/sessions/{session_id}
 ```
 
 ### Update Session (Rename)
@@ -130,7 +143,9 @@ Body: {"name": "New Name"}
 DELETE /api/sessions/{session_id}
 Headers: X-User-Id
 ```
-Returns `{"deleted": true}`.
+```json
+{"deleted": true}
+```
 
 ### Get Session History
 ```
@@ -144,35 +159,16 @@ Reads from Clawdbot's JSONL files.
     {"role": "user", "content": "Hi!", "timestamp": "2026-02-01T21:00:00Z"},
     {"role": "assistant", "content": "Hello!", "timestamp": "2026-02-01T21:00:01Z"}
   ],
+  "session_id": "uuid",
   "count": 2
 }
 ```
 
 ---
 
-## Admin (Session Management)
-
-### List All Sessions
-```
-GET /api/admin/sessions
-```
-
-### Delete All Sessions for Agent
-```
-DELETE /api/admin/sessions/agent/{agent_id}
-```
-Returns `{"deleted": 3, "agent_id": "emilia-thai"}`.
-
-### Delete ALL Sessions
-```
-DELETE /api/admin/sessions/all
-```
-
----
-
 ## Chat
 
-### Stream Chat
+### Send Message (Streaming)
 ```
 POST /api/chat?stream=1
 Headers: X-User-Id, X-Agent-Id, X-Session-Id
@@ -190,23 +186,36 @@ data: {"content": " there!"}
 event: avatar
 data: {"animation": "wave"}
 
-data: {"done": true, "response": "Hi there!", "session_id": "uuid", "processing_ms": 1234, "model": "claude-sonnet-4-20250514", "moods": [...], "animations": [...]}
+data: {"done": true, "response": "Hi there!", "session_id": "uuid", "processing_ms": 1234, "usage": {...}}
 ```
 
-### Non-Stream Chat
+### Send Message (Non-Streaming)
 ```
 POST /api/chat?stream=0
+Headers: X-User-Id, X-Agent-Id, X-Session-Id
+Body: {"message": "Hello!"}
 ```
-Returns complete response as JSON.
+```json
+{
+  "response": "Hi there!",
+  "session_id": "uuid",
+  "processing_ms": 1234,
+  "model": "...",
+  "moods": [],
+  "animations": [],
+  "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+}
+```
 
 ---
 
 ## Speech (TTS)
 
-### Speak
+### Text to Speech
 ```
 POST /api/speak
-Body: {"text": "Hello!", "voice_id": "optional"}
+Headers: X-Agent-Id (optional, for agent-specific voice)
+Body: {"text": "Hello!", "voice_id": "optional-override"}
 ```
 ```json
 {
@@ -215,13 +224,10 @@ Body: {"text": "Hello!", "voice_id": "optional"}
     "chars": ["H","e","l","l","o"],
     "charStartTimesMs": [0, 50, 100, 150, 200],
     "charDurationsMs": [50, 50, 50, 50, 100]
-  }
+  },
+  "voice_id": "...",
+  "duration_estimate": 0.5
 }
-```
-
-### List Voices
-```
-GET /api/voices
 ```
 
 ---
@@ -241,21 +247,22 @@ Form: audio=<file>
 
 ## Memory
 
+All memory endpoints require `?agent_id={agent_id}` parameter.
+
 ### Get MEMORY.md
 ```
 GET /api/memory?agent_id={agent_id}
 ```
-Returns the MEMORY.md file for the specified agent as plain text (text/markdown).
+Returns plain text (text/markdown).
 
 ### List Memory Files
 ```
 GET /api/memory/list?agent_id={agent_id}
 ```
-Returns:
 ```json
 {
   "workspace": "/home/tbach/clawd-emilia-thai",
-  "files": ["MEMORY.md", "2026-01-30.md", "2026-02-01.md"]
+  "files": ["MEMORY.md", "2026-02-01.md", "2026-02-02.md"]
 }
 ```
 
@@ -263,12 +270,65 @@ Returns:
 ```
 GET /api/memory/{filename}?agent_id={agent_id}
 ```
-Returns:
 ```json
 {
   "filename": "2026-02-01.md",
   "content": "# Daily memory content..."
 }
+```
+
+---
+
+## Manage (Admin)
+
+### List All Agents
+```
+GET /api/manage/agents
+```
+```json
+{
+  "agents": [
+    {
+      "id": "emilia-thai",
+      "display_name": "Emilia",
+      "clawdbot_agent_id": "emilia-thai",
+      "vrm_model": "emilia.vrm",
+      "voice_id": "...",
+      "workspace": "/home/tbach/clawd-emilia-thai"
+    }
+  ]
+}
+```
+
+### Update Agent
+```
+PUT /api/manage/agents/{agent_id}
+Body: {"display_name": "...", "voice_id": "...", "vrm_model": "...", "workspace": "..."}
+```
+All fields optional.
+```json
+{"status": "ok", "agent_id": "emilia-thai"}
+```
+
+### List All Sessions
+```
+GET /api/manage/sessions
+```
+
+### Delete Agent's Sessions
+```
+DELETE /api/manage/sessions/agent/{agent_id}
+```
+```json
+{"deleted": 3, "agent_id": "emilia-thai"}
+```
+
+### Delete ALL Sessions
+```
+DELETE /api/manage/sessions/all
+```
+```json
+{"deleted": 10}
 ```
 
 ---
@@ -279,9 +339,16 @@ Returns:
 {"detail": "Error message"}
 ```
 
-Status codes:
-- `400` - Bad request
-- `401` - Unauthorized (invalid token)
-- `403` - Forbidden (cannot access resource)
-- `404` - Not found
-- `503` - Service unavailable
+| Code | Meaning |
+|------|---------|
+| 400 | Bad request |
+| 401 | Unauthorized (missing/invalid token) |
+| 403 | Forbidden (cannot access resource) |
+| 404 | Not found |
+| 500 | Internal server error |
+| 503 | Service unavailable |
+| 504 | Timeout |
+
+---
+
+**Version:** 5.5.1
