@@ -10,7 +10,7 @@ interface StatsPanelProps {
 function StatsPanel({ className = '' }: StatsPanelProps) {
   const { messages, status } = useApp();
   const { sessionId } = useSession();
-  const { messageCount, totalTokens, totalLatency, latencyCount, stateLog } = useStatsStore();
+  const { totalLatency, latencyCount, stateLog } = useStatsStore();
   
   const userMessages = messages.filter(m => m.role === 'user').length;
   const assistantMessages = messages.filter(m => m.role === 'assistant').length;
@@ -60,16 +60,10 @@ function StatsPanel({ className = '' }: StatsPanelProps) {
           </div>
         </div>
         
-        {/* Token & Latency Stats */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-bg-tertiary rounded-lg p-3">
-            <div className="text-xl font-bold text-text-primary">{totalTokens.toLocaleString()}</div>
-            <div className="text-xs text-text-secondary">Total Tokens</div>
-          </div>
-          <div className="bg-bg-tertiary rounded-lg p-3">
-            <div className="text-xl font-bold text-text-primary">{avgLatency}ms</div>
-            <div className="text-xs text-text-secondary">Avg Latency</div>
-          </div>
+        {/* Latency Stats */}
+        <div className="bg-bg-tertiary rounded-lg p-3">
+          <div className="text-xl font-bold text-text-primary">{avgLatency}ms</div>
+          <div className="text-xs text-text-secondary">Avg Latency</div>
         </div>
         
         {/* Status */}

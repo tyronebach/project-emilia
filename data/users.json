@@ -1,0 +1,34 @@
+{
+  "users": {
+    "thai": {
+      "display_name": "Thai",
+      "avatars": [
+        "emilia-thai",
+        "rem"
+      ],
+      "default_avatar": "emilia-thai",
+      "preferences": {
+        "tts_enabled": true,
+        "theme": "dark"
+      },
+      "sessions": {
+        "emilia-thai": null,
+        "rem": "thai-rem-1770003616"
+      }
+    },
+    "emily": {
+      "display_name": "Emily",
+      "avatars": [
+        "emilia-emily"
+      ],
+      "default_avatar": "emilia-emily",
+      "preferences": {
+        "tts_enabled": true,
+        "theme": "dark"
+      },
+      "sessions": {
+        "emilia-emily": null
+      }
+    }
+  }
+}

@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Set
 
 
-DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "avatars.json"
+DATA_PATH = Path("/data/avatars.json")
 
 
 def load_avatars() -> Dict[str, Any]:

@@ -7,47 +7,48 @@ services:
     container_name: emilia-backend
     restart: unless-stopped
     network_mode: host
-    
+
     env_file:
       - /home/tbach/.clawdbot/secrets.env
-    
+
     environment:
       - STT_SERVICE_URL=http://192.168.88.252:8765
       - CLAWDBOT_URL=http://127.0.0.1:18789
       - CLAWDBOT_TOKEN=${CLAWDBOT_GATEWAY_TOKEN}
-      - CLAWDBOT_AGENT_ID=emilia
       - AUTH_TOKEN=emilia-dev-token-2026
       - AUTH_ALLOW_DEV_TOKEN=1
       - ALLOWED_ORIGINS=http://localhost:3000,http://192.168.88.237:3000,https://localhost:3443,https://192.168.88.237:3443
-      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
       - ELEVENLABS_MODEL=eleven_turbo_v2_5
       - EMILIA_WORKSPACE=/home/tbach/clawd-emilia
-    
+      - CLAWDBOT_AGENTS_DIR=/home/tbach/.clawdbot/agents
+
     volumes:
       - /home/tbach/clawd-emilia:/home/tbach/clawd-emilia:rw
-    
+      - /home/tbach/.clawdbot/agents:/home/tbach/.clawdbot/agents:ro
+      - ./data:/data:rw
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
-  
+
   frontend:
     image: nginx:alpine
     container_name: emilia-frontend
     restart: unless-stopped
     network_mode: host
-    
+
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./certs:/etc/nginx/certs:ro
-    
+
     depends_on:
       - backend
-    
+
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "--no-check-certificate", "https://localhost/"]
       interval: 30s

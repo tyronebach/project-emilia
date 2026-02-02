@@ -1,0 +1,25 @@
+{
+  "avatars": {
+    "emilia-thai": {
+      "display_name": "Emilia",
+      "agent_id": "emilia-thai",
+      "owner": "thai",
+      "vrm_model": "emilia.vrm",
+      "voice_id": "gNLojYp5VOiuqC8CTCmi"
+    },
+    "emilia-emily": {
+      "display_name": "Emilia",
+      "agent_id": "emilia-emily",
+      "owner": "emily",
+      "vrm_model": "emilia.vrm",
+      "voice_id": "bIQlQ61Q7WgbyZAL7IWj"
+    },
+    "rem": {
+      "display_name": "Rem",
+      "agent_id": "rem",
+      "owner": "thai",
+      "vrm_model": "emilia.vrm",
+      "voice_id": "gNLojYp5VOiuqC8CTCmi"
+    }
+  }
+}

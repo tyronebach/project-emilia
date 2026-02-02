@@ -11,11 +11,12 @@ export function useSession() {
   const fetchingRef = useRef<string | null>(null);
   
   /**
-   * Fetch list of sessions
+   * Fetch list of sessions for current user
    */
   const fetchSessions = useCallback(async (): Promise<Session[]> => {
     try {
       setIsLoading(true);
+      // fetchWithAuth already includes user headers from getUserHeaders()
       const response = await fetchWithAuth('/api/sessions/list');
       
       if (!response.ok) {
@@ -93,14 +94,41 @@ export function useSession() {
   }, [sessionId, setSessionId, clearMessages, fetchHistory]);
   
   /**
-   * Create a new session
+   * Create a new session via backend API
    */
   const createSession = useCallback(async (name: string | null = null): Promise<string> => {
-    const newSessionId = name || `session-${Date.now()}`;
-    clearMessages();
-    setSessionId(newSessionId);
-    console.log('Created new session:', newSessionId);
-    return newSessionId;
+    try {
+      setIsLoading(true);
+      
+      // Call backend to create session (saves to users.json)
+      const response = await fetchWithAuth('/api/sessions/create', {
+        method: 'POST',
+        body: JSON.stringify({ name: name || undefined })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to create session: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const newSessionId = data.session_id;
+      
+      // Clear messages and switch to new session
+      clearMessages();
+      setSessionId(newSessionId);
+      
+      console.log('Created new session:', newSessionId);
+      return newSessionId;
+    } catch (error) {
+      console.error('createSession error:', error);
+      // Fallback to local creation
+      const fallbackId = name || `session-${Date.now()}`;
+      clearMessages();
+      setSessionId(fallbackId);
+      return fallbackId;
+    } finally {
+      setIsLoading(false);
+    }
   }, [setSessionId, clearMessages]);
   
   /**

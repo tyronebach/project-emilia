@@ -1,7 +1,6 @@
 import { useState, Fragment } from 'react';
-import { Menu, Trash2, ArrowLeftRight, Plus, ChevronRight } from 'lucide-react';
+import { Menu, ArrowLeftRight, Plus, ChevronRight } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { useApp } from '../context/AppContext';
 import { useSession } from '../hooks/useSession';
 import { Button } from './ui/button';
 
@@ -11,14 +10,8 @@ interface BurgerMenuProps {
 }
 
 function BurgerMenu({ open, onOpenChange }: BurgerMenuProps) {
-  const { clearMessages } = useApp();
   const { sessions, sessionId, switchSession, createSession, fetchSessions, isLoading } = useSession();
   const [showSessions, setShowSessions] = useState(false);
-  
-  const handleClearChat = () => {
-    clearMessages();
-    onOpenChange(false);
-  };
   
   const handleNewSession = async () => {
     const name = prompt('Enter session name (or leave empty for auto-name):');
@@ -54,15 +47,6 @@ function BurgerMenu({ open, onOpenChange }: BurgerMenuProps) {
             <div className="text-sm text-text-primary truncate">{sessionId}</div>
           </div>
           
-          {/* Menu Items */}
-          <DropdownMenu.Item 
-            className="flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary outline-none cursor-pointer transition-colors"
-            onSelect={handleClearChat}
-          >
-            <Trash2 className="w-4 h-4" />
-            Clear Chat
-          </DropdownMenu.Item>
-          
           {/* Sessions Sub-menu */}
           <DropdownMenu.Sub open={showSessions} onOpenChange={setShowSessions}>
             <DropdownMenu.SubTrigger 
@@ -86,11 +70,12 @@ function BurgerMenu({ open, onOpenChange }: BurgerMenuProps) {
                 {isLoading ? (
                   <div className="px-4 py-2 text-xs text-text-secondary">Loading...</div>
                 ) : sessions.length === 0 ? (
-                  <div className="px-4 py-2 text-xs text-text-secondary">No sessions found</div>
+                  <div className="px-4 py-2 text-xs text-text-secondary">No previous sessions yet</div>
                 ) : (
                   <Fragment>
                     {sessions.map((session, index) => {
-                      const sid = typeof session === 'string' ? session : session.session_id;
+                      const sid = typeof session === 'string' ? session : (session.session_key || session.session_id || '');
+                      const displayName = typeof session === 'string' ? session : (session.display_id || sid);
                       return (
                         <DropdownMenu.Item
                           key={`${sid}-${index}`}
@@ -101,7 +86,7 @@ function BurgerMenu({ open, onOpenChange }: BurgerMenuProps) {
                           }`}
                           onSelect={() => handleSwitchSession(sid)}
                         >
-                          {sid}
+                          {displayName}
                         </DropdownMenu.Item>
                       );
                     })}

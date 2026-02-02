@@ -9,7 +9,6 @@ export interface StateLogEntry {
 interface StatsState {
   // Cumulative stats
   messageCount: number;
-  totalTokens: number;
   totalLatency: number;
   latencyCount: number;
   
@@ -17,7 +16,7 @@ interface StatsState {
   stateLog: StateLogEntry[];
   
   // Actions
-  updateStats: (data: { processing_ms?: number; usage?: { total_tokens?: number } }) => void;
+  updateStats: (data: { processing_ms?: number }) => void;
   addStateEntry: (state: string, text: string) => void;
   resetStats: () => void;
 }
@@ -34,7 +33,6 @@ const STATE_LABELS: Record<string, string> = {
 
 export const useStatsStore = create<StatsState>((set) => ({
   messageCount: 0,
-  totalTokens: 0,
   totalLatency: 0,
   latencyCount: 0,
   stateLog: [{ timestamp: new Date(), state: 'ready', text: 'Ready' }],
@@ -49,10 +47,6 @@ export const useStatsStore = create<StatsState>((set) => ({
       updates.latencyCount = state.latencyCount + 1;
     }
     
-    if (data.usage?.total_tokens) {
-      updates.totalTokens = state.totalTokens + data.usage.total_tokens;
-    }
-    
     return updates;
   }),
   
@@ -65,7 +59,6 @@ export const useStatsStore = create<StatsState>((set) => ({
   
   resetStats: () => set({
     messageCount: 0,
-    totalTokens: 0,
     totalLatency: 0,
     latencyCount: 0,
     stateLog: [{ timestamp: new Date(), state: 'ready', text: 'Stats reset' }]

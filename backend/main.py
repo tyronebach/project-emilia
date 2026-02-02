@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse, Response, PlainTextResponse, Streami
 
 
 from parse_chat import parse_chat_completion, extract_avatar_commands
-from users import load_users, get_user, get_user_session
+from users import load_users, get_user, get_user_session, create_new_session, get_user_sessions
 from avatars import get_avatar, get_allowed_agent_ids
 
 
@@ -68,6 +68,9 @@ MEMORY_DIR_PATH = Path(EMILIA_WORKSPACE) / "memory"
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = "default"
+
+class CreateSessionRequest(BaseModel):
+    name: Optional[str] = None
 
 class SpeakRequest(BaseModel):
     text: str
@@ -373,7 +376,7 @@ def _extract_text_from_delta(delta: dict) -> str:
     return ""
 
 
-async def _stream_chat_sse(request: ChatRequest, start_time: float, agent_id: str):
+async def _stream_chat_sse(request: ChatRequest, start_time: float, agent_id: str, session_id: str):
     """Generator for SSE streaming chat responses.
     
     Emits events:
@@ -392,7 +395,7 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, agent_id: st
                 ],
                 "stream": True,
                 "stream_options": {"include_usage": True},
-                "user": request.session_id
+                "user": session_id
             }
 
             headers = {
@@ -540,10 +543,15 @@ async def chat(
     if not agent_id or agent_id not in ALLOWED_CLAWDBOT_AGENT_IDS:
         raise HTTPException(status_code=400, detail="Invalid avatar agent id")
 
+    # Get managed session from users.json
+    session_id = get_user_session(x_user_id, x_avatar_id)
+    if not session_id:
+        raise HTTPException(status_code=500, detail="Failed to get or create session")
+
     # Streaming mode
     if stream == 1:
         return StreamingResponse(
-            _stream_chat_sse(request, start_time, agent_id),
+            _stream_chat_sse(request, start_time, agent_id, session_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -562,7 +570,7 @@ async def chat(
                     {"role": "user", "content": request.message}
                 ],
                 "stream": False,
-                "user": request.session_id
+                "user": session_id
             }
 
             headers = {
@@ -633,66 +641,106 @@ async def chat(
 
 
 @app.get("/api/sessions/list")
-async def list_sessions(token: str = Depends(verify_token)):
-    """List recent Emilia sessions.
+async def list_sessions(
+    token: str = Depends(verify_token),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id")
+):
+    """List sessions for the current user.
 
-    Implementation uses Gateway tool invocation: POST {CLAWDBOT_URL}/tools/invoke with tool=sessions_list.
-    If the gateway doesn't allow the tool (policy) or auth differs, we fail soft and return an empty list.
+    Filters to only show sessions defined in users.json for this user.
     """
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-Id header is required")
 
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                f"{CLAWDBOT_URL}/tools/invoke",
-                headers={
-                    "Authorization": f"Bearer {CLAWDBOT_TOKEN}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "tool": "sessions_list",
-                    "action": "json",
-                    "args": {"limit": 50, "messageLimit": 0},
-                    "agentId": list(ALLOWED_CLAWDBOT_AGENT_IDS)[0] if ALLOWED_CLAWDBOT_AGENT_IDS else "emilia-thai",
-                },
-            )
-
-        if resp.status_code != 200:
-            return {"sessions": [], "count": 0, "error": f"gateway:{resp.status_code}"}
-
-        payload = resp.json() or {}
-        result = payload.get("result") or {}
-        details = result.get("details") or {}
-        sessions = details.get("sessions") or []
-
-        out = []
-        for s in sessions:
-            key = s.get("key") or ""
-            # Only show sessions for allowed emilia agents
-            is_emilia_session = any(
-                key.startswith(f"agent:{agent_id}:") 
-                for agent_id in ALLOWED_CLAWDBOT_AGENT_IDS
-            )
-            if not is_emilia_session:
-                continue
-            # Format display name: agent:emilia:openai-user:X -> X
-            display_id = key
-            if "openai-user:" in key:
-                display_id = key.split("openai-user:", 1)[1]
-            elif key.startswith("agent:emilia:"):
-                display_id = key.replace("agent:emilia:", "")
-            out.append(
-                {
+    # Get user's allowed sessions from users.json
+    user_sessions = get_user_sessions(x_user_id)
+    if not user_sessions:
+        return {"sessions": [], "count": 0}
+    
+    # Get set of session IDs this user can see (filter out None/null)
+    allowed_session_ids = {sid for sid in user_sessions.values() if sid}
+    
+    # If no valid sessions, return empty
+    if not allowed_session_ids:
+        return {"sessions": [], "count": 0}
+    
+    AGENTS_DIR = Path(os.getenv("CLAWDBOT_AGENTS_DIR", "/home/tbach/.clawdbot/agents"))
+    out = []
+    
+    for agent_id in ALLOWED_CLAWDBOT_AGENT_IDS:
+        sessions_file = AGENTS_DIR / agent_id / "sessions" / "sessions.json"
+        if not sessions_file.exists():
+            continue
+        
+        try:
+            with open(sessions_file) as f:
+                sessions_data = json.load(f)
+            
+            for key, s in sessions_data.items():
+                # Format display name: agent:emilia-thai:openai-user:X -> X
+                display_id = key
+                if "openai-user:" in key:
+                    display_id = key.split("openai-user:", 1)[1]
+                
+                # Only include if this session is in user's allowed list
+                if display_id not in allowed_session_ids:
+                    continue
+                
+                out.append({
                     "session_key": key,
                     "display_id": display_id,
                     "updated_at": s.get("updatedAt"),
                     "model": s.get("model"),
-                }
-            )
+                    "agent_id": agent_id,
+                    "session_id": s.get("sessionId"),
+                })
+        except Exception as e:
+            print(f"Error reading sessions for {agent_id}: {e}")
+            continue
+    
+    # Sort by updated_at descending
+    out.sort(key=lambda x: x.get("updated_at") or 0, reverse=True)
+    
+    return {"sessions": out, "count": len(out)}
 
-        return {"sessions": out, "count": len(out)}
 
-    except Exception as e:
-        return {"sessions": [], "count": 0, "error": str(e)}
+@app.post("/api/sessions/create")
+async def create_session(
+    request: CreateSessionRequest,
+    token: str = Depends(verify_token),
+    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
+    x_avatar_id: Optional[str] = Header(None, alias="X-Avatar-Id")
+):
+    """Create a new session for user+avatar.
+    
+    Updates users.json with the new session ID and returns it.
+    Optional name in request body for custom session name.
+    """
+    if not x_user_id or not x_avatar_id:
+        raise HTTPException(status_code=400, detail="X-User-Id and X-Avatar-Id headers are required")
+
+    user = get_user(x_user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    avatar = get_avatar(x_avatar_id)
+    if not avatar:
+        raise HTTPException(status_code=404, detail="Avatar not found")
+
+    if avatar.get("owner") != x_user_id:
+        raise HTTPException(status_code=403, detail="Avatar does not belong to user")
+
+    # Create new session and save to users.json
+    session_id = create_new_session(x_user_id, x_avatar_id, request.name)
+    if not session_id:
+        raise HTTPException(status_code=500, detail="Failed to create session")
+
+    return {
+        "session_id": session_id,
+        "user_id": x_user_id,
+        "avatar_id": x_avatar_id,
+        "agent_id": avatar.get("agent_id")
+    }
 
 
 def _extract_text_content(content: Any) -> str:
@@ -718,67 +766,90 @@ async def get_session_history(
 ):
     """Get chat history for a session.
     
-    Calls gateway tools/invoke with sessions_history tool.
-    Returns messages array with role, content, timestamp.
+    Reads directly from JSONL session files on disk since
+    sandboxed agents' sessions aren't accessible via gateway.
     """
-    # Build full session key (avoid double-prefixing)
-    if session_id.startswith("agent:"):
-        full_key = session_id
-    else:
-        full_key = f"agent:emilia:openai-user:{session_id}"
+    AGENTS_DIR = Path(os.getenv("CLAWDBOT_AGENTS_DIR", "/home/tbach/.clawdbot/agents"))
+    
+    # Find the session in any allowed agent's sessions.json
+    session_uuid = None
+    agent_id = None
+    session_key = None
+    
+    for aid in ALLOWED_CLAWDBOT_AGENT_IDS:
+        sessions_file = AGENTS_DIR / aid / "sessions" / "sessions.json"
+        if not sessions_file.exists():
+            continue
+        
+        try:
+            with open(sessions_file) as f:
+                sessions_data = json.load(f)
+            
+            for key, info in sessions_data.items():
+                # Match by display_id (the part after openai-user:) or full key
+                display_id = key.split("openai-user:", 1)[1] if "openai-user:" in key else key
+                if session_id == display_id or session_id == key:
+                    session_uuid = info.get("sessionId")
+                    agent_id = aid
+                    session_key = key
+                    break
+        except Exception:
+            continue
+        
+        if session_uuid:
+            break
+    
+    if not session_uuid:
+        return {"messages": [], "session_id": session_id, "error": "Session not found"}
+    
+    # Read the JSONL file
+    jsonl_file = AGENTS_DIR / agent_id / "sessions" / f"{session_uuid}.jsonl"
+    if not jsonl_file.exists():
+        return {"messages": [], "session_id": session_id, "error": "Session file not found"}
     
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                f"{CLAWDBOT_URL}/tools/invoke",
-                headers={
-                    "Authorization": f"Bearer {CLAWDBOT_TOKEN}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "tool": "sessions_history",
-                    "action": "json",
-                    "args": {"sessionKey": full_key, "limit": limit},
-                    "sessionKey": "main",
-                },
-            )
-        
-        if resp.status_code != 200:
-            return {"messages": [], "session_key": full_key, "error": f"gateway:{resp.status_code}"}
-        
-        payload = resp.json() or {}
-        result = payload.get("result") or {}
-        details = result.get("details") or {}
-        raw_messages = details.get("messages") or []
-        
         messages = []
-        for msg in raw_messages:
-            role = msg.get("role")
-            if role not in ("user", "assistant"):
-                continue  # Skip system messages
-            
-            # Extract text content
-            raw_content = msg.get("content", "")
-            text_content = _extract_text_content(raw_content)
-            
-            # Strip mood/animation tags for assistant messages
-            if role == "assistant":
-                text_content, _, _ = extract_avatar_commands(text_content)
-            
-            # Skip empty messages
-            if not text_content.strip():
-                continue
-            
-            messages.append({
-                "role": role,
-                "content": text_content,
-                "timestamp": msg.get("timestamp")
-            })
+        with open(jsonl_file) as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                entry = json.loads(line)
+                
+                # Only process message entries
+                if entry.get("type") != "message":
+                    continue
+                
+                msg = entry.get("message", {})
+                role = msg.get("role")
+                if role not in ("user", "assistant"):
+                    continue
+                
+                # Extract text content
+                raw_content = msg.get("content", "")
+                text_content = _extract_text_content(raw_content)
+                
+                # Strip mood/animation tags for assistant messages
+                if role == "assistant":
+                    text_content, _, _ = extract_avatar_commands(text_content)
+                
+                # Skip empty messages
+                if not text_content.strip():
+                    continue
+                
+                messages.append({
+                    "role": role,
+                    "content": text_content,
+                    "timestamp": entry.get("timestamp")
+                })
         
-        return {"messages": messages, "session_key": full_key}
+        # Return last N messages
+        if len(messages) > limit:
+            messages = messages[-limit:]
+        
+        return {"messages": messages, "session_id": session_id, "session_key": session_key}
     
     except Exception as e:
-        return {"messages": [], "session_key": full_key, "error": str(e)}
+        return {"messages": [], "session_id": session_id, "error": str(e)}
 
 
 @app.get("/api/voices")
@@ -906,7 +977,8 @@ async def elevenlabs_rest_tts(text: str, voice_id: str) -> bytes:
 @app.post("/api/speak")
 async def speak(
     request: SpeakRequest,
-    token: str = Depends(verify_token)
+    token: str = Depends(verify_token),
+    x_avatar_id: Optional[str] = Header(None, alias="X-Avatar-Id")
 ):
     """
     Convert text to speech via ElevenLabs with optional lip sync data.
@@ -915,6 +987,9 @@ async def speak(
         "text": "Hello, how are you?",
         "voice_id": "rachel" (optional, key from /api/voices)
     }
+    
+    Headers:
+        X-Avatar-Id: Avatar ID to use for voice selection (optional)
     
     Returns: {
         "audio": "base64-encoded-mp3",
@@ -929,8 +1004,16 @@ async def speak(
     if not request.text or not request.text.strip():
         raise HTTPException(status_code=400, detail="Text is required")
     
-    # Determine voice ID
+    # Determine voice ID - priority: request.voice_id > avatar config > default
     voice_id = ELEVENLABS_VOICE_ID  # default
+    
+    # Check avatar config for voice_id
+    if x_avatar_id:
+        avatar = get_avatar(x_avatar_id)
+        if avatar and avatar.get("voice_id"):
+            voice_id = avatar["voice_id"]
+    
+    # Request voice_id overrides avatar config
     if request.voice_id and request.voice_id in VOICE_OPTIONS:
         voice_id = VOICE_OPTIONS[request.voice_id]["id"]
     
