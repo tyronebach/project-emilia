@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext';
 import { useSession } from '../hooks/useSession';
 import { useUserStore } from '../store/userStore';
 import { renameSession as renameSessionApi } from '../utils/api';
+import { formatSessionName } from '../utils/helpers';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 
@@ -141,13 +142,6 @@ function Drawer({ open, onClose }: DrawerProps) {
     }
   };
 
-  // Format session display
-  const formatSessionName = (session: typeof sessions[0]) => {
-    if (session.name) return session.name;
-    // Show truncated ID
-    return session.id.slice(0, 8) + '...';
-  };
-
   const formatLastUsed = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
     const now = new Date();
@@ -226,7 +220,7 @@ function Drawer({ open, onClose }: DrawerProps) {
                       >
                         <MessageSquare className="w-4 h-4 shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <div className="truncate">{formatSessionName(session)}</div>
+                          <div className="truncate">{formatSessionName(session.name, session.id)}</div>
                           <div className="text-xs text-text-secondary/70">
                             {formatLastUsed(session.last_used)} · {session.message_count} msgs
                           </div>

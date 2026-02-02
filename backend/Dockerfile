@@ -8,10 +8,19 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy application
+# Copy application modules
 COPY main.py .
+COPY config.py .
+COPY dependencies.py .
 COPY parse_chat.py .
 COPY database.py .
+
+# Copy modular structure
+COPY routers/ ./routers/
+COPY schemas/ ./schemas/
+COPY core/ ./core/
+COPY services/ ./services/
+COPY db/ ./db/
 
 # Expose port
 EXPOSE 8080

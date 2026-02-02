@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Agent, User } from '../utils/api';
+import { useAppStore } from './index';
 
 interface UserState {
   currentUser: User | null;
@@ -15,9 +16,21 @@ export const useUserStore = create<UserState>()(
     (set) => ({
       currentUser: null,
       currentAgent: null,
-      setUser: (user) => set({ currentUser: user }),
-      setAgent: (agent) => set({ currentAgent: agent }),
-      logout: () => set({ currentUser: null, currentAgent: null }),
+      setUser: (user) => {
+        // Clear sessionId when user changes
+        useAppStore.getState().clearSessionId();
+        set({ currentUser: user });
+      },
+      setAgent: (agent) => {
+        // Clear sessionId when agent changes
+        useAppStore.getState().clearSessionId();
+        set({ currentAgent: agent });
+      },
+      logout: () => {
+        // Clear sessionId on logout
+        useAppStore.getState().clearSessionId();
+        set({ currentUser: null, currentAgent: null });
+      },
     }),
     {
       name: 'emilia-user-store',

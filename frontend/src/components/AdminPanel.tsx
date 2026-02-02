@@ -2,24 +2,19 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, Save, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
 import { Button } from './ui/button';
-import { fetchWithAuth } from '../utils/api';
+import { fetchWithAuth, type Agent } from '../utils/api';
 
-interface Agent {
-  id: string;
-  display_name: string;
-  clawdbot_agent_id: string;
-  voice_id: string;
-  vrm_model: string;
+type EditableField = 'display_name' | 'voice_id' | 'vrm_model' | 'workspace';
+
+interface AgentWithWorkspace extends Agent {
   workspace: string;
   created_at: number;
 }
 
-type EditableField = 'display_name' | 'voice_id' | 'vrm_model' | 'workspace';
-
 function AdminPanel() {
   const navigate = useNavigate();
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [originalAgents, setOriginalAgents] = useState<Agent[]>([]);
+  const [agents, setAgents] = useState<AgentWithWorkspace[]>([]);
+  const [originalAgents, setOriginalAgents] = useState<AgentWithWorkspace[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +40,7 @@ function AdminPanel() {
   };
 
   const handleFieldChange = (agentId: string, field: EditableField, value: string) => {
-    setAgents(prev => prev.map(a => 
+    setAgents(prev => prev.map(a =>
       a.id === agentId ? { ...a, [field]: value } : a
     ));
   };
@@ -64,17 +59,17 @@ function AdminPanel() {
   const handleReset = (agentId: string) => {
     const original = originalAgents.find(a => a.id === agentId);
     if (original) {
-      setAgents(prev => prev.map(a => 
+      setAgents(prev => prev.map(a =>
         a.id === agentId ? { ...original } : a
       ));
     }
   };
 
-  const handleSave = async (agent: Agent) => {
+  const handleSave = async (agent: AgentWithWorkspace) => {
     setSaving(agent.id);
     setError(null);
     setSuccess(null);
-    
+
     try {
       const response = await fetchWithAuth(`/api/manage/agents/${agent.id}`, {
         method: 'PUT',
@@ -85,14 +80,14 @@ function AdminPanel() {
           workspace: agent.workspace,
         }),
       });
-      
+
       if (!response.ok) throw new Error('Failed to save');
-      
+
       // Update original to match saved
-      setOriginalAgents(prev => prev.map(a => 
+      setOriginalAgents(prev => prev.map(a =>
         a.id === agent.id ? { ...agent } : a
       ));
-      
+
       setSuccess(`Saved ${agent.display_name}`);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -102,16 +97,16 @@ function AdminPanel() {
     }
   };
 
-  const Field = ({ 
-    label, 
-    value, 
-    onChange, 
+  const Field = ({
+    label,
+    value,
+    onChange,
     placeholder,
-    mono = false 
-  }: { 
-    label: string; 
-    value: string; 
-    onChange: (v: string) => void; 
+    mono = false
+  }: {
+    label: string;
+    value: string;
+    onChange: (v: string) => void;
     placeholder?: string;
     mono?: boolean;
   }) => (
@@ -165,7 +160,7 @@ function AdminPanel() {
             {agents.map((agent) => {
               const changed = hasChanges(agent);
               return (
-                <div 
+                <div
                   key={agent.id}
                   className={`bg-bg-secondary border rounded-lg p-5 ${changed ? 'border-accent/50' : 'border-bg-tertiary'}`}
                 >
@@ -179,7 +174,7 @@ function AdminPanel() {
                       Clawdbot: <span className="font-mono">{agent.clawdbot_agent_id}</span>
                     </div>
                   </div>
-                  
+
                   {/* Fields */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <Field

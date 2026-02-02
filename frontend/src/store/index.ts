@@ -6,6 +6,7 @@ interface AppState {
   // Session
   sessionId: string;
   setSessionId: (id: string) => void;
+  clearSessionId: () => void;
 
   // Status
   status: AppStatus;
@@ -28,37 +29,18 @@ interface AppState {
   applyAvatarCommand: (command: AvatarCommand) => void;
 }
 
-// Safe localStorage getter
-const getStoredSessionId = (): string => {
-  try {
-    const stored = localStorage.getItem('emilia-session-id');
-    return stored || '';  // No hardcoded default - must come from backend
-  } catch {
-    return '';
-  }
-};
-
 export const useAppStore = create<AppState>((set, get) => ({
-  // Session
-  sessionId: getStoredSessionId(),
+  // Session - kept only in memory, not persisted to avoid issues when switching users/agents
+  sessionId: '',
   setSessionId: (id) => {
     // Allow empty string for new sessions
     if (id === undefined || id === null) {
       console.warn('[Store] Attempted to set undefined/null sessionId');
       return;
     }
-    try {
-      if (id) {
-        localStorage.setItem('emilia-session-id', id);
-      } else {
-        // Clear localStorage for new sessions
-        localStorage.removeItem('emilia-session-id');
-      }
-    } catch (e) {
-      console.warn('[Store] Failed to update sessionId in localStorage:', e);
-    }
     set({ sessionId: id });
   },
+  clearSessionId: () => set({ sessionId: '' }),
 
   // Status
   status: 'ready',
