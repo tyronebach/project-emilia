@@ -91,11 +91,13 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
 
         const greeting = `*${currentUser?.display_name} is bringing you to life in a new chat*`;
         addMessage('user', greeting, { source: 'text' });
-        await sendMessage(greeting);
+        
+        // Fire and forget - don't block navigation on response/TTS
+        sendMessage(greeting);
 
         console.log('[InitializingPage] Greeting sent, navigating to chat');
 
-        // Step 3: Navigate to chat
+        // Navigate immediately - chat page will show streaming response
         navigate({
           to: '/user/$userId/chat/$sessionId',
           params: { userId, sessionId },
