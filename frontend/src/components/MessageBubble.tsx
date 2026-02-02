@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
+import { Volume2 } from 'lucide-react';
 import type { Message } from '../types';
 
 interface MessageBubbleProps {
@@ -8,6 +9,38 @@ interface MessageBubbleProps {
 function MessageBubble({ message }: MessageBubbleProps) {
   const { role, content, timestamp, meta } = message;
   const isUser = role === 'user';
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Replay audio from stored base64
+  const handleReplay = useCallback(async () => {
+    if (!meta?.audio_base64 || isPlaying) return;
+
+    try {
+      setIsPlaying(true);
+      const byteChars = atob(meta.audio_base64);
+      const byteArray = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) {
+        byteArray[i] = byteChars.charCodeAt(i);
+      }
+      const blob = new Blob([byteArray], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        setIsPlaying(false);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        setIsPlaying(false);
+      };
+
+      await audio.play();
+    } catch (error) {
+      console.error('Replay error:', error);
+      setIsPlaying(false);
+    }
+  }, [meta?.audio_base64, isPlaying]);
   
   // Format timestamp
   const timeString = useMemo(() => {
@@ -64,7 +97,23 @@ function MessageBubble({ message }: MessageBubbleProps) {
           {meta?.animations?.[0] && (
             <>
               <span>•</span>
-              <span>→ {meta.animations[0]}</span>
+              <span>✨ {meta.animations[0]}</span>
+            </>
+          )}
+          {meta?.audio_base64 && (
+            <>
+              <span>•</span>
+              <button
+                onClick={handleReplay}
+                disabled={isPlaying}
+                className={`inline-flex items-center gap-1 hover:text-accent transition-colors ${
+                  isPlaying ? 'text-accent animate-pulse' : ''
+                }`}
+                title="Replay audio"
+              >
+                <Volume2 className="w-3 h-3" />
+                {isPlaying ? 'Playing...' : 'Replay'}
+              </button>
             </>
           )}
           {meta?.model && (
