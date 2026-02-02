@@ -5,35 +5,48 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 # Regex patterns for avatar control tags
-MOOD_PATTERN = re.compile(r'\[MOOD:([^:\]]+):?([\d.]*)\]')
-ANIM_PATTERN = re.compile(r'\[ANIM:([^\]]+)\]')
+# Format 1: [MOOD:happy:0.8] [ANIM:wave]
+MOOD_PATTERN_BRACKET = re.compile(r'\[MOOD:([^:\]]+):?([\d.]*)\]', re.IGNORECASE)
+ANIM_PATTERN_BRACKET = re.compile(r'\[ANIM:([^\]]+)\]', re.IGNORECASE)
+
+# Format 2: <mood:happy> <mood:happy:0.8> <animation:wave>
+MOOD_PATTERN_ANGLE = re.compile(r'<mood:([^:>]+):?([\d.]*)>', re.IGNORECASE)
+ANIM_PATTERN_ANGLE = re.compile(r'<animation:([^>]+)>', re.IGNORECASE)
 
 
 def extract_avatar_commands(text: str) -> Tuple[str, List[Dict[str, Any]], List[str]]:
-    """Extract [MOOD:x:y] and [ANIM:z] tags from text.
+    """Extract mood and animation tags from text.
+    
+    Supports both formats:
+    - [MOOD:happy:0.8] [ANIM:wave]
+    - <mood:happy:0.8> <animation:wave>
     
     Returns: (clean_text, moods, animations)
     - clean_text: text with tags removed
-    - moods: list of {"mood": "thinking", "intensity": 0.6}
-    - animations: list of animation names ["thinking_pose"]
+    - moods: list of {"mood": "happy", "intensity": 0.8}
+    - animations: list of animation names ["wave"]
     """
     moods: List[Dict[str, Any]] = []
     animations: List[str] = []
     
-    # Extract moods
-    for match in MOOD_PATTERN.finditer(text):
-        mood_name = match.group(1)
-        intensity_str = match.group(2)
-        intensity = float(intensity_str) if intensity_str else 1.0
-        moods.append({"mood": mood_name, "intensity": intensity})
+    # Extract moods from both formats
+    for pattern in [MOOD_PATTERN_BRACKET, MOOD_PATTERN_ANGLE]:
+        for match in pattern.finditer(text):
+            mood_name = match.group(1)
+            intensity_str = match.group(2)
+            intensity = float(intensity_str) if intensity_str else 1.0
+            moods.append({"mood": mood_name, "intensity": intensity})
     
-    # Extract animations
-    for match in ANIM_PATTERN.finditer(text):
-        animations.append(match.group(1))
+    # Extract animations from both formats
+    for pattern in [ANIM_PATTERN_BRACKET, ANIM_PATTERN_ANGLE]:
+        for match in pattern.finditer(text):
+            animations.append(match.group(1))
     
-    # Remove all tags from text
-    clean_text = MOOD_PATTERN.sub('', text)
-    clean_text = ANIM_PATTERN.sub('', clean_text)
+    # Remove all tag formats from text
+    clean_text = MOOD_PATTERN_BRACKET.sub('', text)
+    clean_text = ANIM_PATTERN_BRACKET.sub('', clean_text)
+    clean_text = MOOD_PATTERN_ANGLE.sub('', clean_text)
+    clean_text = ANIM_PATTERN_ANGLE.sub('', clean_text)
     
     # Clean up extra whitespace
     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
