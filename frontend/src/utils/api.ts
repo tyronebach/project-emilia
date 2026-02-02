@@ -26,6 +26,7 @@ export interface User {
   display_name: string;
   preferences?: string;
   agents?: Agent[];
+  avatar_count?: number;
 }
 
 export interface Session {
@@ -167,6 +168,16 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 
+export async function renameSession(sessionId: string, name: string): Promise<Session> {
+  const response = await fetchWithAuth(`${API_URL}/api/sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) throw new Error(`Failed to rename session: ${response.status}`);
+  return response.json();
+}
+
+
 // ============ CHAT API ============
 
 export function stripAvatarTags(text: string): string {
@@ -278,6 +289,33 @@ export async function getMemory(): Promise<string> {
 }
 
 
+export interface MemoryListResponse {
+  workspace: string;
+  files: string[];
+}
+
+
+export async function listMemoryFiles(): Promise<string[]> {
+  const response = await fetchWithAuth(`${API_URL}/api/memory/list`);
+  if (!response.ok) {
+    throw new Error(`Failed to list memory files: ${response.status}`);
+  }
+  const data: MemoryListResponse = await response.json();
+  return data.files || [];
+}
+
+
+export async function getMemoryFile(filename: string): Promise<string> {
+  const response = await fetchWithAuth(`${API_URL}/api/memory/${encodeURIComponent(filename)}`);
+  if (!response.ok) {
+    if (response.status === 404) return '';
+    throw new Error(`Failed to fetch memory file: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.content || '';
+}
+
+
 export default {
   fetchWithAuth,
   getUsers,
@@ -288,7 +326,10 @@ export default {
   getSession,
   getSessionHistory,
   deleteSession,
+  renameSession,
   streamChat,
   stripAvatarTags,
   getMemory,
+  listMemoryFiles,
+  getMemoryFile,
 };

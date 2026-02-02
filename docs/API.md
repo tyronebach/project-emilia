@@ -4,345 +4,272 @@ Base URL: `http://localhost:8080`
 
 ## Authentication
 
-All endpoints (except `/api/health`) require Bearer token authentication:
+All endpoints (except `/api/health`) require:
 ```
 Authorization: Bearer <token>
 ```
+Dev token: `emilia-dev-token-2026` (when `AUTH_ALLOW_DEV_TOKEN=1`)
 
-Default dev token: `emilia-dev-token-2026` (when `AUTH_ALLOW_DEV_TOKEN=1`)
+Most endpoints also require headers:
+```
+X-User-Id: <user_id>
+X-Agent-Id: <agent_id>      # for agent-scoped requests
+X-Session-Id: <session_id>  # for session-scoped requests
+```
 
 ---
 
-## Endpoints
+## Health
 
-### Health Check
 ```
 GET /api/health
 ```
-No auth required.
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "api": "healthy",
-  "stt": { "healthy": true, "url": "..." },
-  "brain": { "healthy": true, "url": "..." }
-}
-```
+No auth. Returns `{"status": "ok", "version": "2.0.0"}`.
 
 ---
 
-### Users
+## Users
 
-#### List Users
+### List Users
 ```
 GET /api/users
 ```
-
-**Response:**
+Returns all users with agent counts.
 ```json
 {
   "users": [
-    {
-      "id": "thai",
-      "display_name": "Thai",
-      "avatar_count": 1
-    }
-  ]
+    {"id": "thai", "display_name": "Thai", "avatar_count": 2},
+    {"id": "emily", "display_name": "Emily", "avatar_count": 1}
+  ],
+  "count": 2
 }
 ```
 
-#### Get User Details
+### Get User + Agents
 ```
 GET /api/users/{user_id}
 ```
-
-**Response:**
 ```json
 {
   "id": "thai",
   "display_name": "Thai",
-  "avatars": [
-    {
-      "id": "emilia-thai",
-      "display_name": "Emilia",
-      "agent_id": "emilia-thai"
-    }
+  "agents": [
+    {"id": "emilia-thai", "display_name": "Emilia", "vrm_model": "emilia.vrm"},
+    {"id": "rem", "display_name": "Rem", "vrm_model": "emilia.vrm"}
   ]
 }
 ```
 
-#### Select Avatar
+### Get User's Agents
 ```
-POST /api/users/{user_id}/select-avatar/{avatar_id}
+GET /api/users/{user_id}/agents
 ```
 
-**Response:**
+---
+
+## Agents
+
+### Get Agent
+```
+GET /api/agents/{agent_id}
+```
 ```json
 {
-  "user_id": "thai",
-  "avatar_id": "emilia-thai",
-  "agent_id": "emilia-thai"
+  "id": "emilia-thai",
+  "display_name": "Emilia",
+  "vrm_model": "emilia.vrm",
+  "voice_id": "...",
+  "owners": ["thai"]
 }
 ```
 
 ---
 
-### Chat
+## Sessions
 
+SQLite-backed session management. Sessions link users to agents and track conversation metadata.
+
+### List Sessions (for agent)
+```
+GET /api/sessions
+Headers: X-User-Id, X-Agent-Id
+```
+```json
+{
+  "sessions": [
+    {
+      "id": "uuid",
+      "agent_id": "emilia-thai",
+      "name": "My Chat",
+      "created_at": 1770009786,
+      "last_used": 1770009869,
+      "message_count": 5,
+      "participants": ["thai"]
+    }
+  ],
+  "count": 1
+}
+```
+
+### Create Session
+```
+POST /api/sessions
+Headers: X-User-Id, X-Agent-Id
+Body: {"agent_id": "emilia-thai", "name": "Optional Name"}
+```
+
+### Update Session (Rename)
+```
+PATCH /api/sessions/{session_id}
+Headers: X-User-Id
+Body: {"name": "New Name"}
+```
+
+### Delete Session
+```
+DELETE /api/sessions/{session_id}
+Headers: X-User-Id
+```
+Returns `{"deleted": true}`.
+
+### Get Session History
+```
+GET /api/sessions/{session_id}/history?limit=50
+Headers: X-User-Id
+```
+Reads from Clawdbot's JSONL files.
+```json
+{
+  "messages": [
+    {"role": "user", "content": "Hi!", "timestamp": "2026-02-01T21:00:00Z"},
+    {"role": "assistant", "content": "Hello!", "timestamp": "2026-02-01T21:00:01Z"}
+  ],
+  "count": 2
+}
+```
+
+---
+
+## Admin (Session Management)
+
+### List All Sessions
+```
+GET /api/admin/sessions
+```
+
+### Delete All Sessions for Agent
+```
+DELETE /api/admin/sessions/agent/{agent_id}
+```
+Returns `{"deleted": 3, "agent_id": "emilia-thai"}`.
+
+### Delete ALL Sessions
+```
+DELETE /api/admin/sessions/all
+```
+
+---
+
+## Chat
+
+### Stream Chat
 ```
 POST /api/chat?stream=1
+Headers: X-User-Id, X-Agent-Id, X-Session-Id
+Body: {"message": "Hello!"}
 ```
 
-**Headers:**
-```
-Authorization: Bearer <token>
-X-User-Id: thai
-X-Avatar-Id: emilia-thai
-```
-
-**Body:**
-```json
-{
-  "message": "Hello!",
-  "session_id": "my-session-123"
-}
-```
-
-#### Non-Streaming (`stream=0`)
-
-**Response:**
-```json
-{
-  "response": "Hi there!",
-  "agent_id": "emilia-thai",
-  "processing_ms": 1234,
-  "model": "gpt-5.2"
-}
-```
-
-#### Streaming (`stream=1`)
-
-Returns SSE (Server-Sent Events):
-
+Returns SSE stream:
 ```
 event: avatar
 data: {"mood": "happy", "intensity": 0.7}
 
 data: {"content": "Hi"}
-data: {"content": " there"}
-data: {"content": "!"}
+data: {"content": " there!"}
 
-data: {"done": true, "response": "Hi there!", "processing_ms": 1234, "model": "gpt-5.2", "moods": [...], "animations": [...]}
+event: avatar
+data: {"animation": "wave"}
+
+data: {"done": true, "response": "Hi there!", "session_id": "uuid", "processing_ms": 1234, "model": "claude-sonnet-4-20250514", "moods": [...], "animations": [...]}
 ```
+
+### Non-Stream Chat
+```
+POST /api/chat?stream=0
+```
+Returns complete response as JSON.
 
 ---
 
-### Sessions
+## Speech (TTS)
 
-#### List Sessions
-```
-GET /api/sessions/list
-```
-
-**Response:**
-```json
-{
-  "sessions": [
-    {
-      "session_key": "agent:emilia-thai:openai-user:my-session",
-      "display_id": "my-session",
-      "updated_at": 1769976338403,
-      "model": "gpt-5.2"
-    }
-  ]
-}
-```
-
-#### Get Session History
-```
-GET /api/sessions/history/{session_id}
-```
-
-**Response:**
-```json
-{
-  "session_id": "my-session",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Hello!",
-      "timestamp": "2026-02-01T12:00:00Z"
-    },
-    {
-      "role": "assistant", 
-      "content": "Hi there!",
-      "timestamp": "2026-02-01T12:00:01Z"
-    }
-  ]
-}
-```
-
----
-
-### Speech (TTS)
-
-#### Get Available Voices
-```
-GET /api/voices
-```
-
-**Response:**
-```json
-{
-  "voices": [
-    {"key": "rachel", "id": "21m00Tcm4TlvDq8ikWAM", "name": "Rachel", "desc": "Young, calm"},
-    {"key": "matilda", "id": "XrExE9yKIg1WjnnlVkGX", "name": "Matilda", "desc": "Warm, friendly"}
-  ]
-}
-```
-
-#### Text-to-Speech
+### Speak
 ```
 POST /api/speak
+Body: {"text": "Hello!", "voice_id": "optional"}
 ```
-
-**Body:**
 ```json
 {
-  "text": "Hello world!",
-  "voice_id": "21m00Tcm4TlvDq8ikWAM"
-}
-```
-
-**Response:**
-```json
-{
-  "audio_base64": "<base64 mp3 data>",
-  "text_length": 12,
-  "processing_ms": 456,
-  "has_lip_sync": true,
+  "audio_base64": "<base64 mp3>",
   "alignment": {
-    "characters": ["H", "e", "l", ...],
-    "character_start_times_seconds": [0.0, 0.05, ...],
-    "character_end_times_seconds": [0.05, 0.1, ...]
+    "chars": ["H","e","l","l","o"],
+    "charStartTimesMs": [0, 50, 100, 150, 200],
+    "charDurationsMs": [50, 50, 50, 50, 100]
   }
 }
 ```
 
+### List Voices
+```
+GET /api/voices
+```
+
 ---
 
-### Transcription (STT)
+## Transcription (STT)
 
 ```
 POST /api/transcribe
 Content-Type: multipart/form-data
+Form: audio=<file>
 ```
-
-**Form Data:**
-- `audio`: Audio file (webm, wav, etc.)
-
-**Response:**
 ```json
-{
-  "text": "Hello world",
-  "language": "en",
-  "confidence": 0.95,
-  "processing_ms": 234,
-  "api_total_ms": 250
-}
+{"text": "Hello world", "language": "en", "processing_ms": 234}
 ```
 
 ---
 
-### Memory
+## Memory
 
-#### Get Main Memory
+### Get MEMORY.md
 ```
 GET /api/memory
+Headers: X-Agent-Id
 ```
 
-**Response:**
-```json
-{
-  "filename": "MEMORY.md",
-  "content": "# Memory\n\n...",
-  "size_bytes": 1234,
-  "last_modified": "2026-02-01T12:00:00Z"
-}
-```
-
-#### List Memory Files
+### List Memory Files
 ```
 GET /api/memory/list
+Headers: X-Agent-Id
 ```
 
-**Response:**
-```json
-{
-  "workspace": "/home/tbach/clawd-emilia",
-  "files": ["2026-02-01.md", "2026-01-31.md", "2026-01-30.md"]
-}
-```
-
-#### Get Memory File
+### Get Memory File
 ```
 GET /api/memory/{filename}
-```
-
-**Response:**
-```json
-{
-  "filename": "2026-02-01.md",
-  "content": "# Daily notes...",
-  "size_bytes": 500,
-  "last_modified": "2026-02-01T12:00:00Z"
-}
-```
-
-#### Update Main Memory
-```
-POST /api/memory
-```
-
-**Body:**
-```json
-{
-  "content": "New content...",
-  "append": false
-}
-```
-
-#### Update Memory File
-```
-POST /api/memory/{filename}
-```
-
-**Body:**
-```json
-{
-  "content": "New content...",
-  "append": true
-}
+Headers: X-Agent-Id
 ```
 
 ---
 
 ## Error Responses
 
-All errors return:
 ```json
-{
-  "error": "Error message",
-  "status_code": 400,
-  "detail": "Request: POST /api/chat"
-}
+{"detail": "Error message"}
 ```
 
-Common status codes:
-- `400` - Bad request (missing params)
+Status codes:
+- `400` - Bad request
 - `401` - Unauthorized (invalid token)
-- `403` - Forbidden (avatar doesn't belong to user)
-- `404` - Not found (user/avatar/session)
-- `503` - Service unavailable (TTS key missing)
+- `403` - Forbidden (cannot access resource)
+- `404` - Not found
+- `503` - Service unavailable

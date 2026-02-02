@@ -4,6 +4,89 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.1.0] - 2026-02-01
+
+### Added - Frontend Polish & Routing 🎨
+
+#### Routing (TanStack Router)
+- **Nested Routes** - `/user/:userId/chat/:sessionId` structure
+- **Deep Linking** - Direct links to specific sessions
+- **State Isolation** - Clean state on route changes, no bleed between users
+
+#### UI Redesign
+- **User Select Page**
+  - Avatar-as-button design (no visible button frame)
+  - Name as footer text below avatar
+  - Badge showing agent count per user
+  - Cog icon → Admin panel
+
+- **Agent Select Page**
+  - Same avatar-centric pattern
+  - Back button to user select
+
+#### Admin Panel (`/admin`)
+- List all agents from `avatars.json`
+- Edit `voice_id` per agent
+- Backend: `GET /api/admin/agents`, `PUT /api/admin/agents/:id`
+
+#### Memory Viewer
+- Dropdown selector for memory files
+- `MEMORY.md` listed first
+- Daily files (`memory/YYYY-MM-DD.md`) sorted newest-first
+- View only (no edit/delete)
+- Backend: `GET /api/memory/list`, `GET /api/memory/:filename`
+
+#### Debug HUD Improvements
+- Scrollable state log (fixed max-height)
+- Per-stage latency display (P50/P95)
+- Error display section
+- `stageLatencies` in statsStore
+
+#### Error Handling (Partial)
+- Error store wired up
+- DebugPanel displays errors
+- Hooks for STT/TTS/WS failures pending
+
+### Technical
+- New routes in `routeTree.gen.ts`
+- `AdminPanel.tsx` component
+- `MemoryModal.tsx` with dropdown
+- Updated `DebugPanel.tsx` with scrollable log
+
+---
+
+## [5.0.0] - 2026-02-01
+
+### Added - React Frontend + SQLite Backend 🚀
+
+#### Frontend (React + Vite + TanStack Router)
+- **User Selection** - Multi-user support with agent counts
+- **Agent Selection** - Pick companion per user
+- **Session Management** - Create, switch, rename, delete sessions
+- **Chat Interface** - Streaming responses with avatar integration
+- **"Start Chat" Flow** - For new users with no sessions, shows "Bringing Emilia to life..." button
+- **Drawer** - Session list with 3-dot menu for rename/delete
+- **VRM Avatar** - Three.js + @pixiv/three-vrm integration
+
+#### Backend (FastAPI + SQLite)
+- **Database Schema** - `users`, `agents`, `user_agents`, `sessions`, `session_participants`
+- **Session CRUD** - Create, read, update (rename), delete
+- **Admin Endpoints** - `/api/admin/sessions`, bulk delete by agent
+- **Auth Headers** - `X-User-Id`, `X-Agent-Id`, `X-Session-Id`
+- **Clawdbot Integration** - Reads history from JSONL, proxies chat to gateway
+
+#### Data
+- `avatars.json` - Avatar configs (agent_id, voice_id, vrm_model)
+- `emilia.db` - SQLite for users/sessions (in `/data/`)
+
+### Technical
+- Frontend: `frontend/src/` (React 19, Zustand, React Query)
+- Backend: `backend/main.py`, `database.py` (FastAPI, SQLite)
+- Docker: `docker-compose.yml` with backend + nginx frontend
+- API docs: `docs/API.md` fully updated
+
+---
+
 ## [4.1.0] - 2026-01-31
 
 ### Added - Avatar Animation System 🎭

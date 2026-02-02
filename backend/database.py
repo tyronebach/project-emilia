@@ -290,6 +290,35 @@ def delete_session(session_id: str) -> bool:
         return result.rowcount > 0
 
 
+def get_all_sessions() -> list[dict]:
+    """Get all sessions (admin)"""
+    with get_db() as conn:
+        return conn.execute("""
+            SELECT s.*, GROUP_CONCAT(sp.user_id) as participants
+            FROM sessions s
+            LEFT JOIN session_participants sp ON s.id = sp.session_id
+            GROUP BY s.id
+            ORDER BY s.last_used DESC
+        """).fetchall()
+
+
+def delete_sessions_by_agent(agent_id: str) -> int:
+    """Delete all sessions for an agent, returns count deleted"""
+    with get_db() as conn:
+        # Get session IDs first
+        sessions = conn.execute(
+            "SELECT id FROM sessions WHERE agent_id = ?", (agent_id,)
+        ).fetchall()
+        
+        count = 0
+        for s in sessions:
+            conn.execute("DELETE FROM session_participants WHERE session_id = ?", (s['id'],))
+            conn.execute("DELETE FROM sessions WHERE id = ?", (s['id'],))
+            count += 1
+        
+        return count
+
+
 def add_session_participant(session_id: str, user_id: str):
     """Add a participant to a session"""
     with get_db() as conn:

@@ -47,6 +47,10 @@ EMILIA_WORKSPACE = os.getenv("EMILIA_WORKSPACE", "/home/tbach/clawd-emilia")
 MEMORY_MD_PATH = Path(EMILIA_WORKSPACE) / "MEMORY.md"
 AGENTS_DIR = Path(os.getenv("CLAWDBOT_AGENTS_DIR", "/home/tbach/.clawdbot/agents"))
 
+# Data Directory
+DATA_DIR = Path(__file__).parent.parent / "data"
+AVATARS_JSON_PATH = DATA_DIR / "avatars.json"
+
 
 # ============ REQUEST MODELS ============
 
@@ -103,9 +107,17 @@ async def health():
 
 @app.get("/api/users")
 async def list_users(token: str = Depends(verify_token)):
-    """List all users"""
+    """List all users with their agent counts"""
     users = db.get_users()
-    return {"users": users, "count": len(users)}
+    # Add avatar_count (really agent count) for each user
+    enriched_users = []
+    for user in users:
+        agents = db.get_user_agents(user["id"])
+        enriched_users.append({
+            **user,
+            "avatar_count": len(agents)
+        })
+    return {"users": enriched_users, "count": len(enriched_users)}
 
 
 @app.get("/api/users/{user_id}")
@@ -235,6 +247,33 @@ async def delete_session(
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"deleted": True}
+
+
+# ============ ADMIN ROUTES ============
+
+@app.get("/api/admin/sessions")
+async def list_all_sessions(token: str = Depends(verify_token)):
+    """List all sessions (admin)"""
+    sessions = db.get_all_sessions()
+    return {"sessions": sessions, "count": len(sessions)}
+
+
+@app.delete("/api/admin/sessions/agent/{agent_id}")
+async def delete_agent_sessions(agent_id: str, token: str = Depends(verify_token)):
+    """Delete all sessions for an agent (admin)"""
+    count = db.delete_sessions_by_agent(agent_id)
+    return {"deleted": count, "agent_id": agent_id}
+
+
+@app.delete("/api/admin/sessions/all")
+async def delete_all_sessions(token: str = Depends(verify_token)):
+    """Delete ALL sessions (admin) - use with caution"""
+    all_sessions = db.get_all_sessions()
+    count = 0
+    for s in all_sessions:
+        if db.delete_session(s['id']):
+            count += 1
+    return {"deleted": count}
 
 
 @app.get("/api/sessions/{session_id}/history")
@@ -653,6 +692,118 @@ async def get_memory(token: str = Depends(verify_token)):
     
     content = MEMORY_MD_PATH.read_text(encoding="utf-8")
     return PlainTextResponse(content, media_type="text/markdown")
+
+
+@app.get("/api/memory/list")
+async def list_memory_files(token: str = Depends(verify_token)):
+    """List available memory files (MEMORY.md + daily files)"""
+    files = []
+    workspace = MEMORY_MD_PATH.parent
+    
+    # Add MEMORY.md if exists
+    if MEMORY_MD_PATH.exists():
+        files.append("MEMORY.md")
+    
+    # Add daily files from memory/ directory
+    memory_dir = workspace / "memory"
+    if memory_dir.exists() and memory_dir.is_dir():
+        for f in memory_dir.iterdir():
+            if f.is_file() and f.suffix == ".md":
+                files.append(f.name)
+    
+    return {"workspace": str(workspace), "files": files}
+
+
+@app.get("/api/memory/{filename:path}")
+async def get_memory_file(filename: str, token: str = Depends(verify_token)):
+    """Get specific memory file content"""
+    workspace = MEMORY_MD_PATH.parent
+    
+    # Handle MEMORY.md specially
+    if filename == "MEMORY.md":
+        if not MEMORY_MD_PATH.exists():
+            raise HTTPException(status_code=404, detail="Memory file not found")
+        content = MEMORY_MD_PATH.read_text(encoding="utf-8")
+        return {"filename": filename, "content": content}
+    
+    # Daily files are in memory/ directory
+    file_path = workspace / "memory" / filename
+    
+    # Security check - prevent path traversal
+    try:
+        file_path = file_path.resolve()
+        if not str(file_path).startswith(str((workspace / "memory").resolve())):
+            raise HTTPException(status_code=403, detail="Access denied")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Memory file not found")
+    
+    content = file_path.read_text(encoding="utf-8")
+    return {"filename": filename, "content": content}
+
+
+# ============ ADMIN ============
+
+def load_avatars_config():
+    """Load avatars configuration from JSON file"""
+    if not AVATARS_JSON_PATH.exists():
+        return {"avatars": {}}
+    try:
+        return json.loads(AVATARS_JSON_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {"avatars": {}}
+
+
+def save_avatars_config(config: dict):
+    """Save avatars configuration to JSON file"""
+    AVATARS_JSON_PATH.write_text(json.dumps(config, indent=2), encoding="utf-8")
+
+
+@app.get("/api/admin/agents")
+async def get_admin_agents():
+    """Get all agents with their configuration"""
+    config = load_avatars_config()
+    avatars = config.get("avatars", {})
+    
+    agents = []
+    for agent_id, data in avatars.items():
+        agents.append({
+            "id": agent_id,
+            "display_name": data.get("display_name", agent_id),
+            "voice_id": data.get("voice_id", ""),
+            "vrm_model": data.get("vrm_model", ""),
+            "owner": data.get("owner", ""),
+        })
+    
+    return {"agents": agents}
+
+
+class AgentUpdate(BaseModel):
+    voice_id: Optional[str] = None
+    vrm_model: Optional[str] = None
+
+
+@app.put("/api/admin/agents/{agent_id}")
+async def update_admin_agent(agent_id: str, update: AgentUpdate):
+    """Update agent configuration"""
+    config = load_avatars_config()
+    avatars = config.get("avatars", {})
+    
+    if agent_id not in avatars:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Update fields if provided
+    if update.voice_id is not None:
+        avatars[agent_id]["voice_id"] = update.voice_id
+    if update.vrm_model is not None:
+        avatars[agent_id]["vrm_model"] = update.vrm_model
+    
+    config["avatars"] = avatars
+    save_avatars_config(config)
+    
+    return {"status": "ok", "agent_id": agent_id}
 
 
 # ============ STARTUP ============
