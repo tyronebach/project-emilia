@@ -9,7 +9,8 @@ import { VRMLoaderPlugin, VRMUtils, VRM } from '@pixiv/three-vrm';
 import { LipSyncEngine } from './LipSyncEngine';
 import { ExpressionController } from './ExpressionController';
 import { IdleAnimations } from './IdleAnimations';
-import { AnimationTrigger } from './AnimationTrigger';
+import { AnimationPlayer } from './AnimationPlayer';
+import { animationLibrary } from './AnimationLibrary';
 import type { AvatarRendererOptions } from './types';
 
 const DEFAULT_VRM_URL = '/emilia.vrm';
@@ -38,7 +39,7 @@ export class AvatarRenderer {
   // Animation systems
   public lipSyncEngine: LipSyncEngine | null = null;
   private idleAnimations: IdleAnimations | null = null;
-  public animationTrigger: AnimationTrigger | null = null;
+  public animationPlayer: AnimationPlayer | null = null;
   public expressionController: ExpressionController | null = null;
 
   // Options
@@ -209,12 +210,17 @@ export class AvatarRenderer {
 
           // Initialize animation systems
           this.idleAnimations = new IdleAnimations(vrm);
-          this.animationTrigger = new AnimationTrigger(vrm);
+          this.animationPlayer = new AnimationPlayer(vrm);
           this.expressionController = new ExpressionController(vrm);
           this.lipSyncEngine = new LipSyncEngine(vrm);
 
-          // Connect animation trigger to idle system for pausing
-          this.animationTrigger.setIdleAnimations(this.idleAnimations);
+          // Connect animation player to idle system for pausing during triggered animations
+          this.animationPlayer.setIdleAnimations(this.idleAnimations);
+
+          // Preload registered animations
+          animationLibrary.preloadAll().catch(err => {
+            console.warn('[AvatarRenderer] Failed to preload animations:', err);
+          });
 
           // Debug: Log available humanoid bones
           this.logAvailableBones(vrm);
@@ -290,7 +296,7 @@ export class AvatarRenderer {
 
       // Update systems
       if (this.idleAnimations) this.idleAnimations.update(deltaTime);
-      if (this.animationTrigger) this.animationTrigger.update(deltaTime);
+      if (this.animationPlayer) this.animationPlayer.update(deltaTime);
       if (this.expressionController) this.expressionController.update(deltaTime);
       if (this.lipSyncEngine) this.lipSyncEngine.update(deltaTime);
       if (this.vrm) this.vrm.update(deltaTime);
