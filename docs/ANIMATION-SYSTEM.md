@@ -84,36 +84,53 @@ Animations are automatically retargeted from Mixamo naming to VRM:
 
 ## Adding Animations
 
-### 1. Get animation from Mixamo
+### Option 1: Quaternius Universal Animation Library (Recommended)
 
-1. Go to [Mixamo](https://www.mixamo.com/)
+Free CC0 animations, already in GLB format:
+
+1. **Download from itch.io:**
+   - Go to https://quaternius.itch.io/universal-animation-library
+   - Click "Download Now" → "No thanks, just take me to downloads"
+   - Download "Universal Animation Library[Standard].zip"
+
+2. **Extract and copy:**
+   ```bash
+   cd /home/tbach/Projects/emilia-project/emilia-webapp/frontend/public
+   unzip ~/Downloads/Universal\ Animation\ Library*.zip -d animations/
+   ```
+
+3. **Register animations:**
+   ```typescript
+   // In AnimationLibrary.ts constructor or initialization
+   animationLibrary.register('wave', '/animations/GLB/Emotes/Wave.glb');
+   animationLibrary.register('nod', '/animations/GLB/Emotes/Agree.glb');
+   animationLibrary.register('thinking', '/animations/GLB/Emotes/Think.glb');
+   animationLibrary.register('idle', '/animations/GLB/Idle/Idle.glb');
+   ```
+
+### Option 2: Mixamo
+
+1. Go to [Mixamo](https://www.mixamo.com/) (Adobe login required)
 2. Upload a T-pose character or use a preset
 3. Browse animations (wave, nod, thinking, etc.)
 4. Download as FBX with "Without Skin" option
+5. Convert to GLB:
+   ```bash
+   # Using gltf-transform
+   npx @gltf-transform/cli copy input.fbx output.glb
+   
+   # Or in Blender: File → Export → glTF 2.0 (.glb)
+   ```
 
-### 2. Convert to GLB
+### Fallback Behavior
 
-Use Blender or `gltf-transform`:
+If GLB files aren't found, the system automatically falls back to **procedural animations** (AnimationTrigger). These provide basic:
+- Wave (arm raise + happy expression)
+- Nod (head movement)
+- Thinking (head tilt)
+- Head shake
 
-```bash
-# Using gltf-transform
-npx @gltf-transform/cli copy input.fbx output.glb
-
-# Or in Blender: File → Export → glTF 2.0 (.glb)
-```
-
-### 3. Add to library
-
-```typescript
-// In AvatarRenderer.ts or app initialization
-animationLibrary.register('wave', '/animations/wave.glb');
-```
-
-### 4. Place file
-
-```bash
-cp wave.glb frontend/public/animations/
-```
+So the app works without GLB files, just with simpler animations.
 
 ## Agent Integration
 

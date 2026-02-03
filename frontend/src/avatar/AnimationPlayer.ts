@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
 import { animationLibrary, type AnimationClipData } from './AnimationLibrary';
+import { AnimationTrigger } from './AnimationTrigger';
 import type { IdleAnimations } from './IdleAnimations';
 
 export interface PlayOptions {
@@ -29,10 +30,14 @@ export class AnimationPlayer {
   private currentAnimationName: string | null = null;
   private queue: Array<{ name: string; options: PlayOptions }> = [];
   private idleAnimations: IdleAnimations | null = null;
+  
+  // Fallback to procedural animations when GLB files not available
+  private proceduralFallback: AnimationTrigger;
 
   constructor(vrm: VRM) {
     this.vrm = vrm;
     this.mixer = new THREE.AnimationMixer(vrm.scene);
+    this.proceduralFallback = new AnimationTrigger(vrm);
 
     // Listen for animation end
     this.mixer.addEventListener('finished', this.onAnimationFinished.bind(this));
@@ -43,10 +48,12 @@ export class AnimationPlayer {
    */
   setIdleAnimations(idleAnimations: IdleAnimations): void {
     this.idleAnimations = idleAnimations;
+    this.proceduralFallback.setIdleAnimations(idleAnimations);
   }
 
   /**
    * Play an animation by name
+   * Falls back to procedural animation if GLB file not available
    */
   async play(name: string, options: PlayOptions = {}): Promise<boolean> {
     const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -58,11 +65,13 @@ export class AnimationPlayer {
       return true;
     }
 
-    // Load animation if needed
+    // Try to load GLB animation
     const animData = await animationLibrary.load(name);
     if (!animData) {
-      console.warn(`[AnimationPlayer] Animation '${name}' not available`);
-      return false;
+      // Fallback to procedural animation
+      console.log(`[AnimationPlayer] GLB '${name}' not found, using procedural fallback`);
+      this.proceduralFallback.trigger(name);
+      return true;
     }
 
     return this.playClip(animData, opts);
@@ -206,6 +215,8 @@ export class AnimationPlayer {
    */
   update(deltaTime: number): void {
     this.mixer.update(deltaTime);
+    // Also update procedural fallback animations
+    this.proceduralFallback.update(deltaTime);
   }
 
   /**
