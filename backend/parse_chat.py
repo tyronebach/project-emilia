@@ -34,7 +34,11 @@ def extract_avatar_commands(text: str) -> Tuple[str, List[Dict[str, Any]], List[
         for match in pattern.finditer(text):
             mood_name = match.group(1)
             intensity_str = match.group(2)
-            intensity = float(intensity_str) if intensity_str else 1.0
+            try:
+                intensity = float(intensity_str) if intensity_str else 1.0
+            except ValueError:
+                intensity = 1.0
+            intensity = max(0.0, min(1.0, intensity))
             moods.append({"mood": mood_name, "intensity": intensity})
     
     # Extract animations from both formats

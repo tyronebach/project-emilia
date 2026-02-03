@@ -45,8 +45,15 @@ async def create_session(
 
 
 @router.get("/{session_id}")
-async def get_session(session_id: str, token: str = Depends(verify_token)):
+async def get_session(
+    session_id: str,
+    token: str = Depends(verify_token),
+    x_user_id: str = Header(..., alias="X-User-Id")
+):
     """Get session details"""
+    if not db.user_can_access_session(x_user_id, session_id):
+        raise HTTPException(status_code=403, detail="Cannot access this session")
+
     session = db.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")

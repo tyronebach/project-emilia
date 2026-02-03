@@ -1,4 +1,126 @@
 [
-  { "id": "emilia.vrm", "name": "Emilia" },
-  { "id": "rem.vrm", "name": "Rem" }
+  {
+    "id": "emilia.vrm",
+    "name": "Emilia"
+  },
+  {
+    "id": "rem.vrm",
+    "name": "Rem"
+  },
+  {
+    "id": "aliciaSolid.vrm",
+    "name": "Alicia Solid"
+  },
+  {
+    "id": "amaneKanata.vrm",
+    "name": "Amane Kanata"
+  },
+  {
+    "id": "blueArchive_azusa_01.vrm",
+    "name": "Blue Archive Azusa 01"
+  },
+  {
+    "id": "blueArchive_azusa_02.vrm",
+    "name": "Blue Archive Azusa 02"
+  },
+  {
+    "id": "blueArchive_eimi_01.vrm",
+    "name": "Blue Archive Eimi 01"
+  },
+  {
+    "id": "blueArchive_eimi_02.vrm",
+    "name": "Blue Archive Eimi 02"
+  },
+  {
+    "id": "blueArchive_hoshino_01.vrm",
+    "name": "Blue Archive Hoshino 01"
+  },
+  {
+    "id": "blueArchive_hoshino_02.vrm",
+    "name": "Blue Archive Hoshino 02"
+  },
+  {
+    "id": "blueArchive_shiroko_01.vrm",
+    "name": "Blue Archive Shiroko 01"
+  },
+  {
+    "id": "blueArchive_shiroko_02.vrm",
+    "name": "Blue Archive Shiroko 02"
+  },
+  {
+    "id": "insideChan.vrm",
+    "name": "Inside-chan"
+  },
+  {
+    "id": "miraiKomachi.vrm",
+    "name": "Mirai Komachi"
+  },
+  {
+    "id": "momosuzuNene.vrm",
+    "name": "Momosuzu Nene"
+  },
+  {
+    "id": "mysteryAvatar_01.vrm",
+    "name": "Mystery Avatar 01"
+  },
+  {
+    "id": "ryu_D.vrm",
+    "name": "Ryu D"
+  },
+  {
+    "id": "shachikuChan_v1_0.vrm",
+    "name": "Shachiku-chan (v1.0)"
+  },
+  {
+    "id": "tomaru_hatsuneMikuNT_v1_0_1.vrm",
+    "name": "Hatsune Miku NT (Tomaru) v1.0.1"
+  },
+  {
+    "id": "tsukuyomiChan_01.vrm",
+    "name": "Tsukuyomi-chan 01"
+  },
+  {
+    "id": "tsukuyomiChan_02.vrm",
+    "name": "Tsukuyomi-chan 02"
+  },
+  {
+    "id": "tsukuyomiChan_03.vrm",
+    "name": "Tsukuyomi-chan 03"
+  },
+  {
+    "id": "tsukuyomiChan_04.vrm",
+    "name": "Tsukuyomi-chan 04"
+  },
+  {
+    "id": "tsukuyomiChan_05.vrm",
+    "name": "Tsukuyomi-chan 05"
+  },
+  {
+    "id": "tsukuyomiChan_06.vrm",
+    "name": "Tsukuyomi-chan 06"
+  },
+  {
+    "id": "tsukuyomiChan_07.vrm",
+    "name": "Tsukuyomi-chan 07"
+  },
+  {
+    "id": "tsukuyomiChan_08.vrm",
+    "name": "Tsukuyomi-chan 08"
+  },
+  {
+    "id": "tsukuyomiChan_09.vrm",
+    "name": "Tsukuyomi-chan 09"
+  },
+  {
+    "id": "tsukuyomiChan_10.vrm",
+    "name": "Tsukuyomi-chan 10"
+  },
+  {
+    "id": "tsukuyomiChan_11.vrm",
+    "name": "Tsukuyomi-chan 11"
+  },
+  {
+    "id": "vjTakagi.vrm",
+    "name": "VJ Takagi"
+  }
 ]

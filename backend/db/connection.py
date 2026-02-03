@@ -1,11 +1,25 @@
 """
 Database connection and initialization.
 """
+import os
 import sqlite3
 from pathlib import Path
 from contextlib import contextmanager
 
-DB_PATH = Path("/data/emilia.db")
+DEFAULT_DB_PATH = Path(os.getenv("EMILIA_DB_PATH", "/data/emilia.db"))
+DB_PATH = DEFAULT_DB_PATH
+
+try:
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+except Exception:
+    fallback = Path(
+        os.getenv(
+            "EMILIA_DB_PATH_FALLBACK",
+            str(Path(__file__).resolve().parents[2] / "data" / "emilia.db")
+        )
+    )
+    DB_PATH = fallback
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 def dict_factory(cursor: sqlite3.Cursor, row: tuple) -> dict:
@@ -19,8 +33,12 @@ def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = dict_factory
     try:
+        conn.execute("PRAGMA foreign_keys = ON")
         yield conn
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -91,9 +109,8 @@ def init_db():
 
 
 # Initialize on import
-if DB_PATH.parent.exists():
-    init_db()
+init_db()
 
-    # Seed data
-    from db.seed import seed_data
-    seed_data()
+# Seed data
+from db.seed import seed_data
+seed_data()
