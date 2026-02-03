@@ -78,9 +78,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       renderer.expressionController.setMood(command.mood, command.intensity || 1.0);
     }
 
-    if (command.animation && renderer.animationTrigger) {
-      console.log('[Store] Triggering animation:', command.animation);
-      renderer.animationTrigger.trigger(command.animation);
+    if (command.animation && renderer.animationPlayer) {
+      console.log('[Store] Playing animation:', command.animation);
+      renderer.animationPlayer.play(command.animation);
     }
   },
 }));
