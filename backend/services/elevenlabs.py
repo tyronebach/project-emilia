@@ -46,7 +46,10 @@ class ElevenLabsService:
 
         try:
             audio_chunks = []
-            alignment_data = None
+            # Accumulate alignment data from multiple chunks
+            all_chars = []
+            all_start_times = []
+            all_end_times = []
 
             async with websockets.connect(
                 ws_url,
@@ -79,8 +82,12 @@ class ElevenLabsService:
                         if data.get("audio"):
                             audio_chunks.append(base64.b64decode(data["audio"]))
 
+                        # Accumulate alignment data from each chunk
                         if data.get("alignment"):
-                            alignment_data = data["alignment"]
+                            chunk = data["alignment"]
+                            all_chars.extend(chunk.get("characters", []))
+                            all_start_times.extend(chunk.get("character_start_times_seconds", []))
+                            all_end_times.extend(chunk.get("character_end_times_seconds", []))
 
                         if data.get("isFinal"):
                             break
@@ -94,22 +101,18 @@ class ElevenLabsService:
             audio_bytes = b"".join(audio_chunks)
             audio_base64 = base64.b64encode(audio_bytes).decode()
 
-            # Transform alignment data to frontend format
+            # Transform accumulated alignment data to frontend format
             transformed_alignment = None
-            if alignment_data:
-                chars = alignment_data.get("characters", [])
-                start_times = alignment_data.get("character_start_times_seconds", [])
-                end_times = alignment_data.get("character_end_times_seconds", [])
-                
+            if all_chars:
                 # Convert to ms and calculate durations
-                charStartTimesMs = [int(t * 1000) for t in start_times]
+                charStartTimesMs = [int(t * 1000) for t in all_start_times]
                 charDurationsMs = [
-                    int((end_times[i] - start_times[i]) * 1000) 
-                    for i in range(min(len(start_times), len(end_times)))
+                    int((all_end_times[i] - all_start_times[i]) * 1000) 
+                    for i in range(min(len(all_start_times), len(all_end_times)))
                 ]
                 
                 transformed_alignment = {
-                    "chars": chars,
+                    "chars": all_chars,
                     "charStartTimesMs": charStartTimesMs,
                     "charDurationsMs": charDurationsMs
                 }
