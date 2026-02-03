@@ -155,33 +155,6 @@ export class LipSyncEngine {
     
     this.audioElement = audioElement;
     this.isActive = true;
-    
-    // Scale timing if alignment data is shorter than audio
-    const lastEntry = this.timingData[this.timingData.length - 1];
-    const alignmentDuration = lastEntry?.endMs || 0;
-    
-    // Wait for audio metadata to get duration
-    const checkAndScale = () => {
-      const audioDuration = audioElement.duration * 1000;
-      if (audioDuration && alignmentDuration > 0) {
-        const ratio = audioDuration / alignmentDuration;
-        // Only scale if audio is significantly longer (>20% difference)
-        if (ratio > 1.2) {
-          console.log(`[LipSync] Scaling timing by ${ratio.toFixed(2)}x (${alignmentDuration}ms → ${audioDuration}ms)`);
-          for (const entry of this.timingData) {
-            entry.startMs *= ratio;
-            entry.endMs *= ratio;
-          }
-        }
-      }
-    };
-    
-    if (audioElement.duration) {
-      checkAndScale();
-    } else {
-      audioElement.addEventListener('loadedmetadata', checkAndScale, { once: true });
-    }
-    
     console.log('[LipSync] Started');
   }
   
