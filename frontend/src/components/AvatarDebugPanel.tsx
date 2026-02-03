@@ -318,10 +318,10 @@ function AvatarDebugPanel() {
               {AVAILABLE_ANIMATIONS.map((anim) => (
                 <Button
                   key={anim}
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
                   onClick={() => playAnimation(anim)}
-                  className="justify-start"
+                  className="justify-start text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
                 >
                   <Play className="w-3 h-3 mr-1" />
                   {anim}
@@ -368,7 +368,11 @@ function AvatarDebugPanel() {
                 />
               </div>
               
-              <Button onClick={applyMood} size="sm" className="w-full">
+              <Button 
+                onClick={applyMood} 
+                size="sm" 
+                className="w-full bg-accent text-white hover:bg-accent-hover"
+              >
                 Apply Mood
               </Button>
             </div>
@@ -409,13 +413,23 @@ function AvatarDebugPanel() {
                     placeholder="https://..."
                     className="flex-1 bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm"
                   />
-                  <Button size="sm" onClick={playAudioUrl} disabled={!audioUrl}>
+                  <Button 
+                    size="sm" 
+                    onClick={playAudioUrl} 
+                    disabled={!audioUrl}
+                    className="bg-accent text-white hover:bg-accent-hover disabled:opacity-50"
+                  >
                     <Volume2 className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
               
-              <Button variant="outline" size="sm" onClick={stopSpeaking} className="w-full">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={stopSpeaking} 
+                className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+              >
                 Stop Speaking
               </Button>
               
@@ -432,9 +446,9 @@ function AvatarDebugPanel() {
             </h2>
             <div className="space-y-2">
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="w-full"
+                className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
                 onClick={() => {
                   rendererRef.current?.expressionController?.setMood('happy', 1.0);
                   setLastAction('Max Happy');
@@ -443,9 +457,9 @@ function AvatarDebugPanel() {
                 😊 Max Happy
               </Button>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="w-full"
+                className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
                 onClick={() => {
                   rendererRef.current?.expressionController?.setMood('neutral', 0);
                   setLastAction('Reset Neutral');
@@ -454,9 +468,9 @@ function AvatarDebugPanel() {
                 😐 Reset to Neutral
               </Button>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                className="w-full"
+                className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
                 onClick={waveHappy}
               >
                 👋 Wave + Happy
