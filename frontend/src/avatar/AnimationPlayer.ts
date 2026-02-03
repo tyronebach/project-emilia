@@ -1,12 +1,14 @@
 /**
  * Animation Player
  * Plays GLB animations on VRM model using Three.js AnimationMixer
+ * 
+ * Animation files go in: public/animations/{name}.glb
+ * Supported: nod, wave, thinking, surprised, etc.
  */
 
 import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
 import { animationLibrary, type AnimationClipData } from './AnimationLibrary';
-import { AnimationTrigger } from './AnimationTrigger';
 import type { IdleAnimations } from './IdleAnimations';
 
 export interface PlayOptions {
@@ -30,14 +32,10 @@ export class AnimationPlayer {
   private currentAnimationName: string | null = null;
   private queue: Array<{ name: string; options: PlayOptions }> = [];
   private idleAnimations: IdleAnimations | null = null;
-  
-  // Fallback to procedural animations when GLB files not available
-  private proceduralFallback: AnimationTrigger;
 
   constructor(vrm: VRM) {
     this.vrm = vrm;
     this.mixer = new THREE.AnimationMixer(vrm.scene);
-    this.proceduralFallback = new AnimationTrigger(vrm);
 
     // Listen for animation end
     this.mixer.addEventListener('finished', this.onAnimationFinished.bind(this));
@@ -48,12 +46,11 @@ export class AnimationPlayer {
    */
   setIdleAnimations(idleAnimations: IdleAnimations): void {
     this.idleAnimations = idleAnimations;
-    this.proceduralFallback.setIdleAnimations(idleAnimations);
   }
 
   /**
    * Play an animation by name
-   * Falls back to procedural animation if GLB file not available
+   * Animations must exist as GLB files in public/animations/
    */
   async play(name: string, options: PlayOptions = {}): Promise<boolean> {
     const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -68,10 +65,9 @@ export class AnimationPlayer {
     // Try to load GLB animation
     const animData = await animationLibrary.load(name);
     if (!animData) {
-      // Fallback to procedural animation
-      console.log(`[AnimationPlayer] GLB '${name}' not found, using procedural fallback`);
-      this.proceduralFallback.trigger(name);
-      return true;
+      // Animation not available - skip silently
+      console.log(`[AnimationPlayer] Animation '${name}' not found (add /animations/${name}.glb)`);
+      return false;
     }
 
     return this.playClip(animData, opts);
@@ -215,8 +211,6 @@ export class AnimationPlayer {
    */
   update(deltaTime: number): void {
     this.mixer.update(deltaTime);
-    // Also update procedural fallback animations
-    this.proceduralFallback.update(deltaTime);
   }
 
   /**

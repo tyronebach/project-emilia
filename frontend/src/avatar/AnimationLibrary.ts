@@ -18,12 +18,13 @@ export class AnimationLibrary {
   private loadingPromises: Map<string, Promise<AnimationClipData | null>> = new Map();
   
   // Animation manifest - maps animation names to file paths
+  // Add GLB files to public/animations/ and register them here
   private manifest: Record<string, string> = {
-    // These will be populated as we add animation files
-    // 'wave': '/animations/wave.glb',
-    // 'nod': '/animations/nod.glb',
-    // 'thinking': '/animations/thinking.glb',
-    // 'idle': '/animations/idle.glb',
+    'nod': '/animations/nod.glb',
+    'wave': '/animations/wave.glb',
+    'thinking': '/animations/thinking.glb',
+    'surprised': '/animations/surprised.glb',
+    'head_shake': '/animations/head_shake.glb',
   };
 
   constructor() {
