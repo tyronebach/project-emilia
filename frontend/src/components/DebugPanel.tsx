@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { X, Activity, AlertCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { useSession } from '../hooks/useSession';
 import { useStatsStore } from '../store/statsStore';
 import { useUserStore } from '../store/userStore';
 import { Button } from './ui/button';
@@ -13,8 +12,7 @@ interface DebugPanelProps {
 }
 
 function DebugPanel({ open, onClose }: DebugPanelProps) {
-  const { messages, status, ttsEnabled, errors } = useApp();
-  const { sessionId } = useSession();
+  const { messages, status, ttsEnabled, errors, sessionId } = useApp();
   const { totalLatency, latencyCount, stateLog, stageLatencies } = useStatsStore();
   const currentUser = useUserStore((state) => state.currentUser);
   const currentAgent = useUserStore((state) => state.currentAgent);

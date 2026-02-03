@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
+import { fetchWithAuth } from '../utils/api';
 
 export function useAudio() {
   const { setStatus } = useApp();
@@ -21,11 +22,8 @@ export function useAudio() {
       formData.append('audio', blob, 'recording.webm');
       
       // Note: Don't set Content-Type header - browser sets it automatically with correct boundary for FormData
-      const response = await fetch('/api/transcribe', {
+      const response = await fetchWithAuth('/api/transcribe', {
         method: 'POST',
-        headers: {
-          'Authorization': 'Bearer emilia-dev-token-2026'
-        },
         body: formData
       });
       

@@ -4,6 +4,37 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.5.3] - 2026-02-03
+
+### Fixed - Frontend Robustness 🛡️
+
+#### Streaming + Session Stability
+- **Chat Abort Now Works** - Streaming requests honor `AbortController` and aborts no longer surface as errors
+- **Session Validation Race** - Direct session lookup prevents false redirects when agent state is not yet loaded
+- **History Fetch Guard** - Prevents stale history from overwriting the current session after rapid switches
+
+#### Audio + Routing Reliability
+- **Audio Cleanup** - TTS and replay audio now stop on unmount and revoke object URLs to prevent leaks
+- **Settings Navigation** - Routes directly to `/settings` (avoids ad blocker issues with `/admin`)
+- **STT Auth Consistency** - Transcription calls now reuse shared auth headers and context IDs
+
+#### Files Modified
+- `frontend/src/utils/api.ts` - Streaming now supports abort signals
+- `frontend/src/hooks/useChat.ts` - Abort handling + audio cleanup
+- `frontend/src/hooks/useSession.ts` - History fetch race guard
+- `frontend/src/hooks/useAudio.ts` - STT uses shared auth headers
+- `frontend/src/hooks/useTTS.ts` - Audio cleanup on stop/unmount
+- `frontend/src/components/MessageBubble.tsx` - Replay audio cleanup on unmount
+- `frontend/src/components/UserSelection.tsx` - Settings navigation path
+- `frontend/src/components/DebugPanel.tsx` - Removed redundant session hook usage
+- `frontend/src/components/NewChatPage.tsx` - Single `useSession` instance
+
+#### Test Results
+- **Frontend tests**: 83/83 passing ✅
+- **Lint**: Clean ✅
+
+---
+
 ## [5.5.2] - 2026-02-02
 
 ### Fixed - Transcription Error Handling 🐛

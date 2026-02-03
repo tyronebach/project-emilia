@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { fetchWithAuth } from '../utils/api';
 
@@ -22,7 +22,27 @@ export function useTTS() {
 
   const [isSpeaking, setIsSpeaking] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
   const currentTextRef = useRef<string>('');
+
+  const cleanupAudio = useCallback((): void => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupAudio();
+      avatarRendererRef.current?.lipSyncEngine?.stop();
+    };
+  }, [cleanupAudio, avatarRendererRef]);
 
   /**
    * Speak text via TTS API
@@ -31,6 +51,7 @@ export function useTTS() {
     if (!text || !text.trim()) return false;
 
     try {
+      cleanupAudio();
       setIsSpeaking(true);
       setStatus('speaking');
       currentTextRef.current = text;
@@ -57,6 +78,7 @@ export function useTTS() {
       // Create audio element
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
+      audioUrlRef.current = audioUrl;
 
       // Set up lip sync if alignment data available
       const renderer = avatarRendererRef.current;
@@ -74,8 +96,7 @@ export function useTTS() {
           }
 
           // Cleanup
-          URL.revokeObjectURL(audioUrl);
-          audioRef.current = null;
+          cleanupAudio();
           setIsSpeaking(false);
           setStatus('ready');
           resolve(true);
@@ -86,8 +107,7 @@ export function useTTS() {
           if (renderer?.lipSyncEngine) {
             renderer.lipSyncEngine.stop();
           }
-          URL.revokeObjectURL(audioUrl);
-          audioRef.current = null;
+          cleanupAudio();
           setIsSpeaking(false);
           setStatus('ready');
           resolve(false);
@@ -95,6 +115,10 @@ export function useTTS() {
 
         audio.play().catch(() => {
           console.error('Audio play failed');
+          if (renderer?.lipSyncEngine) {
+            renderer.lipSyncEngine.stop();
+          }
+          cleanupAudio();
           setIsSpeaking(false);
           setStatus('ready');
           resolve(false);
@@ -106,25 +130,21 @@ export function useTTS() {
       setStatus('ready');
       return false;
     }
-  }, [setStatus, avatarRendererRef]);
+  }, [setStatus, avatarRendererRef, cleanupAudio]);
 
   /**
    * Stop current playback
    */
   const stop = useCallback((): void => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
-
     const renderer = avatarRendererRef.current;
     if (renderer?.lipSyncEngine) {
       renderer.lipSyncEngine.stop();
     }
 
+    cleanupAudio();
     setIsSpeaking(false);
     setStatus('ready');
-  }, [setStatus, avatarRendererRef]);
+  }, [setStatus, avatarRendererRef, cleanupAudio]);
 
   /**
    * Replay last spoken text

@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { Volume2 } from 'lucide-react';
 import type { Message } from '../types';
 
@@ -10,6 +10,25 @@ function MessageBubble({ message }: MessageBubbleProps) {
   const { role, content, timestamp, meta } = message;
   const isUser = role === 'user';
   const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+
+  const cleanupAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      cleanupAudio();
+    };
+  }, [cleanupAudio]);
 
   // Replay audio from stored base64
   const handleReplay = useCallback(async () => {
@@ -17,6 +36,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
 
     try {
       setIsPlaying(true);
+      cleanupAudio();
       const byteChars = atob(meta.audio_base64);
       const byteArray = new Uint8Array(byteChars.length);
       for (let i = 0; i < byteChars.length; i++) {
@@ -25,22 +45,25 @@ function MessageBubble({ message }: MessageBubbleProps) {
       const blob = new Blob([byteArray], { type: 'audio/mpeg' });
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+      audioUrlRef.current = audioUrl;
 
       audio.onended = () => {
-        URL.revokeObjectURL(audioUrl);
+        cleanupAudio();
         setIsPlaying(false);
       };
       audio.onerror = () => {
-        URL.revokeObjectURL(audioUrl);
+        cleanupAudio();
         setIsPlaying(false);
       };
 
       await audio.play();
     } catch (error) {
       console.error('Replay error:', error);
+      cleanupAudio();
       setIsPlaying(false);
     }
-  }, [meta?.audio_base64, isPlaying]);
+  }, [meta?.audio_base64, isPlaying, cleanupAudio]);
   
   // Format timestamp
   const timeString = useMemo(() => {

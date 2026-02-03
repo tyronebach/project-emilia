@@ -19,10 +19,9 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
   const currentAgent = useUserStore((state) => state.currentAgent);
   const currentUser = useUserStore((state) => state.currentUser);
   const setSessionId = useAppStore((state) => state.setSessionId);
-  const { createSession } = useSession();
+  const { createSession, sessions } = useSession();
 
   const [isCreating, setIsCreating] = useState(false);
-  const { sessions } = useSession();
 
   // Clear any stale session ID when on new chat page
   useEffect(() => {
