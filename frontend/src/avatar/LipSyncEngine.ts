@@ -176,6 +176,13 @@ export class LipSyncEngine {
     }
     
     const currentTimeMs = this.audioElement.currentTime * 1000;
+    const audioDuration = this.audioElement.duration * 1000;
+    
+    // Debug: log timing periodically
+    if (Math.floor(currentTimeMs / 500) !== Math.floor((currentTimeMs - 16) / 500)) {
+      const lastEntry = this.timingData[this.timingData.length - 1];
+      console.log(`[LipSync] Audio: ${currentTimeMs.toFixed(0)}ms / ${audioDuration.toFixed(0)}ms, Data ends: ${lastEntry?.endMs}ms`);
+    }
     
     // Find current viseme
     let targetViseme = 'sil';
@@ -200,18 +207,51 @@ export class LipSyncEngine {
   }
   
   /**
+   * Map viseme to available expression
+   */
+  private mapToAvailable(viseme: string): string | null {
+    // Direct mapping for basic vowel expressions
+    const vowelMap: Record<string, string> = {
+      'aa': 'aa', 'A': 'aa',
+      'E': 'ee', 'ee': 'ee', 
+      'I': 'ih', 'ih': 'ih',
+      'O': 'oh', 'oh': 'oh',
+      'U': 'ou', 'ou': 'ou',
+    };
+    
+    // Check if we have a direct match
+    if (this.availableExpressions.has(viseme)) return viseme;
+    
+    // Check mapped vowel
+    const mapped = vowelMap[viseme];
+    if (mapped && this.availableExpressions.has(mapped)) return mapped;
+    
+    // Fallback to 'aa' for any mouth movement
+    if (viseme !== 'sil' && this.availableExpressions.has('aa')) return 'aa';
+    
+    return null;
+  }
+  
+  /**
    * Apply viseme to expression manager
    */
   private applyViseme(em: VRMExpressionManager, viseme: string, weight: number): void {
     const clampedWeight = Math.min(1, Math.max(0, weight));
     
-    // Simple lip sync mode - just open/close mouth
+    // Simple lip sync mode - use available vowel expressions
     if (this.useSimpleLipSync) {
-      const mouthOpen = viseme !== 'sil' ? clampedWeight : 0;
-      const mouthExpr = this.availableExpressions.has('aa') ? 'aa' : 'A';
-      try {
-        em.setValue(mouthExpr, mouthOpen);
-      } catch (_e) { /* ignore */ }
+      // Reset all mouth expressions first
+      for (const expr of ['aa', 'ih', 'ou', 'ee', 'oh']) {
+        if (this.availableExpressions.has(expr)) {
+          try { em.setValue(expr, 0); } catch (_e) { /* ignore */ }
+        }
+      }
+      
+      // Apply current expression
+      const targetExpr = this.mapToAvailable(viseme);
+      if (targetExpr) {
+        try { em.setValue(targetExpr, clampedWeight); } catch (_e) { /* ignore */ }
+      }
       return;
     }
     
