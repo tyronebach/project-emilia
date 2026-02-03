@@ -58,6 +58,7 @@ function AvatarDebugPanel() {
   const [ttsText, setTtsText] = useState('Welcome back~ I missed you while you were away. Is there anything I can help you with today?');
   const [voiceId, setVoiceId] = useState('gNLojYp5VOiuqC8CTCmi');
   const [ttsLoading, setTtsLoading] = useState(false);
+  const [alignmentData, setAlignmentData] = useState<{ chars: string[]; charStartTimesMs: number[]; charDurationsMs: number[] } | null>(null);
 
   // Initialize renderer
   useEffect(() => {
@@ -188,11 +189,15 @@ function AvatarDebugPanel() {
 
       // Set up lip sync with REAL alignment from ElevenLabs
       if (result.alignment) {
+        console.log('[Debug] ElevenLabs alignment:', result.alignment);
+        setAlignmentData(result.alignment);
         renderer.lipSyncEngine.setAlignment(result.alignment);
         renderer.lipSyncEngine.startSync(audio);
-        setLastAction(`TTS: ${ttsText.slice(0, 20)}... (real visemes)`);
+        setLastAction(`TTS: ${result.alignment.chars?.length || 0} chars`);
       } else {
-        setLastAction(`TTS: ${ttsText.slice(0, 20)}... (no alignment)`);
+        console.log('[Debug] No alignment data in response');
+        setAlignmentData(null);
+        setLastAction(`TTS: NO ALIGNMENT DATA`);
       }
 
       // Play audio
@@ -484,6 +489,24 @@ function AvatarDebugPanel() {
                   >
                     Stop
                   </Button>
+                  
+                  {/* Alignment Data Display */}
+                  <div className="mt-3 p-2 bg-bg-tertiary rounded text-xs font-mono">
+                    <div className="text-text-secondary mb-1">Alignment Data:</div>
+                    {alignmentData ? (
+                      <div className="space-y-1">
+                        <div className="text-green-400">✓ {alignmentData.chars?.length || 0} characters</div>
+                        <div className="text-text-secondary overflow-hidden">
+                          chars: {alignmentData.chars?.slice(0, 30).join('') || 'none'}...
+                        </div>
+                        <div className="text-text-secondary">
+                          times: [{alignmentData.charStartTimesMs?.slice(0, 5).join(', ')}...]
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-red-400">✗ No alignment data</div>
+                    )}
+                  </div>
                 </div>
               </AccordionContent>
             </AccordionItem>
