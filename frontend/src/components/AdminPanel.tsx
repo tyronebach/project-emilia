@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, Save, AlertCircle, CheckCircle, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Save, AlertCircle, CheckCircle, RotateCcw, Bug } from 'lucide-react';
 import { Button } from './ui/button';
 import { fetchWithAuth, type Agent } from '../utils/api';
 
@@ -133,6 +133,17 @@ function AdminPanel() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-lg font-semibold">Agent Settings</h1>
+        <div className="ml-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate({ to: '/debug' })}
+            className="gap-2"
+          >
+            <Bug className="w-4 h-4" />
+            Debug Avatar
+          </Button>
+        </div>
       </div>
 
       {/* Content */}
