@@ -7,6 +7,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, Play, Upload, RefreshCw, Mic } from 'lucide-react';
 import { Button } from './ui/button';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './ui/accordion';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
 import { fetchWithAuth } from '../utils/api';
 import type { VRM } from '@pixiv/three-vrm';
@@ -353,200 +354,206 @@ function AvatarDebugPanel() {
 
         {/* Controls Panel */}
         <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-bg-tertiary overflow-y-auto shrink-0">
-          {/* Animations Section */}
-          <section className="p-4 border-b border-bg-tertiary">
-            <h2 className="text-sm font-semibold mb-3 text-text-secondary uppercase tracking-wide">
-              Animations
-            </h2>
-            <div className="grid grid-cols-2 gap-2">
-              {AVAILABLE_ANIMATIONS.map((anim) => (
-                <Button
-                  key={anim}
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => playAnimation(anim)}
-                  className="justify-start text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
-                >
-                  <Play className="w-3 h-3 mr-1" />
-                  {anim}
-                </Button>
-              ))}
-            </div>
-            <p className="text-xs text-text-secondary mt-2">
-              GLB files → /public/animations/
-            </p>
-          </section>
-
-          {/* Expressions Section */}
-          <section className="p-4 border-b border-bg-tertiary">
-            <h2 className="text-sm font-semibold mb-3 text-text-secondary uppercase tracking-wide">
-              Mood / Expression
-            </h2>
+          <Accordion type="multiple" defaultValue={["tts"]} className="px-2">
             
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-text-secondary">Mood</label>
-                <select
-                  value={currentMood}
-                  onChange={(e) => setCurrentMood(e.target.value)}
-                  className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1"
-                >
-                  {AVAILABLE_MOODS.map((mood) => (
-                    <option key={mood} value={mood}>{mood}</option>
+            {/* Animations */}
+            <AccordionItem value="animations" className="border-bg-tertiary">
+              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
+                Animations
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid grid-cols-2 gap-2">
+                  {AVAILABLE_ANIMATIONS.map((anim) => (
+                    <Button
+                      key={anim}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => playAnimation(anim)}
+                      className="justify-start text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                    >
+                      <Play className="w-3 h-3 mr-1" />
+                      {anim}
+                    </Button>
                   ))}
-                </select>
-              </div>
-              
-              <div>
-                <label className="text-xs text-text-secondary">
-                  Strength: {(moodStrength * 100).toFixed(0)}%
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  value={moodStrength}
-                  onChange={(e) => setMoodStrength(parseFloat(e.target.value))}
-                  className="w-full mt-1"
-                />
-              </div>
-              
-              <Button 
-                onClick={applyMood} 
-                size="sm" 
-                className="w-full bg-accent text-white hover:bg-accent-hover"
-              >
-                Apply Mood
-              </Button>
-            </div>
-          </section>
+                </div>
+                <p className="text-xs text-text-secondary mt-2">
+                  GLB files → /public/animations/
+                </p>
+              </AccordionContent>
+            </AccordionItem>
 
-          {/* TTS Test Section */}
-          <section className="p-4 border-b border-bg-tertiary">
-            <h2 className="text-sm font-semibold mb-3 text-text-secondary uppercase tracking-wide">
-              TTS Test (ElevenLabs)
-            </h2>
-            
-            <div className="space-y-3">
-              {/* Text input */}
-              <div>
-                <label className="text-xs text-text-secondary">Text to Speak</label>
-                <textarea
-                  value={ttsText}
-                  onChange={(e) => setTtsText(e.target.value)}
-                  placeholder="Enter text..."
-                  rows={3}
-                  className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1 resize-none"
-                />
-              </div>
-              
-              {/* Voice ID */}
-              <div>
-                <label className="text-xs text-text-secondary">Voice ID (optional)</label>
-                <input
-                  type="text"
-                  value={voiceId}
-                  onChange={(e) => setVoiceId(e.target.value)}
-                  placeholder="Leave empty for default"
-                  className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1 font-mono"
-                />
-              </div>
-              
-              {/* Speak button */}
-              <Button 
-                onClick={testTTS}
-                disabled={ttsLoading || !ttsText.trim()}
-                size="sm" 
-                className="w-full bg-accent text-white hover:bg-accent-hover disabled:opacity-50"
-              >
-                {ttsLoading ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Mic className="w-4 h-4" />
-                    Speak (Real Visemes)
-                  </>
-                )}
-              </Button>
-              
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={stopSpeaking} 
-                className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
-              >
-                Stop
-              </Button>
-            </div>
-          </section>
-          
-          {/* Audio File Test (fallback) */}
-          <section className="p-4 border-b border-bg-tertiary">
-            <h2 className="text-sm font-semibold mb-3 text-text-secondary uppercase tracking-wide">
-              Audio File Test
-            </h2>
-            
-            <div className="space-y-3">
-              <div>
-                <label className="flex items-center justify-center gap-2 bg-bg-tertiary border border-dashed border-text-secondary/30 rounded-lg p-3 cursor-pointer hover:bg-bg-secondary transition-colors">
-                  <Upload className="w-4 h-4" />
-                  <span className="text-sm">Upload MP3/WAV</span>
-                  <input
-                    type="file"
-                    accept="audio/*"
-                    onChange={handleAudioFile}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-              <p className="text-xs text-text-secondary">
-                Uses random visemes (for testing audio without API)
-              </p>
-            </div>
-          </section>
+            {/* Mood / Expression */}
+            <AccordionItem value="mood" className="border-bg-tertiary">
+              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
+                Mood / Expression
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-text-secondary">Mood</label>
+                    <select
+                      value={currentMood}
+                      onChange={(e) => setCurrentMood(e.target.value)}
+                      className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1"
+                    >
+                      {AVAILABLE_MOODS.map((mood) => (
+                        <option key={mood} value={mood}>{mood}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-text-secondary">
+                      Strength: {(moodStrength * 100).toFixed(0)}%
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      value={moodStrength}
+                      onChange={(e) => setMoodStrength(parseFloat(e.target.value))}
+                      className="w-full mt-1"
+                    />
+                  </div>
+                  
+                  <Button 
+                    onClick={applyMood} 
+                    size="sm" 
+                    className="w-full bg-accent text-white hover:bg-accent-hover"
+                  >
+                    Apply Mood
+                  </Button>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
 
-          {/* Quick Actions */}
-          <section className="p-4">
-            <h2 className="text-sm font-semibold mb-3 text-text-secondary uppercase tracking-wide">
-              Quick Actions
-            </h2>
-            <div className="space-y-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
-                onClick={() => {
-                  rendererRef.current?.expressionController?.setMood('happy', 1.0);
-                  setLastAction('Max Happy');
-                }}
-              >
-                😊 Max Happy
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
-                onClick={() => {
-                  rendererRef.current?.expressionController?.setMood('neutral', 0);
-                  setLastAction('Reset Neutral');
-                }}
-              >
-                😐 Reset to Neutral
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
-                onClick={waveHappy}
-              >
-                👋 Wave + Happy
-              </Button>
-            </div>
-          </section>
+            {/* TTS Test */}
+            <AccordionItem value="tts" className="border-bg-tertiary">
+              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
+                TTS (ElevenLabs)
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-text-secondary">Text to Speak</label>
+                    <textarea
+                      value={ttsText}
+                      onChange={(e) => setTtsText(e.target.value)}
+                      placeholder="Enter text..."
+                      rows={3}
+                      className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1 resize-none"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="text-xs text-text-secondary">Voice ID (optional)</label>
+                    <input
+                      type="text"
+                      value={voiceId}
+                      onChange={(e) => setVoiceId(e.target.value)}
+                      placeholder="Leave empty for default"
+                      className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1 font-mono"
+                    />
+                  </div>
+                  
+                  <Button 
+                    onClick={testTTS}
+                    disabled={ttsLoading || !ttsText.trim()}
+                    size="sm" 
+                    className="w-full bg-accent text-white hover:bg-accent-hover disabled:opacity-50"
+                  >
+                    {ttsLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="w-4 h-4" />
+                        Speak (Real Visemes)
+                      </>
+                    )}
+                  </Button>
+                  
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={stopSpeaking} 
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                  >
+                    Stop
+                  </Button>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Audio File Test */}
+            <AccordionItem value="audio-file" className="border-bg-tertiary">
+              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
+                Audio File Test
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3">
+                  <label className="flex items-center justify-center gap-2 bg-bg-tertiary border border-dashed border-text-secondary/30 rounded-lg p-3 cursor-pointer hover:bg-bg-secondary transition-colors">
+                    <Upload className="w-4 h-4" />
+                    <span className="text-sm">Upload MP3/WAV</span>
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      onChange={handleAudioFile}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="text-xs text-text-secondary">
+                    Uses random visemes (for testing without API)
+                  </p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Quick Actions */}
+            <AccordionItem value="quick" className="border-bg-tertiary border-b-0">
+              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
+                Quick Actions
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                    onClick={() => {
+                      rendererRef.current?.expressionController?.setMood('happy', 1.0);
+                      setLastAction('Max Happy');
+                    }}
+                  >
+                    😊 Max Happy
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                    onClick={() => {
+                      rendererRef.current?.expressionController?.setMood('neutral', 0);
+                      setLastAction('Reset Neutral');
+                    }}
+                  >
+                    😐 Reset to Neutral
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                    onClick={waveHappy}
+                  >
+                    👋 Wave + Happy
+                  </Button>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+          </Accordion>
         </div>
       </div>
     </div>
