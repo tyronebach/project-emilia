@@ -43,20 +43,20 @@ function ChatPanel() {
 
   return (
     <>
-      {/* Toggle button - OUTSIDE the masked container */}
+      {/* Toggle button - positioned at bottom of chat panel */}
       <Button
         variant="ghost"
         size="icon"
         onClick={() => setCollapsed(true)}
-        className="fixed bottom-[calc(35vh+4rem+0.5rem)] right-2 z-20 bg-black/60 hover:bg-black/70 rounded-full h-8 w-8"
+        className="fixed bottom-[calc(33vh+5rem-2rem)] right-2 z-20 bg-black/60 hover:bg-black/70 rounded-full h-8 w-8"
         title="Hide chat history"
       >
         <ChevronDown className="w-4 h-4" />
       </Button>
 
-      {/* Chat panel with mask */}
+      {/* Chat panel with mask - 1/3 of screen height */}
       <div 
-        className="absolute bottom-16 left-0 right-0 h-[35vh] z-10"
+        className="absolute bottom-20 left-0 right-0 h-[33vh] z-10"
         style={{
           maskImage: 'linear-gradient(to top, black 60%, transparent 100%)',
           WebkitMaskImage: 'linear-gradient(to top, black 60%, transparent 100%)',

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, ArrowLeft } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
 import { useSession } from '../hooks/useSession';
@@ -22,6 +22,7 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
   const { createSession } = useSession();
 
   const [isCreating, setIsCreating] = useState(false);
+  const { sessions } = useSession();
 
   // Clear any stale session ID when on new chat page
   useEffect(() => {
@@ -29,6 +30,18 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
     // Also clean up any old localStorage entries from previous versions
     localStorage.removeItem('emilia-session-id');
   }, [setSessionId]);
+
+  const handleBack = () => {
+    // Go back to most recent session if exists, otherwise to agent selection
+    if (sessions.length > 0 && currentUser?.id) {
+      navigate({
+        to: '/user/$userId/chat/$sessionId',
+        params: { userId: currentUser.id, sessionId: sessions[0].id }
+      });
+    } else if (currentUser?.id) {
+      navigate({ to: '/user/$userId', params: { userId: currentUser.id } });
+    }
+  };
 
   const handleStartChat = async () => {
     if (!currentAgent?.id || !currentUser?.id || isCreating) return;
@@ -52,7 +65,17 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
   };
 
   return (
-    <div className="h-screen w-screen bg-bg-primary text-text-primary flex items-center justify-center overflow-hidden">
+    <div className="h-screen w-screen bg-bg-primary text-text-primary flex items-center justify-center overflow-hidden relative">
+      {/* Back button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={handleBack}
+        className="absolute top-4 left-4 text-text-primary hover:bg-white/10"
+      >
+        <ArrowLeft className="w-6 h-6" />
+      </Button>
+
       <div className="flex flex-col items-center gap-8 max-w-md px-6">
         {/* Agent Avatar Placeholder */}
         <div className="w-48 h-48 rounded-full bg-bg-tertiary flex items-center justify-center text-6xl">

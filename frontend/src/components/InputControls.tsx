@@ -104,12 +104,12 @@ function InputControls() {
         </div>
       )}
 
-      {/* Full-width input bar */}
+      {/* Full-width input bar - larger for mobile visibility */}
       <form
         onSubmit={handleSubmit(onSubmit)}
-        className="flex items-center gap-2 px-4 py-3"
+        className="flex items-center gap-3 px-4 py-4"
       >
-        {/* Mic button (first) */}
+        {/* Mic button (first) - larger for mobile */}
         <Button
           type="button"
           variant={isRecording ? 'destructive' : 'ghost'}
@@ -120,32 +120,32 @@ function InputControls() {
           onTouchStart={handlePTTStart}
           onTouchEnd={handlePTTEnd}
           disabled={isDisabled}
-          className={`shrink-0 h-10 w-10 rounded-full ${isRecording ? 'animate-pulse' : ''}`}
+          className={`shrink-0 h-12 w-12 rounded-full ${isRecording ? 'animate-pulse' : ''}`}
           title="Hold to speak"
         >
-          <Mic className="w-5 h-5" />
+          <Mic className="w-6 h-6" />
         </Button>
 
-        {/* Text input */}
-        <div className="flex-1 bg-bg-tertiary rounded-full px-4 py-2">
+        {/* Text input - taller for mobile */}
+        <div className="flex-1 bg-bg-tertiary rounded-full px-5 py-3">
           <input
             {...register('message')}
             placeholder="Message..."
             disabled={isDisabled}
             className="w-full bg-transparent text-text-primary placeholder-text-secondary/50
-                       text-sm outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                       text-base outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             autoComplete="off"
           />
         </div>
 
-        {/* Send button */}
+        {/* Send button - larger for mobile */}
         <Button
           type="submit"
           size="icon"
           disabled={isDisabled}
-          className="shrink-0 h-10 w-10 rounded-full"
+          className="shrink-0 h-12 w-12 rounded-full"
         >
-          <Send className="w-5 h-5" />
+          <Send className="w-6 h-6" />
         </Button>
       </form>
 
