@@ -12,11 +12,20 @@ import { AvatarRenderer } from '../avatar/AvatarRenderer';
 import { fetchWithAuth } from '../utils/api';
 import type { VRM } from '@pixiv/three-vrm';
 
-// Available VRM models (add more as needed)
-const AVAILABLE_MODELS = [
+type VrmModel = {
+  id: string;
+  name: string;
+};
+
+const VRM_BASE_PATH = '/vrm';
+
+// Fallback models if manifest fails to load
+const DEFAULT_MODELS: VrmModel[] = [
   { id: 'emilia.vrm', name: 'Emilia' },
-  { id: 'emilia-v2.vrm', name: 'Emilia V2' },
+  { id: 'rem.vrm', name: 'Rem' },
 ];
+
+const buildVrmUrl = (modelId: string) => `${VRM_BASE_PATH}/${modelId}`;
 
 // Animations registered in AnimationLibrary
 const AVAILABLE_ANIMATIONS = [
@@ -48,7 +57,8 @@ function AvatarDebugPanel() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
   // State
-  const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
+  const [availableModels, setAvailableModels] = useState<VrmModel[]>(DEFAULT_MODELS);
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODELS[0].id);
   const [currentMood, setCurrentMood] = useState('neutral');
   const [moodStrength, setMoodStrength] = useState(0.7);
   const [lastAction, setLastAction] = useState<string>('Initializing...');
@@ -60,12 +70,77 @@ function AvatarDebugPanel() {
   const [ttsLoading, setTtsLoading] = useState(false);
   const [alignmentData, setAlignmentData] = useState<{ chars: string[]; charStartTimesMs: number[]; charDurationsMs: number[] } | null>(null);
 
+  // Handle model switch
+  const switchModel = useCallback(async (modelId: string) => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+
+    setLoading(true);
+    setLastAction(`Loading ${modelId}...`);
+    setSelectedModel(modelId);
+
+    try {
+      const vrm = await renderer.loadVRM(buildVrmUrl(modelId));
+      const metaName = (vrm.meta as { name?: string })?.name;
+      setLastAction(`Loaded: ${metaName || modelId}`);
+    } catch (err) {
+      setLastAction(`Error: ${err}`);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load VRM manifest (public/vrm/vrm-manifest.json)
+  useEffect(() => {
+    let isActive = true;
+
+    const loadManifest = async () => {
+      try {
+        const response = await fetch(`${VRM_BASE_PATH}/vrm-manifest.json`, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`Manifest request failed: ${response.status}`);
+        }
+
+        const manifest = await response.json();
+        if (!Array.isArray(manifest)) {
+          throw new Error('Manifest is not an array');
+        }
+
+        const models = manifest
+          .filter((item) => item && typeof item.id === 'string')
+          .map((item) => ({
+            id: item.id,
+            name: typeof item.name === 'string' ? item.name : item.id,
+          }));
+
+        if (!models.length || !isActive) return;
+
+        setAvailableModels(models);
+
+        if (!models.some((m) => m.id === selectedModel)) {
+          setSelectedModel(models[0].id);
+          if (rendererRef.current) {
+            switchModel(models[0].id);
+          }
+        }
+      } catch (err) {
+        console.warn('[AvatarDebugPanel] Failed to load VRM manifest:', err);
+      }
+    };
+
+    loadManifest();
+
+    return () => {
+      isActive = false;
+    };
+  }, [selectedModel, switchModel]);
+
   // Initialize renderer
   useEffect(() => {
     if (!containerRef.current) return;
 
     const renderer = new AvatarRenderer(containerRef.current, {
-      vrmUrl: `/${selectedModel}`,
+      vrmUrl: buildVrmUrl(selectedModel),
       onLoad: (vrm: VRM) => {
         const metaName = (vrm.meta as { name?: string })?.name;
         setLastAction(`Loaded: ${metaName || selectedModel}`);
@@ -87,26 +162,6 @@ function AvatarDebugPanel() {
       rendererRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Handle model switch
-  const switchModel = useCallback(async (modelId: string) => {
-    const renderer = rendererRef.current;
-    if (!renderer) return;
-
-    setLoading(true);
-    setLastAction(`Loading ${modelId}...`);
-    setSelectedModel(modelId);
-
-    try {
-      const vrm = await renderer.loadVRM(`/${modelId}`);
-      const metaName = (vrm.meta as { name?: string })?.name;
-      setLastAction(`Loaded: ${metaName || modelId}`);
-    } catch (err) {
-      setLastAction(`Error: ${err}`);
-    } finally {
-      setLoading(false);
-    }
   }, []);
 
   // Play animation
@@ -350,7 +405,7 @@ function AvatarDebugPanel() {
               onChange={(e) => switchModel(e.target.value)}
               className="bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1 text-sm"
             >
-              {AVAILABLE_MODELS.map((m) => (
+              {availableModels.map((m) => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
