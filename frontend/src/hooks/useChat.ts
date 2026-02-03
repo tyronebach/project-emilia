@@ -23,6 +23,7 @@ export function useChat() {
     updateMessage,
     applyAvatarCommand,
     ttsEnabled,
+    ttsVoiceId,
     avatarRendererRef
   } = useApp();
 
@@ -70,7 +71,10 @@ export function useChat() {
 
       const response = await fetchWithAuth('/api/speak', {
         method: 'POST',
-        body: JSON.stringify({ text })
+        body: JSON.stringify({
+          text,
+          voice_id: ttsVoiceId?.trim() || undefined,
+        })
       });
 
       if (!response.ok) throw new Error(`TTS failed: ${response.status}`);
@@ -123,7 +127,7 @@ export function useChat() {
     } finally {
       setStatus('ready');
     }
-  }, [setStatus, avatarRendererRef, cleanupAudio]);
+  }, [setStatus, avatarRendererRef, cleanupAudio, ttsVoiceId]);
 
   /**
    * Send message and handle streaming response

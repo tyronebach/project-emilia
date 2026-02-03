@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, Save, AlertCircle, CheckCircle, RotateCcw, Bug } from 'lucide-react';
 import { Button } from './ui/button';
 import { fetchWithAuth, type Agent } from '../utils/api';
+import { useVoiceOptions } from '../hooks/useVoiceOptions';
 
 type EditableField = 'display_name' | 'voice_id' | 'vrm_model' | 'workspace';
 
@@ -19,6 +20,7 @@ function AdminPanel() {
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const { voices: voiceOptions, loading: voicesLoading } = useVoiceOptions();
 
   useEffect(() => {
     fetchAgents();
@@ -43,6 +45,45 @@ function AdminPanel() {
     setAgents(prev => prev.map(a =>
       a.id === agentId ? { ...a, [field]: value } : a
     ));
+  };
+
+  const handleVoiceChange = async (agent: AgentWithWorkspace, value: string) => {
+    const normalized = value.trim();
+    const nextVoiceId = normalized ? normalized : null;
+    const previousVoiceId = agent.voice_id;
+
+    if (previousVoiceId === nextVoiceId) return;
+
+    setAgents(prev => prev.map(a =>
+      a.id === agent.id ? { ...a, voice_id: nextVoiceId } : a
+    ));
+
+    setSaving(agent.id);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetchWithAuth(`/api/manage/agents/${agent.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ voice_id: nextVoiceId }),
+      });
+
+      if (!response.ok) throw new Error('Failed to save voice');
+
+      setOriginalAgents(prev => prev.map(a =>
+        a.id === agent.id ? { ...a, voice_id: nextVoiceId } : a
+      ));
+
+      setSuccess(`Saved voice for ${agent.display_name}`);
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save voice');
+      setAgents(prev => prev.map(a =>
+        a.id === agent.id ? { ...a, voice_id: previousVoiceId } : a
+      ));
+    } finally {
+      setSaving(null);
+    }
   };
 
   const hasChanges = (agent: AgentWithWorkspace): boolean => {
@@ -194,13 +235,29 @@ function AdminPanel() {
                       onChange={(v) => handleFieldChange(agent.id, 'display_name', v)}
                       placeholder="Agent display name"
                     />
-                    <Field
-                      label="Voice ID (ElevenLabs)"
-                      value={agent.voice_id}
-                      onChange={(v) => handleFieldChange(agent.id, 'voice_id', v)}
-                      placeholder="e.g., gNLojYp5VOiuqC8CTCmi"
-                      mono
-                    />
+                    <div>
+                      <label className="block text-xs text-text-secondary mb-1">Voice (ElevenLabs)</label>
+                      <select
+                        value={agent.voice_id || ''}
+                        onChange={(e) => handleVoiceChange(agent, e.target.value)}
+                        disabled={saving === agent.id}
+                        className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                      >
+                        <option value="">
+                          {voicesLoading ? 'Loading voices...' : 'Default (global)'}
+                        </option>
+                        {!voicesLoading && agent.voice_id && !voiceOptions.some((voice) => voice.id === agent.voice_id) && (
+                          <option value={agent.voice_id}>
+                            Custom ({agent.voice_id})
+                          </option>
+                        )}
+                        {voiceOptions.map((voice) => (
+                          <option key={voice.id} value={voice.id}>
+                            {voice.name} ({voice.id})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <Field
                       label="VRM Model"
                       value={agent.vrm_model}

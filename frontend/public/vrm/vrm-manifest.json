@@ -1,126 +1,87 @@
 [
   {
     "id": "emilia.vrm",
-    "name": "Emilia"
+    "name": "Emilia",
+    "version": "0.x"
   },
   {
     "id": "rem.vrm",
-    "name": "Rem"
+    "name": "Rem",
+    "version": "1.0"
   },
   {
     "id": "aliciaSolid.vrm",
-    "name": "Alicia Solid"
+    "name": "Alicia Solid",
+    "version": "0.x"
   },
   {
     "id": "amaneKanata.vrm",
-    "name": "Amane Kanata"
-  },
-  {
-    "id": "blueArchive_azusa_01.vrm",
-    "name": "Blue Archive Azusa 01"
+    "name": "Amane Kanata",
+    "version": "0.x"
   },
   {
     "id": "blueArchive_azusa_02.vrm",
-    "name": "Blue Archive Azusa 02"
-  },
-  {
-    "id": "blueArchive_eimi_01.vrm",
-    "name": "Blue Archive Eimi 01"
+    "name": "Blue Archive Azusa",
+    "version": "0.x"
   },
   {
     "id": "blueArchive_eimi_02.vrm",
-    "name": "Blue Archive Eimi 02"
-  },
-  {
-    "id": "blueArchive_hoshino_01.vrm",
-    "name": "Blue Archive Hoshino 01"
+    "name": "Blue Archive Eimi",
+    "version": "0.x"
   },
   {
     "id": "blueArchive_hoshino_02.vrm",
-    "name": "Blue Archive Hoshino 02"
-  },
-  {
-    "id": "blueArchive_shiroko_01.vrm",
-    "name": "Blue Archive Shiroko 01"
+    "name": "Blue Archive Hoshino",
+    "version": "0.x"
   },
   {
     "id": "blueArchive_shiroko_02.vrm",
-    "name": "Blue Archive Shiroko 02"
+    "name": "Blue Archive Shiroko",
+    "version": "0.x"
   },
   {
     "id": "insideChan.vrm",
-    "name": "Inside-chan"
+    "name": "Inside-chan",
+    "version": "0.x"
   },
   {
     "id": "miraiKomachi.vrm",
-    "name": "Mirai Komachi"
+    "name": "Mirai Komachi",
+    "version": "0.x"
   },
   {
     "id": "momosuzuNene.vrm",
-    "name": "Momosuzu Nene"
+    "name": "Momosuzu Nene",
+    "version": "0.x"
   },
   {
     "id": "mysteryAvatar_01.vrm",
-    "name": "Mystery Avatar 01"
+    "name": "Mystery Avatar",
+    "version": "0.x"
   },
   {
     "id": "ryu_D.vrm",
-    "name": "Ryu D"
+    "name": "Ryu D",
+    "version": "0.x"
   },
   {
     "id": "shachikuChan_v1_0.vrm",
-    "name": "Shachiku-chan (v1.0)"
+    "name": "Shachiku-chan",
+    "version": "0.x"
   },
   {
     "id": "tomaru_hatsuneMikuNT_v1_0_1.vrm",
-    "name": "Hatsune Miku NT (Tomaru) v1.0.1"
+    "name": "Hatsune Miku NT",
+    "version": "0.x"
   },
   {
     "id": "tsukuyomiChan_01.vrm",
-    "name": "Tsukuyomi-chan 01"
-  },
-  {
-    "id": "tsukuyomiChan_02.vrm",
-    "name": "Tsukuyomi-chan 02"
-  },
-  {
-    "id": "tsukuyomiChan_03.vrm",
-    "name": "Tsukuyomi-chan 03"
-  },
-  {
-    "id": "tsukuyomiChan_04.vrm",
-    "name": "Tsukuyomi-chan 04"
-  },
-  {
-    "id": "tsukuyomiChan_05.vrm",
-    "name": "Tsukuyomi-chan 05"
-  },
-  {
-    "id": "tsukuyomiChan_06.vrm",
-    "name": "Tsukuyomi-chan 06"
-  },
-  {
-    "id": "tsukuyomiChan_07.vrm",
-    "name": "Tsukuyomi-chan 07"
-  },
-  {
-    "id": "tsukuyomiChan_08.vrm",
-    "name": "Tsukuyomi-chan 08"
-  },
-  {
-    "id": "tsukuyomiChan_09.vrm",
-    "name": "Tsukuyomi-chan 09"
-  },
-  {
-    "id": "tsukuyomiChan_10.vrm",
-    "name": "Tsukuyomi-chan 10"
-  },
-  {
-    "id": "tsukuyomiChan_11.vrm",
-    "name": "Tsukuyomi-chan 11"
+    "name": "Tsukuyomi-chan",
+    "version": "0.x"
   },
   {
     "id": "vjTakagi.vrm",
-    "name": "VJ Takagi"
+    "name": "VJ Takagi",
+    "version": "0.x"
   }
 ]

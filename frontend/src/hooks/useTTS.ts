@@ -18,7 +18,7 @@ function base64ToBlob(base64: string, contentType: string): Blob {
 }
 
 export function useTTS() {
-  const { setStatus, avatarRendererRef } = useApp();
+  const { setStatus, avatarRendererRef, ttsVoiceId } = useApp();
 
   const [isSpeaking, setIsSpeaking] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -58,7 +58,10 @@ export function useTTS() {
 
       const response = await fetchWithAuth('/api/speak', {
         method: 'POST',
-        body: JSON.stringify({ text })
+        body: JSON.stringify({
+          text,
+          voice_id: ttsVoiceId?.trim() || undefined,
+        })
       });
 
       if (!response.ok) {
@@ -130,7 +133,7 @@ export function useTTS() {
       setStatus('ready');
       return false;
     }
-  }, [setStatus, avatarRendererRef, cleanupAudio]);
+  }, [setStatus, avatarRendererRef, cleanupAudio, ttsVoiceId]);
 
   /**
    * Stop current playback
