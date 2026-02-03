@@ -76,18 +76,18 @@ function AgentSelection({ userId }: AgentSelectionProps) {
       <div className="flex-1 flex items-center justify-center px-4 py-10">
         <div className="w-full max-w-3xl">
           <div className="text-center mb-12">
-            <p className="text-sm uppercase tracking-[0.2em] text-text-secondary">Select an agent</p>
+            <p className="text-sm uppercase tracking-[0.2em] text-text-secondary">Select a character</p>
             <h2 className="text-3xl md:text-4xl font-semibold mt-2">Pick your companion</h2>
           </div>
 
           {isLoading && (
-            <div className="text-center text-text-secondary">Loading agents...</div>
+            <div className="text-center text-text-secondary">Loading characters...</div>
           )}
           {error && (
-            <div className="text-center text-error">Failed to load agents.</div>
+            <div className="text-center text-error">Failed to load characters.</div>
           )}
           {!isLoading && !error && agents.length === 0 && (
-            <div className="text-center text-text-secondary">No agents available.</div>
+            <div className="text-center text-text-secondary">No characters available.</div>
           )}
 
           {/* Agent avatars grid */}

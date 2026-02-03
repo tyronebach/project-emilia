@@ -27,51 +27,73 @@ function Header({ onMenuClick, onDebugClick, onMemoryClick, debugOpen, memoryOpe
     error: 'bg-error',
   };
 
+  // Status text for thinking bubble
+  const getStatusText = () => {
+    if (status === 'processing') return 'Transcribing...';
+    if (status === 'thinking') return 'Thinking...';
+    if (status === 'speaking') return 'Speaking...';
+    return null;
+  };
+
+  const statusText = getStatusText();
+
   return (
-    <header className="absolute top-0 left-0 right-0 h-14 px-4 flex items-center justify-between z-30 bg-gradient-to-b from-black/50 to-transparent">
-      {/* Left: Menu button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={onMenuClick}
-        className="text-text-primary hover:bg-white/10"
-      >
-        <Menu className="w-6 h-6" />
-      </Button>
-
-      {/* Center: Agent name + status */}
-      <div className="flex items-center gap-2">
-        <span className="text-lg font-medium text-text-primary">
-          {currentAgent?.display_name || 'Emilia'}
-        </span>
-        <span
-          className={`w-2 h-2 rounded-full ${statusColors[status]}`}
-          title={`Status: ${status}`}
-        />
-      </div>
-
-      {/* Right: Debug + Memory buttons */}
-      <div className="flex items-center gap-1">
+    <>
+      <header className="absolute top-0 left-0 right-0 h-14 px-4 flex items-center justify-between z-30 bg-gradient-to-b from-black/50 to-transparent">
+        {/* Left: Menu button */}
         <Button
           variant="ghost"
           size="icon"
-          onClick={onMemoryClick}
-          className={`text-text-primary hover:bg-white/10 ${memoryOpen ? 'bg-white/15' : ''}`}
-          title="Agent Memory"
+          onClick={onMenuClick}
+          className="text-text-primary hover:bg-white/10"
         >
-          <Brain className="w-5 h-5" />
+          <Menu className="w-6 h-6" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onDebugClick}
-          className={`text-text-primary hover:bg-white/10 ${debugOpen ? 'bg-white/15' : ''}`}
-          title="Debug Panel"
-        >
-          <Activity className="w-5 h-5" />
-        </Button>
-      </div>
-    </header>
+
+        {/* Center: Agent name + status */}
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-medium text-text-primary">
+            {currentAgent?.display_name || 'Emilia'}
+          </span>
+          <span
+            className={`w-2 h-2 rounded-full ${statusColors[status]}`}
+            title={`Status: ${status}`}
+          />
+        </div>
+
+        {/* Right: Debug + Memory buttons */}
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onMemoryClick}
+            className={`text-text-primary hover:bg-white/10 ${memoryOpen ? 'bg-white/15' : ''}`}
+            title="Agent Memory"
+          >
+            <Brain className="w-5 h-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onDebugClick}
+            className={`text-text-primary hover:bg-white/10 ${debugOpen ? 'bg-white/15' : ''}`}
+            title="Debug Panel"
+          >
+            <Activity className="w-5 h-5" />
+          </Button>
+        </div>
+      </header>
+
+      {/* Thinking bubble - under header */}
+      {statusText && (
+        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-30">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/40 backdrop-blur-sm text-text-primary text-sm">
+            <span className={`w-2 h-2 rounded-full ${statusColors[status]}`} />
+            <span>{statusText}</span>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
