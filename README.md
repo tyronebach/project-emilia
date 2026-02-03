@@ -58,9 +58,14 @@ npm run build         # Production build
 | [CHANGELOG.md](./CHANGELOG.md) | Version history |
 | [docs/API.md](./docs/API.md) | Endpoint reference |
 
+## Avatar Assets
+
+- VRM files live in `frontend/public/vrm/`
+- Model list is defined in `frontend/public/vrm/vrm-manifest.json`
+
 ## Version
 
-**5.5.1** — See [CHANGELOG.md](./CHANGELOG.md) for details.
+**5.5.3** — See [CHANGELOG.md](./CHANGELOG.md) for details.
 
 ---
 

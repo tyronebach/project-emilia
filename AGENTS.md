@@ -6,8 +6,8 @@ Instructions for Claude coding agents working on this project.
 
 | Item | Value |
 |------|-------|
-| Location | `/home/tbach/clawd/emilia-project/emilia-webapp` |
-| Version | 5.5.1 |
+| Location | `/home/tbach/Projects/emilia-project/emilia-webapp` |
+| Version | 5.5.3 |
 | Frontend | React 19 + Vite + TanStack Router + Zustand |
 | Backend | FastAPI (modular routers) + SQLite |
 | Tests | Backend: 33, Frontend: 83 |
@@ -51,7 +51,8 @@ emilia-webapp/
 │   │   ├── utils/api.ts     # API client with auth
 │   │   ├── avatar/          # Three.js + VRM avatar system
 │   │   └── types.ts         # TypeScript types
-│   ├── public/              # Static assets (VRM models)
+│   ├── public/              # Static assets
+│   │   └── vrm/             # VRM models + vrm-manifest.json
 │   └── dist/                # Production build output
 │
 ├── data/
@@ -107,6 +108,10 @@ User context via `X-User-Id`, `X-Agent-Id`, `X-Session-Id` headers.
 - **Zustand** for client state (user, agent, session, UI)
 - **React Query** for server state (API calls)
 - Don't mix them
+
+### Avatar Assets
+- VRM files live in `frontend/public/vrm/`
+- `vrm-manifest.json` drives the debug model selector
 
 ### Adding Endpoints
 1. Create/update router in `backend/routers/`
