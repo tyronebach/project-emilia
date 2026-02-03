@@ -1,16 +1,13 @@
-import { createRoute } from '@tanstack/react-router';
-import { rootRoute } from '../../__root';
+import { createFileRoute } from '@tanstack/react-router';
 import { AppProvider } from '../../../context/AppContext';
 import InitializingPage from '../../../components/InitializingPage';
 
-export const route = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/user/$userId/chat/initializing/$sessionId',
+export const Route = createFileRoute('/user/$userId/chat/initializing/$sessionId')({
   component: InitializingRoute,
 });
 
 function InitializingRoute() {
-  const { userId, sessionId } = route.useParams();
+  const { userId, sessionId } = Route.useParams();
   return (
     <AppProvider>
       <InitializingPage userId={userId} sessionId={sessionId} />

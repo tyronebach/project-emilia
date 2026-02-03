@@ -1,14 +1,11 @@
-import { createRoute } from '@tanstack/react-router';
-import { rootRoute } from '../__root';
+import { createFileRoute } from '@tanstack/react-router';
 import AgentSelection from '../../components/AgentSelection';
 
-export const route = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/user/$userId',
+export const Route = createFileRoute('/user/$userId')({
   component: AgentSelectionRoute,
 });
 
 function AgentSelectionRoute() {
-  const { userId } = route.useParams();
+  const { userId } = Route.useParams();
   return <AgentSelection userId={userId} />;
 }
