@@ -28,8 +28,8 @@ function InputControls() {
     defaultValues: { message: '' },
   });
 
-  // Disable input when processing
-  const isDisabled = status === 'thinking' || status === 'speaking' || isLoading;
+  // Disable input when thinking (LLM processing) - NOT during speaking (TTS playback)
+  const isDisabled = status === 'thinking' || isLoading;
 
   // Focus input on mount and after sending
   useEffect(() => {
