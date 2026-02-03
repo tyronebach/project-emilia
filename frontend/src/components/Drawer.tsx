@@ -17,7 +17,7 @@ interface DrawerProps {
 function Drawer({ open, onClose }: DrawerProps) {
   const navigate = useNavigate();
   const { ttsEnabled, setTtsEnabled } = useApp();
-  const { sessions, sessionId, createSession, fetchSessions, deleteSession, isLoading } = useSession();
+  const { sessions, sessionId, fetchSessions, deleteSession, isLoading } = useSession();
   const currentUser = useUserStore((state) => state.currentUser);
   const currentAgent = useUserStore((state) => state.currentAgent);
   const logout = useUserStore((state) => state.logout);

@@ -45,7 +45,7 @@ function AdminPanel() {
     ));
   };
 
-  const hasChanges = (agent: Agent): boolean => {
+  const hasChanges = (agent: AgentWithWorkspace): boolean => {
     const original = originalAgents.find(a => a.id === agent.id);
     if (!original) return false;
     return (
@@ -105,7 +105,7 @@ function AdminPanel() {
     mono = false
   }: {
     label: string;
-    value: string;
+    value: string | null;
     onChange: (v: string) => void;
     placeholder?: string;
     mono?: boolean;
