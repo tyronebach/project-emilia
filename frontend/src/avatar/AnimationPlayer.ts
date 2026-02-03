@@ -113,14 +113,12 @@ export class AnimationPlayer {
 
   /**
    * Retarget animation clip to VRM bone names
-   * Converts common naming conventions (Mixamo, etc.) to VRM standard
+   * Converts common naming conventions (Mixamo, BVH/Bandai-Namco, etc.) to VRM standard
    */
   private retargetToVRM(clip: THREE.AnimationClip): THREE.AnimationClip {
-    // Clone to avoid modifying original
-    const newClip = clip.clone();
-
-    // Bone name mapping (Mixamo → VRM)
+    // Bone name mapping (various formats → VRM humanoid bone names)
     const boneMap: Record<string, string> = {
+      // Mixamo format
       'mixamorigHips': 'hips',
       'mixamorigSpine': 'spine',
       'mixamorigSpine1': 'chest',
@@ -141,27 +139,90 @@ export class AnimationPlayer {
       'mixamorigRightUpLeg': 'rightUpperLeg',
       'mixamorigRightLeg': 'rightLowerLeg',
       'mixamorigRightFoot': 'rightFoot',
+      // Bandai-Namco BVH format (from Blender export)
+      'Hips': 'hips',
+      'Spine': 'spine',
+      'Chest': 'chest',
+      'Neck': 'neck',
+      'Head': 'head',
+      'Shoulder_L': 'leftShoulder',
+      'UpperArm_L': 'leftUpperArm',
+      'LowerArm_L': 'leftLowerArm',
+      'Hand_L': 'leftHand',
+      'Shoulder_R': 'rightShoulder',
+      'UpperArm_R': 'rightUpperArm',
+      'LowerArm_R': 'rightLowerArm',
+      'Hand_R': 'rightHand',
+      'UpperLeg_L': 'leftUpperLeg',
+      'LowerLeg_L': 'leftLowerLeg',
+      'Foot_L': 'leftFoot',
+      'Toes_L': 'leftToes',
+      'UpperLeg_R': 'rightUpperLeg',
+      'LowerLeg_R': 'rightLowerLeg',
+      'Foot_R': 'rightFoot',
+      'Toes_R': 'rightToes',
     };
 
-    // Remap track names
-    for (const track of newClip.tracks) {
-      // Track names are like "mixamorigHips.position" or "mixamorigHead.quaternion"
-      const parts = track.name.split('.');
-      if (parts.length >= 2) {
-        const boneName = parts[0];
-        const property = parts.slice(1).join('.');
-        
-        const vrmBoneName = boneMap[boneName];
-        if (vrmBoneName) {
-          // Get actual bone node name from VRM
-          const boneNode = this.vrm.humanoid?.getRawBoneNode(vrmBoneName as any);
-          if (boneNode) {
-            track.name = `${boneNode.name}.${property}`;
-          }
+    // Bones to skip (root bones, helpers)
+    const skipBones = new Set(['joint_Root', 'Armature', 'Root']);
+
+    // Build VRM bone name cache
+    const vrmBoneNodes: Record<string, THREE.Object3D> = {};
+    if (this.vrm.humanoid) {
+      console.log('[AnimationPlayer] Building bone map...');
+      for (const [srcName, vrmName] of Object.entries(boneMap)) {
+        const node = this.vrm.humanoid.getRawBoneNode(vrmName as any);
+        if (node) {
+          vrmBoneNodes[srcName] = node;
+          console.log(`  ${srcName} → ${vrmName} → ${node.name}`);
         }
       }
     }
 
+    console.log('[AnimationPlayer] VRM bone nodes found:', Object.keys(vrmBoneNodes).length);
+
+    // Filter and remap tracks
+    const newTracks: THREE.KeyframeTrack[] = [];
+    let mappedCount = 0;
+    let skippedCount = 0;
+
+    for (const track of clip.tracks) {
+      // Track names are like "Hips.position" or "Head.quaternion"
+      const dotIndex = track.name.indexOf('.');
+      if (dotIndex === -1) {
+        skippedCount++;
+        continue;
+      }
+
+      const boneName = track.name.substring(0, dotIndex);
+      const property = track.name.substring(dotIndex + 1);
+
+      // Skip root/helper bones
+      if (skipBones.has(boneName)) {
+        skippedCount++;
+        continue;
+      }
+
+      // Find VRM bone node
+      const vrmNode = vrmBoneNodes[boneName];
+      if (!vrmNode) {
+        console.log(`[AnimationPlayer] No VRM bone for: ${boneName}`);
+        skippedCount++;
+        continue;
+      }
+
+      // Clone track with new target name
+      const newTrackName = `${vrmNode.name}.${property}`;
+      const newTrack = track.clone();
+      newTrack.name = newTrackName;
+      newTracks.push(newTrack);
+      mappedCount++;
+    }
+
+    console.log(`[AnimationPlayer] Retargeted: ${mappedCount} tracks, skipped: ${skippedCount}`);
+
+    // Create new clip with filtered tracks
+    const newClip = new THREE.AnimationClip(clip.name, clip.duration, newTracks);
     return newClip;
   }
 

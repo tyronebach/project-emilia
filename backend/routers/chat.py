@@ -52,10 +52,6 @@ async def chat(
 
     session_id = session["id"]
 
-    # Update session last_used
-    db.update_session_last_used(session_id)
-    db.increment_session_message_count(session_id)
-
     if stream == 1:
         return StreamingResponse(
             _stream_chat_sse(request, start_time, clawdbot_agent_id, session_id),
@@ -94,6 +90,9 @@ async def chat(
 
         parsed = parse_chat_completion(result)
         processing_ms = int((time.time() - start_time) * 1000)
+
+        db.update_session_last_used(session_id)
+        db.increment_session_message_count(session_id)
 
         return {
             "response": parsed["response_text"],
@@ -182,6 +181,9 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                 for a in animations:
                     yield f"event: avatar\ndata: {json.dumps({'animation': a})}\n\n"
 
+                db.update_session_last_used(session_id)
+                db.increment_session_message_count(session_id)
+
                 final = {
                     "done": True,
                     "response": clean_full,
@@ -257,7 +259,10 @@ async def speak(
 
     try:
         audio_chunks = []
-        alignment_data = None
+        # Accumulate alignment data from multiple chunks
+        all_chars = []
+        all_start_times = []
+        all_end_times = []
 
         async with websockets.connect(
             ws_url,
@@ -291,7 +296,10 @@ async def speak(
                         audio_chunks.append(base64.b64decode(data["audio"]))
 
                     if data.get("alignment"):
-                        alignment_data = data["alignment"]
+                        chunk = data["alignment"]
+                        all_chars.extend(chunk.get("characters", []))
+                        all_start_times.extend(chunk.get("character_start_times_seconds", []))
+                        all_end_times.extend(chunk.get("character_end_times_seconds", []))
 
                     if data.get("isFinal"):
                         break
@@ -305,9 +313,23 @@ async def speak(
         audio_bytes = b"".join(audio_chunks)
         audio_base64 = base64.b64encode(audio_bytes).decode()
 
+        transformed_alignment = None
+        if all_chars:
+            charStartTimesMs = [int(t * 1000) for t in all_start_times]
+            max_len = min(len(all_start_times), len(all_end_times))
+            charDurationsMs = [
+                int((all_end_times[i] - all_start_times[i]) * 1000)
+                for i in range(max_len)
+            ]
+            transformed_alignment = {
+                "chars": all_chars,
+                "charStartTimesMs": charStartTimesMs,
+                "charDurationsMs": charDurationsMs
+            }
+
         return {
             "audio_base64": audio_base64,
-            "alignment": alignment_data,
+            "alignment": transformed_alignment,
             "voice_id": voice_id,
             "duration_estimate": len(audio_bytes) / (44100 * 2 / 8)
         }

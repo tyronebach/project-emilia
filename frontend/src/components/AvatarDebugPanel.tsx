@@ -29,8 +29,9 @@ const buildVrmUrl = (modelId: string) => `${VRM_BASE_PATH}/${modelId}`;
 
 // Animations registered in AnimationLibrary
 const AVAILABLE_ANIMATIONS = [
-  'nod',
   'wave',
+  'bow',
+  'nod',
   'thinking',
   'surprised',
   'head_shake',
@@ -626,6 +627,17 @@ function AvatarDebugPanel() {
                     onClick={waveHappy}
                   >
                     👋 Wave + Happy
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                    onClick={() => {
+                      rendererRef.current?.animationPlayer?.play('bow');
+                      setLastAction('Bow');
+                    }}
+                  >
+                    🙇 Bow
                   </Button>
                 </div>
               </AccordionContent>

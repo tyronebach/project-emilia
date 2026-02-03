@@ -1,6 +1,6 @@
 """Memory file routes"""
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Header
 from fastapi.responses import PlainTextResponse
 from dependencies import verify_token
 from schemas import MemoryFilesResponse, MemoryContentResponse
@@ -12,9 +12,13 @@ router = APIRouter(prefix="/api/memory", tags=["memory"])
 @router.get("")
 async def get_memory(
     token: str = Depends(verify_token),
+    x_user_id: str = Header(..., alias="X-User-Id"),
     agent_id: str = Query(..., description="Agent ID to get memory for")
 ):
     """Get agent's MEMORY.md content"""
+    if not db.user_can_access_agent(x_user_id, agent_id):
+        raise HTTPException(status_code=403, detail="User cannot access this agent")
+
     agent = db.get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -35,9 +39,13 @@ async def get_memory(
 @router.get("/list", response_model=MemoryFilesResponse)
 async def list_memory_files(
     token: str = Depends(verify_token),
+    x_user_id: str = Header(..., alias="X-User-Id"),
     agent_id: str = Query(..., description="Agent ID to list memory files for")
 ):
     """List available memory files (MEMORY.md + daily files) for specific agent"""
+    if not db.user_can_access_agent(x_user_id, agent_id):
+        raise HTTPException(status_code=403, detail="User cannot access this agent")
+
     agent = db.get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -67,9 +75,13 @@ async def list_memory_files(
 async def get_memory_file(
     filename: str,
     token: str = Depends(verify_token),
+    x_user_id: str = Header(..., alias="X-User-Id"),
     agent_id: str = Query(..., description="Agent ID to get memory file for")
 ):
     """Get specific memory file content for specific agent"""
+    if not db.user_can_access_agent(x_user_id, agent_id):
+        raise HTTPException(status_code=403, detail="User cannot access this agent")
+
     agent = db.get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -88,12 +100,12 @@ async def get_memory_file(
         return MemoryContentResponse(filename=filename, content=content)
 
     # Daily files are in memory/ directory
-    file_path = workspace / "memory" / filename
+    base_dir = (workspace / "memory").resolve()
+    file_path = (workspace / "memory" / filename).resolve()
 
     # Security check - prevent path traversal
     try:
-        file_path = file_path.resolve()
-        if not str(file_path).startswith(str((workspace / "memory").resolve())):
+        if not file_path.is_relative_to(base_dir):
             raise HTTPException(status_code=403, detail="Access denied")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid filename")

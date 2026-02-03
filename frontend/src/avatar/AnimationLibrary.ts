@@ -22,6 +22,7 @@ export class AnimationLibrary {
   private manifest: Record<string, string> = {
     'nod': '/animations/nod.glb',
     'wave': '/animations/wave.glb',
+    'bow': '/animations/bow.glb',
     'thinking': '/animations/thinking.glb',
     'surprised': '/animations/surprised.glb',
     'head_shake': '/animations/head_shake.glb',

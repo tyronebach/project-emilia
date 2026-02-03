@@ -44,7 +44,7 @@ app.include_router(admin_router)
 
 @app.get("/api/health", response_model=HealthResponse)
 async def health():
-    return {"status": "ok", "version": "5.4.0"}
+    return {"status": "ok", "version": "5.5.3"}
 
 
 # ============ STARTUP ============
