@@ -22,6 +22,16 @@ All notable changes to Emilia Web App will be documented in this file.
 - **VRM Assets Organized** - Moved VRM files under `/public/vrm` and updated default paths
 - **Debug Model List** - Loads available VRM models from `vrm-manifest.json` with safe fallbacks
 
+#### Backend Hardening
+- **Access Control** - Session detail, agent, and memory endpoints now enforce user access
+- **DB Safety** - Foreign keys enabled and connections rollback on errors; DB path configurable
+- **TTS Alignment** - ElevenLabs alignment normalized to frontend lip‑sync format
+- **Chat Metrics** - Session `last_used` and `message_count` update only after successful responses
+- **Tag Parsing** - Avatar mood intensity parsing is tolerant and clamped to [0, 1]
+
+#### Testing
+- **Test Runner Script** - `backend/scripts/run-tests.sh` runs pytest with safe defaults and docker fallback
+
 #### Files Modified
 - `frontend/src/utils/api.ts` - Streaming now supports abort signals
 - `frontend/src/hooks/useChat.ts` - Abort handling + audio cleanup
@@ -37,10 +47,20 @@ All notable changes to Emilia Web App will be documented in this file.
 - `frontend/src/components/InitializingPage.tsx` - VRM preload path update
 - `frontend/src/components/AvatarDebugPanel.tsx` - Manifest-driven VRM selection
 - `frontend/public/vrm/` - VRM assets + manifest
+- `backend/routers/sessions.py` - Session detail access control
+- `backend/routers/agents.py` - Agent access control
+- `backend/routers/memory.py` - Memory access control + path safety
+- `backend/routers/chat.py` - TTS alignment format + session metric timing
+- `backend/parse_chat.py` - Safer mood intensity parsing
+- `backend/db/connection.py` - Foreign keys + rollback + DB path config
+- `backend/main.py` - Health version update
+- `backend/scripts/run-tests.sh` - Backend test runner
+- `frontend/public/vrm/voice-ids.json` - Expanded voice list
 
 #### Test Results
 - **Frontend tests**: 83/83 passing ✅
 - **Lint**: Clean ✅
+- **Backend tests (py3.11 container)**: 39/39 passing ✅
 
 ---
 

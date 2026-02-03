@@ -40,8 +40,9 @@ open https://localhost:3443
 ```bash
 # Backend
 cd backend && source .venv/bin/activate
-python main.py        # Dev server :8080
-pytest -q             # 33 tests
+python main.py         # Dev server :8080
+pytest -q              # Backend tests
+./scripts/run-tests.sh # Backend tests (prefers docker)
 
 # Frontend
 cd frontend
@@ -62,6 +63,7 @@ npm run build         # Production build
 
 - VRM files live in `frontend/public/vrm/`
 - Model list is defined in `frontend/public/vrm/vrm-manifest.json`
+- Voice list is defined in `frontend/public/vrm/voice-ids.json`
 
 ## Version
 

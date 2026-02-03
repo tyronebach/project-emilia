@@ -10,7 +10,7 @@ Instructions for Claude coding agents working on this project.
 | Version | 5.5.3 |
 | Frontend | React 19 + Vite + TanStack Router + Zustand |
 | Backend | FastAPI (modular routers) + SQLite |
-| Tests | Backend: 33, Frontend: 83 |
+| Tests | Backend: 39, Frontend: 83 |
 
 ## Read First
 
@@ -79,6 +79,7 @@ cd backend
 source .venv/bin/activate
 python main.py                # Dev server :8080
 pytest -q                     # Run tests
+./scripts/run-tests.sh        # Backend tests (prefers docker)
 
 # Frontend only
 cd frontend
@@ -112,6 +113,7 @@ User context via `X-User-Id`, `X-Agent-Id`, `X-Session-Id` headers.
 ### Avatar Assets
 - VRM files live in `frontend/public/vrm/`
 - `vrm-manifest.json` drives the debug model selector
+- `voice-ids.json` lists available TTS voices
 
 ### Adding Endpoints
 1. Create/update router in `backend/routers/`
