@@ -1,11 +1,5 @@
-import { createFileRoute } from '@tanstack/react-router';
-import AgentSelection from '../../components/AgentSelection';
+import { createFileRoute, Outlet } from '@tanstack/react-router';
 
 export const Route = createFileRoute('/user/$userId')({
-  component: AgentSelectionRoute,
+  component: () => <Outlet />,
 });
-
-function AgentSelectionRoute() {
-  const { userId } = Route.useParams();
-  return <AgentSelection userId={userId} />;
-}
