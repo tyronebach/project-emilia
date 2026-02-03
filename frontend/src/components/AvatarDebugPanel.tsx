@@ -5,9 +5,10 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, Play, Upload, Volume2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Play, Upload, RefreshCw, Mic } from 'lucide-react';
 import { Button } from './ui/button';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
+import { fetchWithAuth } from '../utils/api';
 import type { VRM } from '@pixiv/three-vrm';
 
 // Available VRM models (add more as needed)
@@ -50,8 +51,12 @@ function AvatarDebugPanel() {
   const [currentMood, setCurrentMood] = useState('neutral');
   const [moodStrength, setMoodStrength] = useState(0.7);
   const [lastAction, setLastAction] = useState<string>('Initializing...');
-  const [audioUrl, setAudioUrl] = useState('');
   const [loading, setLoading] = useState(true);
+  
+  // TTS testing state
+  const [ttsText, setTtsText] = useState('Hello! This is a test of the text to speech system.');
+  const [voiceId, setVoiceId] = useState('');
+  const [ttsLoading, setTtsLoading] = useState(false);
 
   // Initialize renderer
   useEffect(() => {
@@ -126,7 +131,85 @@ function AvatarDebugPanel() {
     setLastAction(`Mood: ${currentMood} @ ${(moodStrength * 100).toFixed(0)}%`);
   }, [currentMood, moodStrength]);
 
-  // Test lip sync with audio file
+  // Test TTS with ElevenLabs API (real visemes)
+  const testTTS = useCallback(async () => {
+    const renderer = rendererRef.current;
+    if (!renderer?.lipSyncEngine) {
+      setLastAction('Error: Lip sync not ready');
+      return;
+    }
+
+    if (!ttsText.trim()) {
+      setLastAction('Error: Enter text to speak');
+      return;
+    }
+
+    setTtsLoading(true);
+    setLastAction('Calling ElevenLabs...');
+
+    try {
+      // Stop any existing audio
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+        renderer.lipSyncEngine.stop();
+      }
+
+      // Call backend TTS API
+      const response = await fetchWithAuth('/api/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: ttsText.trim(),
+          voice_id: voiceId.trim() || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || 'TTS failed');
+      }
+
+      const result = await response.json();
+      
+      // Decode base64 audio
+      const audioData = atob(result.audio_base64);
+      const audioArray = new Uint8Array(audioData.length);
+      for (let i = 0; i < audioData.length; i++) {
+        audioArray[i] = audioData.charCodeAt(i);
+      }
+      const audioBlob = new Blob([audioArray], { type: 'audio/mpeg' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      // Create audio element
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      // Set up lip sync with REAL alignment from ElevenLabs
+      if (result.alignment) {
+        renderer.lipSyncEngine.setAlignment(result.alignment);
+        renderer.lipSyncEngine.startSync(audio);
+        setLastAction(`TTS: ${ttsText.slice(0, 20)}... (real visemes)`);
+      } else {
+        setLastAction(`TTS: ${ttsText.slice(0, 20)}... (no alignment)`);
+      }
+
+      // Play audio
+      audio.onended = () => {
+        renderer.lipSyncEngine?.stop();
+        URL.revokeObjectURL(audioUrl);
+        setLastAction('TTS finished');
+      };
+
+      await audio.play();
+    } catch (err) {
+      setLastAction(`TTS Error: ${err}`);
+    } finally {
+      setTtsLoading(false);
+    }
+  }, [ttsText, voiceId]);
+
+  // Test lip sync with audio file (uses fake visemes)
   const handleAudioFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     const renderer = rendererRef.current;
@@ -205,45 +288,6 @@ function AvatarDebugPanel() {
     
     return { chars, charStartTimesMs, charDurationsMs };
   };
-
-  // Test with URL
-  const playAudioUrl = useCallback(async () => {
-    const renderer = rendererRef.current;
-    
-    if (!audioUrl || !renderer?.lipSyncEngine) {
-      setLastAction('Error: Need URL and lip sync ready');
-      return;
-    }
-    
-    try {
-      setLastAction('Fetching audio...');
-      
-      // Stop existing
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-      
-      const audio = new Audio(audioUrl);
-      audioRef.current = audio;
-      
-      const duration = await getAudioDuration(audio);
-      const alignment = generateTestAlignment(duration);
-      
-      renderer.lipSyncEngine.setAlignment(alignment);
-      renderer.lipSyncEngine.startSync(audio);
-      
-      audio.onended = () => {
-        renderer.lipSyncEngine?.stop();
-        setLastAction('Audio finished');
-      };
-      
-      await audio.play();
-      setLastAction(`Playing URL (${duration.toFixed(1)}s)`);
-    } catch (err) {
-      setLastAction(`Error: ${err}`);
-    }
-  }, [audioUrl]);
 
   // Stop speaking
   const stopSpeaking = useCallback(() => {
@@ -378,51 +422,56 @@ function AvatarDebugPanel() {
             </div>
           </section>
 
-          {/* Lip Sync Section */}
+          {/* TTS Test Section */}
           <section className="p-4 border-b border-bg-tertiary">
             <h2 className="text-sm font-semibold mb-3 text-text-secondary uppercase tracking-wide">
-              Lip Sync Test
+              TTS Test (ElevenLabs)
             </h2>
             
             <div className="space-y-3">
-              {/* File upload */}
+              {/* Text input */}
               <div>
-                <label className="text-xs text-text-secondary">Audio File</label>
-                <div className="mt-1">
-                  <label className="flex items-center justify-center gap-2 bg-bg-tertiary border border-dashed border-text-secondary/30 rounded-lg p-3 cursor-pointer hover:bg-bg-secondary transition-colors">
-                    <Upload className="w-4 h-4" />
-                    <span className="text-sm">Upload MP3/WAV</span>
-                    <input
-                      type="file"
-                      accept="audio/*"
-                      onChange={handleAudioFile}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
+                <label className="text-xs text-text-secondary">Text to Speak</label>
+                <textarea
+                  value={ttsText}
+                  onChange={(e) => setTtsText(e.target.value)}
+                  placeholder="Enter text..."
+                  rows={3}
+                  className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1 resize-none"
+                />
               </div>
               
-              {/* URL input */}
+              {/* Voice ID */}
               <div>
-                <label className="text-xs text-text-secondary">Or Audio URL</label>
-                <div className="flex gap-2 mt-1">
-                  <input
-                    type="text"
-                    value={audioUrl}
-                    onChange={(e) => setAudioUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="flex-1 bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm"
-                  />
-                  <Button 
-                    size="sm" 
-                    onClick={playAudioUrl} 
-                    disabled={!audioUrl}
-                    className="bg-accent text-white hover:bg-accent-hover disabled:opacity-50"
-                  >
-                    <Volume2 className="w-4 h-4" />
-                  </Button>
-                </div>
+                <label className="text-xs text-text-secondary">Voice ID (optional)</label>
+                <input
+                  type="text"
+                  value={voiceId}
+                  onChange={(e) => setVoiceId(e.target.value)}
+                  placeholder="Leave empty for default"
+                  className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1 font-mono"
+                />
               </div>
+              
+              {/* Speak button */}
+              <Button 
+                onClick={testTTS}
+                disabled={ttsLoading || !ttsText.trim()}
+                size="sm" 
+                className="w-full bg-accent text-white hover:bg-accent-hover disabled:opacity-50"
+              >
+                {ttsLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Mic className="w-4 h-4" />
+                    Speak (Real Visemes)
+                  </>
+                )}
+              </Button>
               
               <Button 
                 variant="ghost" 
@@ -430,11 +479,32 @@ function AvatarDebugPanel() {
                 onClick={stopSpeaking} 
                 className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
               >
-                Stop Speaking
+                Stop
               </Button>
-              
+            </div>
+          </section>
+          
+          {/* Audio File Test (fallback) */}
+          <section className="p-4 border-b border-bg-tertiary">
+            <h2 className="text-sm font-semibold mb-3 text-text-secondary uppercase tracking-wide">
+              Audio File Test
+            </h2>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="flex items-center justify-center gap-2 bg-bg-tertiary border border-dashed border-text-secondary/30 rounded-lg p-3 cursor-pointer hover:bg-bg-secondary transition-colors">
+                  <Upload className="w-4 h-4" />
+                  <span className="text-sm">Upload MP3/WAV</span>
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    onChange={handleAudioFile}
+                    className="hidden"
+                  />
+                </label>
+              </div>
               <p className="text-xs text-text-secondary">
-                Uses random test visemes. Real ones from ElevenLabs.
+                Uses random visemes (for testing audio without API)
               </p>
             </div>
           </section>
