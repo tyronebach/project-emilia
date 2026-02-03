@@ -62,9 +62,58 @@ export class LipSyncEngine {
   private targetWeight: number = 0;
   
   private timingData: TimingEntry[] = [];
+  private availableExpressions: Set<string> = new Set();
+  private useSimpleLipSync: boolean = false;
   
   constructor(vrm: VRM) {
     this.vrm = vrm;
+    this.detectAvailableExpressions();
+  }
+  
+  /**
+   * Detect what expressions the VRM model supports
+   */
+  private detectAvailableExpressions(): void {
+    const em = this.vrm?.expressionManager;
+    if (!em) {
+      console.warn('[LipSync] No expression manager');
+      return;
+    }
+    
+    // Check for viseme expressions
+    const visemeNames = Object.values(VISEME_EXPRESSIONS);
+    for (const name of visemeNames) {
+      try {
+        const expr = em.getExpression(name);
+        if (expr) {
+          this.availableExpressions.add(name);
+        }
+      } catch (_e) { /* ignore */ }
+    }
+    
+    // Check for basic mouth expressions as fallback
+    const basicMouth = ['aa', 'ih', 'ou', 'ee', 'oh', 'A', 'I', 'U', 'E', 'O'];
+    for (const name of basicMouth) {
+      try {
+        const expr = em.getExpression(name);
+        if (expr) {
+          this.availableExpressions.add(name);
+        }
+      } catch (_e) { /* ignore */ }
+    }
+    
+    console.log('[LipSync] Available expressions:', Array.from(this.availableExpressions));
+    
+    // If no visemes but has basic mouth, use simple mode
+    const hasVisemes = visemeNames.some(v => this.availableExpressions.has(v));
+    const hasBasicMouth = this.availableExpressions.has('aa') || this.availableExpressions.has('A');
+    
+    if (!hasVisemes && hasBasicMouth) {
+      this.useSimpleLipSync = true;
+      console.log('[LipSync] Using simple lip sync (aa only)');
+    } else if (!hasVisemes && !hasBasicMouth) {
+      console.warn('[LipSync] No lip sync expressions available on this model');
+    }
   }
   
   /**
@@ -154,24 +203,44 @@ export class LipSyncEngine {
    * Apply viseme to expression manager
    */
   private applyViseme(em: VRMExpressionManager, viseme: string, weight: number): void {
+    const clampedWeight = Math.min(1, Math.max(0, weight));
+    
+    // Simple lip sync mode - just open/close mouth
+    if (this.useSimpleLipSync) {
+      const mouthOpen = viseme !== 'sil' ? clampedWeight : 0;
+      const mouthExpr = this.availableExpressions.has('aa') ? 'aa' : 'A';
+      try {
+        em.setValue(mouthExpr, mouthOpen);
+      } catch (_e) { /* ignore */ }
+      return;
+    }
+    
+    // Full viseme mode
     const expr = VISEME_EXPRESSIONS[viseme];
     if (!expr) return;
     
     try {
       // Reset other visemes
       for (const e of Object.values(VISEME_EXPRESSIONS)) {
-        if (e !== expr) {
+        if (e !== expr && this.availableExpressions.has(e)) {
           em.setValue(e, 0);
         }
       }
-      em.setValue(expr, Math.min(1, Math.max(0, weight)));
-    } catch (_e) {
-      // Fallback to simple 'aa'
-      if ('aeiou'.includes(viseme.toLowerCase())) {
-        try {
-          em.setValue('aa', weight * 0.5);
-        } catch (_e2) { /* ignore */ }
+      if (this.availableExpressions.has(expr)) {
+        em.setValue(expr, clampedWeight);
+      } else {
+        // Fallback to 'aa' for vowels
+        if ('aeiou'.includes(viseme.toLowerCase()) && this.availableExpressions.has('aa')) {
+          em.setValue('aa', clampedWeight * 0.5);
+        }
       }
+    } catch (_e) {
+      // Last resort fallback
+      try {
+        if (this.availableExpressions.has('aa')) {
+          em.setValue('aa', clampedWeight * 0.3);
+        }
+      } catch (_e2) { /* ignore */ }
     }
   }
   
