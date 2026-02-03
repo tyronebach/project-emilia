@@ -36,10 +36,12 @@ Use semantic token names, not raw colors:
 
 ### Primary Action (Submit, Apply, Confirm)
 ```tsx
-<Button className="bg-accent text-white hover:bg-accent-hover">
+<Button className="bg-indigo-500 text-white hover:bg-indigo-400">
   Apply
 </Button>
 ```
+
+⚠️ Don't use `bg-accent` — conflicts with shadcn tokens and renders white.
 
 ### Secondary Action (Cancel, Back, Alternative)
 ```tsx

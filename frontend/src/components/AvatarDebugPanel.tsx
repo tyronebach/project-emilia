@@ -55,8 +55,8 @@ function AvatarDebugPanel() {
   const [loading, setLoading] = useState(true);
   
   // TTS testing state
-  const [ttsText, setTtsText] = useState('Hello! This is a test of the text to speech system.');
-  const [voiceId, setVoiceId] = useState('');
+  const [ttsText, setTtsText] = useState('Welcome back~ I missed you while you were away. Is there anything I can help you with today?');
+  const [voiceId, setVoiceId] = useState('gNLojYp5VOiuqC8CTCmi');
   const [ttsLoading, setTtsLoading] = useState(false);
 
   // Initialize renderer
@@ -420,7 +420,7 @@ function AvatarDebugPanel() {
                   <Button 
                     onClick={applyMood} 
                     size="sm" 
-                    className="w-full bg-accent text-white hover:bg-accent-hover"
+                    className="w-full bg-indigo-500 text-white hover:bg-indigo-400"
                   >
                     Apply Mood
                   </Button>
@@ -461,7 +461,7 @@ function AvatarDebugPanel() {
                     onClick={testTTS}
                     disabled={ttsLoading || !ttsText.trim()}
                     size="sm" 
-                    className="w-full bg-accent text-white hover:bg-accent-hover disabled:opacity-50"
+                    className="w-full bg-indigo-500 text-white hover:bg-indigo-400 disabled:opacity-50"
                   >
                     {ttsLoading ? (
                       <>

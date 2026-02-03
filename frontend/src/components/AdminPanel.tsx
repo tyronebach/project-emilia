@@ -135,10 +135,10 @@ function AdminPanel() {
         <h1 className="text-lg font-semibold">Agent Settings</h1>
         <div className="ml-auto">
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={() => navigate({ to: '/debug' })}
-            className="gap-2"
+            className="gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
           >
             <Bug className="w-4 h-4" />
             Debug Avatar
