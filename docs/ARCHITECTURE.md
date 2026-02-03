@@ -48,21 +48,16 @@ Internet
 
 - **STT Service:** `192.168.88.252:8765` (LAN only)
 
-### Agent Routing Hardening (CRITICAL)
-This waifu app must **only** ever talk to the **Emilia** agent.
+### Agent Routing + Access Control
+Agent routing is controlled by the database mapping of users → agents:
+- Requests include `X-User-Id` and `X-Agent-Id`
+- Backend verifies access via `user_agents` and `session_participants`
+- Agent routing uses the stored `clawdbot_agent_id` from the `agents` table
 
-**Rule:** never “default” to `main` (Beatrice). If the backend ever routes to `main`, you’ve effectively bypassed the guardrails.
-
-Enforcement:
-- Docker env must set `CLAWDBOT_AGENT_ID=emilia`
-- Backend code must **fail closed** if `CLAWDBOT_AGENT_ID` is anything other than `emilia`
-  - See `backend/main.py`: `ALLOWED_CLAWDBOT_AGENT_IDS = {"emilia"}`
-- Backend must **not** have hardcoded secrets:
-  - `CLAWDBOT_TOKEN` is **required** via env (no defaults)
-  - `AUTH_TOKEN` is **required** via env (dev-only default requires `AUTH_ALLOW_DEV_TOKEN=1`)
-- CORS must be an explicit allowlist (no `"*"` when `allow_credentials=true`)
-
-If you need multiple agents later, do it as **separate backends** (or separate gateway tokens) with explicit allowlists.
+Guardrails:
+- `CLAWDBOT_TOKEN` is **required** via env (no defaults)
+- `AUTH_TOKEN` is **required** via env (dev-only default requires `AUTH_ALLOW_DEV_TOKEN=1`)
+- CORS should remain an explicit allowlist for any internet exposure
 
 ---
 
@@ -75,25 +70,11 @@ If you need multiple agents later, do it as **separate backends** (or separate g
 ```json
 {
   "status": "ok",
-  "api": "healthy",
-  "stt_service": {
-    "healthy": true,
-    "url": "http://192.168.88.252:8765",
-    "info": {...}
-  },
-  "brain_service": {
-    "healthy": false,
-    "url": "http://127.0.0.1:18789",
-    "agent_id": "emilia",
-    "info": {"error": "Expecting value: line 1 column 1 (char 0)"}
-  }
+  "version": "5.5.3"
 }
 ```
 
-**Note on `brain_service.healthy: false`:**
-- Gateway `/health` endpoint returns HTML (control UI), not JSON
-- **This is cosmetic** — actual API functionality verified via `/v1/chat/completions`
-- Brain integration confirmed working ✅
+**Note:** This endpoint does not probe downstream services.
 
 ---
 
@@ -118,7 +99,7 @@ curl http://127.0.0.1:18789/v1/chat/completions \
 ### Backend Status
 ```bash
 curl http://localhost:8080/api/health | jq .
-# → Backend API healthy, STT service connected ✅
+# → Backend API healthy ✅
 ```
 
 ---

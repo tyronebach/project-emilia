@@ -1,4 +1,6 @@
-# Backend Refactor Plan - Multi-User (No Auth)
+# Archived: Backend Refactor Plan - Multi-User (No Auth)
+
+**Status:** Archived — superseded by the current SQLite-backed, authenticated backend.
 
 **Date:** 2026-02-01  
 **Author:** Ram  
