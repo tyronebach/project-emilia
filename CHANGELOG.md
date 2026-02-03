@@ -18,6 +18,10 @@ All notable changes to Emilia Web App will be documented in this file.
 - **Settings Navigation** - Routes directly to `/settings` (avoids ad blocker issues with `/admin`)
 - **STT Auth Consistency** - Transcription calls now reuse shared auth headers and context IDs
 
+#### Avatar Asset Management
+- **VRM Assets Organized** - Moved VRM files under `/public/vrm` and updated default paths
+- **Debug Model List** - Loads available VRM models from `vrm-manifest.json` with safe fallbacks
+
 #### Files Modified
 - `frontend/src/utils/api.ts` - Streaming now supports abort signals
 - `frontend/src/hooks/useChat.ts` - Abort handling + audio cleanup
@@ -28,6 +32,11 @@ All notable changes to Emilia Web App will be documented in this file.
 - `frontend/src/components/UserSelection.tsx` - Settings navigation path
 - `frontend/src/components/DebugPanel.tsx` - Removed redundant session hook usage
 - `frontend/src/components/NewChatPage.tsx` - Single `useSession` instance
+- `frontend/src/avatar/AvatarRenderer.ts` - Default VRM path update
+- `frontend/src/components/AvatarPanel.tsx` - VRM base path update
+- `frontend/src/components/InitializingPage.tsx` - VRM preload path update
+- `frontend/src/components/AvatarDebugPanel.tsx` - Manifest-driven VRM selection
+- `frontend/public/vrm/` - VRM assets + manifest
 
 #### Test Results
 - **Frontend tests**: 83/83 passing ✅

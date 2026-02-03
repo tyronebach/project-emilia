@@ -13,7 +13,7 @@ import { AnimationPlayer } from './AnimationPlayer';
 import { animationLibrary } from './AnimationLibrary';
 import type { AvatarRendererOptions } from './types';
 
-const DEFAULT_VRM_URL = '/emilia.vrm';
+const DEFAULT_VRM_URL = '/vrm/emilia.vrm';
 
 interface ResolvedOptions {
   vrmUrl: string;

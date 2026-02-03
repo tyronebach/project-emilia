@@ -20,7 +20,7 @@ function AvatarPanel() {
   const currentVrmRef = useRef<string | null>(null);
 
   // Get VRM URL from agent or default
-  const vrmUrl = currentAgent?.vrm_model ? `/${currentAgent.vrm_model}` : '/emilia.vrm';
+  const vrmUrl = currentAgent?.vrm_model ? `/vrm/${currentAgent.vrm_model}` : '/vrm/emilia.vrm';
 
   // Initialize avatar renderer
   useEffect(() => {

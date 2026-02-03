@@ -33,7 +33,7 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
   // Preload avatar while waiting (fire-and-forget)
   useEffect(() => {
     // Start preloading immediately in parallel with session verification
-    preloadVRM('/emilia.vrm').catch((err) => {
+    preloadVRM('/vrm/emilia.vrm').catch((err) => {
       console.warn('[InitializingPage] Avatar preload failed (non-critical):', err);
     });
   }, []);
