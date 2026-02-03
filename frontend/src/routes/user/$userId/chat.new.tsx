@@ -1,14 +1,11 @@
-import { createRoute } from '@tanstack/react-router';
-import { rootRoute } from '../../__root';
+import { createFileRoute } from '@tanstack/react-router';
 import NewChatPage from '../../../components/NewChatPage';
 
-export const route = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/user/$userId/chat/new',
+export const Route = createFileRoute('/user/$userId/chat/new')({
   component: NewChatRoute,
 });
 
 function NewChatRoute() {
-  const { userId } = route.useParams();
+  const { userId } = Route.useParams();
   return <NewChatPage userId={userId} />;
 }

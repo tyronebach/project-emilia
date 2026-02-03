@@ -1,7 +1,7 @@
 import { createRootRoute, Outlet, useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 
-export const rootRoute = createRootRoute({
+export const Route = createRootRoute({
   component: RootComponent,
   notFoundComponent: NotFound,
 });

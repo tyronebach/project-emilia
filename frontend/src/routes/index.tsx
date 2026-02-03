@@ -1,9 +1,6 @@
-import { createRoute } from '@tanstack/react-router';
-import { rootRoute } from './__root';
+import { createFileRoute } from '@tanstack/react-router';
 import UserSelection from '../components/UserSelection';
 
-export const route = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/',
+export const Route = createFileRoute('/')({
   component: UserSelection,
 });
