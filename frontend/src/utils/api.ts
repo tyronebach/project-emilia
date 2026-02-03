@@ -197,12 +197,14 @@ export async function streamChat(
   onChunk: (chunk: string) => void,
   onAvatar: (data: AvatarCommand) => void,
   onDone: (data: StreamResponse) => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
+  options?: { signal?: AbortSignal }
 ): Promise<void> {
   try {
     const response = await fetchWithAuth(`${API_URL}/api/chat?stream=1`, {
       method: 'POST',
       body: JSON.stringify({ message }),
+      signal: options?.signal,
     });
 
     if (!response.ok) {

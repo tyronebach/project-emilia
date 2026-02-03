@@ -4,7 +4,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { useAppStore } from './store';
 import { useUserStore } from './store/userStore';
 import { useChatStore } from './store/chatStore';
-import { useSession } from './hooks/useSession';
+import { fetchWithAuth } from './utils/api';
 import Header from './components/Header';
 import Drawer from './components/Drawer';
 import AvatarPanel from './components/AvatarPanel';
@@ -41,7 +41,6 @@ function App({ userId, sessionId }: AppProps) {
   const setSessionId = useAppStore((state) => state.setSessionId);
   const currentUser = useUserStore((state) => state.currentUser);
   const clearMessages = useChatStore((state) => state.clearMessages);
-  const { fetchSessions } = useSession();
 
   // Sync sessionId from route to store
   useEffect(() => {
@@ -54,32 +53,38 @@ function App({ userId, sessionId }: AppProps) {
   }, [sessionId]);
 
   // Validate sessionId exists - redirect to /chat/new if not found
-  // Only validate ONCE per sessionId using fresh API data
+  // Only validate ONCE per sessionId using direct session lookup (no agent dependency)
   useEffect(() => {
     // Don't validate if no user or already validated this sessionId
-    if (!currentUser || hasValidatedRef.current) return;
+    if (!currentUser || hasValidatedRef.current || !sessionId) return;
 
     // Mark as validated to prevent re-checking
     hasValidatedRef.current = true;
 
     console.log('[App] Validating session:', sessionId);
 
-    // Always use fresh API data to validate - don't rely on cached sessions state
-    // This prevents race conditions when navigating from InitializingPage
-    fetchSessions().then(freshSessions => {
-      const existsInFresh = freshSessions.some(s => s.id === sessionId);
-      console.log('[App] Session exists in fresh data:', existsInFresh);
-
-      if (!existsInFresh) {
-        console.log('[App] Session not found, redirecting to /chat/new');
-        navigate({
-          to: '/user/$userId/chat/new',
-          params: { userId: currentUser.id },
-          replace: true
-        });
+    const validateSession = async () => {
+      try {
+        const response = await fetchWithAuth(`/api/sessions/${encodeURIComponent(sessionId)}`);
+        if (response.status === 404 || response.status === 403) {
+          console.log('[App] Session not found, redirecting to /chat/new');
+          navigate({
+            to: '/user/$userId/chat/new',
+            params: { userId: currentUser.id },
+            replace: true
+          });
+          return;
+        }
+        if (!response.ok) {
+          console.warn('[App] Session validation failed:', response.status);
+        }
+      } catch (error) {
+        console.warn('[App] Session validation error:', error);
       }
-    });
-  }, [sessionId, currentUser, navigate, fetchSessions]);
+    };
+
+    validateSession();
+  }, [sessionId, currentUser, navigate]);
 
   // Verify user matches route
   useEffect(() => {

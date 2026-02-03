@@ -16,6 +16,7 @@ export function useSession() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const fetchingRef = useRef<string | null>(null);
+  const fetchHistoryIdRef = useRef(0);
 
   /**
    * Fetch sessions for current agent
@@ -42,11 +43,17 @@ export function useSession() {
   const fetchHistory = useCallback(async (sid: string): Promise<Message[]> => {
     if (!sid || fetchingRef.current === sid) return [];
 
+    const requestId = ++fetchHistoryIdRef.current;
     try {
       fetchingRef.current = sid;
       setIsLoading(true);
 
       const rawMessages = await getSessionHistory(sid);
+
+      // Only apply if this is the latest request and sessionId is still current
+      if (requestId !== fetchHistoryIdRef.current || useAppStore.getState().sessionId !== sid) {
+        return [];
+      }
 
       const messages: Message[] = rawMessages.map((msg, idx) => ({
         id: idx,
@@ -62,8 +69,11 @@ export function useSession() {
       console.error('fetchHistory error:', error);
       return [];
     } finally {
-      setIsLoading(false);
-      fetchingRef.current = null;
+      // Only clear loading state for the latest request
+      if (requestId === fetchHistoryIdRef.current) {
+        setIsLoading(false);
+        fetchingRef.current = null;
+      }
     }
   }, [setMessages]);
 

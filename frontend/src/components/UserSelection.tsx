@@ -29,9 +29,9 @@ function UserSelection() {
       {/* Cog icon - top right */}
       <div className="absolute top-4 right-4">
         <button
-          onClick={() => navigate({ to: '/admin' as any })}
+          onClick={() => navigate({ to: '/settings' })}
           className="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors"
-          title="Admin Settings"
+          title="Settings"
         >
           <Settings className="w-5 h-5" />
         </button>

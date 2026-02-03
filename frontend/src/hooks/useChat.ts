@@ -31,11 +31,31 @@ export function useChat() {
 
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+
+  const cleanupAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  }, []);
 
   // Log state changes
   useEffect(() => {
     addStateEntry(status, '');
   }, [status, addStateEntry]);
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      cleanupAudio();
+    };
+  }, [cleanupAudio]);
 
   /**
    * Speak text using TTS
@@ -45,6 +65,7 @@ export function useChat() {
     if (!text?.trim()) return null;
 
     try {
+      cleanupAudio();
       setStatus('speaking');
 
       const response = await fetchWithAuth('/api/speak', {
@@ -65,6 +86,8 @@ export function useChat() {
       const blob = new Blob([byteArray], { type: 'audio/mpeg' });
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+      audioUrlRef.current = audioUrl;
 
       // Setup lip sync
       const renderer = avatarRendererRef.current;
@@ -77,15 +100,19 @@ export function useChat() {
       await new Promise<void>((resolve) => {
         audio.onended = () => {
           renderer?.lipSyncEngine?.stop();
-          URL.revokeObjectURL(audioUrl);
+          cleanupAudio();
           resolve();
         };
         audio.onerror = () => {
           renderer?.lipSyncEngine?.stop();
-          URL.revokeObjectURL(audioUrl);
+          cleanupAudio();
           resolve();
         };
-        audio.play().catch(() => resolve());
+        audio.play().catch(() => {
+          renderer?.lipSyncEngine?.stop();
+          cleanupAudio();
+          resolve();
+        });
       });
 
       // Return the base64 for storage
@@ -96,7 +123,7 @@ export function useChat() {
     } finally {
       setStatus('ready');
     }
-  }, [setStatus, avatarRendererRef]);
+  }, [setStatus, avatarRendererRef, cleanupAudio]);
 
   /**
    * Send message and handle streaming response
@@ -106,12 +133,14 @@ export function useChat() {
 
     setIsLoading(true);
     setStatus('thinking');
-    abortControllerRef.current = new AbortController();
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
 
     try {
       const messageId = addMessage('assistant', '', { streaming: true });
       let fullContent = '';
       let finalResponse: StreamResponse = {};
+      let didAbort = false;
 
       await streamChat(
         message,
@@ -142,6 +171,14 @@ export function useChat() {
         },
         // onError
         (error) => {
+          if (error.name === 'AbortError') {
+            didAbort = true;
+            updateMessage(messageId, {
+              meta: { streaming: false }
+            });
+            setStatus('ready');
+            return;
+          }
           console.error('Chat error:', error);
           updateMessage(messageId, {
             content: `⚠️ Error: ${error.message}`,
@@ -149,8 +186,11 @@ export function useChat() {
           });
           setStatus('error');
           setTimeout(() => setStatus('ready'), 3000);
-        }
+        },
+        { signal: abortController.signal }
       );
+
+      if (didAbort) return;
 
       // TTS if enabled - store audio in message meta for replay
       if (ttsEnabled && finalResponse?.response) {
