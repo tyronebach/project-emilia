@@ -94,9 +94,29 @@ class ElevenLabsService:
             audio_bytes = b"".join(audio_chunks)
             audio_base64 = base64.b64encode(audio_bytes).decode()
 
+            # Transform alignment data to frontend format
+            transformed_alignment = None
+            if alignment_data:
+                chars = alignment_data.get("characters", [])
+                start_times = alignment_data.get("character_start_times_seconds", [])
+                end_times = alignment_data.get("character_end_times_seconds", [])
+                
+                # Convert to ms and calculate durations
+                charStartTimesMs = [int(t * 1000) for t in start_times]
+                charDurationsMs = [
+                    int((end_times[i] - start_times[i]) * 1000) 
+                    for i in range(min(len(start_times), len(end_times)))
+                ]
+                
+                transformed_alignment = {
+                    "chars": chars,
+                    "charStartTimesMs": charStartTimesMs,
+                    "charDurationsMs": charDurationsMs
+                }
+
             return {
                 "audio_base64": audio_base64,
-                "alignment": alignment_data,
+                "alignment": transformed_alignment,
                 "voice_id": voice_id,
                 "duration_estimate": len(audio_bytes) / (44100 * 2 / 8)
             }
