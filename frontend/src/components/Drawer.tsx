@@ -27,6 +27,8 @@ function Drawer({ open, onClose }: DrawerProps) {
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
 
   // Fetch sessions when drawer opens
   useEffect(() => {
@@ -109,12 +111,19 @@ function Drawer({ open, onClose }: DrawerProps) {
     }
   };
 
-  const handleDelete = async (sid: string) => {
+  const handleOpenDelete = (sid: string) => {
+    setDeleteSessionId(sid);
+    setDeleteModalOpen(true);
     setMenuOpenFor(null);
-    if (!confirm('Delete this session?')) return;
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteSessionId) return;
     try {
-      const wasCurrentSession = sid === sessionId;
-      await deleteSession(sid);
+      const wasCurrentSession = deleteSessionId === sessionId;
+      await deleteSession(deleteSessionId);
+      setDeleteModalOpen(false);
+      setDeleteSessionId(null);
 
       // If we deleted the current session, navigate appropriately
       if (wasCurrentSession && currentUser?.id) {
@@ -191,14 +200,14 @@ function Drawer({ open, onClose }: DrawerProps) {
             Switch User
           </Button>
 
-          {/* Select Agent */}
+          {/* Select Character */}
           <Button
             variant="ghost"
             className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10"
             onClick={handleSelectAgent}
           >
             <Sparkles className="w-4 h-4" />
-            Select Agent
+            Select Character
           </Button>
 
           {/* TTS Toggle */}
@@ -241,7 +250,7 @@ function Drawer({ open, onClose }: DrawerProps) {
               Sessions
             </div>
             {!currentAgent ? (
-              <div className="px-2 py-4 text-sm text-text-secondary">Select an agent first</div>
+              <div className="px-2 py-4 text-sm text-text-secondary">Select a character first</div>
             ) : isLoading ? (
               <div className="px-2 py-4 text-sm text-text-secondary">Loading...</div>
             ) : sessions.length === 0 ? (
@@ -296,7 +305,7 @@ function Drawer({ open, onClose }: DrawerProps) {
                             Rename
                           </button>
                           <button
-                            onClick={() => handleDelete(session.id)}
+                            onClick={() => handleOpenDelete(session.id)}
                             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-white/10"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -354,6 +363,30 @@ function Drawer({ open, onClose }: DrawerProps) {
               </Button>
               <Button onClick={handleRename}>
                 Save
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModalOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/70 z-[60]"
+            onClick={() => setDeleteModalOpen(false)}
+          />
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-bg-secondary border border-bg-tertiary rounded-lg shadow-xl z-[70] p-4 w-80">
+            <h3 className="text-lg font-semibold text-text-primary mb-2">Delete Session</h3>
+            <p className="text-text-secondary text-sm mb-4">
+              Are you sure you want to delete this session? This action cannot be undone.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="ghost" onClick={() => setDeleteModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleConfirmDelete}>
+                Delete
               </Button>
             </div>
           </div>

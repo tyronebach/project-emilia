@@ -74,33 +74,11 @@ function InputControls() {
 
   return (
     <div className="absolute bottom-0 left-0 right-0 z-20 bg-bg-primary border-t border-bg-tertiary">
-      {/* Status indicator above input */}
-      {(isRecording || status === 'processing' || status === 'thinking' || status === 'speaking') && (
+      {/* Recording indicator only - other status moved to header */}
+      {isRecording && (
         <div className="flex items-center justify-center gap-2 py-2 text-xs text-text-secondary border-b border-bg-tertiary/50">
-          {isRecording && (
-            <>
-              <span className="w-2 h-2 bg-error rounded-full animate-pulse" />
-              <span>Recording... release to send</span>
-            </>
-          )}
-          {status === 'processing' && !isRecording && (
-            <>
-              <span className="w-2 h-2 bg-warning rounded-full animate-pulse" />
-              <span>Transcribing...</span>
-            </>
-          )}
-          {status === 'thinking' && !isRecording && (
-            <>
-              <span className="w-2 h-2 bg-warning rounded-full animate-pulse" />
-              <span>Thinking...</span>
-            </>
-          )}
-          {status === 'speaking' && (
-            <>
-              <span className="w-2 h-2 bg-accent rounded-full animate-pulse" />
-              <span>Speaking...</span>
-            </>
-          )}
+          <span className="w-2 h-2 bg-error rounded-full animate-pulse" />
+          <span>Recording... release to send</span>
         </div>
       )}
 
@@ -133,7 +111,7 @@ function InputControls() {
             placeholder="Message..."
             disabled={isDisabled}
             className="w-full bg-transparent text-text-primary placeholder-text-secondary/50
-                       text-base outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                       text-base outline-none ring-0 focus:ring-0 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             autoComplete="off"
           />
         </div>

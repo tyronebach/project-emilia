@@ -3,6 +3,7 @@ Session repository for database operations.
 """
 import uuid
 import time
+from datetime import datetime
 from typing import Optional
 from db.connection import get_db
 
@@ -67,6 +68,17 @@ class SessionRepository:
         """Create a new session."""
         session_id = SessionRepository._generate_id()
         now = int(time.time())
+
+        # Generate a nice default name if none provided: "AgentName MM.DD.YY"
+        if not name:
+            with get_db() as conn:
+                agent = conn.execute(
+                    "SELECT display_name FROM agents WHERE id = ?",
+                    (agent_id,)
+                ).fetchone()
+                agent_name = agent["display_name"] if agent else "Chat"
+                date_str = datetime.now().strftime("%m.%d.%y")
+                name = f"{agent_name} {date_str}"
 
         with get_db() as conn:
             # Create session
