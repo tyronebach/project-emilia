@@ -14,9 +14,9 @@ Dev token: `emilia-dev-token-2026` (when `AUTH_ALLOW_DEV_TOKEN=1`)
 
 Context headers:
 ```
-X-User-Id: <user_id>         # Required for most endpoints
-X-Agent-Id: <agent_id>       # For agent-scoped requests
-X-Session-Id: <session_id>   # For session-scoped requests
+X-User-Id: <user_id>         # Required for user/agent/session/memory endpoints
+X-Agent-Id: <agent_id>       # Required for /api/chat, optional for /api/sessions
+X-Session-Id: <session_id>   # Optional for /api/chat
 ```
 
 ---
@@ -28,7 +28,7 @@ GET /api/health
 ```
 No auth required.
 ```json
-{"status": "ok", "version": "2.0.0"}
+{"status": "ok", "version": "5.5.3"}
 ```
 
 ---
@@ -80,6 +80,7 @@ GET /api/users/{user_id}/agents/{agent_id}/sessions
 ### Get Agent
 ```
 GET /api/agents/{agent_id}
+Headers: X-User-Id
 ```
 ```json
 {
@@ -129,6 +130,7 @@ Body: {"agent_id": "emilia-thai", "name": "Optional Name"}
 ### Get Session
 ```
 GET /api/sessions/{session_id}
+Headers: X-User-Id
 ```
 
 ### Update Session (Rename)
@@ -247,7 +249,9 @@ Form: audio=<file>
 
 ## Memory
 
-All memory endpoints require `?agent_id={agent_id}` parameter.
+All memory endpoints require:
+- `X-User-Id` header
+- `?agent_id={agent_id}` query param
 
 ### Get MEMORY.md
 ```
@@ -351,4 +355,4 @@ DELETE /api/manage/sessions/all
 
 ---
 
-**Version:** 5.5.1
+**Version:** 5.5.3
