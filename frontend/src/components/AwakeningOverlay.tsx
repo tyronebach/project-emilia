@@ -31,11 +31,11 @@ const FLAVOR_TEXTS = [
 function AwakeningOverlay() {
   const currentAgent = useUserStore((state) => state.currentAgent);
   const agentName = currentAgent?.display_name || 'your companion';
-  
-  const [flavorIndex, setFlavorIndex] = useState(() => 
+
+  const [flavorIndex, setFlavorIndex] = useState(() =>
     Math.floor(Math.random() * FLAVOR_TEXTS.length)
   );
-  
+
   // Rotate flavor text every 2.5 seconds
   useEffect(() => {
     const interval = setInterval(() => {
@@ -43,19 +43,19 @@ function AwakeningOverlay() {
     }, 2500);
     return () => clearInterval(interval);
   }, []);
-  
+
   return (
     <>
       {/* Blur overlay for avatar */}
-      <div 
+      <div
         className="absolute inset-0 z-5 pointer-events-none"
         style={{
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          background: 'rgba(0, 0, 0, 0.3)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          background: 'rgba(0, 0, 0, 0.5)',
         }}
       />
-      
+
       {/* Centered spinner and text */}
       <div className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
         <div className="flex flex-col items-center gap-6">

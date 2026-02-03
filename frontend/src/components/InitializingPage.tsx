@@ -89,9 +89,9 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
         // Set sessionId in store so useChat hook can use it
         setSessionId(sessionId);
 
-        const greeting = `*${currentUser?.display_name} is bringing you to life in a new chat*`;
+        const greeting = `*${currentUser?.display_name} is bringing you to life...* hi there`;
         addMessage('user', greeting, { source: 'text' });
-        
+
         // Fire and forget - don't block navigation on response/TTS
         sendMessage(greeting);
 
