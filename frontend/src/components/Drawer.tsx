@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { X, Plus, MessageSquare, User, Sparkles, Volume2, VolumeX, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { X, Plus, MessageSquare, User, Sparkles, Volume2, VolumeX, MoreVertical, Pencil, Trash2, Settings } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useSession } from '../hooks/useSession';
 import { useUserStore } from '../store/userStore';
@@ -171,17 +171,61 @@ function Drawer({ open, onClose }: DrawerProps) {
       >
         {/* Drawer Header */}
         <div className="h-14 px-4 flex items-center justify-between border-b border-bg-tertiary shrink-0">
-          <span className="text-lg font-semibold text-text-primary">Emilia</span>
-          <Button variant="ghost" size="icon" onClick={onClose}>
+          <span className="text-lg font-semibold text-text-primary">
+            {currentAgent?.display_name || 'Emilia'}
+          </span>
+          <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-white/10">
             <X className="w-5 h-5" />
           </Button>
         </div>
 
-        {/* New Session Button */}
+        {/* Top Actions - Switch User, Select Agent, TTS */}
+        <div className="border-b border-bg-tertiary p-3 space-y-1 shrink-0">
+          {/* Switch User */}
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10"
+            onClick={handleSwitchUser}
+          >
+            <User className="w-4 h-4" />
+            Switch User
+          </Button>
+
+          {/* Select Agent */}
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10"
+            onClick={handleSelectAgent}
+          >
+            <Sparkles className="w-4 h-4" />
+            Select Agent
+          </Button>
+
+          {/* TTS Toggle */}
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10"
+            onClick={() => setTtsEnabled(!ttsEnabled)}
+          >
+            {ttsEnabled ? (
+              <>
+                <Volume2 className="w-4 h-4" />
+                TTS Enabled
+              </>
+            ) : (
+              <>
+                <VolumeX className="w-4 h-4" />
+                TTS Disabled
+              </>
+            )}
+          </Button>
+        </div>
+
+        {/* New Session Button - transparent background */}
         <div className="p-3 border-b border-bg-tertiary">
           <Button
-            variant="secondary"
-            className="w-full justify-start gap-2"
+            variant="ghost"
+            className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10"
             onClick={handleNewSession}
             disabled={!currentAgent}
           >
@@ -215,7 +259,7 @@ function Drawer({ open, onClose }: DrawerProps) {
                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${
                           isActive
                             ? 'bg-accent/20 text-accent'
-                            : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary'
+                            : 'text-text-secondary hover:text-text-primary hover:bg-white/10'
                         }`}
                       >
                         <MessageSquare className="w-4 h-4 shrink-0" />
@@ -233,7 +277,7 @@ function Drawer({ open, onClose }: DrawerProps) {
                           e.stopPropagation();
                           setMenuOpenFor(isMenuOpen ? null : session.id);
                         }}
-                        className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded text-text-secondary/50 hover:text-text-primary hover:bg-bg-tertiary"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded text-text-secondary/50 hover:text-text-primary hover:bg-white/10"
                       >
                         <MoreVertical className="w-4 h-4" />
                       </button>
@@ -246,14 +290,14 @@ function Drawer({ open, onClose }: DrawerProps) {
                         >
                           <button
                             onClick={() => handleOpenRename(session.id, session.name)}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-bg-tertiary"
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-white/10"
                           >
                             <Pencil className="w-4 h-4" />
                             Rename
                           </button>
                           <button
                             onClick={() => handleDelete(session.id)}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-bg-tertiary"
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-white/10"
                           >
                             <Trash2 className="w-4 h-4" />
                             Delete
@@ -268,55 +312,20 @@ function Drawer({ open, onClose }: DrawerProps) {
           </div>
         </ScrollArea>
 
-        {/* Bottom Actions */}
-        <div className="border-t border-bg-tertiary p-3 space-y-2 shrink-0">
-          {/* Current User/Agent Info */}
-          {currentUser && (
-            <div className="px-2 py-1 text-xs text-text-secondary">
-              <div className="truncate">{currentUser.display_name}</div>
-              {currentAgent && (
-                <div className="truncate text-accent">{currentAgent.display_name}</div>
-              )}
+        {/* Bottom - User Settings */}
+        <div className="border-t border-bg-tertiary p-3 shrink-0">
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-text-secondary hover:text-text-primary hover:bg-white/10 h-auto py-3"
+            onClick={() => {/* TODO: open user settings */}}
+          >
+            <Settings className="w-5 h-5 shrink-0" />
+            <div className="flex flex-col items-start">
+              <span className="text-sm font-medium text-text-primary">
+                {currentUser?.display_name || 'User'}
+              </span>
+              <span className="text-xs text-text-secondary">Settings</span>
             </div>
-          )}
-
-          {/* Switch User */}
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary"
-            onClick={handleSwitchUser}
-          >
-            <User className="w-4 h-4" />
-            Switch User
-          </Button>
-
-          {/* Select Agent */}
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary"
-            onClick={handleSelectAgent}
-          >
-            <Sparkles className="w-4 h-4" />
-            Select Agent
-          </Button>
-
-          {/* TTS Toggle */}
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary"
-            onClick={() => setTtsEnabled(!ttsEnabled)}
-          >
-            {ttsEnabled ? (
-              <>
-                <Volume2 className="w-4 h-4" />
-                TTS Enabled
-              </>
-            ) : (
-              <>
-                <VolumeX className="w-4 h-4" />
-                TTS Disabled
-              </>
-            )}
           </Button>
         </div>
       </div>
