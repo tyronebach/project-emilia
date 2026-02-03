@@ -13,6 +13,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as DebugRouteImport } from './routes/debug'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UserUserIdRouteImport } from './routes/user/$userId'
+import { Route as UserUserIdIndexRouteImport } from './routes/user/$userId/index'
 import { Route as UserUserIdChatNewRouteImport } from './routes/user/$userId/chat.new'
 import { Route as UserUserIdChatSessionIdRouteImport } from './routes/user/$userId/chat.$sessionId'
 import { Route as UserUserIdChatInitializingSessionIdRouteImport } from './routes/user/$userId/chat.initializing.$sessionId'
@@ -37,6 +38,11 @@ const UserUserIdRoute = UserUserIdRouteImport.update({
   path: '/user/$userId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UserUserIdIndexRoute = UserUserIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => UserUserIdRoute,
+} as any)
 const UserUserIdChatNewRoute = UserUserIdChatNewRouteImport.update({
   id: '/chat/new',
   path: '/chat/new',
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/debug': typeof DebugRoute
   '/settings': typeof SettingsRoute
   '/user/$userId': typeof UserUserIdRouteWithChildren
+  '/user/$userId/': typeof UserUserIdIndexRoute
   '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
   '/user/$userId/chat/initializing/$sessionId': typeof UserUserIdChatInitializingSessionIdRoute
@@ -67,7 +74,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/debug': typeof DebugRoute
   '/settings': typeof SettingsRoute
-  '/user/$userId': typeof UserUserIdRouteWithChildren
+  '/user/$userId': typeof UserUserIdIndexRoute
   '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
   '/user/$userId/chat/initializing/$sessionId': typeof UserUserIdChatInitializingSessionIdRoute
@@ -78,6 +85,7 @@ export interface FileRoutesById {
   '/debug': typeof DebugRoute
   '/settings': typeof SettingsRoute
   '/user/$userId': typeof UserUserIdRouteWithChildren
+  '/user/$userId/': typeof UserUserIdIndexRoute
   '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
   '/user/$userId/chat/initializing/$sessionId': typeof UserUserIdChatInitializingSessionIdRoute
@@ -89,6 +97,7 @@ export interface FileRouteTypes {
     | '/debug'
     | '/settings'
     | '/user/$userId'
+    | '/user/$userId/'
     | '/user/$userId/chat/$sessionId'
     | '/user/$userId/chat/new'
     | '/user/$userId/chat/initializing/$sessionId'
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/debug'
     | '/settings'
     | '/user/$userId'
+    | '/user/$userId/'
     | '/user/$userId/chat/$sessionId'
     | '/user/$userId/chat/new'
     | '/user/$userId/chat/initializing/$sessionId'
@@ -149,6 +159,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UserUserIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/user/$userId/': {
+      id: '/user/$userId/'
+      path: '/'
+      fullPath: '/user/$userId/'
+      preLoaderRoute: typeof UserUserIdIndexRouteImport
+      parentRoute: typeof UserUserIdRoute
+    }
     '/user/$userId/chat/new': {
       id: '/user/$userId/chat/new'
       path: '/chat/new'
@@ -174,12 +191,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface UserUserIdRouteChildren {
+  UserUserIdIndexRoute: typeof UserUserIdIndexRoute
   UserUserIdChatSessionIdRoute: typeof UserUserIdChatSessionIdRoute
   UserUserIdChatNewRoute: typeof UserUserIdChatNewRoute
   UserUserIdChatInitializingSessionIdRoute: typeof UserUserIdChatInitializingSessionIdRoute
 }
 
 const UserUserIdRouteChildren: UserUserIdRouteChildren = {
+  UserUserIdIndexRoute: UserUserIdIndexRoute,
   UserUserIdChatSessionIdRoute: UserUserIdChatSessionIdRoute,
   UserUserIdChatNewRoute: UserUserIdChatNewRoute,
   UserUserIdChatInitializingSessionIdRoute:
