@@ -105,8 +105,9 @@ export class AnimationLibrary {
           resolve(data);
         },
         undefined,
-        (error) => {
-          console.error(`[AnimationLibrary] Failed to load '${path}':`, error);
+        () => {
+          // File not found or invalid - this is expected if GLB hasn't been added yet
+          console.log(`[AnimationLibrary] Animation '${name}' not available (add ${path})`);
           resolve(null);
         }
       );
