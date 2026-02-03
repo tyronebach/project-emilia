@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { useStatsStore } from '../store/statsStore';
 import { useUserStore } from '../store/userStore';
 import { Button } from './ui/button';
+import { useVoiceOptions } from '../hooks/useVoiceOptions';
 import type { AppStatus } from '../types';
 
 interface DebugPanelProps {
@@ -12,10 +13,11 @@ interface DebugPanelProps {
 }
 
 function DebugPanel({ open, onClose }: DebugPanelProps) {
-  const { messages, status, ttsEnabled, errors, sessionId } = useApp();
+  const { messages, status, ttsEnabled, ttsVoiceId, setTtsVoiceId, errors, sessionId } = useApp();
   const { totalLatency, latencyCount, stateLog, stageLatencies } = useStatsStore();
   const currentUser = useUserStore((state) => state.currentUser);
   const currentAgent = useUserStore((state) => state.currentAgent);
+  const { voices: voiceOptions } = useVoiceOptions();
 
   const userMessages = messages.filter((m) => m.role === 'user').length;
   const assistantMessages = messages.filter((m) => m.role === 'assistant').length;
@@ -122,6 +124,23 @@ function DebugPanel({ open, onClose }: DebugPanelProps) {
             <div className="text-sm font-bold text-text-primary">{ttsEnabled ? 'On' : 'Off'}</div>
             <div className="text-[10px] text-text-secondary">TTS</div>
           </div>
+        </div>
+
+        {/* TTS Voice */}
+        <div>
+          <div className="text-[10px] text-text-secondary uppercase mb-1">TTS Voice</div>
+          <select
+            value={ttsVoiceId || ''}
+            onChange={(e) => setTtsVoiceId(e.target.value)}
+            className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1 text-[11px] text-text-primary focus:border-accent focus:outline-none"
+          >
+            <option value="">Agent default</option>
+            {voiceOptions.map((voice) => (
+              <option key={voice.id} value={voice.id}>
+                {voice.name} ({voice.id})
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Per-Stage Latency */}

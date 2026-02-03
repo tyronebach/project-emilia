@@ -35,7 +35,11 @@ export class AnimationPlayer {
 
   constructor(vrm: VRM) {
     this.vrm = vrm;
-    this.mixer = new THREE.AnimationMixer(vrm.scene);
+    
+    // Use normalized humanoid root for mixer - VRM copies normalized → raw on update
+    const mixerRoot = vrm.humanoid?.normalizedHumanBonesRoot || vrm.scene;
+    this.mixer = new THREE.AnimationMixer(mixerRoot);
+    console.log('[AnimationPlayer] Mixer root:', mixerRoot.name || 'scene');
 
     // Listen for animation end
     this.mixer.addEventListener('finished', this.onAnimationFinished.bind(this));
@@ -62,6 +66,15 @@ export class AnimationPlayer {
       return true;
     }
 
+    // Check for procedural test animations
+    if (name === 'test_wave') {
+      const clip = this.createProceduralWave();
+      if (clip) {
+        return this.playClipDirect(clip, 'test_wave', opts);
+      }
+      return false;
+    }
+
     // Try to load GLB animation
     const animData = await animationLibrary.load(name);
     if (!animData) {
@@ -71,6 +84,111 @@ export class AnimationPlayer {
     }
 
     return this.playClip(animData, opts);
+  }
+
+  /**
+   * Create a procedural wave animation for testing
+   */
+  private createProceduralWave(): THREE.AnimationClip | null {
+    if (!this.vrm.humanoid) return null;
+
+    // Use NORMALIZED bones - mixer targets normalized root
+    const rightUpperArm = this.vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+    const rightLowerArm = this.vrm.humanoid.getNormalizedBoneNode('rightLowerArm');
+    
+    if (!rightUpperArm || !rightLowerArm) {
+      console.warn('[AnimationPlayer] Could not find arm bones for test_wave');
+      return null;
+    }
+
+    const duration = 2.0;
+    const tracks: THREE.KeyframeTrack[] = [];
+
+    // Right upper arm - raise up (rotate around Z axis for VRM)
+    // VRM T-pose: arms down, Z is forward/back, X is up/down for shoulder rotation
+    const upperArmTimes = [0, 0.5, 1.5, 2.0];
+    const upperArmValues = [
+      // Start: neutral (identity quaternion components: x, y, z, w)
+      0, 0, 0, 1,
+      // Raised: rotate to raise arm (around local Z, about -90 degrees)
+      0, 0, -0.6, 0.8,
+      // Still raised
+      0, 0, -0.6, 0.8,
+      // Back to neutral
+      0, 0, 0, 1,
+    ];
+    tracks.push(new THREE.QuaternionKeyframeTrack(
+      `${rightUpperArm.name}.quaternion`,
+      upperArmTimes,
+      upperArmValues
+    ));
+
+    // Right lower arm - wave motion (small oscillation)
+    const lowerArmTimes = [0, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 2.0];
+    const lowerArmValues = [
+      0, 0, 0, 1,           // Start
+      0.2, 0, 0, 0.98,      // Bend slightly
+      0.3, 0, 0, 0.95,      // Wave 1
+      0.1, 0, 0, 0.99,      // Wave 2
+      0.3, 0, 0, 0.95,      // Wave 3
+      0.1, 0, 0, 0.99,      // Wave 4
+      0.2, 0, 0, 0.98,      // Wave 5
+      0, 0, 0, 1,           // End
+    ];
+    tracks.push(new THREE.QuaternionKeyframeTrack(
+      `${rightLowerArm.name}.quaternion`,
+      lowerArmTimes,
+      lowerArmValues
+    ));
+
+    console.log('[AnimationPlayer] Created procedural wave:', rightUpperArm.name, rightLowerArm.name);
+    
+    // Debug: log bone world position to verify we have the right objects
+    const worldPos = new THREE.Vector3();
+    rightUpperArm.getWorldPosition(worldPos);
+    console.log('[AnimationPlayer] rightUpperArm world pos:', worldPos.toArray());
+    console.log('[AnimationPlayer] rightUpperArm parent:', rightUpperArm.parent?.name);
+    
+    return new THREE.AnimationClip('test_wave', duration, tracks);
+  }
+
+  /**
+   * Play a clip directly (for procedural animations)
+   */
+  private playClipDirect(clip: THREE.AnimationClip, name: string, options: Required<PlayOptions>): boolean {
+    // Debug: Check if bones exist in the scene
+    for (const track of clip.tracks) {
+      const boneName = track.name.split('.')[0];
+      let found = false;
+      this.vrm.scene.traverse((obj) => {
+        if (obj.name === boneName) found = true;
+      });
+      console.log(`[AnimationPlayer] Track target '${boneName}': ${found ? 'FOUND' : 'NOT FOUND'}`);
+    }
+
+    const action = this.mixer.clipAction(clip);
+    action.setLoop(options.loop ? THREE.LoopRepeat : THREE.LoopOnce, options.loop ? Infinity : 1);
+    action.clampWhenFinished = !options.loop;
+    action.timeScale = options.timeScale;
+
+    if (this.currentAction) {
+      this.currentAction.fadeOut(options.fadeIn);
+    }
+
+    if (this.idleAnimations) {
+      this.idleAnimations.pause();
+    }
+
+    action.reset();
+    action.fadeIn(options.fadeIn);
+    action.play();
+
+    this.currentAction = action;
+    this.currentAnimationName = name;
+
+    console.log(`[AnimationPlayer] Playing '${name}' (${clip.duration.toFixed(2)}s)`);
+    console.log(`[AnimationPlayer] Action enabled: ${action.enabled}, weight: ${action.weight}, time: ${action.time}`);
+    return true;
   }
 
   /**
@@ -118,7 +236,30 @@ export class AnimationPlayer {
   private retargetToVRM(clip: THREE.AnimationClip): THREE.AnimationClip {
     // Bone name mapping (various formats → VRM humanoid bone names)
     const boneMap: Record<string, string> = {
-      // Mixamo format
+      // Mixamo format (with colon separator)
+      'mixamorig:Hips': 'hips',
+      'mixamorig:Spine': 'spine',
+      'mixamorig:Spine1': 'chest',
+      'mixamorig:Spine2': 'upperChest',
+      'mixamorig:Neck': 'neck',
+      'mixamorig:Head': 'head',
+      'mixamorig:LeftShoulder': 'leftShoulder',
+      'mixamorig:LeftArm': 'leftUpperArm',
+      'mixamorig:LeftForeArm': 'leftLowerArm',
+      'mixamorig:LeftHand': 'leftHand',
+      'mixamorig:RightShoulder': 'rightShoulder',
+      'mixamorig:RightArm': 'rightUpperArm',
+      'mixamorig:RightForeArm': 'rightLowerArm',
+      'mixamorig:RightHand': 'rightHand',
+      'mixamorig:LeftUpLeg': 'leftUpperLeg',
+      'mixamorig:LeftLeg': 'leftLowerLeg',
+      'mixamorig:LeftFoot': 'leftFoot',
+      'mixamorig:LeftToeBase': 'leftToes',
+      'mixamorig:RightUpLeg': 'rightUpperLeg',
+      'mixamorig:RightLeg': 'rightLowerLeg',
+      'mixamorig:RightFoot': 'rightFoot',
+      'mixamorig:RightToeBase': 'rightToes',
+      // Mixamo format (no separator - legacy)
       'mixamorigHips': 'hips',
       'mixamorigSpine': 'spine',
       'mixamorigSpine1': 'chest',
@@ -165,13 +306,26 @@ export class AnimationPlayer {
 
     // Bones to skip (root bones, helpers)
     const skipBones = new Set(['joint_Root', 'Armature', 'Root']);
+    
+    // Allow all mapped bones for Mixamo (their rig matches humanoid standard)
+    // Only restrict BVH bones (rest pose mismatch)
+    const bvhOnlyBones = new Set([
+      'Spine', 'Chest', 'Neck', 'Head',
+      'Shoulder_L', 'UpperArm_L', 'LowerArm_L', 'Hand_L',
+      'Shoulder_R', 'UpperArm_R', 'LowerArm_R', 'Hand_R',
+      'Hips', 'UpperLeg_L', 'LowerLeg_L', 'Foot_L', 'Toes_L',
+      'UpperLeg_R', 'LowerLeg_R', 'Foot_R', 'Toes_R',
+    ]);
+    
+    // Check if this is a Mixamo animation (has mixamorig: prefix)
+    const isMixamo = clip.tracks.some(t => t.name.includes('mixamorig'));
 
-    // Build VRM bone name cache
+    // Build VRM bone name cache - use NORMALIZED bones (mixer targets normalized root)
     const vrmBoneNodes: Record<string, THREE.Object3D> = {};
     if (this.vrm.humanoid) {
-      console.log('[AnimationPlayer] Building bone map...');
+      console.log('[AnimationPlayer] Building bone map (normalized bones)...');
       for (const [srcName, vrmName] of Object.entries(boneMap)) {
-        const node = this.vrm.humanoid.getRawBoneNode(vrmName as any);
+        const node = this.vrm.humanoid.getNormalizedBoneNode(vrmName as any);
         if (node) {
           vrmBoneNodes[srcName] = node;
           console.log(`  ${srcName} → ${vrmName} → ${node.name}`);
@@ -199,6 +353,25 @@ export class AnimationPlayer {
 
       // Skip root/helper bones
       if (skipBones.has(boneName)) {
+        skippedCount++;
+        continue;
+      }
+
+      // For BVH (non-Mixamo): only allow upper body until rest pose retargeting is fixed
+      if (!isMixamo && bvhOnlyBones.has(boneName)) {
+        // BVH bone - check if it's upper body
+        const upperBodyBvh = ['Spine', 'Chest', 'Neck', 'Head', 
+          'Shoulder_L', 'UpperArm_L', 'LowerArm_L', 'Hand_L',
+          'Shoulder_R', 'UpperArm_R', 'LowerArm_R', 'Hand_R'];
+        if (!upperBodyBvh.includes(boneName)) {
+          skippedCount++;
+          continue;
+        }
+      }
+
+      // Skip position/translation tracks (causes flying/movement)
+      // Only keep quaternion (rotation) tracks
+      if (property === 'position' || property === 'translation') {
         skippedCount++;
         continue;
       }
@@ -267,11 +440,43 @@ export class AnimationPlayer {
     this.queue = [];
   }
 
+  // Debug: direct bone test
+  private debugBoneTest: THREE.Object3D | null = null;
+  private debugTestTime: number = 0;
+  private debugTestActive: boolean = false;
+
+  /**
+   * Start direct bone manipulation test using VRM normalized bone
+   */
+  testDirectBone(): void {
+    if (!this.vrm.humanoid) return;
+    this.debugBoneTest = this.vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+    this.debugTestTime = 0;
+    this.debugTestActive = true;
+    console.log('[AnimationPlayer] Direct bone test started (normalized bone):', this.debugBoneTest?.name);
+  }
+
   /**
    * Update mixer (call each frame)
    */
   update(deltaTime: number): void {
     this.mixer.update(deltaTime);
+
+    // Direct bone manipulation test - manipulate NORMALIZED bone (before VRM copies to raw)
+    if (this.debugTestActive && this.debugBoneTest) {
+      this.debugTestTime += deltaTime;
+      const angle = Math.sin(this.debugTestTime * 3) * 0.5; // oscillate
+      
+      // Set rotation on normalized bone - VRM will copy to raw bone in vrm.update()
+      this.debugBoneTest.quaternion.setFromEuler(new THREE.Euler(0, 0, angle));
+      
+      if (this.debugTestTime > 3) {
+        // Reset to identity
+        this.debugBoneTest.quaternion.identity();
+        this.debugTestActive = false;
+        console.log('[AnimationPlayer] Direct bone test finished');
+      }
+    }
   }
 
   /**

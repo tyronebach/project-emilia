@@ -5,16 +5,22 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, Play, Upload, RefreshCw, Mic } from 'lucide-react';
+import { ArrowLeft, Play, Upload, RefreshCw, Mic, FileUp } from 'lucide-react';
 import { Button } from './ui/button';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './ui/accordion';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
 import { fetchWithAuth } from '../utils/api';
+import { useVoiceOptions } from '../hooks/useVoiceOptions';
 import type { VRM } from '@pixiv/three-vrm';
+import * as THREE from 'three';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { retargetAnimation } from 'vrm-mixamo-retarget';
 
 type VrmModel = {
   id: string;
   name: string;
+  version?: string;
 };
 
 const VRM_BASE_PATH = '/vrm';
@@ -29,6 +35,8 @@ const buildVrmUrl = (modelId: string) => `${VRM_BASE_PATH}/${modelId}`;
 
 // Animations registered in AnimationLibrary
 const AVAILABLE_ANIMATIONS = [
+  'test_wave',  // Procedural test - no file needed
+  'hip_hop',    // Mixamo - should work!
   'wave',
   'bow',
   'nod',
@@ -70,6 +78,13 @@ function AvatarDebugPanel() {
   const [voiceId, setVoiceId] = useState('gNLojYp5VOiuqC8CTCmi');
   const [ttsLoading, setTtsLoading] = useState(false);
   const [alignmentData, setAlignmentData] = useState<{ chars: string[]; charStartTimesMs: number[]; charDurationsMs: number[] } | null>(null);
+  const { voices: voiceOptions, loading: voicesLoading } = useVoiceOptions();
+  
+  // FBX retarget test state
+  const [fbxStatus, setFbxStatus] = useState<string>('Upload Mixamo FBX');
+  const [glbStatus, setGlbStatus] = useState<string>('Upload GLB Animation');
+  const fbxMixerRef = useRef<THREE.AnimationMixer | null>(null);
+  const fbxActionRef = useRef<THREE.AnimationAction | null>(null);
 
   // Handle model switch
   const switchModel = useCallback(async (modelId: string) => {
@@ -112,6 +127,7 @@ function AvatarDebugPanel() {
           .map((item) => ({
             id: item.id,
             name: typeof item.name === 'string' ? item.name : item.id,
+            version: typeof item.version === 'string' ? item.version : undefined,
           }));
 
         if (!models.length || !isActive) return;
@@ -142,6 +158,8 @@ function AvatarDebugPanel() {
 
     const renderer = new AvatarRenderer(containerRef.current, {
       vrmUrl: buildVrmUrl(selectedModel),
+      cameraDistance: 3.0,  // Pulled back to see full body
+      cameraHeight: 1.0,    // Lower to center on body
       onLoad: (vrm: VRM) => {
         const metaName = (vrm.meta as { name?: string })?.name;
         setLastAction(`Loaded: ${metaName || selectedModel}`);
@@ -163,6 +181,36 @@ function AvatarDebugPanel() {
       rendererRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Update FBX mixer each frame (separate from main renderer)
+  useEffect(() => {
+    let animationId: number;
+    let lastTime = performance.now();
+    
+    const updateFbxMixer = () => {
+      const now = performance.now();
+      const deltaTime = (now - lastTime) / 1000;
+      lastTime = now;
+      
+      if (fbxMixerRef.current) {
+        fbxMixerRef.current.update(deltaTime);
+        
+        // VRM needs update after mixer to copy normalized → raw bones
+        const vrm = rendererRef.current?.getVRM?.();
+        if (vrm) {
+          vrm.update(deltaTime);
+        }
+      }
+      
+      animationId = requestAnimationFrame(updateFbxMixer);
+    };
+    
+    animationId = requestAnimationFrame(updateFbxMixer);
+    
+    return () => {
+      cancelAnimationFrame(animationId);
+    };
   }, []);
 
   // Play animation
@@ -374,6 +422,304 @@ function AvatarDebugPanel() {
     setLastAction('Wave + Happy');
   }, []);
 
+  // FBX retarget test using vrm-mixamo-retarget library
+  const handleFbxFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const renderer = rendererRef.current;
+    
+    if (!file || !renderer) {
+      setFbxStatus('Error: No file or renderer');
+      return;
+    }
+
+    const vrm = renderer.getVRM?.();
+    if (!vrm) {
+      setFbxStatus('Error: VRM not loaded');
+      return;
+    }
+
+    setFbxStatus(`Loading ${file.name}...`);
+    setLastAction(`FBX: Loading ${file.name}`);
+
+    try {
+      // Load FBX file
+      const fbxLoader = new FBXLoader();
+      const arrayBuffer = await file.arrayBuffer();
+      const fbxAsset = fbxLoader.parse(arrayBuffer, '');
+      
+      console.log('[FBX Test] Loaded FBX:', fbxAsset);
+      console.log('[FBX Test] Animations:', fbxAsset.animations);
+      
+      // List all bones in FBX
+      const fbxBones: string[] = [];
+      fbxAsset.traverse((obj) => {
+        if (obj.type === 'Bone' || obj.name.includes('mixamorig')) {
+          fbxBones.push(obj.name);
+        }
+      });
+      console.log('[FBX Test] FBX bones:', fbxBones);
+      
+      // Use vrm-mixamo-retarget library
+      const clip = retargetAnimation(fbxAsset, vrm, {
+        logWarnings: true,
+        animationClipName: 'mixamo.com'  // Default Mixamo clip name
+      });
+      
+      if (!clip) {
+        // Try with first available clip name
+        if (fbxAsset.animations.length > 0) {
+          const firstClipName = fbxAsset.animations[0].name;
+          console.log('[FBX Test] Trying clip name:', firstClipName);
+          const clip2 = retargetAnimation(fbxAsset, vrm, {
+            logWarnings: true,
+            animationClipName: firstClipName
+          });
+          if (clip2) {
+            playFbxClip(clip2, vrm, file.name);
+            return;
+          }
+        }
+        setFbxStatus('Error: Retarget failed');
+        setLastAction('FBX: Retarget failed - check console');
+        return;
+      }
+      
+      playFbxClip(clip, vrm, file.name);
+      
+    } catch (err) {
+      console.error('[FBX Test] Error:', err);
+      setFbxStatus(`Error: ${err}`);
+      setLastAction(`FBX Error: ${err}`);
+    }
+  }, []);
+
+  // Play retargeted FBX clip
+  const playFbxClip = useCallback((clip: THREE.AnimationClip, vrm: VRM, fileName: string) => {
+    console.log('[FBX Test] Retargeted clip:', clip);
+    console.log('[FBX Test] Tracks:', clip.tracks.length);
+    
+    // Stop any existing FBX animation
+    if (fbxActionRef.current) {
+      fbxActionRef.current.stop();
+    }
+    
+    // Create mixer on normalized humanoid root (like AnimationPlayer does)
+    const mixerRoot = vrm.humanoid?.normalizedHumanBonesRoot || vrm.scene;
+    const mixer = new THREE.AnimationMixer(mixerRoot);
+    fbxMixerRef.current = mixer;
+    
+    // Create and play action
+    const action = mixer.clipAction(clip);
+    action.setLoop(THREE.LoopRepeat, Infinity);
+    action.play();
+    fbxActionRef.current = action;
+    
+    setFbxStatus(`Playing: ${fileName}`);
+    setLastAction(`FBX: ${clip.tracks.length} tracks, ${clip.duration.toFixed(1)}s`);
+  }, []);
+
+  // Stop FBX animation
+  const stopFbxAnimation = useCallback(() => {
+    if (fbxActionRef.current) {
+      fbxActionRef.current.stop();
+      fbxActionRef.current = null;
+    }
+    if (fbxMixerRef.current) {
+      fbxMixerRef.current.stopAllAction();
+      fbxMixerRef.current = null;
+    }
+    setFbxStatus('Upload Mixamo FBX');
+    setGlbStatus('Upload GLB Animation');
+    setLastAction('Animation: Stopped');
+  }, []);
+
+  // GLB animation test (pre-converted animations from convert3d.org etc)
+  const handleGlbFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const renderer = rendererRef.current;
+    
+    if (!file || !renderer) {
+      setGlbStatus('Error: No file or renderer');
+      return;
+    }
+
+    const vrm = renderer.getVRM?.();
+    if (!vrm) {
+      setGlbStatus('Error: VRM not loaded');
+      return;
+    }
+
+    setGlbStatus(`Loading ${file.name}...`);
+    setLastAction(`GLB: Loading ${file.name}`);
+
+    try {
+      // Load GLB file
+      const gltfLoader = new GLTFLoader();
+      const arrayBuffer = await file.arrayBuffer();
+      const gltf = await new Promise<any>((resolve, reject) => {
+        gltfLoader.parse(arrayBuffer, '', resolve, reject);
+      });
+      
+      console.log('[GLB Test] Loaded GLB:', gltf);
+      console.log('[GLB Test] Animations:', gltf.animations);
+      
+      if (!gltf.animations || gltf.animations.length === 0) {
+        setGlbStatus('Error: No animations in GLB');
+        setLastAction('GLB: No animations found');
+        return;
+      }
+      
+      // Get first animation clip
+      const clip = gltf.animations[0] as THREE.AnimationClip;
+      console.log('[GLB Test] Clip name:', clip.name);
+      console.log('[GLB Test] Clip duration:', clip.duration);
+      console.log('[GLB Test] Clip tracks:', clip.tracks.length);
+      
+      // Log track names to see bone naming convention
+      clip.tracks.slice(0, 10).forEach((track, i) => {
+        console.log(`[GLB Test] Track ${i}: ${track.name}`);
+      });
+      
+      // Try direct play first (if GLB was pre-retargeted for VRM)
+      playGlbClipDirect(clip, vrm, file.name);
+      
+    } catch (err) {
+      console.error('[GLB Test] Error:', err);
+      setGlbStatus(`Error: ${err}`);
+      setLastAction(`GLB Error: ${err}`);
+    }
+  }, []);
+
+  // BVH/Bandai-Namco bone name mapping to VRM humanoid bones
+  const bvhToVrmBoneMap: Record<string, string> = {
+    'Hips': 'hips',
+    'Spine': 'spine',
+    'Spine1': 'chest',
+    'Spine2': 'upperChest',
+    'Chest': 'chest',
+    'UpperChest': 'upperChest',
+    'Neck': 'neck',
+    'Head': 'head',
+    // Left arm
+    'Shoulder_L': 'leftShoulder',
+    'LeftShoulder': 'leftShoulder',
+    'UpperArm_L': 'leftUpperArm',
+    'LeftUpperArm': 'leftUpperArm',
+    'LowerArm_L': 'leftLowerArm',
+    'LeftLowerArm': 'leftLowerArm',
+    'Hand_L': 'leftHand',
+    'LeftHand': 'leftHand',
+    // Right arm
+    'Shoulder_R': 'rightShoulder',
+    'RightShoulder': 'rightShoulder',
+    'UpperArm_R': 'rightUpperArm',
+    'RightUpperArm': 'rightUpperArm',
+    'LowerArm_R': 'rightLowerArm',
+    'RightLowerArm': 'rightLowerArm',
+    'Hand_R': 'rightHand',
+    'RightHand': 'rightHand',
+    // Left leg
+    'UpperLeg_L': 'leftUpperLeg',
+    'LeftUpperLeg': 'leftUpperLeg',
+    'LowerLeg_L': 'leftLowerLeg',
+    'LeftLowerLeg': 'leftLowerLeg',
+    'Foot_L': 'leftFoot',
+    'LeftFoot': 'leftFoot',
+    'Toes_L': 'leftToes',
+    'LeftToes': 'leftToes',
+    // Right leg
+    'UpperLeg_R': 'rightUpperLeg',
+    'RightUpperLeg': 'rightUpperLeg',
+    'LowerLeg_R': 'rightLowerLeg',
+    'RightLowerLeg': 'rightLowerLeg',
+    'Foot_R': 'rightFoot',
+    'RightFoot': 'rightFoot',
+    'Toes_R': 'rightToes',
+    'RightToes': 'rightToes',
+  };
+
+  // Retarget GLB clip from BVH naming to VRM normalized bones
+  const retargetGlbClip = useCallback((clip: THREE.AnimationClip, vrm: VRM): THREE.AnimationClip => {
+    const newTracks: THREE.KeyframeTrack[] = [];
+    let mapped = 0;
+    let skipped = 0;
+    
+    for (const track of clip.tracks) {
+      const dotIndex = track.name.indexOf('.');
+      if (dotIndex === -1) {
+        skipped++;
+        continue;
+      }
+      
+      const boneName = track.name.substring(0, dotIndex);
+      const property = track.name.substring(dotIndex + 1);
+      
+      // Skip position/scale tracks (only want rotation)
+      if (property === 'position' || property === 'scale') {
+        skipped++;
+        continue;
+      }
+      
+      // Map bone name
+      const vrmBoneName = bvhToVrmBoneMap[boneName];
+      if (!vrmBoneName) {
+        console.log(`[GLB Retarget] Unknown bone: ${boneName}`);
+        skipped++;
+        continue;
+      }
+      
+      // Get VRM normalized bone node
+      const vrmNode = vrm.humanoid?.getNormalizedBoneNode(vrmBoneName as any);
+      if (!vrmNode) {
+        console.log(`[GLB Retarget] No VRM bone for: ${vrmBoneName}`);
+        skipped++;
+        continue;
+      }
+      
+      // Clone track with new target name
+      const newTrack = track.clone();
+      newTrack.name = `${vrmNode.name}.${property}`;
+      newTracks.push(newTrack);
+      mapped++;
+    }
+    
+    console.log(`[GLB Retarget] Mapped: ${mapped}, Skipped: ${skipped}`);
+    return new THREE.AnimationClip(clip.name, clip.duration, newTracks);
+  }, [bvhToVrmBoneMap]);
+
+  // Play GLB clip with retargeting
+  const playGlbClipDirect = useCallback((clip: THREE.AnimationClip, vrm: VRM, fileName: string) => {
+    console.log('[GLB Test] Retargeting clip...');
+    
+    // Retarget from BVH naming to VRM
+    const retargetedClip = retargetGlbClip(clip, vrm);
+    
+    if (retargetedClip.tracks.length === 0) {
+      setGlbStatus('Error: No tracks after retarget');
+      setLastAction('GLB: Retarget produced 0 tracks');
+      return;
+    }
+    
+    // Stop any existing animation
+    if (fbxActionRef.current) {
+      fbxActionRef.current.stop();
+    }
+    
+    // Create mixer on normalized humanoid root
+    const mixerRoot = vrm.humanoid?.normalizedHumanBonesRoot || vrm.scene;
+    const mixer = new THREE.AnimationMixer(mixerRoot);
+    fbxMixerRef.current = mixer;
+    
+    // Create and play action
+    const action = mixer.clipAction(retargetedClip);
+    action.setLoop(THREE.LoopRepeat, Infinity);
+    action.play();
+    fbxActionRef.current = action;
+    
+    setGlbStatus(`Playing: ${fileName}`);
+    setLastAction(`GLB: ${retargetedClip.tracks.length} tracks, ${retargetedClip.duration.toFixed(1)}s`);
+  }, [retargetGlbClip]);
+
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
       {/* Header */}
@@ -407,7 +753,7 @@ function AvatarDebugPanel() {
               className="bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1 text-sm"
             >
               {availableModels.map((m) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
+                <option key={m.id} value={m.id}>{m.name}{m.version ? ` (${m.version})` : ''}</option>
               ))}
             </select>
           </div>
@@ -508,14 +854,26 @@ function AvatarDebugPanel() {
                   </div>
                   
                   <div>
-                    <label className="text-xs text-text-secondary">Voice ID (optional)</label>
-                    <input
-                      type="text"
-                      value={voiceId}
+                    <label className="text-xs text-text-secondary">Voice (ElevenLabs)</label>
+                    <select
+                      value={voiceId || ''}
                       onChange={(e) => setVoiceId(e.target.value)}
-                      placeholder="Leave empty for default"
-                      className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1 font-mono"
-                    />
+                      className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1 focus:border-accent focus:outline-none"
+                    >
+                      <option value="">
+                        {voicesLoading ? 'Loading voices...' : 'Default'}
+                      </option>
+                      {!voicesLoading && voiceId && !voiceOptions.some((voice) => voice.id === voiceId) && (
+                        <option value={voiceId}>
+                          Custom ({voiceId})
+                        </option>
+                      )}
+                      {voiceOptions.map((voice) => (
+                        <option key={voice.id} value={voice.id}>
+                          {voice.name} ({voice.id})
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   
                   <Button 
@@ -591,6 +949,63 @@ function AvatarDebugPanel() {
               </AccordionContent>
             </AccordionItem>
 
+            {/* Animation Upload Test */}
+            <AccordionItem value="anim-upload" className="border-bg-tertiary">
+              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
+                Animation Upload ⭐
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4">
+                  {/* FBX Upload */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-indigo-400">Mixamo FBX (vrm-mixamo-retarget)</div>
+                    <label className="flex items-center justify-center gap-2 bg-indigo-500/20 border border-dashed border-indigo-400/50 rounded-lg p-3 cursor-pointer hover:bg-indigo-500/30 transition-colors">
+                      <FileUp className="w-4 h-4 text-indigo-400" />
+                      <span className="text-sm text-indigo-300">{fbxStatus}</span>
+                      <input
+                        type="file"
+                        accept=".fbx"
+                        onChange={handleFbxFile}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                  
+                  {/* GLB Upload */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-green-400">GLB Animation (convert3d.org etc)</div>
+                    <label className="flex items-center justify-center gap-2 bg-green-500/20 border border-dashed border-green-400/50 rounded-lg p-3 cursor-pointer hover:bg-green-500/30 transition-colors">
+                      <FileUp className="w-4 h-4 text-green-400" />
+                      <span className="text-sm text-green-300">{glbStatus}</span>
+                      <input
+                        type="file"
+                        accept=".glb,.gltf"
+                        onChange={handleGlbFile}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                  
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={stopFbxAnimation} 
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                  >
+                    Stop Animation
+                  </Button>
+                  
+                  <div className="text-xs text-text-secondary space-y-1 bg-bg-tertiary p-2 rounded">
+                    <div className="font-semibold">Sources:</div>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      <li><strong>FBX:</strong> mixamo.com → Download FBX (With Skin)</li>
+                      <li><strong>GLB:</strong> convert3d.org/bvh-to-glb/app</li>
+                    </ul>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
             {/* Quick Actions */}
             <AccordionItem value="quick" className="border-bg-tertiary border-b-0">
               <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
@@ -638,6 +1053,17 @@ function AvatarDebugPanel() {
                     }}
                   >
                     🙇 Bow
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary bg-yellow-500/20"
+                    onClick={() => {
+                      (rendererRef.current?.animationPlayer as any)?.testDirectBone?.();
+                      setLastAction('Direct bone test');
+                    }}
+                  >
+                    🔧 Direct Bone Test
                   </Button>
                 </div>
               </AccordionContent>

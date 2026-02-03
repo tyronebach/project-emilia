@@ -17,6 +17,8 @@ interface AppContextType {
   // TTS
   ttsEnabled: boolean;
   setTtsEnabled: (enabled: boolean) => void;
+  ttsVoiceId: string;
+  setTtsVoiceId: (voiceId: string) => void;
   
   // Messages
   messages: Message[];
@@ -55,6 +57,8 @@ export function AppProvider({ children }: AppProviderProps) {
   const setStatus = useAppStore((state) => state.setStatus);
   const ttsEnabled = useAppStore((state) => state.ttsEnabled);
   const setTtsEnabled = useAppStore((state) => state.setTtsEnabled);
+  const ttsVoiceId = useAppStore((state) => state.ttsVoiceId);
+  const setTtsVoiceId = useAppStore((state) => state.setTtsVoiceId);
   const avatarState = useAppStore((state) => state.avatarState);
   const setAvatarState = useAppStore((state) => state.setAvatarState);
   const setAvatarRenderer = useAppStore((state) => state.setAvatarRenderer);
@@ -106,6 +110,8 @@ export function AppProvider({ children }: AppProviderProps) {
       // TTS
       ttsEnabled,
       setTtsEnabled,
+      ttsVoiceId,
+      setTtsVoiceId,
       
       // Messages
       messages,

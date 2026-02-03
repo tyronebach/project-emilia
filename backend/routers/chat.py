@@ -245,8 +245,8 @@ async def speak(
 
     voice_id = request.voice_id or settings.elevenlabs_voice_id
 
-    # Get agent-specific voice if available
-    if x_agent_id:
+    # Get agent-specific voice if available (unless explicitly overridden)
+    if x_agent_id and not request.voice_id:
         agent = db.get_agent(x_agent_id)
         if agent and agent.get("voice_id"):
             voice_id = agent["voice_id"]

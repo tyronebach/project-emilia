@@ -66,6 +66,13 @@ export class AvatarRenderer {
   }
 
   /**
+   * Get the loaded VRM model
+   */
+  getVRM(): VRM | null {
+    return this.vrm;
+  }
+
+  /**
    * Initialize renderer and scene
    */
   init(): boolean {

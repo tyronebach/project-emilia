@@ -20,6 +20,8 @@ interface AppState {
   // TTS
   ttsEnabled: boolean;
   setTtsEnabled: (enabled: boolean) => void;
+  ttsVoiceId: string;
+  setTtsVoiceId: (voiceId: string) => void;
 
   // Avatar
   avatarState: AvatarState | null;
@@ -59,6 +61,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     localStorage.setItem('emilia-tts-enabled', String(enabled));
     set({ ttsEnabled: enabled });
   },
+  ttsVoiceId: '',
+  setTtsVoiceId: (voiceId) => set({ ttsVoiceId: voiceId }),
 
   // Avatar
   avatarState: null,

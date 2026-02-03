@@ -38,6 +38,7 @@
     "react-hook-form": "^7.71.1",
     "tailwind-merge": "^3.4.0",
     "three": "^0.182.0",
+    "vrm-mixamo-retarget": "^1.0.3",
     "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },

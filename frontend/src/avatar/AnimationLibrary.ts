@@ -26,6 +26,7 @@ export class AnimationLibrary {
     'thinking': '/animations/thinking.glb',
     'surprised': '/animations/surprised.glb',
     'head_shake': '/animations/head_shake.glb',
+    'hip_hop': '/animations/hip_hop_dancing.glb',
   };
 
   constructor() {
