@@ -48,22 +48,22 @@ function ChatPanel() {
         variant="ghost"
         size="icon"
         onClick={() => setCollapsed(true)}
-        className="fixed bottom-[calc(33vh+5rem-2rem)] right-2 z-20 bg-black/60 hover:bg-black/70 rounded-full h-8 w-8"
+        className="fixed bottom-[calc(26vh+5rem-2rem)] right-2 z-20 bg-black/60 hover:bg-black/70 rounded-full h-8 w-8"
         title="Hide chat history"
       >
         <ChevronDown className="w-4 h-4" />
       </Button>
 
       {/* Chat panel with mask - 1/3 of screen height */}
-      <div 
-        className="absolute bottom-20 left-0 right-0 h-[33vh] z-10"
+      <div
+        className="absolute bottom-20 left-0 right-0 h-[26vh] z-10"
         style={{
           maskImage: 'linear-gradient(to top, black 60%, transparent 100%)',
           WebkitMaskImage: 'linear-gradient(to top, black 60%, transparent 100%)',
         }}
       >
         {/* Chat container with gradient background */}
-        <div 
+        <div
           className="h-full relative"
           style={{
             background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 50%, transparent 100%)',
