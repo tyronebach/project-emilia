@@ -36,7 +36,7 @@ class Settings:
         self.elevenlabs_model: str = os.getenv("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
 
         # Paths
-        agents_dir_str = os.getenv("CLAWDBOT_AGENTS_DIR", "/home/tbach/.clawdbot/agents")
+        agents_dir_str = os.getenv("CLAWDBOT_AGENTS_DIR", "/home/tbach/.openclaw/agents")
         self.clawdbot_agents_dir: Path = Path(agents_dir_str)
 
         # Validation
