@@ -9,6 +9,7 @@ interface UserState {
   currentAgent: Agent | null;
   setUser: (user: User | null) => void;
   setAgent: (agent: Agent | null) => void;
+  updatePreferences: (preferences: string) => void;
   logout: () => void;
 }
 
@@ -28,6 +29,13 @@ export const useUserStore = create<UserState>()(
         useAppStore.getState().clearSessionId();
         useChatStore.getState().clearMessages();
         set({ currentAgent: agent });
+      },
+      updatePreferences: (preferences) => {
+        set((state) => ({
+          currentUser: state.currentUser
+            ? { ...state.currentUser, preferences }
+            : state.currentUser,
+        }));
       },
       logout: () => {
         // Clear sessionId and messages on logout

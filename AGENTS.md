@@ -7,10 +7,10 @@ Instructions for Claude coding agents working on this project.
 | Item | Value |
 |------|-------|
 | Location | `/home/tbach/Projects/emilia-project/emilia-webapp` |
-| Version | 5.5.3 |
+| Version | 5.5.4 |
 | Frontend | React 19 + Vite + TanStack Router + Zustand |
 | Backend | FastAPI (modular routers) + SQLite |
-| Tests | Backend: 39, Frontend: 83 |
+| Tests | Backend: 40, Frontend: 83 |
 
 ## Read First
 
@@ -97,7 +97,8 @@ npm run lint                  # ESLint
 | Frontend | https://localhost:3443 |
 | Backend | http://localhost:8080 |
 | API Docs | http://localhost:8080/docs |
-| Settings | https://localhost:3443/settings |
+| Agent Settings | https://localhost:3443/manage |
+| User Settings | In-app modal (Drawer → User Settings) |
 
 ## Key Patterns
 
@@ -156,7 +157,7 @@ session_participants (session_id, user_id)
 | Problem | Solution |
 |---------|----------|
 | TTS 500 error | Check `websockets` version, use `additional_headers` not `extra_headers` |
-| Ad blocker blocks routes | Don't use "admin" in URLs, use "manage" or "settings" |
+| Ad blocker blocks routes | Don't use "admin" in URLs, use "manage" |
 | Session history empty | Check JSONL file exists in agent's sessions directory |
 | CORS errors | Check `ALLOWED_ORIGINS` in docker-compose.yml |
 

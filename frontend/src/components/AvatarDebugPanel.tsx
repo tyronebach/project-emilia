@@ -9,6 +9,7 @@ import { ArrowLeft, Play, Upload, RefreshCw, Mic, FileUp, Volume2 } from 'lucide
 import { useVoiceChat } from '../hooks/useVoiceChat';
 import { VoiceIndicator } from './VoiceIndicator';
 import { VoiceToggle } from './VoiceToggle';
+import { VoiceDebugTimeline, type VoiceDebugEntry } from './VoiceDebugTimeline';
 import { Button } from './ui/button';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './ui/accordion';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
@@ -91,6 +92,24 @@ function AvatarDebugPanel() {
   
   // Voice chat state
   const [voiceTranscript, setVoiceTranscript] = useState<string>('');
+  const [voiceDebugEvents, setVoiceDebugEvents] = useState<VoiceDebugEntry[]>([]);
+  const voiceEnabledRef = useRef<boolean | null>(null);
+
+  const MAX_VOICE_DEBUG_EVENTS = 80;
+
+  const addVoiceDebugEvent = useCallback((event: VoiceDebugEntry['event']) => {
+    const time = new Date().toLocaleTimeString();
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setVoiceDebugEvents((prev) => {
+      const next = [...prev, { id, time, event }];
+      return next.slice(-MAX_VOICE_DEBUG_EVENTS);
+    });
+  }, []);
+
+  const clearVoiceDebugEvents = useCallback(() => {
+    setVoiceDebugEvents([]);
+  }, []);
+
   const voiceChat = useVoiceChat({
     onTranscript: (text) => {
       setVoiceTranscript(text);
@@ -101,8 +120,22 @@ function AvatarDebugPanel() {
     onError: (error) => {
       setLastAction(`Voice Error: ${error.message}`);
     },
+    onDebugEvent: addVoiceDebugEvent,
     silenceTimeout: 15000, // 15s before returning to passive
+    autoResumeAfterTranscript: true,
   });
+
+  useEffect(() => {
+    if (voiceEnabledRef.current === null) {
+      voiceEnabledRef.current = voiceChat.isEnabled;
+      return;
+    }
+    if (voiceEnabledRef.current !== voiceChat.isEnabled) {
+      clearVoiceDebugEvents();
+      voiceEnabledRef.current = voiceChat.isEnabled;
+    }
+  }, [voiceChat.isEnabled, clearVoiceDebugEvents]);
+
 
   // Handle model switch
   const switchModel = useCallback(async (modelId: string) => {
@@ -742,7 +775,7 @@ function AvatarDebugPanel() {
     <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
       {/* Header */}
       <header className="flex items-center gap-3 p-4 border-b border-bg-tertiary shrink-0">
-        <Button variant="ghost" size="icon" onClick={() => navigate({ to: '/settings' })}>
+        <Button variant="ghost" size="icon" onClick={() => navigate({ to: '/manage' })}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <h1 className="text-lg font-semibold">Avatar Debug Panel</h1>
@@ -978,6 +1011,13 @@ function AvatarDebugPanel() {
                       <div className="text-sm text-text-primary">{voiceTranscript}</div>
                     </div>
                   )}
+
+                  <VoiceDebugTimeline
+                    entries={voiceDebugEvents}
+                    onClear={clearVoiceDebugEvents}
+                    className="max-h-72 overflow-hidden"
+                    listHeightClass="h-40"
+                  />
                   
                   {/* Info */}
                   <div className="text-xs text-text-secondary space-y-1 bg-bg-tertiary p-2 rounded">
@@ -986,6 +1026,7 @@ function AvatarDebugPanel() {
                       <li>Enable Voice → starts wake word listener (mocked)</li>
                       <li>Click "Start Listening" → activates VAD + STT</li>
                       <li>Speak, pause → VAD detects silence → STT transcribes</li>
+                      <li>Audio sent to backend `/api/transcribe`</li>
                       <li>Transcript logged (would send to /api/chat)</li>
                     </ol>
                   </div>

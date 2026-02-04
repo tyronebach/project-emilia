@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { X, Plus, MessageSquare, User, Sparkles, Volume2, VolumeX, MoreVertical, Pencil, Trash2, Settings } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { X, Plus, MessageSquare, User, Sparkles, MoreVertical, Pencil, Trash2, Settings } from 'lucide-react';
 import { useSession } from '../hooks/useSession';
 import { useUserStore } from '../store/userStore';
 import { renameSession as renameSessionApi } from '../utils/api';
@@ -12,11 +11,11 @@ import { ScrollArea } from './ui/scroll-area';
 interface DrawerProps {
   open: boolean;
   onClose: () => void;
+  onOpenUserSettings: () => void;
 }
 
-function Drawer({ open, onClose }: DrawerProps) {
+function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
   const navigate = useNavigate();
-  const { ttsEnabled, setTtsEnabled } = useApp();
   const { sessions, sessionId, fetchSessions, deleteSession, isLoading } = useSession();
   const currentUser = useUserStore((state) => state.currentUser);
   const currentAgent = useUserStore((state) => state.currentAgent);
@@ -210,24 +209,6 @@ function Drawer({ open, onClose }: DrawerProps) {
             Select Character
           </Button>
 
-          {/* TTS Toggle */}
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10"
-            onClick={() => setTtsEnabled(!ttsEnabled)}
-          >
-            {ttsEnabled ? (
-              <>
-                <Volume2 className="w-4 h-4" />
-                TTS Enabled
-              </>
-            ) : (
-              <>
-                <VolumeX className="w-4 h-4" />
-                TTS Disabled
-              </>
-            )}
-          </Button>
         </div>
 
         {/* New Session Button - transparent background */}
@@ -326,14 +307,14 @@ function Drawer({ open, onClose }: DrawerProps) {
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-text-secondary hover:text-text-primary hover:bg-white/10 h-auto py-3"
-            onClick={() => {/* TODO: open user settings */}}
+            onClick={onOpenUserSettings}
           >
             <Settings className="w-5 h-5 shrink-0" />
             <div className="flex flex-col items-start">
               <span className="text-sm font-medium text-text-primary">
                 {currentUser?.display_name || 'User'}
               </span>
-              <span className="text-xs text-text-secondary">Settings</span>
+              <span className="text-xs text-text-secondary">User Settings</span>
             </div>
           </Button>
         </div>

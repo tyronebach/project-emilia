@@ -7,7 +7,9 @@ Usage:
     python tests/test_transcribe_manual.py
 """
 import io
-import requests
+import pytest
+
+requests = pytest.importorskip("requests")
 
 def test_transcribe_with_backend():
     """Test transcribe endpoint with actual backend (if running)"""

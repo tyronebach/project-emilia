@@ -2,7 +2,7 @@
 Pydantic request models for API endpoints.
 """
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 class ChatRequest(BaseModel):
@@ -80,3 +80,8 @@ class AgentUpdate(BaseModel):
     def strip_strings(cls, v: Optional[str]) -> Optional[str]:
         """Strip whitespace from string fields."""
         return v.strip() if v else None
+
+
+class UserPreferencesUpdate(BaseModel):
+    """Update user preferences."""
+    preferences: Dict[str, Any] = Field(default_factory=dict, description="Preferences to merge")

@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { getUser, getSessions } from '../utils/api';
 import { useUserStore } from '../store/userStore';
+import { useAppStore } from '../store';
 import type { Agent } from '../utils/api';
 
 interface AgentSelectionProps {
@@ -14,6 +15,8 @@ function AgentSelection({ userId }: AgentSelectionProps) {
   const navigate = useNavigate();
   const setUser = useUserStore((state) => state.setUser);
   const setAgent = useUserStore((state) => state.setAgent);
+  const setHandsFreeEnabled = useAppStore((state) => state.setHandsFreeEnabled);
+  const setTtsEnabled = useAppStore((state) => state.setTtsEnabled);
 
   const { data: userData, isLoading, error } = useQuery({
     queryKey: ['user', userId],
@@ -30,6 +33,19 @@ function AgentSelection({ userId }: AgentSelectionProps) {
         display_name: userData.display_name,
         preferences: userData.preferences,
       });
+      if (userData.preferences) {
+        try {
+          const parsed = JSON.parse(userData.preferences);
+          setHandsFreeEnabled(Boolean(parsed?.voice_hands_free));
+          setTtsEnabled(Boolean(parsed?.tts_enabled));
+        } catch {
+          setHandsFreeEnabled(false);
+          setTtsEnabled(false);
+        }
+      } else {
+        setHandsFreeEnabled(false);
+        setTtsEnabled(false);
+      }
     }
     setAgent(agent);
 

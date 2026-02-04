@@ -5,13 +5,16 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { VoiceService, VoiceState } from '../services/VoiceService';
+import { VoiceService, VoiceState, VoiceDebugEvent } from '../services/VoiceService';
 
 interface UseVoiceChatConfig {
   onTranscript: (text: string) => void;
   onError?: (error: Error) => void;
   silenceTimeout?: number;
   returnToPassiveAfterSpeaking?: boolean;
+  onDebugEvent?: (event: VoiceDebugEvent) => void;
+  autoResumeAfterTranscript?: boolean;
+  onMicPermissionDenied?: () => void;
 }
 
 interface UseVoiceChatReturn {
@@ -63,8 +66,10 @@ export function useVoiceChat(config: UseVoiceChatConfig): UseVoiceChatReturn {
           configRef.current.onError?.(error);
         },
         onInterimTranscript: setInterimTranscript,
+        onDebug: (event) => configRef.current.onDebugEvent?.(event),
         silenceTimeout: configRef.current.silenceTimeout ?? 10000,
         returnToPassiveAfterSpeaking: configRef.current.returnToPassiveAfterSpeaking ?? false,
+        autoResumeAfterTranscript: configRef.current.autoResumeAfterTranscript ?? false,
       });
       
       await service.start();
@@ -74,6 +79,12 @@ export function useVoiceChat(config: UseVoiceChatConfig): UseVoiceChatReturn {
       
       console.log('[useVoiceChat] Voice enabled');
     } catch (error) {
+      if (error instanceof Error) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes('notallowed') || msg.includes('permission')) {
+          configRef.current.onMicPermissionDenied?.();
+        }
+      }
       console.error('[useVoiceChat] Failed to enable:', error);
       configRef.current.onError?.(error as Error);
     }
@@ -125,8 +136,11 @@ export function useVoiceChat(config: UseVoiceChatConfig): UseVoiceChatReturn {
   }, []);
 
   // Check STT support
-  const isSupported = typeof window !== 'undefined' && 
-    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+  const hasAudioContext = typeof window !== 'undefined' &&
+    ((window as any).AudioContext || (window as any).webkitAudioContext);
+  const isSupported = typeof window !== 'undefined' &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    !!hasAudioContext;
 
   return {
     voiceState,

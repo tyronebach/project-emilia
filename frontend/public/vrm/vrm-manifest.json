@@ -2,86 +2,103 @@
   {
     "id": "emilia.vrm",
     "name": "Emilia",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "8kgj5469z1URcH4MB2G4"
   },
   {
     "id": "rem.vrm",
     "name": "Rem",
-    "version": "1.0"
+    "version": "1.0",
+    "voiceId": "bIQlQ61Q7WgbyZAL7IWj"
   },
   {
     "id": "aliciaSolid.vrm",
     "name": "Alicia Solid",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "gJx1vCzNCD1EQHT212Ls"
   },
   {
     "id": "amaneKanata.vrm",
     "name": "Amane Kanata",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "cgSgspJ2msm6clMCkdW9"
   },
   {
     "id": "blueArchive_azusa_02.vrm",
     "name": "Blue Archive Azusa",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "XmkP4ugZRJ4VBqed7xUy"
   },
   {
     "id": "blueArchive_eimi_02.vrm",
     "name": "Blue Archive Eimi",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "sxH2N6FTPv4U4mprqpPT"
   },
   {
     "id": "blueArchive_hoshino_02.vrm",
     "name": "Blue Archive Hoshino",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "pFZP5JQG7iQjIQuC4Bku"
   },
   {
     "id": "blueArchive_shiroko_02.vrm",
     "name": "Blue Archive Shiroko",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "TX3LPaxmHKxFdv7VOQHJ"
   },
   {
     "id": "insideChan.vrm",
     "name": "Inside-chan",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "FGY2WhTYpPnrIDTdsKH5"
   },
   {
     "id": "miraiKomachi.vrm",
     "name": "Mirai Komachi",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "Xb7hH8MSUJpSbSDYk0k2"
   },
   {
     "id": "momosuzuNene.vrm",
     "name": "Momosuzu Nene",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "EXAVITQu4vr4xnSDxMaL"
   },
   {
     "id": "mysteryAvatar_01.vrm",
     "name": "Mystery Avatar",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "aNbkilGhyobTGU30Icdh"
   },
   {
     "id": "ryu_D.vrm",
     "name": "Ryu D",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "IKne3meq5aSn9XLyUdCD"
   },
   {
     "id": "shachikuChan_v1_0.vrm",
     "name": "Shachiku-chan",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "pNInz6obpgDQGcFmaJgB"
   },
   {
     "id": "tomaru_hatsuneMikuNT_v1_0_1.vrm",
     "name": "Hatsune Miku NT",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "SOYHLrjzK2X1ezoPC6cr"
   },
   {
     "id": "tsukuyomiChan_01.vrm",
     "name": "Tsukuyomi-chan",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "LTxbNvC5qggK4pAuYohI"
   },
   {
     "id": "vjTakagi.vrm",
     "name": "VJ Takagi",
-    "version": "0.x"
+    "version": "0.x",
+    "voiceId": "onwK4e9ZLuTAKqWW03F9"
   }
 ]

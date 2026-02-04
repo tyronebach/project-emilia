@@ -4,6 +4,47 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.5.4] - 2026-02-04
+
+### Added - Hands‑Free Voice in Main Chat 🎙️
+
+#### Voice Input Pipeline
+- **Hands‑Free Mode** - VAD + backend STT now runs in the main chat flow (no Web Speech API)
+- **Auto Pause/Resume** - Mic pauses during `thinking`/`speaking` and resumes on `ready`
+- **Debug Timeline** - Shared voice debug timeline with timestamps and STT/VAD events
+- **Push‑To‑Talk Removed** - Hands‑free is the only supported input mode
+
+#### User Preferences
+- **User Settings Modal** - Hands‑free + TTS toggles persisted to user preferences
+- **Preferences API** - PATCH `/api/users/{user_id}/preferences` merges JSON preferences
+- **Route Separation** - Agent settings live at `/manage`; user settings are in‑app only
+
+#### Testing + DX
+- **Test DB Isolation** - `EMILIA_SEED_DATA=0` disables seeding and `/tmp` DB is used in tests
+- **Async Test Client** - Backend API tests use `httpx.AsyncClient` to avoid Python 3.14 TestClient hang
+- **Manual Transcribe Test** - Requests dependency is optional (skipped if missing)
+
+#### Files Modified
+- `frontend/src/services/VoiceService.ts` - Backend STT WAV upload + state handling
+- `frontend/src/services/VoiceActivityDetector.ts` - Bundle VAD initialization
+- `frontend/src/hooks/useVoiceChat.ts` - Voice control wrapper
+- `frontend/src/App.tsx` - Hands‑free wiring, pause/resume, debug events
+- `frontend/src/components/VoiceDebugTimeline.tsx` - Reusable debug list
+- `frontend/src/components/DebugPanel.tsx` - View‑only voice debug timeline
+- `frontend/src/components/UserSettingsModal.tsx` - New modal (hands‑free + TTS)
+- `frontend/src/store/index.ts` - Hands‑free state
+- `frontend/src/utils/api.ts` - Preferences update API
+- `backend/routers/users.py` - Preferences patch endpoint
+- `backend/db/repositories/users.py` - Preferences update
+- `backend/db/connection.py` - Seeding guard via env var
+- `backend/tests/test_api.py` - Async client + updated tests
+- `backend/tests/conftest.py` - Test DB + seeding disabled
+- `backend/tests/test_transcribe_manual.py` - Optional requests import
+
+#### Test Results
+- **Frontend tests**: 83/83 passing ✅
+- **Backend tests**: 40/40 passing, 1 skipped ✅
+
 ## [5.5.3] - 2026-02-03
 
 ### Fixed - Frontend Robustness 🛡️
@@ -15,7 +56,7 @@ All notable changes to Emilia Web App will be documented in this file.
 
 #### Audio + Routing Reliability
 - **Audio Cleanup** - TTS and replay audio now stop on unmount and revoke object URLs to prevent leaks
-- **Settings Navigation** - Routes directly to `/settings` (avoids ad blocker issues with `/admin`)
+- **Settings Navigation** - Agent settings route is `/manage` (avoids ad blocker issues with `/admin`)
 - **STT Auth Consistency** - Transcription calls now reuse shared auth headers and context IDs
 
 #### Avatar Asset Management

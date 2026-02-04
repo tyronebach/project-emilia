@@ -36,6 +36,16 @@ class UserRepository:
         return UserRepository.get_by_id(user_id)
 
     @staticmethod
+    def update_preferences(user_id: str, preferences: str) -> Optional[dict]:
+        """Update user preferences JSON string."""
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE users SET preferences = ? WHERE id = ?",
+                (preferences, user_id)
+            )
+        return UserRepository.get_by_id(user_id)
+
+    @staticmethod
     def get_agents(user_id: str) -> list[dict]:
         """Get all agents accessible to user."""
         with get_db() as conn:

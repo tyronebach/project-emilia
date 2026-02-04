@@ -13,10 +13,13 @@ function RootComponent() {
 function NotFound() {
   const navigate = useNavigate();
 
-  // Redirect /admin to /settings
+  // Redirect /admin to /manage
   useEffect(() => {
     if (window.location.pathname === '/admin') {
-      navigate({ to: '/settings', replace: true });
+      navigate({ to: '/manage', replace: true });
+    }
+    if (window.location.pathname === '/settings') {
+      navigate({ to: '/', replace: true });
     }
   }, [navigate]);
 

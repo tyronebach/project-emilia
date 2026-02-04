@@ -16,14 +16,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("CLAWDBOT_TOKEN", "test-token-for-testing")
 os.environ.setdefault("AUTH_ALLOW_DEV_TOKEN", "1")
 os.environ.setdefault("ELEVENLABS_API_KEY", "test-elevenlabs-key")
+os.environ.setdefault("EMILIA_DB_PATH", "/tmp/emilia_test.db")
+os.environ.setdefault("EMILIA_SEED_DATA", "0")
 
 
 @pytest.fixture
-def test_client():
-    """Create a TestClient for the FastAPI app."""
-    from fastapi.testclient import TestClient
+async def test_client():
+    """Create an AsyncClient for the FastAPI app."""
+    import httpx
+    from httpx import ASGITransport
     from main import app
-    return TestClient(app)
+
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
 
 
 @pytest.fixture

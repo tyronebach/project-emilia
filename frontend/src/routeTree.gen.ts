@@ -9,7 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ManageRouteImport } from './routes/manage'
 import { Route as DebugRouteImport } from './routes/debug'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UserUserIdRouteImport } from './routes/user/$userId'
@@ -18,9 +18,9 @@ import { Route as UserUserIdChatNewRouteImport } from './routes/user/$userId/cha
 import { Route as UserUserIdChatSessionIdRouteImport } from './routes/user/$userId/chat.$sessionId'
 import { Route as UserUserIdChatInitializingSessionIdRouteImport } from './routes/user/$userId/chat.initializing.$sessionId'
 
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
+const ManageRoute = ManageRouteImport.update({
+  id: '/manage',
+  path: '/manage',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DebugRoute = DebugRouteImport.update({
@@ -63,7 +63,7 @@ const UserUserIdChatInitializingSessionIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/debug': typeof DebugRoute
-  '/settings': typeof SettingsRoute
+  '/manage': typeof ManageRoute
   '/user/$userId': typeof UserUserIdRouteWithChildren
   '/user/$userId/': typeof UserUserIdIndexRoute
   '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
@@ -73,7 +73,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/debug': typeof DebugRoute
-  '/settings': typeof SettingsRoute
+  '/manage': typeof ManageRoute
   '/user/$userId': typeof UserUserIdIndexRoute
   '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
@@ -83,7 +83,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/debug': typeof DebugRoute
-  '/settings': typeof SettingsRoute
+  '/manage': typeof ManageRoute
   '/user/$userId': typeof UserUserIdRouteWithChildren
   '/user/$userId/': typeof UserUserIdIndexRoute
   '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
@@ -95,7 +95,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/debug'
-    | '/settings'
+    | '/manage'
     | '/user/$userId'
     | '/user/$userId/'
     | '/user/$userId/chat/$sessionId'
@@ -105,7 +105,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/debug'
-    | '/settings'
+    | '/manage'
     | '/user/$userId'
     | '/user/$userId/chat/$sessionId'
     | '/user/$userId/chat/new'
@@ -114,7 +114,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/debug'
-    | '/settings'
+    | '/manage'
     | '/user/$userId'
     | '/user/$userId/'
     | '/user/$userId/chat/$sessionId'
@@ -125,17 +125,17 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DebugRoute: typeof DebugRoute
-  SettingsRoute: typeof SettingsRoute
+  ManageRoute: typeof ManageRoute
   UserUserIdRoute: typeof UserUserIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
+    '/manage': {
+      id: '/manage'
+      path: '/manage'
+      fullPath: '/manage'
+      preLoaderRoute: typeof ManageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/debug': {
@@ -212,7 +212,7 @@ const UserUserIdRouteWithChildren = UserUserIdRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DebugRoute: DebugRoute,
-  SettingsRoute: SettingsRoute,
+  ManageRoute: ManageRoute,
   UserUserIdRoute: UserUserIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport
