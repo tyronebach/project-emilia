@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Agent, User } from '../utils/api';
 import { useAppStore } from './index';
+import { useChatStore } from './chatStore';
 
 interface UserState {
   currentUser: User | null;
@@ -17,18 +18,21 @@ export const useUserStore = create<UserState>()(
       currentUser: null,
       currentAgent: null,
       setUser: (user) => {
-        // Clear sessionId when user changes
+        // Clear sessionId and messages when user changes
         useAppStore.getState().clearSessionId();
+        useChatStore.getState().clearMessages();
         set({ currentUser: user });
       },
       setAgent: (agent) => {
-        // Clear sessionId when agent changes
+        // Clear sessionId and messages when agent changes
         useAppStore.getState().clearSessionId();
+        useChatStore.getState().clearMessages();
         set({ currentAgent: agent });
       },
       logout: () => {
-        // Clear sessionId on logout
+        // Clear sessionId and messages on logout
         useAppStore.getState().clearSessionId();
+        useChatStore.getState().clearMessages();
         set({ currentUser: null, currentAgent: null });
       },
     }),

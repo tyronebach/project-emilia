@@ -151,10 +151,9 @@ export function useSession() {
   }, [currentAgent?.id, fetchSessions]);
 
   // Load history when sessionId changes (but not for empty/new sessions)
-  // Skip if messages already exist (e.g., navigating from InitializingPage with in-progress chat)
+  // Always fetch - don't skip based on existing messages (they may be stale from another agent)
   useEffect(() => {
-    const currentMessages = useChatStore.getState().messages;
-    if (sessionId && sessionId !== '' && currentMessages.length === 0) {
+    if (sessionId && sessionId !== '') {
       fetchHistory(sessionId);
     }
   }, [sessionId, fetchHistory]);
