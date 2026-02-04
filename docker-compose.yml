@@ -23,6 +23,7 @@ services:
     volumes:
       - /home/tbach/clawd-agents:/home/tbach/clawd-agents:rw
       - ./data:/data:rw
+      - /home/tbach/.openclaw/agents:/home/tbach/.openclaw/agents:ro
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]

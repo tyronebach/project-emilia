@@ -81,6 +81,13 @@ export function useSession() {
         meta: {},
       }));
 
+      // Don't overwrite if chatStore already has MORE messages than backend
+      // This prevents wiping out messages from InitializingPage that haven't been persisted yet
+      const currentMessages = useChatStore.getState().messages;
+      if (currentMessages.length > messages.length) {
+        return currentMessages;
+      }
+
       setMessages(messages);
       return messages;
     } catch (error) {

@@ -4,6 +4,33 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.5.5] - 2026-02-04
+
+### Fixed - Session State Management 🔧
+
+#### Bug Fixes
+- **Chat history cross-contamination** - Switching between agents no longer shows wrong agent's history
+- **Blank history on refresh** - History now loads correctly after page refresh
+- **Stale closure in fetchHistory** - Added `currentAgent?.id` to dependency array
+- **Race condition on init** - Added guard to wait for agent hydration before fetching history
+- **History overwrite on new chat** - fetchHistory no longer overwrites messages from InitializingPage
+- **Messages cleared prematurely** - App.tsx only clears messages when sessionId actually changes
+
+#### Infrastructure
+- **Docker volume mount** - Added `~/.openclaw/agents` mount for backend to read session JSONL files
+
+#### Files Modified
+- `docker-compose.yml` - Added OpenClaw agents directory volume mount
+- `frontend/src/App.tsx` - Conditional message clearing on session change
+- `frontend/src/components/InitializingPage.tsx` - Small delay before navigation to ensure store sync
+- `frontend/src/hooks/useSession.ts` - Fixed deps, agent validation, skip-overwrite logic
+
+#### Test Results
+- **Frontend tests**: 83/83 passing ✅
+- **Backend tests**: 40/40 passing ✅
+
+---
+
 ## [5.5.4] - 2026-02-04
 
 ### Added - Hands‑Free Voice in Main Chat 🎙️

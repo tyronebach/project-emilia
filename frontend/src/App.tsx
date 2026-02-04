@@ -49,8 +49,11 @@ function App({ userId, sessionId }: AppProps) {
 
   // Sync sessionId from route to store
   useEffect(() => {
-    // Clear stale messages before syncing new session
-    useChatStore.getState().clearMessages();
+    const currentStoreSessionId = useAppStore.getState().sessionId;
+    // Only clear messages if sessionId actually changed (not on initial mount with same ID)
+    if (currentStoreSessionId && currentStoreSessionId !== sessionId) {
+      useChatStore.getState().clearMessages();
+    }
     setSessionId(sessionId);
   }, [sessionId, setSessionId]);
 
