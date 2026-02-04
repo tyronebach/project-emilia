@@ -7,18 +7,18 @@ services:
     network_mode: host
 
     env_file:
-      - /home/tbach/.clawdbot/secrets.env
+      - /home/tbach/.openclaw/secrets.env
 
     environment:
       - STT_SERVICE_URL=http://192.168.88.252:8765
       - CLAWDBOT_URL=http://127.0.0.1:18789
-      - CLAWDBOT_TOKEN=${CLAWDBOT_GATEWAY_TOKEN}
+      - CLAWDBOT_TOKEN=REDACTED
       - AUTH_TOKEN=emilia-dev-token-2026
       - AUTH_ALLOW_DEV_TOKEN=1
       - ALLOWED_ORIGINS=http://localhost:3000,http://192.168.88.237:3000,https://localhost:3443,https://192.168.88.237:3443
       - ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
       - ELEVENLABS_MODEL=eleven_turbo_v2_5
-      - CLAWDBOT_AGENTS_DIR=/home/tbach/clawd-agents
+      - CLAWDBOT_AGENTS_DIR=/home/tbach/.openclaw/agents
 
     volumes:
       - /home/tbach/clawd-agents:/home/tbach/clawd-agents:rw

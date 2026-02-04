@@ -36,7 +36,7 @@ class ClawdbotService:
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 payload = {
-                    "model": "clawdbot",
+                    "model": f"agent:{agent_id}",
                     "messages": [{"role": "user", "content": message}],
                     "stream": stream,
                     "user": session_id
@@ -46,8 +46,7 @@ class ClawdbotService:
                     f"{settings.clawdbot_url}/v1/chat/completions",
                     headers={
                         "Authorization": f"Bearer {settings.clawdbot_token}",
-                        "Content-Type": "application/json",
-                        "x-clawdbot-agent-id": agent_id
+                        "Content-Type": "application/json"
                     },
                     json=payload
                 )
@@ -89,7 +88,7 @@ class ClawdbotService:
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
                 payload = {
-                    "model": "clawdbot",
+                    "model": f"agent:{agent_id}",
                     "messages": [{"role": "user", "content": message}],
                     "stream": True,
                     "stream_options": {"include_usage": True},
@@ -101,8 +100,7 @@ class ClawdbotService:
                     f"{settings.clawdbot_url}/v1/chat/completions",
                     headers={
                         "Authorization": f"Bearer {settings.clawdbot_token}",
-                        "Content-Type": "application/json",
-                        "x-clawdbot-agent-id": agent_id
+                        "Content-Type": "application/json"
                     },
                     json=payload
                 ) as response:

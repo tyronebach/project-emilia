@@ -67,7 +67,7 @@ async def chat(
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             payload = {
-                "model": "clawdbot",
+                "model": f"agent:{clawdbot_agent_id}",
                 "messages": [{"role": "user", "content": request.message}],
                 "stream": False,
                 "user": session_id
@@ -77,8 +77,7 @@ async def chat(
                 f"{settings.clawdbot_url}/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {settings.clawdbot_token}",
-                    "Content-Type": "application/json",
-                    "x-clawdbot-agent-id": clawdbot_agent_id
+                    "Content-Type": "application/json"
                 },
                 json=payload
             )
@@ -115,7 +114,7 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             payload = {
-                "model": "clawdbot",
+                "model": f"agent:{clawdbot_agent_id}",
                 "messages": [{"role": "user", "content": request.message}],
                 "stream": True,
                 "stream_options": {"include_usage": True},
@@ -127,8 +126,7 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                 f"{settings.clawdbot_url}/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {settings.clawdbot_token}",
-                    "Content-Type": "application/json",
-                    "x-clawdbot-agent-id": clawdbot_agent_id
+                    "Content-Type": "application/json"
                 },
                 json=payload
             ) as response:
