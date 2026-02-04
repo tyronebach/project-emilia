@@ -5,7 +5,10 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, Play, Upload, RefreshCw, Mic, FileUp } from 'lucide-react';
+import { ArrowLeft, Play, Upload, RefreshCw, Mic, FileUp, Volume2 } from 'lucide-react';
+import { useVoiceChat } from '../hooks/useVoiceChat';
+import { VoiceIndicator } from './VoiceIndicator';
+import { VoiceToggle } from './VoiceToggle';
 import { Button } from './ui/button';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './ui/accordion';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
@@ -85,6 +88,21 @@ function AvatarDebugPanel() {
   const [glbStatus, setGlbStatus] = useState<string>('Upload GLB Animation');
   const fbxMixerRef = useRef<THREE.AnimationMixer | null>(null);
   const fbxActionRef = useRef<THREE.AnimationAction | null>(null);
+  
+  // Voice chat state
+  const [voiceTranscript, setVoiceTranscript] = useState<string>('');
+  const voiceChat = useVoiceChat({
+    onTranscript: (text) => {
+      setVoiceTranscript(text);
+      setLastAction(`Voice: "${text.slice(0, 30)}..."`);
+      console.log('[Voice] Transcript:', text);
+      // In real app, this would send to /api/chat
+    },
+    onError: (error) => {
+      setLastAction(`Voice Error: ${error.message}`);
+    },
+    silenceTimeout: 15000, // 15s before returning to passive
+  });
 
   // Handle model switch
   const switchModel = useCallback(async (modelId: string) => {
@@ -920,6 +938,56 @@ function AvatarDebugPanel() {
                     ) : (
                       <div className="text-red-400">✗ No alignment data</div>
                     )}
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Voice Chat Test */}
+            <AccordionItem value="voice-chat" className="border-bg-tertiary">
+              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
+                <span className="flex items-center gap-2">
+                  <Volume2 className="w-4 h-4" />
+                  Hands-Free Voice ⭐
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4">
+                  {/* State indicator */}
+                  <VoiceIndicator 
+                    state={voiceChat.voiceState} 
+                    transcript={voiceChat.interimTranscript}
+                  />
+                  
+                  {/* Controls */}
+                  <VoiceToggle
+                    isEnabled={voiceChat.isEnabled}
+                    isSupported={voiceChat.isSupported}
+                    state={voiceChat.voiceState}
+                    onEnable={voiceChat.enableVoice}
+                    onDisable={voiceChat.disableVoice}
+                    onActivate={voiceChat.activate}
+                    onDeactivate={voiceChat.deactivate}
+                    onCancel={voiceChat.cancel}
+                  />
+                  
+                  {/* Last transcript */}
+                  {voiceTranscript && (
+                    <div className="p-3 bg-bg-tertiary rounded-lg">
+                      <div className="text-xs text-text-secondary mb-1">Last Transcript:</div>
+                      <div className="text-sm text-text-primary">{voiceTranscript}</div>
+                    </div>
+                  )}
+                  
+                  {/* Info */}
+                  <div className="text-xs text-text-secondary space-y-1 bg-bg-tertiary p-2 rounded">
+                    <div className="font-semibold">How it works:</div>
+                    <ol className="list-decimal list-inside space-y-0.5">
+                      <li>Enable Voice → starts wake word listener (mocked)</li>
+                      <li>Click "Start Listening" → activates VAD + STT</li>
+                      <li>Speak, pause → VAD detects silence → STT transcribes</li>
+                      <li>Transcript logged (would send to /api/chat)</li>
+                    </ol>
                   </div>
                 </div>
               </AccordionContent>
