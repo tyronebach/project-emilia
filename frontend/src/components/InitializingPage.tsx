@@ -94,6 +94,9 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
 
         // Fire and forget - don't block navigation on response/TTS
         sendMessage(greeting);
+        
+        // Small delay to ensure assistant placeholder is added before navigation
+        await new Promise(resolve => setTimeout(resolve, 50));
 
         console.log('[InitializingPage] Greeting sent, navigating to chat');
 
