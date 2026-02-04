@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { X, Plus, MessageSquare, User, Sparkles, MoreVertical, Pencil, Trash2, Settings } from 'lucide-react';
 import { useSession } from '../hooks/useSession';
 import { useUserStore } from '../store/userStore';
+import { useChatStore } from '../store/chatStore';
 import { renameSession as renameSessionApi } from '../utils/api';
 import { formatSessionName } from '../utils/helpers';
 import { Button } from './ui/button';
@@ -67,8 +68,15 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
   };
 
   const handleSwitchSession = async (sid: string) => {
-    if (sid !== sessionId && currentUser?.id) {
-      // Navigate to the new session URL
+    if (sid === sessionId) {
+      onClose();
+      return;
+    }
+
+    // Clear messages immediately to prevent stale display
+    useChatStore.getState().clearMessages();
+
+    if (currentUser?.id) {
       navigate({
         to: '/user/$userId/chat/$sessionId',
         params: { userId: currentUser.id, sessionId: sid }

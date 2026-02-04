@@ -2,103 +2,163 @@
   {
     "id": "emilia.vrm",
     "name": "Emilia",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "8kgj5469z1URcH4MB2G4"
   },
   {
     "id": "rem.vrm",
     "name": "Rem",
-    "version": "1.0",
+    "version": "1",
     "voiceId": "bIQlQ61Q7WgbyZAL7IWj"
   },
   {
     "id": "aliciaSolid.vrm",
     "name": "Alicia Solid",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "gJx1vCzNCD1EQHT212Ls"
   },
   {
     "id": "amaneKanata.vrm",
     "name": "Amane Kanata",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "cgSgspJ2msm6clMCkdW9"
+  },
+  {
+    "id": "ba_azusa_02.vrm",
+    "name": "ba azusa 02",
+    "version": "0",
+    "voiceId": "gNLojYp5VOiuqC8CTCmi"
+  },
+  {
+    "id": "ba_eimi_vrm_02.vrm",
+    "name": "ba eimi vrm 02",
+    "version": "0",
+    "voiceId": "gNLojYp5VOiuqC8CTCmi"
   },
   {
     "id": "blueArchive_azusa_02.vrm",
     "name": "Blue Archive Azusa",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "XmkP4ugZRJ4VBqed7xUy"
   },
   {
     "id": "blueArchive_eimi_02.vrm",
     "name": "Blue Archive Eimi",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "sxH2N6FTPv4U4mprqpPT"
   },
   {
     "id": "blueArchive_hoshino_02.vrm",
     "name": "Blue Archive Hoshino",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "pFZP5JQG7iQjIQuC4Bku"
   },
   {
     "id": "blueArchive_shiroko_02.vrm",
     "name": "Blue Archive Shiroko",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "TX3LPaxmHKxFdv7VOQHJ"
   },
   {
     "id": "insideChan.vrm",
     "name": "Inside-chan",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "FGY2WhTYpPnrIDTdsKH5"
+  },
+  {
+    "id": "ken_D.vrm",
+    "name": "ken D",
+    "version": "0",
+    "voiceId": "gNLojYp5VOiuqC8CTCmi"
+  },
+  {
+    "id": "laplusDarkness_01.vrm",
+    "name": "laplus Darkness 01",
+    "version": "0",
+    "voiceId": "gNLojYp5VOiuqC8CTCmi"
+  },
+  {
+    "id": "laplusDarkness_02.vrm",
+    "name": "laplus Darkness 02",
+    "version": "0",
+    "voiceId": "gNLojYp5VOiuqC8CTCmi"
   },
   {
     "id": "miraiKomachi.vrm",
     "name": "Mirai Komachi",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "Xb7hH8MSUJpSbSDYk0k2"
   },
   {
     "id": "momosuzuNene.vrm",
     "name": "Momosuzu Nene",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "EXAVITQu4vr4xnSDxMaL"
   },
   {
     "id": "mysteryAvatar_01.vrm",
     "name": "Mystery Avatar",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "aNbkilGhyobTGU30Icdh"
+  },
+  {
+    "id": "nekomataOkayu.vrm",
+    "name": "nekomata Okayu",
+    "version": "0",
+    "voiceId": "gNLojYp5VOiuqC8CTCmi"
   },
   {
     "id": "ryu_D.vrm",
     "name": "Ryu D",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "IKne3meq5aSn9XLyUdCD"
   },
   {
     "id": "shachikuChan_v1_0.vrm",
     "name": "Shachiku-chan",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "pNInz6obpgDQGcFmaJgB"
+  },
+  {
+    "id": "shiroganeHiyori_punk_v1_0.vrm",
+    "name": "shirogane Hiyori punk v1 0",
+    "version": "0",
+    "voiceId": "gNLojYp5VOiuqC8CTCmi"
   },
   {
     "id": "tomaru_hatsuneMikuNT_v1_0_1.vrm",
     "name": "Hatsune Miku NT",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "SOYHLrjzK2X1ezoPC6cr"
   },
   {
     "id": "tsukuyomiChan_01.vrm",
     "name": "Tsukuyomi-chan",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "LTxbNvC5qggK4pAuYohI"
+  },
+  {
+    "id": "tsunomakiWatame.vrm",
+    "name": "tsunomaki Watame",
+    "version": "0",
+    "voiceId": "gNLojYp5VOiuqC8CTCmi"
+  },
+  {
+    "id": "usadaPekora.vrm",
+    "name": "usada Pekora",
+    "version": "0",
+    "voiceId": "gNLojYp5VOiuqC8CTCmi"
   },
   {
     "id": "vjTakagi.vrm",
     "name": "VJ Takagi",
-    "version": "0.x",
+    "version": "0",
     "voiceId": "onwK4e9ZLuTAKqWW03F9"
+  },
+  {
+    "id": "vrmPack.vrm",
+    "name": "vrm Pack",
+    "version": "0",
+    "voiceId": "gNLojYp5VOiuqC8CTCmi"
   }
 ]

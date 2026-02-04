@@ -49,6 +49,8 @@ function App({ userId, sessionId }: AppProps) {
 
   // Sync sessionId from route to store
   useEffect(() => {
+    // Clear stale messages before syncing new session
+    useChatStore.getState().clearMessages();
     setSessionId(sessionId);
   }, [sessionId, setSessionId]);
 

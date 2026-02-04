@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
-import { getSessions, createSession, getSessionHistory, deleteSession as deleteSessionApi } from '../utils/api';
+import { getSessions, createSession, getSession, getSessionHistory, deleteSession as deleteSessionApi } from '../utils/api';
 import type { Session, Message } from '../types';
 
 export function useSession() {
@@ -41,17 +41,35 @@ export function useSession() {
    * Fetch history for a session
    */
   const fetchHistory = useCallback(async (sid: string): Promise<Message[]> => {
-    if (!sid || fetchingRef.current === sid) return [];
+    // Don't fetch if no session or agent not loaded yet
+    if (!sid || !currentAgent?.id) return [];
+    
+    // Guard against duplicate fetches for same session
+    if (fetchingRef.current === sid) return [];
 
     const requestId = ++fetchHistoryIdRef.current;
     try {
       fetchingRef.current = sid;
       setIsLoading(true);
 
+      // Validate session belongs to current agent
+      try {
+        const session = await getSession(sid);
+        if (session.agent_id !== currentAgent.id) {
+          console.warn('[useSession] Session agent mismatch, clearing messages');
+          setMessages([]);
+          return [];
+        }
+      } catch (e) {
+        console.warn('[useSession] Session not found:', sid);
+        setMessages([]);
+        return [];
+      }
+
       const rawMessages = await getSessionHistory(sid);
 
-      // Only apply if this is the latest request and sessionId is still current
-      if (requestId !== fetchHistoryIdRef.current || useAppStore.getState().sessionId !== sid) {
+      // Only apply if this is the latest request
+      if (requestId !== fetchHistoryIdRef.current) {
         return [];
       }
 
@@ -75,7 +93,7 @@ export function useSession() {
         fetchingRef.current = null;
       }
     }
-  }, [setMessages]);
+  }, [setMessages, currentAgent?.id]);
 
   /**
    * Switch to a different session
@@ -150,13 +168,14 @@ export function useSession() {
     }
   }, [currentAgent?.id, fetchSessions]);
 
-  // Load history when sessionId changes (but not for empty/new sessions)
+  // Load history when sessionId or agent changes (but not for empty/new sessions)
   // Always fetch - don't skip based on existing messages (they may be stale from another agent)
+  // Also re-fetch when currentAgent loads (handles refresh scenario where agent hydrates after sessionId)
   useEffect(() => {
-    if (sessionId && sessionId !== '') {
+    if (sessionId && sessionId !== '' && currentAgent?.id) {
       fetchHistory(sessionId);
     }
-  }, [sessionId, fetchHistory]);
+  }, [sessionId, currentAgent?.id, fetchHistory]);
 
   return {
     sessions,
