@@ -10,6 +10,8 @@ import json
 
 import pytest
 
+pytestmark = pytest.mark.anyio
+
 # Ensure backend/ is on sys.path when pytest rootdir differs
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -19,17 +21,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # ========================================
 
 @pytest.fixture
-def test_client():
-    """Create a TestClient for the FastAPI app."""
+async def test_client():
+    """Create an AsyncClient for the FastAPI app."""
     # Must set env vars before importing main
     import os
     os.environ.setdefault("CLAWDBOT_TOKEN", "test-token")
     os.environ.setdefault("AUTH_ALLOW_DEV_TOKEN", "1")
     os.environ.setdefault("ELEVENLABS_API_KEY", "test-elevenlabs-key")
 
-    from fastapi.testclient import TestClient
+    import httpx
+    from httpx import ASGITransport
     from main import app
-    return TestClient(app)
+
+    transport = ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
 
 
 @pytest.fixture
@@ -52,9 +58,9 @@ def mock_httpx_client():
 class TestHealthEndpoint:
     """Tests for GET /api/health"""
 
-    def test_health_returns_200(self, test_client):
+    async def test_health_returns_200(self, test_client):
         """Health endpoint should return 200 with status and version."""
-        response = test_client.get("/api/health")
+        response = await test_client.get("/api/health")
 
         assert response.status_code == 200
         data = response.json()
@@ -69,28 +75,28 @@ class TestHealthEndpoint:
 class TestChatEndpoint:
     """Tests for POST /api/chat"""
 
-    def test_chat_requires_auth(self, test_client):
+    async def test_chat_requires_auth(self, test_client):
         """Chat endpoint should require authorization."""
-        response = test_client.post(
+        response = await test_client.post(
             "/api/chat",
             json={"message": "Hello"},
             headers={"X-User-Id": "test-user", "X-Agent-Id": "test-agent"}
         )
         assert response.status_code == 401
 
-    def test_chat_requires_user_id(self, test_client, auth_headers):
+    async def test_chat_requires_user_id(self, test_client, auth_headers):
         """Chat should require X-User-Id header."""
-        response = test_client.post(
+        response = await test_client.post(
             "/api/chat",
             json={"message": "Hello"},
             headers=auth_headers
         )
         assert response.status_code == 422  # Missing required header
 
-    def test_chat_requires_agent_id(self, test_client, auth_headers):
+    async def test_chat_requires_agent_id(self, test_client, auth_headers):
         """Chat should require X-Agent-Id header."""
         headers = {**auth_headers, "X-User-Id": "test-user"}
-        response = test_client.post(
+        response = await test_client.post(
             "/api/chat",
             json={"message": "Hello"},
             headers=headers
@@ -105,17 +111,17 @@ class TestChatEndpoint:
 class TestSpeakEndpoint:
     """Tests for POST /api/speak"""
 
-    def test_speak_requires_auth(self, test_client):
+    async def test_speak_requires_auth(self, test_client):
         """Speak endpoint should require authorization."""
-        response = test_client.post(
+        response = await test_client.post(
             "/api/speak",
             json={"text": "Hello"}
         )
         assert response.status_code == 401
 
-    def test_speak_requires_text(self, test_client, auth_headers):
+    async def test_speak_requires_text(self, test_client, auth_headers):
         """Speak should require text field."""
-        response = test_client.post(
+        response = await test_client.post(
             "/api/speak",
             json={},
             headers=auth_headers
@@ -130,7 +136,7 @@ class TestSpeakEndpoint:
 class TestAuthorization:
     """Tests for authorization handling"""
 
-    def test_missing_auth_header(self, test_client):
+    async def test_missing_auth_header(self, test_client):
         """Endpoints should return 401 for missing auth."""
         endpoints = [
             ("POST", "/api/chat", {"message": "test"}, {"X-User-Id": "test", "X-Agent-Id": "test"}),
@@ -138,17 +144,17 @@ class TestAuthorization:
         ]
 
         for method, path, body, extra_headers in endpoints:
-            response = test_client.post(path, json=body, headers=extra_headers)
+            response = await test_client.post(path, json=body, headers=extra_headers)
             assert response.status_code == 401, f"Failed for {method} {path}"
 
-    def test_invalid_token(self, test_client):
+    async def test_invalid_token(self, test_client):
         """Endpoints should reject invalid tokens."""
         headers = {
             "Authorization": "Bearer wrong-token-123",
             "X-User-Id": "test-user",
             "X-Agent-Id": "test-agent"
         }
-        response = test_client.post(
+        response = await test_client.post(
             "/api/chat",
             json={"message": "test"},
             headers=headers
@@ -163,14 +169,14 @@ class TestAuthorization:
 class TestMemoryEndpoints:
     """Tests for memory-related endpoints"""
 
-    def test_memory_list_requires_auth(self, test_client):
+    async def test_memory_list_requires_auth(self, test_client):
         """GET /api/memory/list should require auth."""
-        response = test_client.get("/api/memory/list")
+        response = await test_client.get("/api/memory/list")
         assert response.status_code == 401
 
-    def test_memory_file_requires_auth(self, test_client):
+    async def test_memory_file_requires_auth(self, test_client):
         """GET /api/memory/{filename} should require auth."""
-        response = test_client.get("/api/memory/test.md")
+        response = await test_client.get("/api/memory/test.md")
         assert response.status_code == 401
 
 
@@ -181,31 +187,31 @@ class TestMemoryEndpoints:
 class TestSessionEndpoints:
     """Tests for session management endpoints"""
 
-    def test_list_sessions_requires_auth(self, test_client):
+    async def test_list_sessions_requires_auth(self, test_client):
         """GET /api/sessions should require auth."""
-        response = test_client.get(
+        response = await test_client.get(
             "/api/sessions",
             headers={"X-User-Id": "test-user"}
         )
         assert response.status_code == 401
 
-    def test_list_sessions_requires_user_id(self, test_client, auth_headers):
+    async def test_list_sessions_requires_user_id(self, test_client, auth_headers):
         """GET /api/sessions should require X-User-Id header."""
-        response = test_client.get("/api/sessions", headers=auth_headers)
+        response = await test_client.get("/api/sessions", headers=auth_headers)
         assert response.status_code == 422  # Missing required header
 
-    def test_get_session_history_requires_auth(self, test_client):
+    async def test_get_session_history_requires_auth(self, test_client):
         """GET /api/sessions/{id}/history should require auth."""
-        response = test_client.get(
+        response = await test_client.get(
             "/api/sessions/test-session-id/history",
             headers={"X-User-Id": "test-user"}
         )
         assert response.status_code == 401
 
-    def test_get_session_history_returns_empty_for_nonexistent(self, test_client, auth_headers):
+    async def test_get_session_history_returns_empty_for_nonexistent(self, test_client, auth_headers):
         """GET /api/sessions/{id}/history should return empty messages for nonexistent session."""
         headers = {**auth_headers, "X-User-Id": "test-user"}
-        response = test_client.get(
+        response = await test_client.get(
             "/api/sessions/nonexistent-session-id/history",
             headers=headers
         )
@@ -223,14 +229,14 @@ class TestSessionEndpoints:
 class TestUserEndpoints:
     """Tests for user management endpoints"""
 
-    def test_list_users_requires_auth(self, test_client):
+    async def test_list_users_requires_auth(self, test_client):
         """GET /api/users should require auth."""
-        response = test_client.get("/api/users")
+        response = await test_client.get("/api/users")
         assert response.status_code == 401
 
-    def test_get_user_requires_auth(self, test_client):
+    async def test_get_user_requires_auth(self, test_client):
         """GET /api/users/{id} should require auth."""
-        response = test_client.get("/api/users/test-user")
+        response = await test_client.get("/api/users/test-user")
         assert response.status_code == 401
 
 
@@ -241,26 +247,26 @@ class TestUserEndpoints:
 class TestTranscribeEndpoint:
     """Tests for POST /api/transcribe"""
 
-    def test_transcribe_requires_auth(self, test_client):
+    async def test_transcribe_requires_auth(self, test_client):
         """Transcribe endpoint should require authorization."""
         # Create a simple audio file
         audio_data = b"fake audio data"
-        response = test_client.post(
+        response = await test_client.post(
             "/api/transcribe",
             files={"audio": ("test.webm", audio_data, "audio/webm")}
         )
         assert response.status_code == 401
 
-    def test_transcribe_requires_file(self, test_client, auth_headers):
+    async def test_transcribe_requires_file(self, test_client, auth_headers):
         """Transcribe should require audio file."""
-        response = test_client.post(
+        response = await test_client.post(
             "/api/transcribe",
             headers=auth_headers
         )
         assert response.status_code == 422  # Validation error
 
     @patch("routers.chat.httpx.AsyncClient")
-    def test_transcribe_success(self, mock_client_class, test_client, auth_headers):
+    async def test_transcribe_success(self, mock_client_class, test_client, auth_headers):
         """Transcribe should return text from STT service."""
         # Mock the STT service response
         mock_response = MagicMock()
@@ -278,7 +284,7 @@ class TestTranscribeEndpoint:
         mock_client_class.return_value = mock_client
 
         audio_data = b"fake audio data"
-        response = test_client.post(
+        response = await test_client.post(
             "/api/transcribe",
             files={"audio": ("recording.webm", audio_data, "audio/webm")},
             headers=auth_headers
@@ -290,7 +296,7 @@ class TestTranscribeEndpoint:
         assert data["language"] == "en"
 
     @patch("routers.chat.httpx.AsyncClient")
-    def test_transcribe_with_missing_content_type(self, mock_client_class, test_client, auth_headers):
+    async def test_transcribe_with_missing_content_type(self, mock_client_class, test_client, auth_headers):
         """Transcribe should handle missing content type gracefully."""
         # Mock the STT service response
         mock_response = MagicMock()
@@ -305,7 +311,7 @@ class TestTranscribeEndpoint:
 
         audio_data = b"fake audio data"
         # Send without content type (None)
-        response = test_client.post(
+        response = await test_client.post(
             "/api/transcribe",
             files={"audio": ("recording.webm", audio_data)},
             headers=auth_headers
@@ -315,7 +321,7 @@ class TestTranscribeEndpoint:
         assert response.status_code == 200
 
     @patch("routers.chat.httpx.AsyncClient")
-    def test_transcribe_stt_service_error(self, mock_client_class, test_client, auth_headers):
+    async def test_transcribe_stt_service_error(self, mock_client_class, test_client, auth_headers):
         """Transcribe should handle STT service errors."""
         mock_response = MagicMock()
         mock_response.status_code = 500
@@ -327,7 +333,7 @@ class TestTranscribeEndpoint:
         mock_client_class.return_value = mock_client
 
         audio_data = b"fake audio data"
-        response = test_client.post(
+        response = await test_client.post(
             "/api/transcribe",
             files={"audio": ("recording.webm", audio_data, "audio/webm")},
             headers=auth_headers
@@ -336,7 +342,7 @@ class TestTranscribeEndpoint:
         assert response.status_code == 500
 
     @patch("routers.chat.httpx.AsyncClient")
-    def test_transcribe_timeout(self, mock_client_class, test_client, auth_headers):
+    async def test_transcribe_timeout(self, mock_client_class, test_client, auth_headers):
         """Transcribe should handle timeouts."""
         import httpx
 
@@ -347,7 +353,7 @@ class TestTranscribeEndpoint:
         mock_client_class.return_value = mock_client
 
         audio_data = b"fake audio data"
-        response = test_client.post(
+        response = await test_client.post(
             "/api/transcribe",
             files={"audio": ("recording.webm", audio_data, "audio/webm")},
             headers=auth_headers
@@ -356,7 +362,7 @@ class TestTranscribeEndpoint:
         assert response.status_code == 504
 
     @patch("routers.chat.httpx.AsyncClient")
-    def test_transcribe_connection_error(self, mock_client_class, test_client, auth_headers):
+    async def test_transcribe_connection_error(self, mock_client_class, test_client, auth_headers):
         """Transcribe should handle connection errors."""
         import httpx
 
@@ -367,7 +373,7 @@ class TestTranscribeEndpoint:
         mock_client_class.return_value = mock_client
 
         audio_data = b"fake audio data"
-        response = test_client.post(
+        response = await test_client.post(
             "/api/transcribe",
             files={"audio": ("recording.webm", audio_data, "audio/webm")},
             headers=auth_headers
@@ -377,11 +383,18 @@ class TestTranscribeEndpoint:
 
 
 # ========================================
+# Manage Endpoint Tests
+# ========================================
+
+class TestManageEndpoints:
+    """Tests for admin/manage endpoints"""
+
+    async def test_list_sessions_requires_auth(self, test_client):
         """GET /api/manage/sessions should require auth."""
-        response = test_client.get("/api/manage/sessions")
+        response = await test_client.get("/api/manage/sessions")
         assert response.status_code == 401
 
-    def test_list_agents_requires_auth(self, test_client):
+    async def test_list_agents_requires_auth(self, test_client):
         """GET /api/manage/agents should require auth."""
-        response = test_client.get("/api/manage/agents")
+        response = await test_client.get("/api/manage/agents")
         assert response.status_code == 401

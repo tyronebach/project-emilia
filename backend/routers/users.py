@@ -1,7 +1,9 @@
 """User routes"""
-from fastapi import APIRouter, HTTPException, Depends, Header
+import json
+from fastapi import APIRouter, HTTPException, Depends
 from dependencies import verify_token
 from schemas import UsersListResponse, AgentsListResponse, SessionsListResponse
+from schemas.requests import UserPreferencesUpdate
 import database as db
 
 router = APIRouter(prefix="/api/users", tags=["users"])
@@ -32,6 +34,38 @@ async def get_user(user_id: str, token: str = Depends(verify_token)):
     agents = db.get_user_agents(user_id)
     return {
         **user,
+        "agents": agents
+    }
+
+
+@router.patch("/{user_id}/preferences")
+async def update_user_preferences(
+    user_id: str,
+    update: UserPreferencesUpdate,
+    token: str = Depends(verify_token)
+):
+    """Update user preferences (merged into existing JSON)."""
+    user = db.get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    existing = {}
+    try:
+        existing = json.loads(user.get("preferences") or "{}")
+    except json.JSONDecodeError:
+        existing = {}
+
+    if not isinstance(existing, dict):
+        existing = {}
+
+    merged = {**existing, **update.preferences}
+    updated = db.update_user_preferences(user_id, json.dumps(merged))
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update preferences")
+
+    agents = db.get_user_agents(user_id)
+    return {
+        **updated,
         "agents": agents
     }
 

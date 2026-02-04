@@ -189,6 +189,7 @@ function AdminPanel() {
 
       {/* Content */}
       <div className="flex-1 p-6 max-w-3xl mx-auto w-full">
+
         {/* Status messages */}
         {error && (
           <div className="mb-4 p-3 bg-error/10 border border-error/30 rounded-lg flex items-center gap-2 text-error text-sm">

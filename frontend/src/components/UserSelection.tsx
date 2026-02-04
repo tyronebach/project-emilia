@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Settings, User as UserIcon } from 'lucide-react';
+import { Sliders, Bug, User as UserIcon } from 'lucide-react';
 import { getUsers } from '../utils/api';
 import { useUserStore } from '../store/userStore';
 import type { User } from '../types';
@@ -26,14 +26,21 @@ function UserSelection() {
 
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
-      {/* Cog icon - top right */}
-      <div className="absolute top-4 right-4">
+      {/* Admin controls - top right */}
+      <div className="absolute top-4 right-4 flex items-center gap-2">
         <button
-          onClick={() => navigate({ to: '/settings' })}
+          onClick={() => navigate({ to: '/manage' })}
           className="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors"
-          title="Settings"
+          title="Agent Settings"
         >
-          <Settings className="w-5 h-5" />
+          <Sliders className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => navigate({ to: '/debug' })}
+          className="p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors"
+          title="Debug Avatar"
+        >
+          <Bug className="w-5 h-5" />
         </button>
       </div>
 

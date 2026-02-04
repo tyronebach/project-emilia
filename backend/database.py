@@ -13,6 +13,7 @@ __all__ = [
     "get_users",
     "get_user",
     "create_user",
+    "update_user_preferences",
     "get_user_agents",
     "add_user_agent_access",
     "user_can_access_agent",
@@ -53,6 +54,11 @@ def get_user(user_id: str):
 def create_user(user_id: str, display_name: str, preferences: str = "{}"):
     """Create a new user."""
     return UserRepository.create(user_id, display_name, preferences)
+
+
+def update_user_preferences(user_id: str, preferences: str):
+    """Update user preferences JSON."""
+    return UserRepository.update_preferences(user_id, preferences)
 
 
 def get_user_agents(user_id: str):

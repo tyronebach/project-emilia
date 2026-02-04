@@ -5,14 +5,30 @@ import { useStatsStore } from '../store/statsStore';
 import { useUserStore } from '../store/userStore';
 import { Button } from './ui/button';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
+import { VoiceIndicator } from './VoiceIndicator';
+import { VoiceDebugTimeline, type VoiceDebugEntry } from './VoiceDebugTimeline';
 import type { AppStatus } from '../types';
+import type { VoiceState } from '../services/VoiceService';
 
 interface DebugPanelProps {
   open: boolean;
   onClose: () => void;
+  handsFreeEnabled?: boolean;
+  voiceState?: VoiceState;
+  voiceTranscript?: string;
+  voiceDebugEvents?: VoiceDebugEntry[];
+  onClearVoiceDebug?: () => void;
 }
 
-function DebugPanel({ open, onClose }: DebugPanelProps) {
+function DebugPanel({
+  open,
+  onClose,
+  handsFreeEnabled = false,
+  voiceState,
+  voiceTranscript,
+  voiceDebugEvents = [],
+  onClearVoiceDebug,
+}: DebugPanelProps) {
   const { messages, status, ttsEnabled, ttsVoiceId, setTtsVoiceId, errors, sessionId } = useApp();
   const { totalLatency, latencyCount, stateLog, stageLatencies } = useStatsStore();
   const currentUser = useUserStore((state) => state.currentUser);
@@ -141,6 +157,39 @@ function DebugPanel({ open, onClose }: DebugPanelProps) {
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Hands-Free Voice (View Only) */}
+        <div>
+          <div className="text-[10px] text-text-secondary uppercase mb-2">Voice Input</div>
+          <div className="space-y-2">
+            <div className="text-[11px] text-text-secondary">
+              Hands-free: <span className="text-text-primary">{handsFreeEnabled ? 'On' : 'Off'}</span>
+            </div>
+            {handsFreeEnabled && voiceState ? (
+              <VoiceIndicator
+                state={voiceState}
+                transcript={voiceTranscript}
+                className="items-start"
+              />
+            ) : (
+              <div className="text-[11px] text-text-secondary">
+                Hands-free voice is disabled.
+              </div>
+            )}
+            {voiceTranscript && (
+              <div className="p-2 bg-bg-tertiary rounded text-[11px] text-text-primary">
+                <div className="text-[10px] text-text-secondary mb-1">Last Transcript</div>
+                {voiceTranscript}
+              </div>
+            )}
+            <VoiceDebugTimeline
+              entries={voiceDebugEvents}
+              onClear={onClearVoiceDebug}
+              className="max-h-64 overflow-hidden"
+              listHeightClass="h-32"
+            />
+          </div>
         </div>
 
         {/* Per-Stage Latency */}

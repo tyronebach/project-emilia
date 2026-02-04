@@ -247,6 +247,25 @@ Form: audio=<file>
 
 ---
 
+## User Preferences
+
+```
+PATCH /api/users/{user_id}/preferences
+Content-Type: application/json
+Body: {"preferences": {"voice_hands_free": true, "tts_enabled": true}}
+```
+```json
+{
+  "id": "user-123",
+  "display_name": "Jane",
+  "preferences": "{\"voice_hands_free\": true, \"tts_enabled\": true}",
+  "created_at": 1738650000,
+  "agents": []
+}
+```
+
+---
+
 ## Memory
 
 All memory endpoints require:

@@ -1,6 +1,6 @@
 # Emilia Web App - Architecture
 
-**Three-tier deployment architecture**
+**Three-tier deployment architecture + browser voice pipeline**
 
 ---
 
@@ -24,6 +24,18 @@ Internet
 │  Port 18789         │      │  192.168.88.252     │
 │  (localhost only)   │      │  Port 8765          │
 └─────────────────────┘      └─────────────────────┘
+
+Browser (Vite dev: https://localhost:3443)
+    ↓ HTTPS (3443) + /api proxy
+┌─────────────────────┐
+│  Vite Dev Server    │  ← Local dev only
+│  Port 3443          │
+└─────────────────────┘
+    ↓ Internal (proxy /api)
+┌─────────────────────┐
+│  Backend (FastAPI)  │
+│  Port 8080          │
+└─────────────────────┘
 ```
 
 ---
@@ -54,6 +66,20 @@ Agent routing is controlled by the database mapping of users → agents:
 - Backend verifies access via `user_agents` and `session_participants`
 - Agent routing uses the stored `clawdbot_agent_id` from the `agents` table
 
+### User Preferences
+User preferences are stored as JSON in `users.preferences` and include:
+- `voice_hands_free` (boolean)
+- `tts_enabled` (boolean)
+Preferences are updated via `PATCH /api/users/{user_id}/preferences`.
+
+### Voice Input Pipeline (Hands‑Free)
+1. Browser loads VAD bundle assets (`bundle.min.js`, `vad.worklet.bundle.min.js`, `ort.min.js`).
+2. VAD captures mic audio and detects speech boundaries.
+3. Audio is encoded to WAV (16 kHz, mono) in the browser.
+4. Browser sends `POST /api/transcribe` with `multipart/form-data`.
+5. Backend forwards to STT service (`STT_SERVICE_URL`) and returns `{ text, language, processing_ms }`.
+6. Frontend inserts transcript into the chat flow.
+
 Guardrails:
 - `CLAWDBOT_TOKEN` is **required** via env (no defaults)
 - `AUTH_TOKEN` is **required** via env (dev-only default requires `AUTH_ALLOW_DEV_TOKEN=1`)
@@ -70,7 +96,7 @@ Guardrails:
 ```json
 {
   "status": "ok",
-  "version": "5.5.3"
+  "version": "5.5.4"
 }
 ```
 
@@ -78,20 +104,19 @@ Guardrails:
 
 ---
 
-## Connection Verification (2026-01-30)
+## Connection Verification (2026-02-04)
 
 ### Gateway → Backend
 ```bash
 # Gateway reachable on localhost
 curl -I http://localhost:18789/health \
-  -H "Authorization: Bearer REDACTED"
+  -H "Authorization: Bearer $CLAWDBOT_TOKEN"
 # → 200 OK (returns HTML UI)
 
 # Chat completions endpoint working
 curl http://127.0.0.1:18789/v1/chat/completions \
-  -H "Authorization: Bearer REDACTED" \
+  -H "Authorization: Bearer $CLAWDBOT_TOKEN" \
   -H "Content-Type: application/json" \
-  -H "x-clawdbot-agent-id: emilia" \
   -d '{"model":"clawdbot","messages":[{"role":"user","content":"test"}],"stream":false}'
 # → 200 OK with valid JSON response ✅
 ```
@@ -115,5 +140,5 @@ curl http://localhost:8080/api/health | jq .
 
 ---
 
-**Verified:** 2026-01-30  
+**Verified:** 2026-02-04  
 **Engineer:** Ram 🩷

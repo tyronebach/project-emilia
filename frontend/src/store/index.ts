@@ -23,6 +23,10 @@ interface AppState {
   ttsVoiceId: string;
   setTtsVoiceId: (voiceId: string) => void;
 
+  // Voice input
+  handsFreeEnabled: boolean;
+  setHandsFreeEnabled: (enabled: boolean) => void;
+
   // Avatar
   avatarState: AvatarState | null;
   setAvatarState: (state: AvatarState | null) => void;
@@ -63,6 +67,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   ttsVoiceId: '',
   setTtsVoiceId: (voiceId) => set({ ttsVoiceId: voiceId }),
+
+  // Voice input
+  handsFreeEnabled: localStorage.getItem('emilia-voice-handsfree') === 'true',
+  setHandsFreeEnabled: (enabled) => {
+    localStorage.setItem('emilia-voice-handsfree', String(enabled));
+    set({ handsFreeEnabled: enabled });
+  },
 
   // Avatar
   avatarState: null,

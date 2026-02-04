@@ -33,7 +33,8 @@ open https://localhost:3443
 | Frontend | https://localhost:3443 |
 | Backend | http://localhost:8080 |
 | API Docs | http://localhost:8080/docs |
-| Settings | https://localhost:3443/settings |
+| Agent Settings | https://localhost:3443/manage |
+| User Settings | In-app modal (Drawer → User Settings) |
 
 ## Development
 
@@ -67,7 +68,7 @@ npm run build         # Production build
 
 ## Version
 
-**5.5.3** — See [CHANGELOG.md](./CHANGELOG.md) for details.
+**5.5.4** — See [CHANGELOG.md](./CHANGELOG.md) for details.
 
 ---
 

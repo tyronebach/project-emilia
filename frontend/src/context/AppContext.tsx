@@ -19,6 +19,10 @@ interface AppContextType {
   setTtsEnabled: (enabled: boolean) => void;
   ttsVoiceId: string;
   setTtsVoiceId: (voiceId: string) => void;
+
+  // Voice input
+  handsFreeEnabled: boolean;
+  setHandsFreeEnabled: (enabled: boolean) => void;
   
   // Messages
   messages: Message[];
@@ -59,6 +63,8 @@ export function AppProvider({ children }: AppProviderProps) {
   const setTtsEnabled = useAppStore((state) => state.setTtsEnabled);
   const ttsVoiceId = useAppStore((state) => state.ttsVoiceId);
   const setTtsVoiceId = useAppStore((state) => state.setTtsVoiceId);
+  const handsFreeEnabled = useAppStore((state) => state.handsFreeEnabled);
+  const setHandsFreeEnabled = useAppStore((state) => state.setHandsFreeEnabled);
   const avatarState = useAppStore((state) => state.avatarState);
   const setAvatarState = useAppStore((state) => state.setAvatarState);
   const setAvatarRenderer = useAppStore((state) => state.setAvatarRenderer);
@@ -112,6 +118,10 @@ export function AppProvider({ children }: AppProviderProps) {
       setTtsEnabled,
       ttsVoiceId,
       setTtsVoiceId,
+
+      // Voice input
+      handsFreeEnabled,
+      setHandsFreeEnabled,
       
       // Messages
       messages,

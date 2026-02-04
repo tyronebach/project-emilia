@@ -114,6 +114,18 @@ export async function getUser(userId: string): Promise<User> {
   return response.json();
 }
 
+export async function updateUserPreferences(
+  userId: string,
+  preferences: Record<string, unknown>
+): Promise<User> {
+  const response = await fetchWithAuth(`${API_URL}/api/users/${encodeURIComponent(userId)}/preferences`, {
+    method: 'PATCH',
+    body: JSON.stringify({ preferences }),
+  });
+  if (!response.ok) throw new Error(`Failed to update preferences: ${response.status}`);
+  return response.json();
+}
+
 export async function getUserAgents(userId: string): Promise<Agent[]> {
   const response = await fetchWithAuth(`${API_URL}/api/users/${encodeURIComponent(userId)}/agents`);
   if (!response.ok) throw new Error(`Failed to fetch agents: ${response.status}`);

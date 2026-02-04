@@ -1,8 +1,9 @@
-import { Menu, Activity, Brain } from 'lucide-react';
+import { Menu, Activity, Brain, Mic, MicOff } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useUserStore } from '../store/userStore';
 import type { AppStatus } from '../types';
 import { Button } from './ui/button';
+import type { VoiceState } from '../services/VoiceService';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -10,9 +11,21 @@ interface HeaderProps {
   onMemoryClick: () => void;
   debugOpen: boolean;
   memoryOpen: boolean;
+  handsFreeEnabled?: boolean;
+  voiceState?: VoiceState;
+  voicePermissionWarning?: string | null;
 }
 
-function Header({ onMenuClick, onDebugClick, onMemoryClick, debugOpen, memoryOpen }: HeaderProps) {
+function Header({
+  onMenuClick,
+  onDebugClick,
+  onMemoryClick,
+  debugOpen,
+  memoryOpen,
+  handsFreeEnabled = false,
+  voiceState,
+  voicePermissionWarning,
+}: HeaderProps) {
   const { status } = useApp();
   const currentAgent = useUserStore((state) => state.currentAgent);
 
@@ -36,6 +49,12 @@ function Header({ onMenuClick, onDebugClick, onMemoryClick, debugOpen, memoryOpe
   };
 
   const statusText = getStatusText();
+
+  const voiceStatusLabel = !handsFreeEnabled
+    ? 'Hands-free off'
+    : voiceState
+      ? `Hands-free ${voiceState.toLowerCase()}`
+      : 'Hands-free on';
 
   return (
     <>
@@ -61,8 +80,17 @@ function Header({ onMenuClick, onDebugClick, onMemoryClick, debugOpen, memoryOpe
           />
         </div>
 
-        {/* Right: Debug + Memory buttons */}
+        {/* Right: Voice indicator + Debug + Memory buttons */}
         <div className="flex items-center gap-1">
+          <div
+            className={`hidden sm:flex items-center gap-2 px-3 py-1 rounded-full text-[11px] ${
+              handsFreeEnabled ? 'bg-accent/10 text-text-primary' : 'bg-white/5 text-text-secondary'
+            }`}
+            title={voiceStatusLabel}
+          >
+            {handsFreeEnabled ? <Mic className="w-3 h-3" /> : <MicOff className="w-3 h-3" />}
+            <span>{voiceStatusLabel}</span>
+          </div>
           <Button
             variant="ghost"
             size="icon"
@@ -90,6 +118,16 @@ function Header({ onMenuClick, onDebugClick, onMemoryClick, debugOpen, memoryOpe
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/40 backdrop-blur-sm text-text-primary text-sm">
             <span className={`w-2 h-2 rounded-full ${statusColors[status]}`} />
             <span>{statusText}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Voice permission warning */}
+      {handsFreeEnabled && voicePermissionWarning && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-30">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-error/20 border border-error/40 backdrop-blur-sm text-text-primary text-sm">
+            <MicOff className="w-4 h-4 text-error" />
+            <span>{voicePermissionWarning}</span>
           </div>
         </div>
       )}

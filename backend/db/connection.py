@@ -111,6 +111,7 @@ def init_db():
 # Initialize on import
 init_db()
 
-# Seed data
-from db.seed import seed_data
-seed_data()
+# Seed data (skip when disabled, e.g., tests)
+if os.getenv("EMILIA_SEED_DATA", "1").lower() not in {"0", "false", "no"}:
+    from db.seed import seed_data
+    seed_data()
