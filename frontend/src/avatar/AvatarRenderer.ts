@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VRMLoaderPlugin, VRMUtils, VRM } from '@pixiv/three-vrm';
 import { LipSyncEngine } from './LipSyncEngine';
 import { ExpressionController } from './ExpressionController';
@@ -21,6 +22,7 @@ interface ResolvedOptions {
   cameraDistance: number;
   cameraHeight: number;
   enableShadows: boolean;
+  enableOrbitControls: boolean;
   onLoad: ((vrm: VRM) => void) | null;
   onError: ((error: Error) => void) | null;
   onProgress: ((percent: number) => void) | null;
@@ -35,6 +37,7 @@ export class AvatarRenderer {
   private clock: THREE.Clock;
   private isInitialized: boolean = false;
   private animationFrameId: number | null = null;
+  private controls: OrbitControls | null = null;
 
   // Animation systems
   public lipSyncEngine: LipSyncEngine | null = null;
@@ -59,6 +62,7 @@ export class AvatarRenderer {
       cameraDistance: options.cameraDistance ?? 1.1,  // Pulled back for waist-up view
       cameraHeight: options.cameraHeight ?? 1.3,      // Slightly lower to show more body
       enableShadows: options.enableShadows !== false,
+      enableOrbitControls: options.enableOrbitControls ?? false,
       onLoad: options.onLoad ?? null,
       onError: options.onError ?? null,
       onProgress: options.onProgress ?? null
@@ -110,6 +114,18 @@ export class AvatarRenderer {
 
     this.setupLighting();
     this.setupResizeHandler();
+
+    // Setup orbit controls if enabled
+    if (this.options.enableOrbitControls && this.camera && this.renderer) {
+      this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+      this.controls.target.set(0, this.options.cameraHeight - 0.1, 0);
+      this.controls.enableDamping = true;
+      this.controls.dampingFactor = 0.05;
+      this.controls.minDistance = 0.5;
+      this.controls.maxDistance = 5;
+      this.controls.maxPolarAngle = Math.PI * 0.9;
+      this.controls.update();
+    }
 
     this.isInitialized = true;
     console.log('Avatar renderer initialized');
@@ -308,6 +324,7 @@ export class AvatarRenderer {
       // if (this.expressionController) this.expressionController.update(deltaTime);
       if (this.lipSyncEngine) this.lipSyncEngine.update(deltaTime);
       if (this.vrm) this.vrm.update(deltaTime);
+      if (this.controls) this.controls.update();
 
       // Render
       if (this.renderer && this.scene && this.camera) {
@@ -341,6 +358,10 @@ export class AvatarRenderer {
 
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
+    }
+
+    if (this.controls) {
+      this.controls.dispose();
     }
 
     if (this.vrm) {

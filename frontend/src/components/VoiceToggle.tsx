@@ -29,7 +29,7 @@ export function VoiceToggle({
 }: VoiceToggleProps) {
   if (!isSupported) {
     return (
-      <div className={`text-sm text-red-400 ${className}`}>
+      <div className={`text-sm text-error ${className}`}>
         ⚠️ Speech recognition not supported in this browser
       </div>
     );

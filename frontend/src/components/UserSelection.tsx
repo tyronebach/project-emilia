@@ -6,6 +6,7 @@ import { getUsers } from '../utils/api';
 import { useUserStore } from '../store/userStore';
 import type { User } from '../types';
 import userPlaceholder from '../assets/placeholder-user.jpg';
+import AmbientBackground from './AmbientBackground';
 
 function UserSelection() {
   const navigate = useNavigate();
@@ -26,15 +27,10 @@ function UserSelection() {
   };
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary relative overflow-hidden">
-      {/* Ambient background */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-32 right-[-6rem] h-[28rem] w-[28rem] rounded-full bg-[radial-gradient(circle_at_top,var(--color-glow-teal),transparent_65%)] blur-3xl opacity-70" />
-        <div className="absolute -bottom-40 left-[-10rem] h-[32rem] w-[32rem] rounded-full bg-[radial-gradient(circle_at_top,var(--color-glow-amber),transparent_70%)] blur-3xl opacity-70" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.08),transparent_55%)]" />
-      </div>
+    <div className="min-h-[100svh] bg-bg-primary text-text-primary relative overflow-hidden">
+      <AmbientBackground variant="user" />
 
-      <div className="relative z-10 flex min-h-screen flex-col">
+      <div className="relative z-10 flex min-h-[100svh] flex-col">
         {/* Top bar */}
         <div className="flex items-center justify-between px-6 pt-6">
           <div className="flex items-center gap-3">

@@ -124,7 +124,7 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
   }, [sessionId]); // Only re-run if sessionId changes
 
   return (
-    <div className="h-screen w-screen bg-bg-primary text-text-primary flex items-center justify-center overflow-hidden">
+    <div className="min-h-[100svh] w-full bg-bg-primary text-text-primary flex items-center justify-center overflow-hidden">
       <div className="flex flex-col items-center gap-6 max-w-md px-6">
         {status === 'error' ? (
           <>

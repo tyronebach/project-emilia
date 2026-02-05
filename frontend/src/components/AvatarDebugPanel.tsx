@@ -224,6 +224,7 @@ function AvatarDebugPanel() {
       vrmUrl: buildVrmUrl(selectedModel),
       cameraDistance: 3.0,  // Pulled back to see full body
       cameraHeight: 1.0,    // Lower to center on body
+      enableOrbitControls: true,  // Enable camera orbit for debug
       onLoad: (vrm: VRM) => {
         const metaName = (vrm.meta as { name?: string })?.name;
         setLastAction(`Loaded: ${metaName || selectedModel}`);
@@ -887,7 +888,7 @@ function AvatarDebugPanel() {
   }, [retargetGlbClip]);
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
+    <div className="min-h-[100svh] bg-bg-primary text-text-primary flex flex-col">
       {/* Header */}
       <header className="flex items-center gap-3 p-4 border-b border-white/10 bg-bg-secondary/60 backdrop-blur-md shrink-0">
         <Button variant="ghost" size="icon" onClick={() => navigate({ to: '/manage' })}>
@@ -993,7 +994,7 @@ function AvatarDebugPanel() {
                   <Button 
                     onClick={applyMood} 
                     size="sm" 
-                    className="w-full bg-accent text-black hover:bg-accent-hover"
+                    className="w-full bg-accent text-accent-foreground hover:bg-accent-hover"
                   >
                     Apply Mood
                   </Button>
@@ -1046,7 +1047,7 @@ function AvatarDebugPanel() {
                     onClick={testTTS}
                     disabled={ttsLoading || !ttsText.trim()}
                     size="sm" 
-                    className="w-full bg-accent text-black hover:bg-accent-hover disabled:opacity-50"
+                    className="w-full bg-accent text-accent-foreground hover:bg-accent-hover disabled:opacity-50"
                   >
                     {ttsLoading ? (
                       <>
@@ -1162,13 +1163,13 @@ function AvatarDebugPanel() {
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <span className="text-text-secondary">Predicted: </span>
-                        <span className={predictedDurationMs ? 'text-yellow-400' : 'text-text-secondary/50'}>
+                        <span className={predictedDurationMs ? 'text-warning' : 'text-text-secondary/50'}>
                           {predictedDurationMs ? `${(predictedDurationMs/1000).toFixed(2)}s` : '—'}
                         </span>
                       </div>
                       <div>
                         <span className="text-text-secondary">Actual: </span>
-                        <span className={actualDurationMs ? 'text-green-400' : 'text-text-secondary/50'}>
+                        <span className={actualDurationMs ? 'text-success' : 'text-text-secondary/50'}>
                           {actualDurationMs ? `${(actualDurationMs/1000).toFixed(2)}s` : '—'}
                         </span>
                       </div>
@@ -1176,7 +1177,7 @@ function AvatarDebugPanel() {
                     
                     {/* Duration mismatch indicator */}
                     {predictedDurationMs && actualDurationMs && (
-                      <div className={`text-xs ${Math.abs(predictedDurationMs - actualDurationMs) > 200 ? 'text-red-400' : 'text-green-400'}`}>
+                      <div className={`text-xs ${Math.abs(predictedDurationMs - actualDurationMs) > 200 ? 'text-error' : 'text-success'}`}>
                         {(() => {
                           const diff = actualDurationMs - predictedDurationMs;
                           const percent = ((diff / predictedDurationMs) * 100).toFixed(1);
@@ -1208,7 +1209,7 @@ function AvatarDebugPanel() {
                     <div className="text-text-secondary mb-1">Alignment Data:</div>
                     {alignmentData ? (
                       <div className="space-y-1">
-                        <div className="text-green-400">✓ {alignmentData.chars?.length || 0} characters</div>
+                        <div className="text-success">✓ {alignmentData.chars?.length || 0} characters</div>
                         <div className="text-text-secondary overflow-hidden">
                           chars: {alignmentData.chars?.slice(0, 30).join('') || 'none'}...
                         </div>
@@ -1220,7 +1221,7 @@ function AvatarDebugPanel() {
                         </div>
                       </div>
                     ) : (
-                      <div className="text-red-400">✗ No alignment data</div>
+                      <div className="text-error">✗ No alignment data</div>
                     )}
                   </div>
                   

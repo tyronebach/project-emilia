@@ -24,13 +24,13 @@ function NotFound() {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary flex items-center justify-center">
+    <div className="min-h-[100svh] bg-bg-primary text-text-primary flex items-center justify-center">
       <div className="text-center">
         <h1 className="font-display text-4xl font-bold mb-4">404</h1>
         <p className="text-text-secondary mb-6">Page not found</p>
         <button
           onClick={() => navigate({ to: '/' })}
-          className="px-4 py-2 bg-accent text-black rounded-lg hover:bg-accent-hover transition-colors"
+          className="px-4 py-2 bg-accent text-accent-foreground rounded-lg hover:bg-accent-hover transition-colors"
         >
           Go Home
         </button>

@@ -84,11 +84,11 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
 
   let voiceButtonClasses = 'bg-bg-tertiary text-text-secondary';
   if (isListening) {
-    voiceButtonClasses = 'bg-emerald-100 text-slate-900';
+    voiceButtonClasses = 'bg-success/20 text-success';
   } else if (isProcessing) {
-    voiceButtonClasses = 'bg-cyan-200 text-slate-900';
+    voiceButtonClasses = 'bg-warning/20 text-warning';
   } else if (isSpeaking) {
-    voiceButtonClasses = 'bg-purple-200 text-slate-900';
+    voiceButtonClasses = 'bg-accent/20 text-accent';
   }
 
   const { ref: messageRef, ...messageField } = register('message');
@@ -96,9 +96,10 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
   return (
     <>
       <div
-        className={`absolute bottom-4 left-4 right-4 z-20 rounded-[28px] bg-bg-secondary/80 border border-white/10 p-4 backdrop-blur-md shadow-[0_30px_60px_-40px_rgba(0,0,0,0.8)] transition-all duration-300 focus-within:shadow-[0_35px_70px_-40px_rgba(0,0,0,0.9)] ${
+        className={`absolute left-4 right-4 z-20 rounded-[28px] bg-bg-secondary/80 border border-white/10 p-4 backdrop-blur-md shadow-[0_30px_60px_-40px_rgba(0,0,0,0.8)] transition-all duration-300 focus-within:shadow-[0_35px_70px_-40px_rgba(0,0,0,0.9)] ${
           immersiveMode ? 'translate-y-20 opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'
         }`}
+        style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col">
           {/* Row 1: Message input */}
@@ -139,7 +140,7 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
                 aria-label="Send message"
                 className={`h-11 w-11 rounded-full flex items-center justify-center transition-colors focus:outline-none focus:ring-0 border ${
                   canSend
-                    ? 'bg-accent text-black border-accent/60 hover:bg-accent-hover'
+                    ? 'bg-accent text-accent-foreground border-accent/60 hover:bg-accent-hover'
                     : 'bg-bg-tertiary/70 text-text-secondary border-white/10'
                 }`}
               >
@@ -171,9 +172,10 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
       </div>
 
       <div
-        className={`absolute left-1/2 -translate-x-1/2 bottom-10 z-20 transition-all duration-300 ${
+        className={`absolute left-1/2 -translate-x-1/2 z-20 transition-all duration-300 ${
           immersiveMode ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
+        style={{ bottom: 'calc(2.5rem + env(safe-area-inset-bottom))' }}
       >
         <button
           type="button"

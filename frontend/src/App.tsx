@@ -280,7 +280,7 @@ function AppContent({
   }, [handsFreeEnabled]);
 
   return (
-    <div className="h-screen w-screen bg-bg-primary text-text-primary overflow-hidden relative">
+    <div className="min-h-[100svh] w-full bg-bg-primary text-text-primary overflow-hidden relative flex flex-col">
       {/* Full-screen Avatar Background */}
       <AvatarPanel />
 
@@ -360,7 +360,7 @@ function StatusPill({ status, immersive }: { status: AppStatus; immersive: boole
   return (
     <div
       className="fixed left-4 z-20"
-      style={{ bottom: `calc(${panelHeight}vh + 9rem + 0.5rem)` }}
+      style={{ bottom: `calc(${panelHeight}svh + 9rem + 0.5rem + env(safe-area-inset-bottom))` }}
     >
       <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-bg-secondary/35 border border-white/5 backdrop-blur-sm text-text-secondary text-sm">
         <span className={`w-2 h-2 rounded-full ${statusColors[status]}`} />

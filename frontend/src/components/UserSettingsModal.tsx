@@ -4,6 +4,7 @@ import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
 import { updateUserPreferences } from '../utils/api';
 import { Button } from './ui/button';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
 
 interface UserSettingsModalProps {
   open: boolean;
@@ -61,22 +62,29 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
     }
   };
 
-  if (!open) return null;
-
   return (
-    <>
-      <div className="fixed inset-0 bg-bg-primary/70 z-[60]" onClick={onClose} />
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-bg-secondary border border-white/10 rounded-2xl shadow-xl z-[70] p-5 w-96">
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <DialogContent className="w-96 max-w-[92vw] p-5">
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Sliders className="w-4 h-4 text-accent" />
-            <span className="text-sm font-medium text-text-primary">User Settings</span>
+            <DialogTitle>User Settings</DialogTitle>
           </div>
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
-            <X className="w-3 h-3" />
-          </Button>
+          <DialogClose asChild>
+            <Button variant="ghost" size="icon" className="h-6 w-6">
+              <X className="w-3 h-3" />
+            </Button>
+          </DialogClose>
         </div>
+        <DialogDescription className="sr-only">
+          Manage default user preferences like voice replies.
+        </DialogDescription>
 
         {error && (
           <div className="mb-3 p-2 text-xs text-error bg-error/10 border border-error/30 rounded">
@@ -116,8 +124,8 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
             </div>
           )}
         </div>
-      </div>
-    </>
+      </DialogContent>
+    </Dialog>
   );
 }
 
