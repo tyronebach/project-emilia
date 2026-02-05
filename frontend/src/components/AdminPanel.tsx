@@ -12,6 +12,35 @@ interface AgentWithWorkspace extends Agent {
   created_at: number;
 }
 
+type FieldProps = {
+  label: string;
+  value: string | null;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  mono?: boolean;
+};
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  mono = false
+}: FieldProps) {
+  return (
+    <div>
+      <label className="block text-xs text-text-secondary mb-1">{label}</label>
+      <input
+        type="text"
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={`w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none ${mono ? 'font-mono text-xs' : ''}`}
+      />
+    </div>
+  );
+}
+
 function AdminPanel() {
   const navigate = useNavigate();
   const [agents, setAgents] = useState<AgentWithWorkspace[]>([]);
@@ -137,31 +166,6 @@ function AdminPanel() {
       setSaving(null);
     }
   };
-
-  const Field = ({
-    label,
-    value,
-    onChange,
-    placeholder,
-    mono = false
-  }: {
-    label: string;
-    value: string | null;
-    onChange: (v: string) => void;
-    placeholder?: string;
-    mono?: boolean;
-  }) => (
-    <div>
-      <label className="block text-xs text-text-secondary mb-1">{label}</label>
-      <input
-        type="text"
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={`w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none ${mono ? 'font-mono text-xs' : ''}`}
-      />
-    </div>
-  );
 
   return (
     <div className="min-h-[100svh] bg-bg-primary text-text-primary flex flex-col">
