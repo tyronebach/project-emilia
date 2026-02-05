@@ -196,12 +196,27 @@ export async function renameSession(sessionId: string, name: string): Promise<Se
 
 // ============ CHAT API ============
 
+const AVATAR_TAG_REGEX = /<mood:[^>]+>|<animation:[^>]+>|\[(?:mood|anim):[^\]]*\]/gi;
+
+function stripAvatarTagsRaw(text: string): string {
+  return text.replace(AVATAR_TAG_REGEX, '');
+}
+
+function stripTrailingPartialTag(text: string): string {
+  return text
+    .replace(/\[(?:mood|anim):[^\]]*$/i, '')
+    .replace(/<(?:mood|animation):[^>]*$/i, '');
+}
+
+export function stripAvatarTagsStreaming(text: string): string {
+  if (!text) return '';
+  const cleaned = stripAvatarTagsRaw(text);
+  return stripTrailingPartialTag(cleaned);
+}
+
 export function stripAvatarTags(text: string): string {
   if (!text) return '';
-  return text
-    .replace(/<mood:[^>]+>/g, '')
-    .replace(/<animation:[^>]+>/g, '')
-    .trim();
+  return stripAvatarTagsStreaming(text).trim();
 }
 
 export async function streamChat(
@@ -359,6 +374,7 @@ export default {
   renameSession,
   streamChat,
   stripAvatarTags,
+  stripAvatarTagsStreaming,
   getMemory,
   listMemoryFiles,
   getMemoryFile,

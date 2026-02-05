@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { stripAvatarTags } from './api';
+import { stripAvatarTags, stripAvatarTagsStreaming } from './api';
 
 describe('api utilities', () => {
   describe('stripAvatarTags', () => {
@@ -50,6 +50,33 @@ describe('api utilities', () => {
       expect(result).toContain('Start');
       expect(result).toContain('middle');
       expect(result).toContain('end');
+    });
+
+    it('should remove bracketed mood tags', () => {
+      const text = 'Hello [MOOD:happy:0.7] world';
+      expect(stripAvatarTags(text)).toBe('Hello  world');
+    });
+
+    it('should remove bracketed animation tags', () => {
+      const text = 'Hi [ANIM:wave] there';
+      expect(stripAvatarTags(text)).toBe('Hi  there');
+    });
+  });
+
+  describe('stripAvatarTagsStreaming', () => {
+    it('should remove trailing partial bracket tags', () => {
+      const text = 'Hello [MOOD:ha';
+      expect(stripAvatarTagsStreaming(text)).toBe('Hello ');
+    });
+
+    it('should remove trailing partial angle tags', () => {
+      const text = 'Hi <mood:hap';
+      expect(stripAvatarTagsStreaming(text)).toBe('Hi ');
+    });
+
+    it('should preserve whitespace while streaming', () => {
+      const text = '  Hello ';
+      expect(stripAvatarTagsStreaming(text)).toBe('  Hello ');
     });
   });
 });
