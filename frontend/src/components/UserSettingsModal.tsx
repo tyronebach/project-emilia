@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { X, Sliders } from 'lucide-react';
+import { X, Sliders, Sparkles } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
+import { useRenderStore, QUALITY_LABELS } from '../store/renderStore';
 import { updateUserPreferences } from '../utils/api';
 import { Button } from './ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
+import { getPreset, type QualityPreset } from '../avatar/QualityPresets';
 
 interface UserSettingsModalProps {
   open: boolean;
@@ -16,6 +18,12 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
   const updatePreferences = useUserStore((state) => state.updatePreferences);
   const ttsEnabled = useAppStore((state) => state.ttsEnabled);
   const setTtsEnabled = useAppStore((state) => state.setTtsEnabled);
+  const avatarRenderer = useAppStore((state) => state.avatarRenderer);
+  
+  // Render quality
+  const renderPreset = useRenderStore((state) => state.preset);
+  const renderSettings = useRenderStore((state) => state.settings);
+  const setRenderPreset = useRenderStore((state) => state.setPreset);
 
   const [error, setError] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<'tts_enabled' | null>(null);
@@ -33,6 +41,15 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
       setTtsEnabled(false);
     }
   }, [open, currentUser?.preferences, setTtsEnabled]);
+
+  // Handle render quality change
+  const handleRenderQualityChange = (preset: QualityPreset) => {
+    setRenderPreset(preset);
+    // Apply to renderer if available
+    if (avatarRenderer) {
+      avatarRenderer.applyQualitySettings(getPreset(preset));
+    }
+  };
 
   const handleToggle = async (
     key: 'tts_enabled',
@@ -123,6 +140,46 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
               Select a user before changing settings.
             </div>
           )}
+
+          {/* Render Quality Section */}
+          <div className="pt-4 border-t border-white/10 mt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="w-4 h-4 text-accent" />
+              <div className="text-xs font-semibold text-text-primary">Graphics Quality</div>
+            </div>
+            <div className="text-[11px] text-text-secondary mb-3">
+              Adjust avatar rendering quality.
+            </div>
+
+            <div className="space-y-2">
+              {(['low', 'medium', 'high'] as QualityPreset[]).map((preset) => {
+                const label = QUALITY_LABELS[preset];
+                const isSelected = renderPreset === preset;
+                
+                return (
+                  <button
+                    key={preset}
+                    onClick={() => handleRenderQualityChange(preset)}
+                    className={`w-full text-left p-3 rounded-xl border transition-colors ${
+                      isSelected
+                        ? 'bg-accent/15 border-accent/40 text-text-primary'
+                        : 'bg-bg-tertiary/50 border-white/10 text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{label.name}</span>
+                      {isSelected && (
+                        <span className="text-xs text-accent">✓</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-text-secondary mt-0.5">
+                      {label.description}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

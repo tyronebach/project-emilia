@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
+import { useRenderStore } from '../store/renderStore';
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
 import type { VRM } from '@pixiv/three-vrm';
 
@@ -13,6 +14,7 @@ function AvatarPanel() {
   const { avatarRendererRef } = useApp();
   const setAvatarRenderer = useAppStore((state) => state.setAvatarRenderer);
   const currentAgent = useUserStore((state) => state.currentAgent);
+  const renderSettings = useRenderStore((state) => state.settings);
   const [loading, setLoading] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -26,11 +28,17 @@ function AvatarPanel() {
   useEffect(() => {
     if (!containerRef.current) return;
 
+    // Get current render settings from store
+    const settings = useRenderStore.getState().settings;
+
     const renderer = new AvatarRenderer(containerRef.current, {
       vrmUrl,
+      enableOrbitControls: true,  // Allow camera rotation/zoom
       onLoad: (vrm: VRM) => {
         const metaName = (vrm.meta as { name?: string })?.name;
         console.log('VRM loaded:', metaName || 'Unknown');
+        // Apply quality settings after VRM loads
+        renderer.applyQualitySettings(settings);
         setLoading(false);
         setError(null);
         // Sync renderer to store AFTER VRM loads
@@ -86,6 +94,15 @@ function AvatarPanel() {
         setLoading(false);
       });
   }, [vrmUrl, avatarRendererRef]);
+
+  // Apply render settings when store changes
+  useEffect(() => {
+    const renderer = avatarRendererRef.current;
+    if (!renderer) return;
+    
+    renderer.applyQualitySettings(renderSettings);
+    console.log('[AvatarPanel] Applied render settings from store');
+  }, [renderSettings, avatarRendererRef]);
 
   return (
     <div className="absolute inset-0 z-0">

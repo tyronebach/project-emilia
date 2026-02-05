@@ -1,216 +1,247 @@
-# Animation System
+# Animation System Architecture
 
-**Version:** 2.0  
-**Date:** 2026-02-02  
-**Author:** Ram 🩷
+This document describes how Kokoro handles VRM avatar animations, including idle movement, blinking, lip sync, and emotional expressions.
 
 ## Overview
 
-The animation system plays pre-made animations on VRM avatars. It uses:
-- **GLB files** for animation clips (from Mixamo, Blender, etc.)
-- **Three.js AnimationMixer** for playback
-- **Automatic retargeting** from Mixamo bone names to VRM
-
-## Architecture
+Kokoro uses a **layered animation system** that separates bone-based animations (VRMA) from procedural expression control. This is the standard approach used by VTuber applications like ChatVRM, SillyTavern VRM, and Animaze.
 
 ```
-frontend/public/animations/
-├── wave.glb
-├── nod.glb
-├── thinking.glb
-├── idle.glb
-└── ...
-
-frontend/src/avatar/
-├── AnimationLibrary.ts   # Load & cache GLB animations
-├── AnimationPlayer.ts    # Three.js AnimationMixer wrapper
-├── LipSyncEngine.ts      # ElevenLabs alignment → visemes
-├── ExpressionController.ts # Mood → VRM expressions
-└── IdleAnimations.ts     # Blink, breathing (procedural)
+┌─────────────────────────────────────────┐
+│           Animation Controller          │
+├─────────────────────────────────────────┤
+│  VRMA Layer (bones)                     │
+│  └─ idle.vrma (breathing, subtle sway)  │
+│  └─ talking.vrma (gestures)             │
+│  └─ emote_*.vrma (reactions)            │
+├─────────────────────────────────────────┤
+│  Procedural Layer (expressions)         │
+│  └─ AutoBlink (random intervals)        │
+│  └─ LipSync (driven by TTS/visemes)     │
+│  └─ Emotion blend (joy/sad/anger/etc)   │
+└─────────────────────────────────────────┘
 ```
 
-## Components
+## Why This Split?
 
-### AnimationLibrary
+| Concern | VRMA (Bones) | Procedural (Expressions) |
+|---------|--------------|--------------------------|
+| Breathing/sway | ✅ | ❌ |
+| Hand gestures | ✅ | ❌ |
+| Blinking | ❌ | ✅ |
+| Lip sync | ❌ | ✅ |
+| Emotions | Either | Either |
 
-Singleton that loads and caches animation clips.
+**Blinking must be procedural** because:
+- Random timing feels more natural than looped animation
+- Needs to pause gracefully during expression changes (don't blink mid-surprise)
+- Can be disabled contextually (e.g., during intense stare)
 
-```typescript
-import { animationLibrary } from './avatar';
-
-// Register animations (do this once at startup)
-animationLibrary.register('wave', '/animations/wave.glb');
-animationLibrary.register('nod', '/animations/nod.glb');
-
-// Preload all registered
-await animationLibrary.preloadAll();
-
-// Or load on demand
-const clip = await animationLibrary.load('wave');
-```
-
-### AnimationPlayer
-
-Plays animations on VRM model using Three.js AnimationMixer.
-
-```typescript
-// Triggered by avatar commands from LLM
-renderer.animationPlayer.play('wave');
-
-// With options
-renderer.animationPlayer.play('wave', {
-  loop: false,      // Play once
-  fadeIn: 0.25,     // Crossfade in (seconds)
-  fadeOut: 0.25,    // Crossfade out
-  timeScale: 1.0    // Playback speed
-});
-
-// Queue multiple animations
-renderer.animationPlayer.play('wave');
-renderer.animationPlayer.play('nod'); // Queued, plays after wave
-```
-
-### Bone Retargeting
-
-Animations are automatically retargeted from Mixamo naming to VRM:
-
-| Mixamo | VRM |
-|--------|-----|
-| mixamorigHips | hips |
-| mixamorigSpine | spine |
-| mixamorigHead | head |
-| mixamorigRightArm | rightUpperArm |
-| ... | ... |
-
-## Adding Animations
-
-### Option 1: Quaternius Universal Animation Library (Recommended)
-
-Free CC0 animations, already in GLB format:
-
-1. **Download from itch.io:**
-   - Go to https://quaternius.itch.io/universal-animation-library
-   - Click "Download Now" → "No thanks, just take me to downloads"
-   - Download "Universal Animation Library[Standard].zip"
-
-2. **Extract and copy:**
-   ```bash
-   cd /home/tbach/Projects/emilia-project/emilia-webapp/frontend/public
-   unzip ~/Downloads/Universal\ Animation\ Library*.zip -d animations/
-   ```
-
-3. **Register animations:**
-   ```typescript
-   // In AnimationLibrary.ts constructor or initialization
-   animationLibrary.register('wave', '/animations/GLB/Emotes/Wave.glb');
-   animationLibrary.register('nod', '/animations/GLB/Emotes/Agree.glb');
-   animationLibrary.register('thinking', '/animations/GLB/Emotes/Think.glb');
-   animationLibrary.register('idle', '/animations/GLB/Idle/Idle.glb');
-   ```
-
-### Option 2: Mixamo
-
-1. Go to [Mixamo](https://www.mixamo.com/) (Adobe login required)
-2. Upload a T-pose character or use a preset
-3. Browse animations (wave, nod, thinking, etc.)
-4. Download as FBX with "Without Skin" option
-5. Convert to GLB:
-   ```bash
-   # Using gltf-transform
-   npx @gltf-transform/cli copy input.fbx output.glb
-   
-   # Or in Blender: File → Export → glTF 2.0 (.glb)
-   ```
-
-### Fallback Behavior
-
-If GLB files aren't found, the system automatically falls back to **procedural animations** (AnimationTrigger). These provide basic:
-- Wave (arm raise + happy expression)
-- Nod (head movement)
-- Thinking (head tilt)
-- Head shake
-
-So the app works without GLB files, just with simpler animations.
-
-## Agent Integration
-
-Emilia emits animation tags in responses:
-
-```
-[MOOD:happy:0.8] [ANIM:wave] Hello there!
-```
-
-Backend parses tags → frontend receives:
-```json
-{
-  "text": "Hello there!",
-  "moods": [{"mood": "happy", "intensity": 0.8}],
-  "animations": ["wave"]
-}
-```
-
-Frontend triggers:
-```typescript
-// In useChat.ts or store
-renderer.animationPlayer.play('wave');
-renderer.expressionController.setMood('happy', 0.8);
-```
-
-## Lip Sync
-
-Lip sync uses ElevenLabs alignment data (character timestamps).
-
-**Backend** (`/api/speak`):
-- Requests TTS with `alignment: true`
-- Returns `audio_base64` + `alignment` data
-
-**Frontend** (`LipSyncEngine`):
-- Maps characters → visemes
-- Syncs VRM blend shapes to audio playback
-
-```typescript
-// Already wired in useChat.speakText()
-if (result.alignment) {
-  renderer.lipSyncEngine.setAlignment(result.alignment);
-  renderer.lipSyncEngine.startSync(audioElement);
-}
-```
-
-## Supported Visemes
-
-VRM Oculus visemes:
-```
-sil, PP, FF, TH, DD, kk, CH, SS, nn, RR, aa, E, I, O, U
-```
-
-Character mapping:
-- Vowels: a→aa, e→E, i→I, o→O, u→U
-- Consonants: p,b,m→PP, f,v→FF, t,d→DD, k,g→kk, s,z→SS, r→RR
-
-## Testing
-
-```bash
-# Check available animations
-console.log(animationLibrary.getAvailableAnimations());
-
-# Trigger manually
-renderer.animationPlayer.play('wave');
-
-# Check lip sync alignment
-console.log('[LipSync] Prepared X timing entries');
-```
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `AnimationLibrary.ts` | GLB loader + cache |
-| `AnimationPlayer.ts` | Mixer wrapper + retargeting |
-| `LipSyncEngine.ts` | Character → viseme sync |
-| `ExpressionController.ts` | Mood → expression blending |
-| `IdleAnimations.ts` | Procedural blink/breathe |
-| `AnimationTrigger.ts` | Legacy (deprecated) |
+**Idle body movement should be VRMA** because:
+- Bone animations are complex to generate procedurally
+- VRMA files are portable across any VRM model
+- Can have multiple variants for natural variation
 
 ---
 
-*Ram 🩷*
+## VRMA Layer
+
+### Supported Animation States
+
+| State | File Pattern | Description |
+|-------|--------------|-------------|
+| Idle | `idle.vrma` or `idle1.vrma`, `idle2.vrma`... | Subtle breathing, weight shifts |
+| Talking | `talking.vrma` | Light gestures while speaking |
+| Emotes | `emote_wave.vrma`, `emote_nod.vrma`... | Triggered reactions |
+
+### Idle Variants
+
+For natural variation, support multiple idle animations:
+- `idle1.vrma` — default breathing
+- `idle2.vrma` — slight head tilt variant
+- `idle3.vrma` — weight shift variant
+
+When looping, randomly select the next variant (or use weighted selection based on mood).
+
+### Loading VRMA
+
+Use `@pixiv/three-vrm` and `@pixiv/three-vrm-animation`:
+
+```typescript
+import { VRMAnimationLoaderPlugin } from '@pixiv/three-vrm-animation';
+
+// Add plugin to GLTFLoader
+loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+
+// Load and apply
+const vrmaGltf = await loader.loadAsync('idle.vrma');
+const clip = createVRMAnimationClip(vrmaGltf.userData.vrmAnimations[0], vrm);
+mixer.clipAction(clip).play();
+```
+
+---
+
+## Procedural Layer
+
+### AutoBlink
+
+Controls the `blink` expression with randomized timing.
+
+**Constants:**
+```typescript
+const BLINK_INTERVAL_MIN = 2.0;   // minimum seconds between blinks
+const BLINK_INTERVAL_MAX = 6.0;   // maximum seconds between blinks
+const BLINK_CLOSE_DURATION = 0.12; // how long eyes stay closed
+```
+
+**Logic:**
+1. Eyes open, start random countdown (2-6 seconds)
+2. Countdown reaches 0 → close eyes (`blink = 1`)
+3. Wait 0.12 seconds → open eyes (`blink = 0`)
+4. Repeat
+
+**Implementation reference** (from Pixiv ChatVRM):
+```typescript
+class AutoBlink {
+  private expressionManager: VRMExpressionManager;
+  private remainingTime: number = 0;
+  private isOpen: boolean = true;
+  private enabled: boolean = true;
+
+  constructor(expressionManager: VRMExpressionManager) {
+    this.expressionManager = expressionManager;
+    this.scheduleNextBlink();
+  }
+
+  setEnabled(enabled: boolean): number {
+    this.enabled = enabled;
+    // Return time until eyes open (for expression sync)
+    return this.isOpen ? 0 : this.remainingTime;
+  }
+
+  update(delta: number) {
+    if (this.remainingTime > 0) {
+      this.remainingTime -= delta;
+      return;
+    }
+
+    if (this.isOpen && this.enabled) {
+      this.close();
+    } else {
+      this.open();
+    }
+  }
+
+  private close() {
+    this.isOpen = false;
+    this.remainingTime = BLINK_CLOSE_DURATION;
+    this.expressionManager.setValue('blink', 1);
+  }
+
+  private open() {
+    this.isOpen = true;
+    this.scheduleNextBlink();
+    this.expressionManager.setValue('blink', 0);
+  }
+
+  private scheduleNextBlink() {
+    this.remainingTime = BLINK_INTERVAL_MIN + 
+      Math.random() * (BLINK_INTERVAL_MAX - BLINK_INTERVAL_MIN);
+  }
+}
+```
+
+**Expression sync:** When changing emotions, call `setEnabled(false)` to pause blinking, wait for eyes to open (use returned time), apply expression, then re-enable.
+
+### LipSync
+
+Controls mouth visemes based on TTS audio or text timing.
+
+**VRM preset expressions for mouth:**
+- `aa` — open mouth (あ)
+- `ih` — slightly open (い)
+- `ou` — rounded (う)
+- `ee` — wide (え)
+- `oh` — open rounded (お)
+
+**Options:**
+1. **Audio-driven** — Analyze TTS audio for phonemes, map to visemes
+2. **Text-driven** — Estimate timing from text length, animate mouth open/close
+3. **Simple** — Just animate `aa` expression based on speaking state
+
+For MVP, text-driven or simple approach is sufficient.
+
+### Emotion Expressions
+
+VRM preset emotions:
+- `happy` / `joy`
+- `angry`
+- `sad`
+- `surprised`
+- `relaxed` / `neutral`
+
+**Triggering:**
+- Agent emits emotion tags in response
+- Controller blends to target emotion over ~0.3s
+- Auto-decay back to neutral after timeout (or on next message)
+
+**Conflict with VRMA:** If VRMA files include expression tracks, don't also run procedural emotion control for those same expressions. Pick one source of truth per expression.
+
+---
+
+## Conflict Prevention
+
+### Blink + Emotions
+When transitioning emotions:
+1. Pause AutoBlink
+2. Wait for eyes to open (if currently blinking)
+3. Blend to new emotion
+4. Resume AutoBlink
+
+### VRMA + Procedural Expressions
+- VRMA can include expression animations (e.g., a wave animation that also smiles)
+- If VRMA controls an expression, procedural layer should not override it
+- Solution: Track which expressions VRMA is animating, skip those in procedural update
+
+### Multiple VRMA Clips
+- Use `AnimationMixer` with proper blending
+- Idle should loop, emotes should play once then return to idle
+- Crossfade duration: ~0.3s for smooth transitions
+
+---
+
+## File Organization
+
+```
+assets/
+├── animations/
+│   ├── idle1.vrma
+│   ├── idle2.vrma
+│   ├── idle3.vrma
+│   ├── talking.vrma
+│   └── emotes/
+│       ├── wave.vrma
+│       ├── nod.vrma
+│       └── shrug.vrma
+```
+
+---
+
+## Integration Checklist
+
+- [ ] Load VRMA files via `@pixiv/three-vrm-animation`
+- [ ] Implement `AutoBlink` class with random intervals
+- [ ] Implement basic lip sync (text-driven for MVP)
+- [ ] Implement emotion expression controller
+- [ ] Add expression sync (pause blink during emotion change)
+- [ ] Support multiple idle variants with random selection
+- [ ] Handle VRMA → idle transitions with crossfade
+
+---
+
+## References
+
+- [Pixiv ChatVRM](https://github.com/pixiv/ChatVRM) — Reference implementation
+- [SillyTavern VRM Extension](https://github.com/SillyTavern/Extension-VRM) — Animation grouping pattern
+- [VRM Animation Spec](https://vrm.dev/en/vrma/) — Official VRMA documentation
+- [@pixiv/three-vrm](https://github.com/pixiv/three-vrm) — Three.js VRM library
