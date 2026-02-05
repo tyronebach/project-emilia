@@ -664,9 +664,12 @@ function AvatarDebugPanel() {
     setLastAction('Animation: Stopped');
   }, []);
 
-  // GLB animation test (pre-converted animations from convert3d.org etc)
-  const handleGlbFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  // Drag and drop state for GLB
+  const [isDraggingGlb, setIsDraggingGlb] = useState(false);
+  const glbDropRef = useRef<HTMLLabelElement>(null);
+
+  // Handle GLB file (from input or drop)
+  const processGlbFile = useCallback(async (file: File) => {
     const renderer = rendererRef.current;
     
     if (!file || !renderer) {
@@ -720,6 +723,38 @@ function AvatarDebugPanel() {
       setLastAction(`GLB Error: ${err}`);
     }
   }, []);
+
+  // Wrapper for file input change
+  const handleGlbFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processGlbFile(file);
+  }, [processGlbFile]);
+
+  // Drag and drop handlers for GLB
+  const handleGlbDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingGlb(true);
+  }, []);
+
+  const handleGlbDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingGlb(false);
+  }, []);
+
+  const handleGlbDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingGlb(false);
+    
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.name.endsWith('.glb') || file.name.endsWith('.gltf'))) {
+      processGlbFile(file);
+    } else {
+      setGlbStatus('Error: Drop a .glb or .gltf file');
+    }
+  }, [processGlbFile]);
 
   // BVH/Bandai-Namco bone name mapping to VRM humanoid bones
   const bvhToVrmBoneMap: Record<string, string> = {
@@ -1302,12 +1337,27 @@ function AvatarDebugPanel() {
                     </label>
                   </div>
                   
-                  {/* GLB Upload */}
+                  {/* GLB Upload with Drag & Drop */}
                   <div className="space-y-2">
-                    <div className="text-xs font-semibold text-text-secondary">GLB Animation (convert3d.org etc)</div>
-                    <label className="flex items-center justify-center gap-2 bg-bg-tertiary/70 border border-dashed border-white/10 rounded-lg p-3 cursor-pointer hover:bg-bg-secondary transition-colors">
-                      <FileUp className="w-4 h-4 text-text-secondary" />
-                      <span className="text-sm text-text-secondary">{glbStatus}</span>
+                    <div className="text-xs font-semibold text-text-secondary">GLB Animation (drag & drop supported)</div>
+                    <label 
+                      ref={glbDropRef}
+                      onDragOver={handleGlbDragOver}
+                      onDragLeave={handleGlbDragLeave}
+                      onDrop={handleGlbDrop}
+                      className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
+                        isDraggingGlb 
+                          ? 'bg-accent/20 border-accent text-accent' 
+                          : 'bg-bg-tertiary/70 border-white/20 hover:bg-bg-secondary hover:border-white/30'
+                      }`}
+                    >
+                      <FileUp className={`w-6 h-6 ${isDraggingGlb ? 'text-accent' : 'text-text-secondary'}`} />
+                      <span className={`text-sm ${isDraggingGlb ? 'text-accent' : 'text-text-secondary'}`}>
+                        {isDraggingGlb ? 'Drop GLB here!' : glbStatus}
+                      </span>
+                      <span className="text-xs text-text-secondary/60">
+                        Click or drag & drop .glb/.gltf
+                      </span>
                       <input
                         type="file"
                         accept=".glb,.gltf"
