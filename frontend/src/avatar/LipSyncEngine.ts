@@ -45,9 +45,9 @@ type MouthShape = typeof VRM_MOUTH_SHAPES[number] | 'sil';
  * Tunable lip sync parameters
  */
 export interface LipSyncConfig {
-  /** Max mouth shape weight (0-1). Default: 0.8 */
-  maxWeight: number;
-  /** Blend speed for transitions (0-1). Higher = snappier. Default: 0.2 */
+  /** Weight multiplier for audio-driven openness (0-2). Default: 1.0 */
+  weightMultiplier: number;
+  /** Blend speed for transitions (0-1). Higher = snappier. Default: 0.3 */
   blendSpeed: number;
   /** Weight threshold for silence. Default: 0.01 */
   silenceThreshold: number;
@@ -56,8 +56,8 @@ export interface LipSyncConfig {
 }
 
 const DEFAULT_CONFIG: LipSyncConfig = {
-  maxWeight: 0.8,
-  blendSpeed: 0.2,
+  weightMultiplier: 1.0,
+  blendSpeed: 0.3,
   silenceThreshold: 0.01,
   minHoldMs: 50,
 };
@@ -78,6 +78,13 @@ export class LipSyncEngine {
   
   private timingData: TimingEntry[] = [];
   private availableMouthShapes: Set<string> = new Set();
+  
+  // Audio volume analysis
+  private audioContext: AudioContext | null = null;
+  private analyser: AnalyserNode | null = null;
+  private sourceNode: MediaElementAudioSourceNode | null = null;
+  private dataArray: Uint8Array | null = null;
+  private currentVolume: number = 0;
   
   constructor(vrm: VRM) {
     this.vrm = vrm;
@@ -216,8 +223,68 @@ export class LipSyncEngine {
     this.currentWeight = 0;
     this.targetWeight = 0;
     this.lastShapeChangeMs = -1000; // Allow immediate first shape change
+    this.currentVolume = 0;
+    
+    // Set up audio analyser for volume detection
+    this.setupAudioAnalyser(audioElement);
     
     console.log('[LipSync] Started, config:', this.config);
+  }
+  
+  /**
+   * Set up Web Audio API analyser for volume detection
+   */
+  private setupAudioAnalyser(audioElement: HTMLAudioElement): void {
+    try {
+      // Reuse existing context if possible
+      if (!this.audioContext || this.audioContext.state === 'closed') {
+        this.audioContext = new AudioContext();
+      }
+      
+      // Create analyser
+      this.analyser = this.audioContext.createAnalyser();
+      this.analyser.fftSize = 256;
+      this.analyser.smoothingTimeConstant = 0.3; // Lower = more responsive
+      
+      // Connect audio element to analyser
+      // Note: Each audio element can only have one source node, so we track it
+      if (!this.sourceNode) {
+        this.sourceNode = this.audioContext.createMediaElementSource(audioElement);
+      }
+      this.sourceNode.connect(this.analyser);
+      this.analyser.connect(this.audioContext.destination);
+      
+      // Create data array for reading volume
+      this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+      
+      console.log('[LipSync] Audio analyser ready');
+    } catch (e) {
+      console.warn('[LipSync] Failed to set up audio analyser:', e);
+      // Fall back to fixed weight mode
+      this.analyser = null;
+    }
+  }
+  
+  /**
+   * Get current audio volume (0-1)
+   */
+  private getAudioVolume(): number {
+    if (!this.analyser || !this.dataArray) return 0.7; // Fallback
+    
+    this.analyser.getByteFrequencyData(this.dataArray);
+    
+    // Calculate RMS volume from frequency data
+    let sum = 0;
+    for (let i = 0; i < this.dataArray.length; i++) {
+      sum += this.dataArray[i];
+    }
+    const average = sum / this.dataArray.length;
+    
+    // Normalize to 0-1 range (byte values are 0-255)
+    // Apply slight boost and clamp
+    const normalized = Math.min(1, (average / 128) * 1.2);
+    
+    return normalized;
   }
   
   /**
@@ -227,7 +294,7 @@ export class LipSyncEngine {
     if (!this.vrm?.expressionManager) return;
     
     const em = this.vrm.expressionManager;
-    const { maxWeight, blendSpeed, silenceThreshold, minHoldMs } = this.config;
+    const { weightMultiplier, blendSpeed, silenceThreshold, minHoldMs } = this.config;
     
     if (!this.isActive || !this.audioElement) {
       // Decay to neutral - reset all mouth shapes
@@ -241,10 +308,13 @@ export class LipSyncEngine {
     const currentTimeMs = this.audioElement.currentTime * 1000;
     const audioDuration = this.audioElement.duration * 1000;
     
+    // Get audio volume for dynamic weight
+    this.currentVolume = this.getAudioVolume();
+    
     // Debug: log timing periodically (every 500ms)
     if (Math.floor(currentTimeMs / 500) !== Math.floor((currentTimeMs - 16) / 500)) {
       const lastEntry = this.timingData[this.timingData.length - 1];
-      console.log(`[LipSync] Audio: ${currentTimeMs.toFixed(0)}ms / ${audioDuration.toFixed(0)}ms, Data ends: ${lastEntry?.endMs}ms, Shape: ${this.currentShape} @ ${this.currentWeight.toFixed(2)}`);
+      console.log(`[LipSync] Audio: ${currentTimeMs.toFixed(0)}ms / ${audioDuration.toFixed(0)}ms, Vol: ${this.currentVolume.toFixed(2)}, Shape: ${this.currentShape} @ ${this.currentWeight.toFixed(2)}`);
     }
     
     // Find current mouth shape from timing data
@@ -268,8 +338,14 @@ export class LipSyncEngine {
       this.lastShapeChangeMs = currentTimeMs;
     }
     
-    // Blend towards target weight
-    this.targetWeight = targetShape !== 'sil' ? maxWeight : 0;
+    // Calculate target weight from audio volume
+    // Volume drives openness (0-1), multiplier scales it (0-2)
+    // Base weight of 0.3 ensures some movement even on quiet parts
+    const baseWeight = 0.3;
+    const volumeWeight = this.currentVolume * 0.7; // Volume adds up to 0.7 more
+    const rawWeight = targetShape !== 'sil' ? (baseWeight + volumeWeight) * weightMultiplier : 0;
+    this.targetWeight = Math.min(1, rawWeight); // Clamp to 1
+    
     this.currentWeight += (this.targetWeight - this.currentWeight) * blendSpeed;
     
     this.applyMouthShape(em, this.currentShape, this.currentWeight);
@@ -337,6 +413,18 @@ export class LipSyncEngine {
     this.audioElement = null;
     this.alignment = null;
     this.timingData = [];
+    
+    // Disconnect audio analyser (but keep context for reuse)
+    if (this.sourceNode && this.analyser) {
+      try {
+        this.sourceNode.disconnect();
+        this.analyser.disconnect();
+      } catch (_e) { /* ignore */ }
+    }
+    this.analyser = null;
+    this.sourceNode = null;
+    this.dataArray = null;
+    this.currentVolume = 0;
     
     // Reset all mouth shapes
     if (this.vrm?.expressionManager) {
