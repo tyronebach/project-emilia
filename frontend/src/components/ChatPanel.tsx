@@ -28,7 +28,7 @@ function ChatPanel() {
         variant="ghost"
         size="icon"
         onClick={() => setCollapsed(false)}
-        className="fixed bottom-20 right-4 z-20 bg-black/70 backdrop-blur-sm hover:bg-black/80 rounded-full h-10 w-10"
+        className="fixed bottom-36 right-4 z-20 bg-black/70 backdrop-blur-sm hover:bg-black/80 rounded-full h-10 w-10"
         title="Show chat history"
       >
         <ChevronUp className="w-5 h-5" />
@@ -48,7 +48,7 @@ function ChatPanel() {
         variant="ghost"
         size="icon"
         onClick={() => setCollapsed(true)}
-        className="fixed bottom-[calc(26vh+5rem-2rem)] right-2 z-20 bg-black/60 hover:bg-black/70 rounded-full h-8 w-8"
+        className="fixed bottom-[calc(26vh+9rem-2rem)] right-2 z-20 bg-black/60 hover:bg-black/70 rounded-full h-8 w-8"
         title="Hide chat history"
       >
         <ChevronDown className="w-4 h-4" />
@@ -56,7 +56,7 @@ function ChatPanel() {
 
       {/* Chat panel with mask - 1/3 of screen height */}
       <div
-        className="absolute bottom-20 left-0 right-0 h-[26vh] z-10"
+        className="absolute bottom-36 left-0 right-0 h-[26vh] z-10"
         style={{
           maskImage: 'linear-gradient(to top, black 60%, transparent 100%)',
           WebkitMaskImage: 'linear-gradient(to top, black 60%, transparent 100%)',

@@ -89,7 +89,7 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
   const { ref: messageRef, ...messageField } = register('message');
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-20 rounded-3xl bg-bg-secondary p-4">
+    <div className="absolute bottom-4 left-4 right-4 z-20 rounded-3xl bg-bg-secondary p-4">
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col">
         {/* Row 1: Message input */}
         <textarea
@@ -103,7 +103,9 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
           rows={1}
           onKeyDown={handleKeyDown}
           className="w-full bg-transparent text-text-primary placeholder-text-secondary/50 text-base leading-6
-                     outline-none ring-0 focus:outline-none focus:ring-0 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                     border-0 outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 
+                     resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ boxShadow: 'none' }}
           autoComplete="off"
         />
 
