@@ -41,16 +41,40 @@ function charToMouthShape(char: string): string {
 const VRM_MOUTH_SHAPES = ['aa', 'ih', 'ou', 'ee', 'oh'] as const;
 type MouthShape = typeof VRM_MOUTH_SHAPES[number] | 'sil';
 
+/**
+ * Tunable lip sync parameters
+ */
+export interface LipSyncConfig {
+  /** Max mouth shape weight (0-1). Default: 0.8 */
+  maxWeight: number;
+  /** Blend speed for transitions (0-1). Higher = snappier. Default: 0.2 */
+  blendSpeed: number;
+  /** Weight threshold for silence. Default: 0.01 */
+  silenceThreshold: number;
+  /** Minimum hold time per shape in ms. Prevents flickering. Default: 50 */
+  minHoldMs: number;
+}
+
+const DEFAULT_CONFIG: LipSyncConfig = {
+  maxWeight: 0.8,
+  blendSpeed: 0.2,
+  silenceThreshold: 0.01,
+  minHoldMs: 50,
+};
+
 export class LipSyncEngine {
   private vrm: VRM;
   private alignment: AlignmentData | null = null;
   private audioElement: HTMLAudioElement | null = null;
   private isActive: boolean = false;
   
-  private blendSpeed: number = 0.2;  // Faster blending for more responsive lip sync
+  // Tunable config
+  private config: LipSyncConfig = { ...DEFAULT_CONFIG };
+  
   private currentShape: MouthShape = 'sil';
   private currentWeight: number = 0;
   private targetWeight: number = 0;
+  private lastShapeChangeMs: number = 0;
   
   private timingData: TimingEntry[] = [];
   private availableMouthShapes: Set<string> = new Set();
@@ -58,6 +82,21 @@ export class LipSyncEngine {
   constructor(vrm: VRM) {
     this.vrm = vrm;
     this.detectAvailableMouthShapes();
+  }
+  
+  /**
+   * Get current config
+   */
+  getConfig(): LipSyncConfig {
+    return { ...this.config };
+  }
+  
+  /**
+   * Update config (partial updates allowed)
+   */
+  setConfig(updates: Partial<LipSyncConfig>): void {
+    this.config = { ...this.config, ...updates };
+    console.log('[LipSync] Config updated:', this.config);
   }
   
   /**
@@ -181,11 +220,12 @@ export class LipSyncEngine {
     if (!this.vrm?.expressionManager) return;
     
     const em = this.vrm.expressionManager;
+    const { maxWeight, blendSpeed, silenceThreshold, minHoldMs } = this.config;
     
     if (!this.isActive || !this.audioElement) {
       // Decay to neutral - reset all mouth shapes
-      if (this.currentWeight > 0.01) {
-        this.currentWeight = Math.max(0, this.currentWeight - this.blendSpeed);
+      if (this.currentWeight > silenceThreshold) {
+        this.currentWeight = Math.max(0, this.currentWeight - blendSpeed);
         this.applyMouthShape(em, this.currentShape, this.currentWeight);
       }
       return;
@@ -211,17 +251,19 @@ export class LipSyncEngine {
       }
     }
     
-    // On shape change, reset previous and start new
-    if (targetShape !== this.currentShape) {
+    // On shape change, reset previous and start new (with min hold time to prevent flicker)
+    const timeSinceLastChange = currentTimeMs - this.lastShapeChangeMs;
+    if (targetShape !== this.currentShape && timeSinceLastChange >= minHoldMs) {
       console.log(`[LipSync] Shape: ${this.currentShape} → ${targetShape}`, matchedEntry ? `(char: '${matchedEntry.char}')` : '');
       this.applyMouthShape(em, this.currentShape, 0);  // Reset old shape
       this.currentShape = targetShape;
       this.currentWeight = 0;
+      this.lastShapeChangeMs = currentTimeMs;
     }
     
     // Blend towards target weight
-    this.targetWeight = targetShape !== 'sil' ? 0.8 : 0;  // Stronger weight for visibility
-    this.currentWeight += (this.targetWeight - this.currentWeight) * this.blendSpeed;
+    this.targetWeight = targetShape !== 'sil' ? maxWeight : 0;
+    this.currentWeight += (this.targetWeight - this.currentWeight) * blendSpeed;
     
     this.applyMouthShape(em, this.currentShape, this.currentWeight);
   }
