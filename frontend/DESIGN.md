@@ -1,52 +1,85 @@
 # Emilia Webapp Design System
 
-Dark mode by default. Follow these patterns for consistency.
+Dark mode by default. The UI is a teal-accented glass aesthetic with soft ambient gradients and a minimal, cinematic tone. Keep it sparse, high-contrast, and calm.
+
+## Typography
+
+- Primary: Space Grotesk
+- Display: Bricolage Grotesque (`.font-display`)
 
 ## Color Tokens (CSS Variables)
 
 ```css
 /* Backgrounds (darkest to lightest) */
---color-bg-primary: #0f0f0f;    /* Main background */
---color-bg-secondary: #1a1a1a;  /* Cards, panels */
---color-bg-tertiary: #252525;   /* Inputs, borders, subtle elements */
+--color-bg-primary: #0b1117;    /* Main background */
+--color-bg-secondary: #121922;  /* Cards, panels */
+--color-bg-tertiary: #1a2430;   /* Inputs, borders, subtle elements */
 
 /* Text */
---color-text-primary: #ffffff;   /* Main text */
---color-text-secondary: #a0a0a0; /* Muted text, labels */
+--color-text-primary: #f8fafc;   /* Main text */
+--color-text-secondary: #94a3b8; /* Muted text, labels */
 
 /* Accent */
---color-accent: #6366f1;         /* Primary actions, links */
---color-accent-hover: #818cf8;   /* Accent hover state */
+--color-accent: #22c3a6;         /* Primary actions, links */
+--color-accent-hover: #3ddbc0;   /* Accent hover state */
 
 /* Status */
 --color-success: #22c55e;
 --color-warning: #f59e0b;
 --color-error: #ef4444;
+--color-info: #38bdf8;
 ```
 
-## Tailwind Classes
+## Tailwind Usage
 
-Use semantic token names, not raw colors:
+Use semantic token classes instead of raw colors:
 - `bg-bg-primary`, `bg-bg-secondary`, `bg-bg-tertiary`
 - `text-text-primary`, `text-text-secondary`
-- `bg-accent`, `hover:bg-accent-hover`
+- `bg-accent`, `hover:bg-accent-hover`, `text-accent`
+- `bg-success`, `bg-warning`, `bg-error`, `text-info`
 - `border-bg-tertiary`
 
-## Button Patterns
+Avoid raw `text-green-400` / `bg-blue-500` / `text-gray-300` etc.
+
+## Layout & Viewport
+
+- Use `min-h-[100svh]` instead of `h-screen` or `vh` to avoid mobile browser UI collisions.
+- When positioning fixed/absolute UI near the bottom, include safe-area: `env(safe-area-inset-bottom)`.
+- Prefer `flex`/`grid` layout over absolute positioning except for the chat overlay + floating controls.
+
+## Glass Surface Pattern
+
+Use a consistent glass layer for panels, drawers, and cards:
+
+```tsx
+<div className="bg-bg-secondary/70 border border-white/10 backdrop-blur-md shadow-[0_30px_70px_-50px_rgba(0,0,0,0.8)] rounded-2xl" />
+```
+
+## Ambient Backgrounds
+
+Use the shared component for the ambient glow fields:
+
+```tsx
+import AmbientBackground from '@/components/AmbientBackground'
+
+<AmbientBackground variant="user" />
+```
+
+Variants: `user`, `agent`, `newChat`.
+
+## Buttons
 
 ### Primary Action (Submit, Apply, Confirm)
 ```tsx
-<Button className="bg-indigo-500 text-white hover:bg-indigo-400">
+<Button className="bg-accent text-accent-foreground hover:bg-accent-hover">
   Apply
 </Button>
 ```
 
-⚠️ Don't use `bg-accent` — conflicts with shadcn tokens and renders white.
-
 ### Secondary Action (Cancel, Back, Alternative)
 ```tsx
-<Button 
-  variant="ghost" 
+<Button
+  variant="ghost"
   className="text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
 >
   Cancel
@@ -55,18 +88,11 @@ Use semantic token names, not raw colors:
 
 ### Ghost Button (Navigation, Toggle)
 ```tsx
-<Button 
-  variant="ghost" 
+<Button
+  variant="ghost"
   className="text-text-secondary hover:text-text-primary hover:bg-white/10"
 >
   Menu Item
-</Button>
-```
-
-### Icon Button
-```tsx
-<Button variant="ghost" size="icon" className="hover:bg-white/10">
-  <ArrowLeft className="w-5 h-5" />
 </Button>
 ```
 
@@ -77,39 +103,43 @@ Use semantic token names, not raw colors:
 </Button>
 ```
 
-## ⚠️ Avoid
+### ⚠️ Avoid
+- `variant="outline"` (renders poorly in dark)
+- `variant="default"` without explicit classes
+- raw hex values
 
-- `variant="outline"` — broken in dark mode (white bg)
-- `variant="default"` without explicit classes — may have wrong colors
-- Raw hex colors — use tokens instead
+## Inputs
 
-## Common Components
+```tsx
+<input className="w-full bg-bg-tertiary/80 border border-white/10 rounded px-3 py-2 text-sm text-text-primary" />
+```
+
+## Dialogs & Drawer (Radix)
+
+All modal surfaces must include a title + description for a11y. If not visible, hide with `sr-only`.
+
+```tsx
+<Dialog>
+  <DialogContent>
+    <DialogTitle>Title</DialogTitle>
+    <DialogDescription className="sr-only">Context for screen readers.</DialogDescription>
+    ...
+  </DialogContent>
+</Dialog>
+```
+
+## Common Patterns
 
 ### Section Header
 ```tsx
-<h2 className="text-sm font-semibold text-text-secondary uppercase tracking-wide">
+<h2 className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
   Section Title
 </h2>
-```
-
-### Input Field
-```tsx
-<input className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm" />
-```
-
-### Select
-```tsx
-<select className="bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm">
 ```
 
 ### Card/Panel
 ```tsx
 <div className="bg-bg-secondary border border-bg-tertiary rounded-lg p-4">
-```
-
-### Overlay/Modal Backdrop
-```tsx
-<div className="bg-black/60 backdrop-blur-sm">
 ```
 
 ### Status Badge
@@ -119,21 +149,7 @@ Use semantic token names, not raw colors:
 </span>
 ```
 
-## Layout
-
-- Use `border-bg-tertiary` for dividers
-- Panels: `bg-bg-secondary`
-- Page background: `bg-bg-primary`
-- Consistent padding: `p-4` for sections, `p-3` for compact areas
-
 ## Hover States
 
-Standard hover for interactive elements:
-```
-hover:bg-white/10
-```
-
-For text elements:
-```
-text-text-secondary hover:text-text-primary
-```
+- `hover:bg-white/10` for surfaces
+- `text-text-secondary hover:text-text-primary` for text buttons

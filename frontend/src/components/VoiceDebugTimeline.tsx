@@ -58,31 +58,31 @@ export function VoiceDebugTimeline({
   } => {
     switch (event.type) {
       case 'state':
-        return { label: 'State', detail: `${event.from} → ${event.to}`, tone: 'text-blue-400' };
+        return { label: 'State', detail: `${event.from} → ${event.to}`, tone: 'text-info' };
       case 'wakeword':
-        return { label: 'Wake', detail: event.keyword, tone: 'text-indigo-400' };
+        return { label: 'Wake', detail: event.keyword, tone: 'text-accent' };
       case 'vad_speech_start':
-        return { label: 'VAD', detail: 'speech start', tone: 'text-green-400' };
+        return { label: 'VAD', detail: 'speech start', tone: 'text-success' };
       case 'vad_speech_end':
         return {
           label: 'VAD',
           detail: `speech end • ${event.ms}ms • ${event.samples} samples`,
-          tone: 'text-green-400',
+          tone: 'text-success',
         };
       case 'vad_misfire':
-        return { label: 'VAD', detail: 'misfire (too short)', tone: 'text-yellow-400' };
+        return { label: 'VAD', detail: 'misfire (too short)', tone: 'text-warning' };
       case 'vad_paused':
         return { label: 'VAD', detail: 'paused for STT', tone: 'text-text-secondary' };
       case 'vad_resumed':
         return { label: 'VAD', detail: 'resumed', tone: 'text-text-secondary' };
       case 'stt_sending':
-        return { label: 'STT', detail: `sending (${event.bytes} bytes)`, tone: 'text-sky-400' };
+        return { label: 'STT', detail: `sending (${event.bytes} bytes)`, tone: 'text-info' };
       case 'stt_result':
-        return { label: 'STT', detail: `text: "${event.text}"`, tone: 'text-emerald-400' };
+        return { label: 'STT', detail: `text: "${event.text}"`, tone: 'text-success' };
       case 'stt_empty':
-        return { label: 'STT', detail: 'empty transcript', tone: 'text-yellow-400' };
+        return { label: 'STT', detail: 'empty transcript', tone: 'text-warning' };
       case 'stt_error':
-        return { label: 'STT', detail: `error: ${event.message}`, tone: 'text-red-400' };
+        return { label: 'STT', detail: `error: ${event.message}`, tone: 'text-error' };
       default:
         return { label: 'Voice', detail: 'unknown event', tone: 'text-text-secondary' };
     }

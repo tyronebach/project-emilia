@@ -6,6 +6,7 @@ import { useAppStore } from '../store';
 import { useSession } from '../hooks/useSession';
 import { Button } from './ui/button';
 import agentPlaceholder from '../assets/placeholder-agent.jpg';
+import AmbientBackground from './AmbientBackground';
 
 interface NewChatPageProps {
   userId: string;
@@ -65,12 +66,8 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
   };
 
   return (
-    <div className="h-screen w-screen bg-bg-primary text-text-primary flex items-center justify-center overflow-hidden relative">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-28 right-[-8rem] h-[30rem] w-[30rem] rounded-full bg-[radial-gradient(circle_at_top,var(--color-glow-teal),transparent_65%)] blur-3xl opacity-60" />
-        <div className="absolute -bottom-40 left-[-12rem] h-[36rem] w-[36rem] rounded-full bg-[radial-gradient(circle_at_top,var(--color-glow-amber),transparent_70%)] blur-3xl opacity-60" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.08),transparent_55%)]" />
-      </div>
+    <div className="min-h-[100svh] w-full bg-bg-primary text-text-primary flex items-center justify-center overflow-hidden relative">
+      <AmbientBackground variant="newChat" />
 
       {/* Back button */}
       <Button

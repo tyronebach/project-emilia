@@ -62,14 +62,14 @@ function DebugPanel({
 
   const getStatusColor = (s: AppStatus): string => {
     switch (s) {
-      case 'ready': return 'bg-green-500';
-      case 'thinking': return 'bg-yellow-500 animate-pulse';
-      case 'speaking': return 'bg-blue-500 animate-pulse';
-      case 'recording': return 'bg-red-500 animate-pulse';
-      case 'processing': return 'bg-yellow-500 animate-pulse';
-      case 'initializing': return 'bg-yellow-500 animate-pulse';
-      case 'error': return 'bg-red-500';
-      default: return 'bg-gray-500';
+      case 'ready': return 'bg-success';
+      case 'thinking': return 'bg-warning animate-pulse';
+      case 'speaking': return 'bg-accent animate-pulse';
+      case 'recording': return 'bg-error animate-pulse';
+      case 'processing': return 'bg-warning animate-pulse';
+      case 'initializing': return 'bg-warning animate-pulse';
+      case 'error': return 'bg-error';
+      default: return 'bg-text-secondary/60';
     }
   };
 

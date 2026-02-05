@@ -164,7 +164,7 @@ function AdminPanel() {
   );
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
+    <div className="min-h-[100svh] bg-bg-primary text-text-primary flex flex-col">
       {/* Header */}
       <div className="border-b border-white/10 px-4 py-3 flex items-center gap-4">
         <button
@@ -198,7 +198,7 @@ function AdminPanel() {
           </div>
         )}
         {success && (
-          <div className="mb-4 p-3 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-2 text-green-400 text-sm">
+          <div className="mb-4 p-3 bg-success/10 border border-success/30 rounded-lg flex items-center gap-2 text-success text-sm">
             <CheckCircle className="w-4 h-4 shrink-0" />
             {success}
           </div>

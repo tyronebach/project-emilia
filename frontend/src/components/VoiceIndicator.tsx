@@ -15,29 +15,29 @@ export function VoiceIndicator({ state, transcript, className = '' }: VoiceIndic
     PASSIVE: {
       icon: '🎤',
       label: 'Voice Off',
-      color: 'text-gray-400',
-      bgColor: 'bg-gray-800/50',
+      color: 'text-text-secondary',
+      bgColor: 'bg-bg-tertiary/60',
       animate: false,
     },
     ACTIVE: {
       icon: '🎙️',
       label: 'Listening...',
-      color: 'text-green-400',
-      bgColor: 'bg-green-900/50',
+      color: 'text-success',
+      bgColor: 'bg-success/20',
       animate: true,
     },
     PROCESSING: {
       icon: '⏳',
       label: 'Processing...',
-      color: 'text-yellow-400',
-      bgColor: 'bg-yellow-900/50',
+      color: 'text-warning',
+      bgColor: 'bg-warning/20',
       animate: true,
     },
     SPEAKING: {
       icon: '🔊',
       label: 'Speaking...',
-      color: 'text-blue-400',
-      bgColor: 'bg-blue-900/50',
+      color: 'text-accent',
+      bgColor: 'bg-accent/20',
       animate: true,
     },
   };
@@ -61,8 +61,8 @@ export function VoiceIndicator({ state, transcript, className = '' }: VoiceIndic
 
       {/* Transcript display */}
       {transcript && state === 'ACTIVE' && (
-        <div className="max-w-xs px-3 py-2 text-sm text-gray-300 bg-gray-800/70 rounded-lg animate-fade-in">
-          <span className="text-gray-500 mr-1">Heard:</span>
+        <div className="max-w-xs px-3 py-2 text-sm text-text-primary bg-bg-tertiary/70 rounded-lg animate-fade-in">
+          <span className="text-text-secondary/70 mr-1">Heard:</span>
           {transcript}
         </div>
       )}

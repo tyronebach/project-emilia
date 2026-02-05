@@ -7,6 +7,7 @@ import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
 import type { Agent } from '../utils/api';
 import agentPlaceholder from '../assets/placeholder-agent.jpg';
+import AmbientBackground from './AmbientBackground';
 
 interface AgentSelectionProps {
   userId: string;
@@ -73,14 +74,10 @@ function AgentSelection({ userId }: AgentSelectionProps) {
   };
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-24 left-[-8rem] h-[26rem] w-[26rem] rounded-full bg-[radial-gradient(circle_at_top,var(--color-glow-teal),transparent_65%)] blur-3xl opacity-60" />
-        <div className="absolute -bottom-40 right-[-10rem] h-[34rem] w-[34rem] rounded-full bg-[radial-gradient(circle_at_top,var(--color-glow-amber),transparent_70%)] blur-3xl opacity-60" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.08),transparent_55%)]" />
-      </div>
+    <div className="min-h-[100svh] bg-bg-primary text-text-primary relative overflow-hidden">
+      <AmbientBackground variant="agent" />
 
-      <div className="relative z-10 flex min-h-screen flex-col">
+      <div className="relative z-10 flex min-h-[100svh] flex-col">
         {/* Top bar */}
         <div className="flex items-center justify-between px-6 pt-6">
           <button

@@ -8,6 +8,7 @@ import { renameSession as renameSessionApi } from '../utils/api';
 import { formatSessionName } from '../utils/helpers';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
 
 interface DrawerProps {
   open: boolean;
@@ -45,17 +46,6 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
       return () => document.removeEventListener('click', handleClick);
     }
   }, [menuOpenFor]);
-
-  // Close on escape
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && open) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [open, onClose]);
 
   const handleNewSession = async () => {
     if (!currentUser?.id) return;
@@ -171,29 +161,27 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className={`fixed inset-0 bg-bg-primary/70 backdrop-blur-md z-40 transition-opacity duration-300 ${
-          open ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-        onClick={onClose}
-      />
-
-      {/* Drawer Panel */}
-      <div
-        className={`fixed top-0 left-0 h-full w-72 bg-bg-secondary/95 border-r border-white/10 z-50 flex flex-col transition-transform duration-300 shadow-[20px_0_60px_-40px_rgba(0,0,0,0.9)] backdrop-blur-md ${
-          open ? 'translate-x-0' : '-translate-x-full'
-        }`}
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          if (!next) onClose();
+        }}
       >
+        <DialogContent className="left-0 top-0 translate-x-0 translate-y-0 h-[100svh] w-72 max-w-[85vw] rounded-none border-r border-white/10 bg-bg-secondary/95 p-0 shadow-[20px_0_60px_-40px_rgba(0,0,0,0.9)] backdrop-blur-md flex flex-col data-[state=open]:slide-in-from-left-2 data-[state=closed]:slide-out-to-left-2">
         {/* Drawer Header */}
         <div className="h-14 px-4 flex items-center justify-between border-b border-white/10 shrink-0">
-          <span className="font-display text-lg text-text-primary">
+          <DialogTitle className="font-display text-lg text-text-primary">
             {currentAgent?.display_name || 'Emilia'}
-          </span>
-          <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-white/10">
-            <X className="w-5 h-5" />
-          </Button>
+          </DialogTitle>
+          <DialogClose asChild>
+            <Button variant="ghost" size="icon" className="hover:bg-white/10">
+              <X className="w-5 h-5" />
+            </Button>
+          </DialogClose>
         </div>
+        <DialogDescription className="sr-only">
+          Navigate sessions, switch users, and manage settings.
+        </DialogDescription>
 
         {/* Top Actions - Switch User, Select Agent, TTS */}
         <div className="border-b border-white/10 p-3 space-y-1 shrink-0">
@@ -328,61 +316,63 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
             </div>
           </Button>
         </div>
-      </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Rename Modal */}
-      {renameModalOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-bg-primary/70 z-[60]"
-            onClick={() => setRenameModalOpen(false)}
+      <Dialog
+        open={renameModalOpen}
+        onOpenChange={(next) => {
+          if (!next) setRenameModalOpen(false);
+        }}
+      >
+        <DialogContent className="w-80 max-w-[92vw] p-5">
+          <DialogTitle className="font-display text-lg mb-4">Rename Session</DialogTitle>
+          <DialogDescription className="sr-only">
+            Update the session name for easier identification.
+          </DialogDescription>
+          <input
+            type="text"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            placeholder="Session name"
+            className="w-full bg-bg-tertiary/80 border border-white/10 text-text-primary rounded-lg px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-accent"
+            autoFocus
+            onKeyDown={(e) => e.key === 'Enter' && handleRename()}
           />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-bg-secondary border border-white/10 rounded-2xl shadow-xl z-[70] p-5 w-80">
-            <h3 className="font-display text-lg text-text-primary mb-4">Rename Session</h3>
-            <input
-              type="text"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              placeholder="Session name"
-              className="w-full bg-bg-tertiary/80 border border-white/10 text-text-primary rounded-lg px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-accent"
-              autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleRename()}
-            />
-            <div className="flex gap-2 justify-end">
-              <Button variant="ghost" onClick={() => setRenameModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleRename}>
-                Save
-              </Button>
-            </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="ghost" onClick={() => setRenameModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRename}>
+              Save
+            </Button>
           </div>
-        </>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Modal */}
-      {deleteModalOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-bg-primary/70 z-[60]"
-            onClick={() => setDeleteModalOpen(false)}
-          />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-bg-secondary border border-white/10 rounded-2xl shadow-xl z-[70] p-5 w-80">
-            <h3 className="font-display text-lg text-text-primary mb-2">Delete Session</h3>
-            <p className="text-text-secondary text-sm mb-4">
-              Are you sure you want to delete this session? This action cannot be undone.
-            </p>
-            <div className="flex gap-2 justify-end">
-              <Button variant="ghost" onClick={() => setDeleteModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button variant="destructive" onClick={handleConfirmDelete}>
-                Delete
-              </Button>
-            </div>
+      <Dialog
+        open={deleteModalOpen}
+        onOpenChange={(next) => {
+          if (!next) setDeleteModalOpen(false);
+        }}
+      >
+        <DialogContent className="w-80 max-w-[92vw] p-5">
+          <DialogTitle className="font-display text-lg mb-2">Delete Session</DialogTitle>
+          <DialogDescription className="text-text-secondary text-sm mb-4">
+            Are you sure you want to delete this session? This action cannot be undone.
+          </DialogDescription>
+          <div className="flex gap-2 justify-end">
+            <Button variant="ghost" onClick={() => setDeleteModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete}>
+              Delete
+            </Button>
           </div>
-        </>
-      )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

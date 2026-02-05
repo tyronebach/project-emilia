@@ -11,6 +11,7 @@ export interface AvatarRendererOptions {
   cameraDistance?: number;
   cameraHeight?: number;
   enableShadows?: boolean;
+  enableOrbitControls?: boolean;
   onLoad?: (vrm: VRM) => void;
   onError?: (error: Error) => void;
   onProgress?: (percent: number) => void;
