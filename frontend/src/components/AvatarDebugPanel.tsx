@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { retargetAnimation } from 'vrm-mixamo-retarget';
+import { VRMAnimationLoaderPlugin, VRMAnimation, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
 
 type VrmModel = {
   id: string;
@@ -669,6 +670,11 @@ function AvatarDebugPanel() {
   const [isDraggingGlb, setIsDraggingGlb] = useState(false);
   const glbDropRef = useRef<HTMLLabelElement>(null);
 
+  // Drag and drop state for VRMA
+  const [isDraggingVrma, setIsDraggingVrma] = useState(false);
+  const vrmaDropRef = useRef<HTMLLabelElement>(null);
+  const [vrmaStatus, setVrmaStatus] = useState<string>('Upload VRMA Animation');
+
   // Handle GLB file (from input or drop)
   const processGlbFile = useCallback(async (file: File) => {
     const renderer = rendererRef.current;
@@ -756,6 +762,111 @@ function AvatarDebugPanel() {
       setGlbStatus('Error: Drop a .glb or .gltf file');
     }
   }, [processGlbFile]);
+
+  // Handle VRMA file (from input or drop)
+  const processVrmaFile = useCallback(async (file: File) => {
+    const renderer = rendererRef.current;
+    
+    if (!file || !renderer) {
+      setVrmaStatus('Error: No file or renderer');
+      return;
+    }
+
+    const vrm = renderer.getVRM?.();
+    if (!vrm) {
+      setVrmaStatus('Error: VRM not loaded');
+      return;
+    }
+
+    setVrmaStatus(`Loading ${file.name}...`);
+    setLastAction(`VRMA: Loading ${file.name}`);
+
+    try {
+      // Load VRMA file with VRMAnimationLoaderPlugin
+      const gltfLoader = new GLTFLoader();
+      gltfLoader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+      
+      const arrayBuffer = await file.arrayBuffer();
+      const gltf = await new Promise<any>((resolve, reject) => {
+        gltfLoader.parse(arrayBuffer, '', resolve, reject);
+      });
+      
+      console.log('[VRMA Test] Loaded VRMA:', gltf);
+      console.log('[VRMA Test] userData:', gltf.userData);
+      
+      // Get VRM animation from userData
+      const vrmAnimations: VRMAnimation[] = gltf.userData.vrmAnimations;
+      if (!vrmAnimations || vrmAnimations.length === 0) {
+        setVrmaStatus('Error: No VRM animations in file');
+        setLastAction('VRMA: No animations found');
+        return;
+      }
+      
+      const vrmAnimation = vrmAnimations[0];
+      console.log('[VRMA Test] VRMAnimation:', vrmAnimation);
+      
+      // Create animation clip for this VRM
+      const clip = createVRMAnimationClip(vrmAnimation, vrm);
+      console.log('[VRMA Test] Created clip:', clip);
+      console.log('[VRMA Test] Clip tracks:', clip.tracks.length);
+      console.log('[VRMA Test] Clip duration:', clip.duration);
+      
+      // Stop any existing animation
+      if (fbxActionRef.current) {
+        fbxActionRef.current.stop();
+      }
+      
+      // Create mixer on VRM scene
+      const mixer = new THREE.AnimationMixer(vrm.scene);
+      fbxMixerRef.current = mixer;
+      
+      // Create and play action
+      const action = mixer.clipAction(clip);
+      action.setLoop(THREE.LoopRepeat, Infinity);
+      action.play();
+      fbxActionRef.current = action;
+      
+      setVrmaStatus(`Playing: ${file.name}`);
+      setLastAction(`VRMA: ${clip.tracks.length} tracks, ${clip.duration.toFixed(1)}s`);
+      
+    } catch (err) {
+      console.error('[VRMA Test] Error:', err);
+      setVrmaStatus(`Error: ${err}`);
+      setLastAction(`VRMA Error: ${err}`);
+    }
+  }, []);
+
+  // Wrapper for VRMA file input change
+  const handleVrmaFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processVrmaFile(file);
+  }, [processVrmaFile]);
+
+  // Drag and drop handlers for VRMA
+  const handleVrmaDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingVrma(true);
+  }, []);
+
+  const handleVrmaDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingVrma(false);
+  }, []);
+
+  const handleVrmaDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingVrma(false);
+    
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.name.endsWith('.vrma')) {
+      processVrmaFile(file);
+    } else {
+      setVrmaStatus('Error: Drop a .vrma file');
+    }
+  }, [processVrmaFile]);
 
   // BVH/Bandai-Namco bone name mapping to VRM humanoid bones
   const bvhToVrmBoneMap: Record<string, string> = {
@@ -1368,6 +1479,36 @@ function AvatarDebugPanel() {
                     </label>
                   </div>
                   
+                  {/* VRMA Upload with Drag & Drop */}
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-text-secondary">VRMA Animation (VRM native format)</div>
+                    <label 
+                      ref={vrmaDropRef}
+                      onDragOver={handleVrmaDragOver}
+                      onDragLeave={handleVrmaDragLeave}
+                      onDrop={handleVrmaDrop}
+                      className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
+                        isDraggingVrma 
+                          ? 'bg-accent/20 border-accent text-accent' 
+                          : 'bg-bg-tertiary/70 border-white/20 hover:bg-bg-secondary hover:border-white/30'
+                      }`}
+                    >
+                      <FileUp className={`w-6 h-6 ${isDraggingVrma ? 'text-accent' : 'text-text-secondary'}`} />
+                      <span className={`text-sm ${isDraggingVrma ? 'text-accent' : 'text-text-secondary'}`}>
+                        {isDraggingVrma ? 'Drop VRMA here!' : vrmaStatus}
+                      </span>
+                      <span className="text-xs text-text-secondary/60">
+                        Click or drag & drop .vrma
+                      </span>
+                      <input
+                        type="file"
+                        accept=".vrma"
+                        onChange={handleVrmaFile}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                  
                   <Button 
                     variant="ghost" 
                     size="sm" 
@@ -1382,6 +1523,7 @@ function AvatarDebugPanel() {
                     <ul className="list-disc list-inside space-y-0.5">
                       <li><strong>FBX:</strong> mixamo.com → Download FBX (With Skin)</li>
                       <li><strong>GLB:</strong> convert3d.org/bvh-to-glb/app</li>
+                      <li><strong>VRMA:</strong> VRM Animation files (native VRM format)</li>
                     </ul>
                   </div>
                 </div>
