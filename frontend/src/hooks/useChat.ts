@@ -93,10 +93,21 @@ export function useChat() {
       audioRef.current = audio;
       audioUrlRef.current = audioUrl;
 
+      // Wait for audio metadata to get duration
+      await new Promise<void>((resolve) => {
+        if (audio.duration && !isNaN(audio.duration)) {
+          resolve();
+        } else {
+          audio.onloadedmetadata = () => resolve();
+        }
+      });
+
       // Setup lip sync
       const renderer = avatarRendererRef.current;
+      
       if (renderer?.lipSyncEngine && result.alignment) {
-        renderer.lipSyncEngine.setAlignment(result.alignment);
+        const audioDurationMs = audio.duration * 1000;
+        renderer.lipSyncEngine.setAlignment(result.alignment, audioDurationMs);
         renderer.lipSyncEngine.startSync(audio);
       }
 
