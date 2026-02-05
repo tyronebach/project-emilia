@@ -84,6 +84,14 @@ function AvatarDebugPanel() {
   const [alignmentData, setAlignmentData] = useState<{ chars: string[]; charStartTimesMs: number[]; charDurationsMs: number[] } | null>(null);
   const { voices: voiceOptions, loading: voicesLoading } = useVoiceOptions();
   
+  // Lip sync timing analysis state
+  const [actualDurationMs, setActualDurationMs] = useState<number | null>(null);
+  const [predictedDurationMs, setPredictedDurationMs] = useState<number | null>(null);
+  const [enableScaling, setEnableScaling] = useState(true);
+  const [currentPlaybackMs, setCurrentPlaybackMs] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playbackIntervalRef = useRef<number | null>(null);
+  
   // FBX retarget test state
   const [fbxStatus, setFbxStatus] = useState<string>('Upload Mixamo FBX');
   const [glbStatus, setGlbStatus] = useState<string>('Upload GLB Animation');
@@ -288,6 +296,30 @@ function AvatarDebugPanel() {
     setLastAction(`Mood: ${currentMood} @ ${(moodStrength * 100).toFixed(0)}%`);
   }, [currentMood, moodStrength]);
 
+  // Scale alignment timestamps to match actual audio duration
+  const scaleAlignment = useCallback((
+    alignment: { chars: string[]; charStartTimesMs: number[]; charDurationsMs: number[] },
+    actualMs: number
+  ) => {
+    const { chars, charStartTimesMs, charDurationsMs } = alignment;
+    if (!chars.length || !charStartTimesMs.length) return alignment;
+    
+    // Calculate predicted duration from alignment data
+    const lastIdx = charStartTimesMs.length - 1;
+    const predictedMs = charStartTimesMs[lastIdx] + (charDurationsMs[lastIdx] || 0);
+    
+    if (predictedMs <= 0) return alignment;
+    
+    const scale = actualMs / predictedMs;
+    console.log(`[LipSync] Scaling: predicted=${predictedMs}ms, actual=${actualMs}ms, scale=${scale.toFixed(3)}`);
+    
+    return {
+      chars,
+      charStartTimesMs: charStartTimesMs.map(t => Math.round(t * scale)),
+      charDurationsMs: charDurationsMs.map(d => Math.round(d * scale))
+    };
+  }, []);
+
   // Test TTS with ElevenLabs API (real visemes)
   const testTTS = useCallback(async () => {
     const renderer = rendererRef.current;
@@ -302,7 +334,17 @@ function AvatarDebugPanel() {
     }
 
     setTtsLoading(true);
+    setIsPlaying(false);
+    setCurrentPlaybackMs(0);
+    setActualDurationMs(null);
+    setPredictedDurationMs(null);
     setLastAction('Calling ElevenLabs...');
+    
+    // Clear any existing playback interval
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current);
+      playbackIntervalRef.current = null;
+    }
 
     try {
       // Stop any existing audio
@@ -338,37 +380,77 @@ function AvatarDebugPanel() {
       const audioBlob = new Blob([audioArray], { type: 'audio/mpeg' });
       const audioUrl = URL.createObjectURL(audioBlob);
 
-      // Create audio element
+      // Create audio element and wait for metadata
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
+      
+      // Wait for duration to be available
+      await new Promise<void>((resolve) => {
+        if (audio.duration && !isNaN(audio.duration)) {
+          resolve();
+        } else {
+          audio.onloadedmetadata = () => resolve();
+        }
+      });
+      
+      const actualMs = audio.duration * 1000;
+      setActualDurationMs(actualMs);
 
-      // Set up lip sync with REAL alignment from ElevenLabs
+      // Set up lip sync with alignment from ElevenLabs
       if (result.alignment) {
         console.log('[Debug] ElevenLabs alignment:', result.alignment);
-        setAlignmentData(result.alignment);
-        renderer.lipSyncEngine.setAlignment(result.alignment);
+        
+        // Calculate predicted duration
+        const { charStartTimesMs, charDurationsMs } = result.alignment;
+        if (charStartTimesMs?.length) {
+          const lastIdx = charStartTimesMs.length - 1;
+          const predicted = charStartTimesMs[lastIdx] + (charDurationsMs[lastIdx] || 0);
+          setPredictedDurationMs(predicted);
+        }
+        
+        // Optionally scale timestamps to actual duration
+        const alignmentToUse = enableScaling 
+          ? scaleAlignment(result.alignment, actualMs)
+          : result.alignment;
+        
+        setAlignmentData(alignmentToUse);
+        renderer.lipSyncEngine.setAlignment(alignmentToUse);
         renderer.lipSyncEngine.startSync(audio);
-        setLastAction(`TTS: ${result.alignment.chars?.length || 0} chars`);
+        setLastAction(`TTS: ${result.alignment.chars?.length || 0} chars, ${(actualMs/1000).toFixed(2)}s`);
       } else {
         console.log('[Debug] No alignment data in response');
         setAlignmentData(null);
         setLastAction(`TTS: NO ALIGNMENT DATA`);
       }
 
+      // Track playback position
+      setIsPlaying(true);
+      playbackIntervalRef.current = window.setInterval(() => {
+        if (audioRef.current) {
+          setCurrentPlaybackMs(audioRef.current.currentTime * 1000);
+        }
+      }, 50);
+
       // Play audio
       audio.onended = () => {
         renderer.lipSyncEngine?.stop();
         URL.revokeObjectURL(audioUrl);
         setLastAction('TTS finished');
+        setIsPlaying(false);
+        if (playbackIntervalRef.current) {
+          clearInterval(playbackIntervalRef.current);
+          playbackIntervalRef.current = null;
+        }
       };
 
       await audio.play();
     } catch (err) {
       setLastAction(`TTS Error: ${err}`);
+      setIsPlaying(false);
     } finally {
       setTtsLoading(false);
     }
-  }, [ttsText, voiceId]);
+  }, [ttsText, voiceId, enableScaling, scaleAlignment]);
 
   // Test lip sync with audio file (uses fake visemes)
   const handleAudioFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -459,7 +541,13 @@ function AvatarDebugPanel() {
       audioRef.current = null;
     }
     
+    if (playbackIntervalRef.current) {
+      clearInterval(playbackIntervalRef.current);
+      playbackIntervalRef.current = null;
+    }
+    
     renderer?.lipSyncEngine?.stop();
+    setIsPlaying(false);
     setLastAction('Stopped');
   }, []);
 
@@ -955,8 +1043,71 @@ function AvatarDebugPanel() {
                     Stop
                   </Button>
                   
+                  {/* Timestamp Scaling Toggle */}
+                  <div className="flex items-center gap-2 p-2 bg-bg-tertiary rounded">
+                    <input
+                      type="checkbox"
+                      id="enableScaling"
+                      checked={enableScaling}
+                      onChange={(e) => setEnableScaling(e.target.checked)}
+                      className="w-4 h-4 accent-indigo-500"
+                    />
+                    <label htmlFor="enableScaling" className="text-xs text-text-secondary cursor-pointer">
+                      Scale timestamps to actual audio duration
+                    </label>
+                  </div>
+                  
+                  {/* Timing Analysis Display */}
+                  <div className="p-2 bg-bg-tertiary rounded text-xs font-mono space-y-2">
+                    <div className="text-text-secondary font-semibold">⏱️ Timing Analysis:</div>
+                    
+                    {/* Duration comparison */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-text-secondary">Predicted: </span>
+                        <span className={predictedDurationMs ? 'text-yellow-400' : 'text-text-secondary/50'}>
+                          {predictedDurationMs ? `${(predictedDurationMs/1000).toFixed(2)}s` : '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-text-secondary">Actual: </span>
+                        <span className={actualDurationMs ? 'text-green-400' : 'text-text-secondary/50'}>
+                          {actualDurationMs ? `${(actualDurationMs/1000).toFixed(2)}s` : '—'}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Duration mismatch indicator */}
+                    {predictedDurationMs && actualDurationMs && (
+                      <div className={`text-xs ${Math.abs(predictedDurationMs - actualDurationMs) > 200 ? 'text-red-400' : 'text-green-400'}`}>
+                        {(() => {
+                          const diff = actualDurationMs - predictedDurationMs;
+                          const percent = ((diff / predictedDurationMs) * 100).toFixed(1);
+                          const scale = (actualDurationMs / predictedDurationMs).toFixed(3);
+                          return `Δ ${diff > 0 ? '+' : ''}${(diff/1000).toFixed(2)}s (${diff > 0 ? '+' : ''}${percent}%) → scale: ${scale}x`;
+                        })()}
+                      </div>
+                    )}
+                    
+                    {/* Playback progress bar */}
+                    {isPlaying && actualDurationMs && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-text-secondary">
+                          <span>Playback:</span>
+                          <span>{(currentPlaybackMs/1000).toFixed(2)}s / {(actualDurationMs/1000).toFixed(2)}s</span>
+                        </div>
+                        <div className="h-2 bg-bg-secondary rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-indigo-500 transition-all duration-100"
+                            style={{ width: `${(currentPlaybackMs / actualDurationMs) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  
                   {/* Alignment Data Display */}
-                  <div className="mt-3 p-2 bg-bg-tertiary rounded text-xs font-mono">
+                  <div className="p-2 bg-bg-tertiary rounded text-xs font-mono">
                     <div className="text-text-secondary mb-1">Alignment Data:</div>
                     {alignmentData ? (
                       <div className="space-y-1">
@@ -967,10 +1118,19 @@ function AvatarDebugPanel() {
                         <div className="text-text-secondary">
                           times: [{alignmentData.charStartTimesMs?.slice(0, 5).join(', ')}...]
                         </div>
+                        <div className="text-text-secondary">
+                          last: {alignmentData.charStartTimesMs?.[alignmentData.charStartTimesMs.length - 1]}ms
+                        </div>
                       </div>
                     ) : (
                       <div className="text-red-400">✗ No alignment data</div>
                     )}
+                  </div>
+                  
+                  {/* Info about the issue */}
+                  <div className="text-xs text-text-secondary/70 p-2 bg-yellow-500/10 rounded border border-yellow-500/30">
+                    <strong>Known Issue:</strong> ElevenLabs timing is estimated, not measured from audio. 
+                    Enable scaling to adjust timestamps to actual audio duration.
                   </div>
                 </div>
               </AccordionContent>

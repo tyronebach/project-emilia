@@ -237,7 +237,10 @@ async def speak(
     token: str = Depends(verify_token),
     x_agent_id: Optional[str] = Header(None, alias="X-Agent-Id")
 ):
-    """Text-to-speech via ElevenLabs"""
+    """Text-to-speech via ElevenLabs with-timestamps API for lip sync alignment"""
+    from services.elevenlabs import ElevenLabsService
+    from core.exceptions import TTSError
+    
     if not settings.elevenlabs_api_key:
         raise HTTPException(status_code=503, detail="TTS not configured")
 
@@ -253,84 +256,8 @@ async def speak(
     if not text:
         raise HTTPException(status_code=400, detail="Empty text")
 
-    ws_url = f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input?model_id={settings.elevenlabs_model}&output_format=mp3_44100_128"
-
     try:
-        audio_chunks = []
-        # Accumulate alignment data from multiple chunks
-        all_chars = []
-        all_start_times = []
-        all_end_times = []
-
-        async with websockets.connect(
-            ws_url,
-            additional_headers={"xi-api-key": settings.elevenlabs_api_key}
-        ) as ws:
-            # Send initial config
-            await ws.send(json.dumps({
-                "text": " ",
-                "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-                "generation_config": {"chunk_length_schedule": [120, 160, 250, 290]},
-                "xi_api_key": settings.elevenlabs_api_key
-            }))
-
-            # Send text with alignment request
-            await ws.send(json.dumps({
-                "text": text,
-                "try_trigger_generation": True,
-                "flush": True,
-                "alignment": True
-            }))
-
-            await ws.send(json.dumps({"text": ""}))
-
-            # Receive audio
-            while True:
-                try:
-                    msg = await asyncio.wait_for(ws.recv(), timeout=30.0)
-                    data = json.loads(msg)
-
-                    if data.get("audio"):
-                        audio_chunks.append(base64.b64decode(data["audio"]))
-
-                    if data.get("alignment"):
-                        chunk = data["alignment"]
-                        all_chars.extend(chunk.get("characters", []))
-                        all_start_times.extend(chunk.get("character_start_times_seconds", []))
-                        all_end_times.extend(chunk.get("character_end_times_seconds", []))
-
-                    if data.get("isFinal"):
-                        break
-
-                except asyncio.TimeoutError:
-                    break
-
-        if not audio_chunks:
-            raise HTTPException(status_code=500, detail="No audio generated")
-
-        audio_bytes = b"".join(audio_chunks)
-        audio_base64 = base64.b64encode(audio_bytes).decode()
-
-        transformed_alignment = None
-        if all_chars:
-            charStartTimesMs = [int(t * 1000) for t in all_start_times]
-            max_len = min(len(all_start_times), len(all_end_times))
-            charDurationsMs = [
-                int((all_end_times[i] - all_start_times[i]) * 1000)
-                for i in range(max_len)
-            ]
-            transformed_alignment = {
-                "chars": all_chars,
-                "charStartTimesMs": charStartTimesMs,
-                "charDurationsMs": charDurationsMs
-            }
-
-        return {
-            "audio_base64": audio_base64,
-            "alignment": transformed_alignment,
-            "voice_id": voice_id,
-            "duration_estimate": len(audio_bytes) / (44100 * 2 / 8)
-        }
-
-    except websockets.exceptions.WebSocketException as e:
-        raise HTTPException(status_code=503, detail=f"TTS WebSocket error: {e}")
+        result = await ElevenLabsService.synthesize(text, voice_id)
+        return result
+    except TTSError as e:
+        raise HTTPException(status_code=503, detail=str(e))

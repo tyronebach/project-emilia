@@ -7,48 +7,39 @@ import type { VRM, VRMExpressionManager } from '@pixiv/three-vrm';
 import type { AlignmentData, TimingEntry } from './types';
 
 /**
- * Map character to VRM viseme
+ * Map character to VRM mouth shape
+ * Uses VRM standard names: aa, ih, ou, ee, oh
  */
-function charToViseme(char: string): string {
+function charToMouthShape(char: string): string {
   const c = char.toLowerCase();
   
-  // Vowels
+  // Vowels - map to VRM standard mouth shapes
   if (c === 'a') return 'aa';
-  if (c === 'e') return 'E';
-  if (c === 'i') return 'I';
-  if (c === 'o') return 'O';
-  if (c === 'u') return 'U';
+  if (c === 'e') return 'ee';
+  if (c === 'i') return 'ih';
+  if (c === 'o') return 'oh';
+  if (c === 'u') return 'ou';
   
-  // Consonants
-  if ('pbm'.includes(c)) return 'PP';
-  if ('fv'.includes(c)) return 'FF';
-  if ('td'.includes(c)) return 'DD';
-  if ('kg'.includes(c)) return 'kk';
-  if ('sz'.includes(c)) return 'SS';
-  if (c === 'r') return 'RR';
-  if (c === 'n' || c === 'l') return 'nn';
-  if (c === 'h') return 'TH';
+  // Consonants that open the mouth
+  if ('pbm'.includes(c)) return 'aa';  // bilabial - closed then open
+  if ('fv'.includes(c)) return 'ih';   // labiodental
+  if ('td'.includes(c)) return 'ih';   // alveolar
+  if ('kg'.includes(c)) return 'oh';   // velar
+  if ('sz'.includes(c)) return 'ih';   // sibilant
+  if (c === 'r') return 'oh';
+  if (c === 'n' || c === 'l') return 'ih';
+  if ('wyw'.includes(c)) return 'ou';
   
-  return 'sil';
+  // Space or punctuation = silence
+  if (' .,!?;:\'"'.includes(c)) return 'sil';
+  
+  // Default for other consonants - slight mouth opening
+  return 'ih';
 }
 
-const VISEME_EXPRESSIONS: Record<string, string> = {
-  'sil': 'viseme_sil',
-  'PP': 'viseme_PP',
-  'FF': 'viseme_FF',
-  'TH': 'viseme_TH',
-  'DD': 'viseme_DD',
-  'kk': 'viseme_kk',
-  'CH': 'viseme_CH',
-  'SS': 'viseme_SS',
-  'nn': 'viseme_nn',
-  'RR': 'viseme_RR',
-  'aa': 'viseme_aa',
-  'E': 'viseme_E',
-  'I': 'viseme_I',
-  'O': 'viseme_O',
-  'U': 'viseme_U'
-};
+// VRM standard mouth expressions (not Oculus visemes)
+const VRM_MOUTH_SHAPES = ['aa', 'ih', 'ou', 'ee', 'oh'] as const;
+type MouthShape = typeof VRM_MOUTH_SHAPES[number] | 'sil';
 
 export class LipSyncEngine {
   private vrm: VRM;
@@ -56,63 +47,70 @@ export class LipSyncEngine {
   private audioElement: HTMLAudioElement | null = null;
   private isActive: boolean = false;
   
-  private blendSpeed: number = 0.15;
-  private currentViseme: string = 'sil';
+  private blendSpeed: number = 0.2;  // Faster blending for more responsive lip sync
+  private currentShape: MouthShape = 'sil';
   private currentWeight: number = 0;
   private targetWeight: number = 0;
   
   private timingData: TimingEntry[] = [];
-  private availableExpressions: Set<string> = new Set();
-  private useSimpleLipSync: boolean = false;
+  private availableMouthShapes: Set<string> = new Set();
   
   constructor(vrm: VRM) {
     this.vrm = vrm;
-    this.detectAvailableExpressions();
+    this.detectAvailableMouthShapes();
   }
   
   /**
-   * Detect what expressions the VRM model supports
+   * Detect which VRM mouth expressions are available
    */
-  private detectAvailableExpressions(): void {
+  private detectAvailableMouthShapes(): void {
     const em = this.vrm?.expressionManager;
     if (!em) {
       console.warn('[LipSync] No expression manager');
       return;
     }
     
-    // Check for viseme expressions
-    const visemeNames = Object.values(VISEME_EXPRESSIONS);
-    for (const name of visemeNames) {
+    // Log all expressions in the VRM
+    const emAny = em as VRMExpressionManager & { 
+      expressionMap?: Map<string, unknown> | Record<string, unknown>;
+      _expressionMap?: Map<string, unknown>;
+    };
+    
+    const allExpressions: string[] = [];
+    if (emAny.expressionMap instanceof Map) {
+      for (const [name] of emAny.expressionMap) allExpressions.push(name);
+    } else if (emAny._expressionMap instanceof Map) {
+      for (const [name] of emAny._expressionMap) allExpressions.push(name);
+    } else if (emAny.expressionMap && typeof emAny.expressionMap === 'object') {
+      allExpressions.push(...Object.keys(emAny.expressionMap));
+    }
+    console.log('[LipSync] ALL VRM expressions:', allExpressions);
+    
+    // Check for VRM standard mouth shapes
+    for (const shape of VRM_MOUTH_SHAPES) {
       try {
-        const expr = em.getExpression(name);
+        const expr = em.getExpression(shape);
         if (expr) {
-          this.availableExpressions.add(name);
+          this.availableMouthShapes.add(shape);
         }
       } catch (_e) { /* ignore */ }
     }
     
-    // Check for basic mouth expressions as fallback
-    const basicMouth = ['aa', 'ih', 'ou', 'ee', 'oh', 'A', 'I', 'U', 'E', 'O'];
-    for (const name of basicMouth) {
+    // Also check uppercase variants (some VRM models use 'A', 'I', 'U', 'E', 'O')
+    const upperMap: Record<string, string> = { 'A': 'aa', 'I': 'ih', 'U': 'ou', 'E': 'ee', 'O': 'oh' };
+    for (const [upper, lower] of Object.entries(upperMap)) {
       try {
-        const expr = em.getExpression(name);
-        if (expr) {
-          this.availableExpressions.add(name);
+        const expr = em.getExpression(upper);
+        if (expr && !this.availableMouthShapes.has(lower)) {
+          this.availableMouthShapes.add(upper);
         }
       } catch (_e) { /* ignore */ }
     }
     
-    console.log('[LipSync] Available expressions:', Array.from(this.availableExpressions));
+    console.log('[LipSync] Available mouth shapes:', Array.from(this.availableMouthShapes));
     
-    // If no visemes but has basic mouth, use simple mode
-    const hasVisemes = visemeNames.some(v => this.availableExpressions.has(v));
-    const hasBasicMouth = this.availableExpressions.has('aa') || this.availableExpressions.has('A');
-    
-    if (!hasVisemes && hasBasicMouth) {
-      this.useSimpleLipSync = true;
-      console.log('[LipSync] Using simple lip sync (aa only)');
-    } else if (!hasVisemes && !hasBasicMouth) {
-      console.warn('[LipSync] No lip sync expressions available on this model');
+    if (this.availableMouthShapes.size === 0) {
+      console.warn('[LipSync] ⚠️ No mouth shape expressions found on this VRM model!');
     }
   }
   
@@ -133,15 +131,17 @@ export class LipSyncEngine {
     }
     
     for (let i = 0; i < chars.length; i++) {
+      const mouthShape = charToMouthShape(chars[i]);
       this.timingData.push({
         char: chars[i],
         startMs: charStartTimesMs[i],
         endMs: charStartTimesMs[i] + charDurationsMs[i],
-        viseme: charToViseme(chars[i])
+        viseme: mouthShape  // Now using VRM mouth shapes
       });
     }
     
     console.log(`[LipSync] Prepared ${this.timingData.length} timing entries`);
+    console.log(`[LipSync] Sample entries:`, this.timingData.slice(0, 5).map(e => `'${e.char}'→${e.viseme}`).join(', '));
   }
   
   /**
@@ -167,10 +167,10 @@ export class LipSyncEngine {
     const em = this.vrm.expressionManager;
     
     if (!this.isActive || !this.audioElement) {
-      // Decay to neutral
+      // Decay to neutral - reset all mouth shapes
       if (this.currentWeight > 0.01) {
         this.currentWeight = Math.max(0, this.currentWeight - this.blendSpeed);
-        this.applyViseme(em, this.currentViseme, this.currentWeight);
+        this.applyMouthShape(em, this.currentShape, this.currentWeight);
       }
       return;
     }
@@ -178,111 +178,91 @@ export class LipSyncEngine {
     const currentTimeMs = this.audioElement.currentTime * 1000;
     const audioDuration = this.audioElement.duration * 1000;
     
-    // Debug: log timing periodically
+    // Debug: log timing periodically (every 500ms)
     if (Math.floor(currentTimeMs / 500) !== Math.floor((currentTimeMs - 16) / 500)) {
       const lastEntry = this.timingData[this.timingData.length - 1];
-      console.log(`[LipSync] Audio: ${currentTimeMs.toFixed(0)}ms / ${audioDuration.toFixed(0)}ms, Data ends: ${lastEntry?.endMs}ms`);
+      console.log(`[LipSync] Audio: ${currentTimeMs.toFixed(0)}ms / ${audioDuration.toFixed(0)}ms, Data ends: ${lastEntry?.endMs}ms, Shape: ${this.currentShape} @ ${this.currentWeight.toFixed(2)}`);
     }
     
-    // Find current viseme
-    let targetViseme = 'sil';
+    // Find current mouth shape from timing data
+    let targetShape: MouthShape = 'sil';
+    let matchedEntry: TimingEntry | null = null;
     for (const entry of this.timingData) {
       if (currentTimeMs >= entry.startMs && currentTimeMs < entry.endMs) {
-        targetViseme = entry.viseme;
+        targetShape = entry.viseme as MouthShape;
+        matchedEntry = entry;
         break;
       }
     }
     
-    // Transition
-    if (targetViseme !== this.currentViseme) {
-      this.applyViseme(em, this.currentViseme, 0);
-      this.currentViseme = targetViseme;
+    // On shape change, reset previous and start new
+    if (targetShape !== this.currentShape) {
+      console.log(`[LipSync] Shape: ${this.currentShape} → ${targetShape}`, matchedEntry ? `(char: '${matchedEntry.char}')` : '');
+      this.applyMouthShape(em, this.currentShape, 0);  // Reset old shape
+      this.currentShape = targetShape;
       this.currentWeight = 0;
     }
     
-    this.targetWeight = targetViseme !== 'sil' ? 0.7 : 0;
+    // Blend towards target weight
+    this.targetWeight = targetShape !== 'sil' ? 0.8 : 0;  // Stronger weight for visibility
     this.currentWeight += (this.targetWeight - this.currentWeight) * this.blendSpeed;
     
-    this.applyViseme(em, this.currentViseme, this.currentWeight);
+    this.applyMouthShape(em, this.currentShape, this.currentWeight);
   }
   
   /**
-   * Map viseme to available expression
+   * Map mouth shape to available expression name
    */
-  private mapToAvailable(viseme: string): string | null {
-    // Direct mapping for basic vowel expressions
-    const vowelMap: Record<string, string> = {
-      'aa': 'aa', 'A': 'aa',
-      'E': 'ee', 'ee': 'ee', 
-      'I': 'ih', 'ih': 'ih',
-      'O': 'oh', 'oh': 'oh',
-      'U': 'ou', 'ou': 'ou',
-    };
+  private mapToAvailable(shape: string): string | null {
+    // Direct match
+    if (this.availableMouthShapes.has(shape)) return shape;
     
-    // Check if we have a direct match
-    if (this.availableExpressions.has(viseme)) return viseme;
+    // Try uppercase variant (some VRM models use 'A', 'I', 'U', 'E', 'O')
+    const upperMap: Record<string, string> = { 'aa': 'A', 'ih': 'I', 'ou': 'U', 'ee': 'E', 'oh': 'O' };
+    const upper = upperMap[shape];
+    if (upper && this.availableMouthShapes.has(upper)) return upper;
     
-    // Check mapped vowel
-    const mapped = vowelMap[viseme];
-    if (mapped && this.availableExpressions.has(mapped)) return mapped;
-    
-    // Fallback to 'aa' for any mouth movement
-    if (viseme !== 'sil' && this.availableExpressions.has('aa')) return 'aa';
+    // Fallback to 'aa' or 'A' for any mouth movement
+    if (shape !== 'sil') {
+      if (this.availableMouthShapes.has('aa')) return 'aa';
+      if (this.availableMouthShapes.has('A')) return 'A';
+    }
     
     return null;
   }
   
   /**
-   * Apply viseme to expression manager
+   * Apply mouth shape to VRM expression manager
    */
-  private applyViseme(em: VRMExpressionManager, viseme: string, weight: number): void {
+  private applyMouthShape(em: VRMExpressionManager, shape: MouthShape, weight: number): void {
     const clampedWeight = Math.min(1, Math.max(0, weight));
     
-    // Simple lip sync mode - use available vowel expressions
-    if (this.useSimpleLipSync) {
-      // Reset all mouth expressions first
-      for (const expr of ['aa', 'ih', 'ou', 'ee', 'oh']) {
-        if (this.availableExpressions.has(expr)) {
-          try { em.setValue(expr, 0); } catch (_e) { /* ignore */ }
-        }
-      }
-      
-      // Apply current expression
-      const targetExpr = this.mapToAvailable(viseme);
-      if (targetExpr) {
-        try { em.setValue(targetExpr, clampedWeight); } catch (_e) { /* ignore */ }
-      }
-      return;
+    // Reset all mouth shapes first
+    for (const s of this.availableMouthShapes) {
+      try { em.setValue(s, 0); } catch (_e) { /* ignore */ }
     }
     
-    // Full viseme mode
-    const expr = VISEME_EXPRESSIONS[viseme];
-    if (!expr) return;
-    
-    try {
-      // Reset other visemes
-      for (const e of Object.values(VISEME_EXPRESSIONS)) {
-        if (e !== expr && this.availableExpressions.has(e)) {
-          em.setValue(e, 0);
+    // Apply target shape if not silence
+    if (shape !== 'sil' && clampedWeight > 0.01) {
+      const exprName = this.mapToAvailable(shape);
+      if (exprName) {
+        try { 
+          em.setValue(exprName, clampedWeight);
+          
+          // Throttled logging
+          const now = Date.now();
+          if (!this._lastApplyLog || now - this._lastApplyLog > 200) {
+            console.log(`[LipSync] Apply: ${exprName} = ${clampedWeight.toFixed(2)}`);
+            this._lastApplyLog = now;
+          }
+        } catch (e) { 
+          console.warn(`[LipSync] Failed to set ${exprName}:`, e);
         }
       }
-      if (this.availableExpressions.has(expr)) {
-        em.setValue(expr, clampedWeight);
-      } else {
-        // Fallback to 'aa' for vowels
-        if ('aeiou'.includes(viseme.toLowerCase()) && this.availableExpressions.has('aa')) {
-          em.setValue('aa', clampedWeight * 0.5);
-        }
-      }
-    } catch (_e) {
-      // Last resort fallback
-      try {
-        if (this.availableExpressions.has('aa')) {
-          em.setValue('aa', clampedWeight * 0.3);
-        }
-      } catch (_e2) { /* ignore */ }
     }
   }
+  
+  private _lastApplyLog?: number;
   
   /**
    * Stop and reset
@@ -293,18 +273,16 @@ export class LipSyncEngine {
     this.alignment = null;
     this.timingData = [];
     
+    // Reset all mouth shapes
     if (this.vrm?.expressionManager) {
-      for (const expr of Object.values(VISEME_EXPRESSIONS)) {
+      for (const shape of this.availableMouthShapes) {
         try {
-          this.vrm.expressionManager.setValue(expr, 0);
+          this.vrm.expressionManager.setValue(shape, 0);
         } catch (_e) { /* ignore */ }
       }
-      try {
-        this.vrm.expressionManager.setValue('aa', 0);
-      } catch (_e) { /* ignore */ }
     }
     
-    this.currentViseme = 'sil';
+    this.currentShape = 'sil';
     this.currentWeight = 0;
     
     console.log('[LipSync] Stopped');
