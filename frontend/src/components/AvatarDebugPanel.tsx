@@ -5,14 +5,14 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Play, Upload, RefreshCw, Mic, FileUp, Volume2, Sliders, Bug } from 'lucide-react';
+import { Play, Upload, RefreshCw, Mic, FileUp, Volume2, Sliders, Bug, Gauge } from 'lucide-react';
 import { useVoiceChat } from '../hooks/useVoiceChat';
 import { VoiceIndicator } from './VoiceIndicator';
 import { VoiceToggle } from './VoiceToggle';
 import { VoiceDebugTimeline, type VoiceDebugEntry } from './VoiceDebugTimeline';
 import { Button } from './ui/button';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './ui/accordion';
-import { AvatarRenderer } from '../avatar/AvatarRenderer';
+import { AvatarRenderer, QUALITY_PRESETS, getPreset, type QualityPreset, type QualitySettings } from '../avatar';
 import { fetchWithAuth } from '../utils/api';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
 import { useVrmOptions, type VrmOption } from '../hooks/useVrmOptions';
@@ -105,6 +105,19 @@ function AvatarDebugPanel() {
   const [voiceTranscript, setVoiceTranscript] = useState<string>('');
   const [voiceDebugEvents, setVoiceDebugEvents] = useState<VoiceDebugEntry[]>([]);
   const voiceEnabledRef = useRef<boolean | null>(null);
+
+  // Render quality state
+  const [qualityPreset, setQualityPreset] = useState<QualityPreset | 'custom'>('medium');
+  const [qualitySettings, setQualitySettings] = useState<QualitySettings>(getPreset('medium'));
+  const [fps, setFps] = useState<number>(0);
+  const fpsFramesRef = useRef<number[]>([]);
+  const lastFpsUpdateRef = useRef<number>(0);
+
+  // LookAt state
+  const [lookAtEnabled, setLookAtEnabled] = useState(true);
+  const [lookAtMaxAngle, setLookAtMaxAngle] = useState(35);
+  const [lookAtEyeWeight, setLookAtEyeWeight] = useState(1.0);
+  const [lookAtHeadWeight, setLookAtHeadWeight] = useState(0.25);
 
   const MAX_VOICE_DEBUG_EVENTS = 80;
 
@@ -250,6 +263,34 @@ function AvatarDebugPanel() {
       });
     }
   }, [lipSyncWeightMultiplier, lipSyncBlendSpeed, lipSyncMinHoldMs]);
+
+  // FPS tracking
+  useEffect(() => {
+    let animationId: number;
+    
+    const trackFps = () => {
+      const now = performance.now();
+      fpsFramesRef.current.push(now);
+      
+      // Keep only last second of frames
+      const oneSecondAgo = now - 1000;
+      fpsFramesRef.current = fpsFramesRef.current.filter(t => t > oneSecondAgo);
+      
+      // Update FPS display every 500ms
+      if (now - lastFpsUpdateRef.current > 500) {
+        setFps(fpsFramesRef.current.length);
+        lastFpsUpdateRef.current = now;
+      }
+      
+      animationId = requestAnimationFrame(trackFps);
+    };
+    
+    animationId = requestAnimationFrame(trackFps);
+    
+    return () => {
+      cancelAnimationFrame(animationId);
+    };
+  }, []);
 
   // Play animation
   const playAnimation = useCallback((name: string) => {
@@ -1014,8 +1055,362 @@ function AvatarDebugPanel() {
 
         {/* Controls Panel */}
         <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-white/10 bg-bg-secondary/40 overflow-y-auto shrink-0">
-          <Accordion type="multiple" defaultValue={["tts"]} className="px-3">
+          <Accordion type="multiple" defaultValue={["render-quality"]} className="px-3">
             
+            {/* Render Quality */}
+            <AccordionItem value="render-quality" className="border-white/10">
+              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
+                <span className="flex items-center gap-2">
+                  <Gauge className="w-4 h-4" />
+                  Render Quality
+                  <span className="ml-auto text-xs font-normal text-accent">{fps} FPS</span>
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4">
+                  {/* Preset selector */}
+                  <div>
+                    <label className="text-xs text-text-secondary">Quality Preset</label>
+                    <select
+                      value={qualityPreset}
+                      onChange={(e) => {
+                        const preset = e.target.value as QualityPreset;
+                        if (preset === 'custom') return;
+                        setQualityPreset(preset);
+                        setQualitySettings(getPreset(preset));
+                      }}
+                      className="w-full bg-bg-tertiary/80 border border-white/10 rounded px-2 py-1.5 text-sm mt-1"
+                    >
+                      <option value="low">Low (Performance)</option>
+                      <option value="medium">Medium (Balanced)</option>
+                      <option value="high">High (Quality)</option>
+                      {qualityPreset === 'custom' && <option value="custom">Custom</option>}
+                    </select>
+                  </div>
+
+                  {/* Individual controls */}
+                  <div className="space-y-3 p-3 bg-bg-tertiary/60 border border-white/10 rounded-lg">
+                    <div className="text-xs font-semibold text-text-secondary">Fine-Tune Settings</div>
+                    
+                    {/* Shadows */}
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={qualitySettings.shadows}
+                        onChange={(e) => {
+                          setQualitySettings(prev => ({ ...prev, shadows: e.target.checked }));
+                          setQualityPreset('custom');
+                        }}
+                        className="w-4 h-4 accent-accent"
+                      />
+                      <span className="text-xs text-text-secondary">Shadows</span>
+                    </label>
+
+                    {/* Shadow Map Size */}
+                    {qualitySettings.shadows && (
+                      <>
+                        <div>
+                          <label className="text-xs text-text-secondary">Shadow Map Size</label>
+                          <select
+                            value={qualitySettings.shadowMapSize}
+                            onChange={(e) => {
+                              setQualitySettings(prev => ({ ...prev, shadowMapSize: parseInt(e.target.value) }));
+                              setQualityPreset('custom');
+                            }}
+                            className="w-full bg-bg-tertiary/80 border border-white/10 rounded px-2 py-1 text-xs mt-1"
+                          >
+                            <option value={512}>512 (Fast)</option>
+                            <option value={1024}>1024 (Balanced)</option>
+                            <option value={2048}>2048 (Quality)</option>
+                          </select>
+                        </div>
+                        
+                        {/* Shadow Bias */}
+                        <div>
+                          <div className="flex justify-between text-xs text-text-secondary mb-1">
+                            <span>Shadow Bias (acne fix)</span>
+                            <span className="text-accent">{qualitySettings.shadowBias.toFixed(4)}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="-0.005"
+                            max="0"
+                            step="0.0001"
+                            value={qualitySettings.shadowBias}
+                            onChange={(e) => {
+                              setQualitySettings(prev => ({ ...prev, shadowBias: parseFloat(e.target.value) }));
+                              setQualityPreset('custom');
+                            }}
+                            className="w-full h-2 accent-accent"
+                          />
+                        </div>
+                        
+                        {/* Shadow Normal Bias */}
+                        <div>
+                          <div className="flex justify-between text-xs text-text-secondary mb-1">
+                            <span>Normal Bias (curved surfaces)</span>
+                            <span className="text-accent">{qualitySettings.shadowNormalBias.toFixed(3)}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="0.2"
+                            step="0.005"
+                            value={qualitySettings.shadowNormalBias}
+                            onChange={(e) => {
+                              setQualitySettings(prev => ({ ...prev, shadowNormalBias: parseFloat(e.target.value) }));
+                              setQualityPreset('custom');
+                            }}
+                            className="w-full h-2 accent-accent"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {/* Post-Processing */}
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={qualitySettings.postProcessing}
+                        onChange={(e) => {
+                          setQualitySettings(prev => ({ ...prev, postProcessing: e.target.checked }));
+                          setQualityPreset('custom');
+                        }}
+                        className="w-4 h-4 accent-accent"
+                      />
+                      <span className="text-xs text-text-secondary">Post-Processing</span>
+                    </label>
+
+                    {/* Bloom (only when post-processing enabled) */}
+                    {qualitySettings.postProcessing && (
+                      <>
+                        <label className="flex items-center gap-2 cursor-pointer pl-4">
+                          <input
+                            type="checkbox"
+                            checked={qualitySettings.bloom}
+                            onChange={(e) => {
+                              setQualitySettings(prev => ({ ...prev, bloom: e.target.checked }));
+                              setQualityPreset('custom');
+                            }}
+                            className="w-4 h-4 accent-accent"
+                          />
+                          <span className="text-xs text-text-secondary">Bloom</span>
+                        </label>
+
+                        {qualitySettings.bloom && (
+                          <div className="pl-4 space-y-2">
+                            <div>
+                              <div className="flex justify-between text-xs text-text-secondary mb-1">
+                                <span>Bloom Strength</span>
+                                <span className="text-accent">{qualitySettings.bloomStrength.toFixed(2)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="2"
+                                step="0.1"
+                                value={qualitySettings.bloomStrength}
+                                onChange={(e) => {
+                                  setQualitySettings(prev => ({ ...prev, bloomStrength: parseFloat(e.target.value) }));
+                                  setQualityPreset('custom');
+                                }}
+                                className="w-full h-2 accent-accent"
+                              />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-xs text-text-secondary mb-1">
+                                <span>Bloom Threshold</span>
+                                <span className="text-accent">{qualitySettings.bloomThreshold.toFixed(2)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={qualitySettings.bloomThreshold}
+                                onChange={(e) => {
+                                  setQualitySettings(prev => ({ ...prev, bloomThreshold: parseFloat(e.target.value) }));
+                                  setQualityPreset('custom');
+                                }}
+                                className="w-full h-2 accent-accent"
+                              />
+                            </div>
+                            <div>
+                              <div className="flex justify-between text-xs text-text-secondary mb-1">
+                                <span>Bloom Radius</span>
+                                <span className="text-accent">{qualitySettings.bloomRadius.toFixed(2)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="1"
+                                step="0.05"
+                                value={qualitySettings.bloomRadius}
+                                onChange={(e) => {
+                                  setQualitySettings(prev => ({ ...prev, bloomRadius: parseFloat(e.target.value) }));
+                                  setQualityPreset('custom');
+                                }}
+                                className="w-full h-2 accent-accent"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        <label className="flex items-center gap-2 cursor-pointer pl-4">
+                          <input
+                            type="checkbox"
+                            checked={qualitySettings.smaa}
+                            onChange={(e) => {
+                              setQualitySettings(prev => ({ ...prev, smaa: e.target.checked }));
+                              setQualityPreset('custom');
+                            }}
+                            className="w-4 h-4 accent-accent"
+                          />
+                          <span className="text-xs text-text-secondary">SMAA (Anti-Aliasing)</span>
+                        </label>
+                      </>
+                    )}
+
+                    {/* Alpha To Coverage */}
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={qualitySettings.alphaToCoverage}
+                        onChange={(e) => {
+                          setQualitySettings(prev => ({ ...prev, alphaToCoverage: e.target.checked }));
+                          setQualityPreset('custom');
+                        }}
+                        className="w-4 h-4 accent-accent"
+                      />
+                      <span className="text-xs text-text-secondary">Alpha To Coverage (smooth edges)</span>
+                    </label>
+                  </div>
+
+                  {/* Apply button */}
+                  <Button
+                    onClick={() => {
+                      rendererRef.current?.applyQualitySettings(qualitySettings);
+                      setLastAction(`Quality: ${qualityPreset}`);
+                    }}
+                    size="sm"
+                    className="w-full bg-accent text-accent-foreground hover:bg-accent-hover"
+                  >
+                    Apply Quality Settings
+                  </Button>
+
+                  {/* Current settings summary */}
+                  <div className="text-xs text-text-secondary/70 p-2 bg-bg-tertiary/80 border border-white/10 rounded font-mono">
+                    <div>Pixel Ratio: {qualitySettings.pixelRatio.toFixed(1)}x</div>
+                    <div>Shadows: {qualitySettings.shadows ? `ON (${qualitySettings.shadowMapSize}px)` : 'OFF'}</div>
+                    <div>Post-FX: {qualitySettings.postProcessing ? 'ON' : 'OFF'}</div>
+                    {qualitySettings.postProcessing && (
+                      <>
+                        <div className="pl-2">Bloom: {qualitySettings.bloom ? `${qualitySettings.bloomStrength.toFixed(2)}` : 'OFF'}</div>
+                        <div className="pl-2">SMAA: {qualitySettings.smaa ? 'ON' : 'OFF'}</div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Look At */}
+            <AccordionItem value="look-at" className="border-white/10">
+              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
+                <span className="flex items-center gap-2">
+                  👁️ Look At (Eyes + Head)
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4">
+                  {/* Enable toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={lookAtEnabled}
+                      onChange={(e) => {
+                        setLookAtEnabled(e.target.checked);
+                        rendererRef.current?.setLookAtEnabled(e.target.checked);
+                      }}
+                      className="w-4 h-4 accent-accent"
+                    />
+                    <span className="text-sm text-text-secondary">Enable Look At</span>
+                  </label>
+
+                  {lookAtEnabled && (
+                    <div className="space-y-3 p-3 bg-bg-tertiary/60 border border-white/10 rounded-lg">
+                      {/* Max Angle */}
+                      <div>
+                        <div className="flex justify-between text-xs text-text-secondary mb-1">
+                          <span>Max Angle (return to home)</span>
+                          <span className="text-accent">{lookAtMaxAngle}°</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={10}
+                          max={80}
+                          step={5}
+                          value={lookAtMaxAngle}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setLookAtMaxAngle(val);
+                            rendererRef.current?.setLookAtConfig({ maxAngle: val });
+                          }}
+                          className="w-full accent-accent"
+                        />
+                      </div>
+
+                      {/* Eye Weight */}
+                      <div>
+                        <div className="flex justify-between text-xs text-text-secondary mb-1">
+                          <span>Eye Movement</span>
+                          <span className="text-accent">{(lookAtEyeWeight * 100).toFixed(0)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.1}
+                          value={lookAtEyeWeight}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            setLookAtEyeWeight(val);
+                            rendererRef.current?.setLookAtConfig({ eyeWeight: val });
+                          }}
+                          className="w-full accent-accent"
+                        />
+                      </div>
+
+                      {/* Head Weight */}
+                      <div>
+                        <div className="flex justify-between text-xs text-text-secondary mb-1">
+                          <span>Head Movement</span>
+                          <span className="text-accent">{(lookAtHeadWeight * 100).toFixed(0)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={0.5}
+                          step={0.05}
+                          value={lookAtHeadWeight}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            setLookAtHeadWeight(val);
+                            rendererRef.current?.setLookAtConfig({ headWeight: val });
+                          }}
+                          className="w-full accent-accent"
+                        />
+                      </div>
+
+                      <p className="text-xs text-text-secondary/70 mt-2">
+                        Eyes and head follow camera. Returns to home position when camera angle exceeds max.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
             {/* Animations */}
             <AccordionItem value="animations" className="border-white/10">
               <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">

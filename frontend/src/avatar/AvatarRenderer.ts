@@ -1,6 +1,6 @@
 /**
  * Emilia Avatar Renderer
- * Main Three.js + VRM setup class (ported from vanilla)
+ * Main Three.js + VRM setup class with quality settings support
  */
 
 import * as THREE from 'three';
@@ -12,6 +12,9 @@ import { ExpressionController } from './ExpressionController';
 import { IdleAnimations } from './IdleAnimations';
 import { AnimationPlayer } from './AnimationPlayer';
 import { animationLibrary } from './AnimationLibrary';
+import { PostProcessingPipeline } from './PostProcessingPipeline';
+import { LookAtSystem, type LookAtConfig } from './layers/LookAtSystem';
+import { getDefaultQuality, type QualitySettings } from './QualityPresets';
 import type { AvatarRendererOptions } from './types';
 
 const DEFAULT_VRM_URL = '/vrm/emilia.vrm';
@@ -44,6 +47,16 @@ export class AvatarRenderer {
   private idleAnimations: IdleAnimations | null = null;
   public animationPlayer: AnimationPlayer | null = null;
   public expressionController: ExpressionController | null = null;
+  public lookAtSystem: LookAtSystem | null = null;
+
+  // Post-processing
+  private postProcessing: PostProcessingPipeline | null = null;
+  private _currentQuality: QualitySettings;
+
+  // Lights (stored for quality updates)
+  private keyLight: THREE.DirectionalLight | null = null;
+  private fillLight: THREE.DirectionalLight | null = null;
+  private rimLight: THREE.DirectionalLight | null = null;
 
   // Options
   private options: ResolvedOptions;
@@ -55,12 +68,13 @@ export class AvatarRenderer {
   constructor(container: HTMLElement, options: AvatarRendererOptions = {}) {
     this.container = container;
     this.clock = new THREE.Clock();
+    this._currentQuality = getDefaultQuality();
 
     this.options = {
       vrmUrl: options.vrmUrl || DEFAULT_VRM_URL,
       backgroundColor: options.backgroundColor ?? 0x1e293b,
-      cameraDistance: options.cameraDistance ?? 1.1,  // Pulled back for waist-up view
-      cameraHeight: options.cameraHeight ?? 1.3,      // Slightly lower to show more body
+      cameraDistance: options.cameraDistance ?? 1.1,
+      cameraHeight: options.cameraHeight ?? 1.3,
       enableShadows: options.enableShadows !== false,
       enableOrbitControls: options.enableOrbitControls ?? false,
       onLoad: options.onLoad ?? null,
@@ -74,6 +88,20 @@ export class AvatarRenderer {
    */
   getVRM(): VRM | null {
     return this.vrm;
+  }
+
+  /**
+   * Get the Three.js renderer
+   */
+  getRenderer(): THREE.WebGLRenderer | null {
+    return this.renderer;
+  }
+
+  /**
+   * Get current quality settings
+   */
+  get currentQuality(): QualitySettings {
+    return { ...this._currentQuality };
   }
 
   /**
@@ -97,15 +125,20 @@ export class AvatarRenderer {
     this.camera.position.set(0, this.options.cameraHeight, this.options.cameraDistance);
     this.camera.lookAt(0, this.options.cameraHeight - 0.1, 0);
 
-    // Renderer
+    // Renderer with quality settings
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true
+      antialias: this._currentQuality.antialias,
+      alpha: true,
+      powerPreference: 'high-performance',
     });
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(this._currentQuality.pixelRatio);
 
-    if (this.options.enableShadows) {
+    // Color management for proper VRM/MToon rendering
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.NoToneMapping; // Preserve toon colors
+
+    if (this.options.enableShadows && this._currentQuality.shadows) {
       this.renderer.shadowMap.enabled = true;
       this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     }
@@ -114,6 +147,23 @@ export class AvatarRenderer {
 
     this.setupLighting();
     this.setupResizeHandler();
+
+    // Initialize post-processing pipeline
+    if (this.scene && this.camera) {
+      this.postProcessing = new PostProcessingPipeline(
+        this.renderer,
+        this.scene,
+        this.camera,
+        width,
+        height
+      );
+      this.postProcessing.setEnabled(this._currentQuality.postProcessing);
+      this.postProcessing.setBloomEnabled(this._currentQuality.bloom);
+      this.postProcessing.setBloomStrength(this._currentQuality.bloomStrength);
+      this.postProcessing.setBloomThreshold(this._currentQuality.bloomThreshold);
+      this.postProcessing.setBloomRadius(this._currentQuality.bloomRadius);
+      this.postProcessing.setSMAAEnabled(this._currentQuality.smaa);
+    }
 
     // Setup orbit controls if enabled
     if (this.options.enableOrbitControls && this.camera && this.renderer) {
@@ -143,24 +193,28 @@ export class AvatarRenderer {
     this.scene.add(ambientLight);
 
     // Key light
-    const keyLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    keyLight.position.set(1, 2, 2);
-    if (this.options.enableShadows) {
-      keyLight.castShadow = true;
-      keyLight.shadow.mapSize.width = 1024;
-      keyLight.shadow.mapSize.height = 1024;
+    this.keyLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    this.keyLight.position.set(1, 2, 2);
+    if (this.options.enableShadows && this._currentQuality.shadows) {
+      this.keyLight.castShadow = true;
+      this.keyLight.shadow.mapSize.width = this._currentQuality.shadowMapSize;
+      this.keyLight.shadow.mapSize.height = this._currentQuality.shadowMapSize;
+      this.keyLight.shadow.camera.near = 0.1;
+      this.keyLight.shadow.camera.far = 10;
+      this.keyLight.shadow.bias = this._currentQuality.shadowBias;
+      this.keyLight.shadow.normalBias = this._currentQuality.shadowNormalBias;
     }
-    this.scene.add(keyLight);
+    this.scene.add(this.keyLight);
 
     // Fill light
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
-    fillLight.position.set(-1, 1, 1);
-    this.scene.add(fillLight);
+    this.fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+    this.fillLight.position.set(-1, 1, 1);
+    this.scene.add(this.fillLight);
 
     // Rim light (accent color)
-    const rimLight = new THREE.DirectionalLight(0x6366f1, 0.4);
-    rimLight.position.set(0, 1, -2);
-    this.scene.add(rimLight);
+    this.rimLight = new THREE.DirectionalLight(0x6366f1, 0.4);
+    this.rimLight.position.set(0, 1, -2);
+    this.scene.add(this.rimLight);
   }
 
   /**
@@ -178,6 +232,11 @@ export class AvatarRenderer {
       this.camera.aspect = width / height;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(width, height);
+      
+      // Update post-processing size
+      if (this.postProcessing) {
+        this.postProcessing.setSize(width, height);
+      }
     };
 
     window.addEventListener('resize', this.resizeHandler);
@@ -186,6 +245,241 @@ export class AvatarRenderer {
       this.resizeObserver = new ResizeObserver(this.resizeHandler);
       this.resizeObserver.observe(this.container);
     }
+  }
+
+  /**
+   * Apply quality settings
+   * Note: Some settings (antialias) require renderer recreation
+   */
+  applyQualitySettings(settings: QualitySettings): void {
+    this._currentQuality = { ...settings };
+
+    if (!this.renderer) return;
+
+    // Update pixel ratio
+    this.renderer.setPixelRatio(settings.pixelRatio);
+
+    // Update shadows
+    this.renderer.shadowMap.enabled = settings.shadows;
+    if (this.keyLight) {
+      this.keyLight.castShadow = settings.shadows;
+      if (settings.shadows) {
+        this.keyLight.shadow.mapSize.width = settings.shadowMapSize;
+        this.keyLight.shadow.mapSize.height = settings.shadowMapSize;
+        this.keyLight.shadow.bias = settings.shadowBias;
+        this.keyLight.shadow.normalBias = settings.shadowNormalBias;
+        this.keyLight.shadow.map?.dispose();
+        this.keyLight.shadow.map = null;
+      }
+    }
+
+    // Update post-processing
+    if (this.postProcessing) {
+      this.postProcessing.setEnabled(settings.postProcessing);
+      this.postProcessing.setBloomEnabled(settings.bloom);
+      this.postProcessing.setBloomStrength(settings.bloomStrength);
+      this.postProcessing.setBloomThreshold(settings.bloomThreshold);
+      this.postProcessing.setBloomRadius(settings.bloomRadius);
+      this.postProcessing.setSMAAEnabled(settings.smaa);
+    }
+
+    // Update alphaToCoverage on VRM materials
+    if (this.vrm) {
+      this.applyAlphaToCoverage(this.vrm, settings.alphaToCoverage);
+    }
+
+    console.log('[AvatarRenderer] Applied quality settings:', settings);
+  }
+
+  /**
+   * Configure look-at system settings
+   */
+  setLookAtConfig(config: Partial<LookAtConfig>): void {
+    if (this.lookAtSystem) {
+      this.lookAtSystem.setConfig(config);
+      console.log('[AvatarRenderer] Updated look-at config:', config);
+    }
+  }
+
+  /**
+   * Enable/disable look-at tracking
+   */
+  setLookAtEnabled(enabled: boolean): void {
+    if (this.lookAtSystem) {
+      this.lookAtSystem.setEnabled(enabled);
+    }
+  }
+
+  // Home camera position (set after VRM loads)
+  private homePosition: THREE.Vector3 = new THREE.Vector3();
+  private homeTarget: THREE.Vector3 = new THREE.Vector3();
+  private lastInteractionTime: number = 0;
+  private isDriftingHome: boolean = false;
+  private readonly DRIFT_DELAY_MS = 10000; // 10 seconds
+  private readonly DRIFT_SPEED = 0.02; // Lerp factor per frame
+
+  /**
+   * Auto-frame camera based on VRM head bone position
+   * Called once after VRM loads to handle different model heights
+   */
+  private frameCameraToHead(vrm: VRM): void {
+    if (!this.camera || !vrm.humanoid) return;
+
+    const headBone = vrm.humanoid.getNormalizedBoneNode('head');
+    if (!headBone) {
+      console.warn('[AvatarRenderer] No head bone found, using default camera position');
+      return;
+    }
+
+    // Get head world position
+    const headPos = new THREE.Vector3();
+    headBone.getWorldPosition(headPos);
+
+    // Calculate default home position - face centered with slight upward bias
+    const faceY = headPos.y - 0.05; // Face level
+    const cameraDistance = this.options.cameraDistance * 1.15; // Zoom out 15%
+    
+    // Set home position (used for drift-back)
+    // Camera higher, looking slightly down at face
+    this.homePosition.set(0, faceY + 0.12, cameraDistance);
+    this.homeTarget.set(0, faceY, 0);
+
+    // Set up orbit controls listeners first
+    if (this.controls) {
+      this.controls.addEventListener('start', this.onCameraInteractionStart);
+      this.controls.addEventListener('end', this.onCameraInteractionEnd);
+    }
+
+    // Try to load saved camera position first
+    if (this.loadCameraPosition()) {
+      // Saved position loaded, update home target for drift-back
+      // but keep camera at user's saved position
+      console.log(`[AvatarRenderer] Using saved camera position, home Y=${faceY.toFixed(2)}`);
+      return;
+    }
+
+    // No saved position, use calculated home position
+    this.camera.position.copy(this.homePosition);
+    this.camera.lookAt(this.homeTarget.x, this.homeTarget.y, this.homeTarget.z);
+
+    // Update orbit controls target if enabled
+    if (this.controls) {
+      this.controls.target.copy(this.homeTarget);
+      this.controls.update();
+    }
+
+    console.log(`[AvatarRenderer] Camera framed to head at Y=${headPos.y.toFixed(2)}, distance=${cameraDistance.toFixed(2)}`);
+  }
+
+  /**
+   * Called when user starts interacting with camera
+   */
+  private onCameraInteractionStart = (): void => {
+    this.isDriftingHome = false;
+  };
+
+  /**
+   * Called when user stops interacting with camera
+   */
+  private onCameraInteractionEnd = (): void => {
+    this.lastInteractionTime = performance.now();
+    // Save camera position when user finishes adjusting
+    this.saveCameraPosition();
+  };
+
+  /**
+   * Save current camera position to localStorage via store
+   */
+  private saveCameraPosition(): void {
+    if (!this.camera || !this.controls) return;
+    
+    try {
+      // Dynamic import to avoid circular dependency
+      const { useRenderStore } = require('../store/renderStore');
+      useRenderStore.getState().setCameraPosition({
+        x: this.camera.position.x,
+        y: this.camera.position.y,
+        z: this.camera.position.z,
+        targetX: this.controls.target.x,
+        targetY: this.controls.target.y,
+        targetZ: this.controls.target.z,
+      });
+    } catch (e) {
+      console.warn('[AvatarRenderer] Could not save camera position:', e);
+    }
+  }
+
+  /**
+   * Load camera position from localStorage via store
+   * Returns true if position was loaded
+   */
+  private loadCameraPosition(): boolean {
+    if (!this.camera || !this.controls) return false;
+    
+    try {
+      const { useRenderStore } = require('../store/renderStore');
+      const saved = useRenderStore.getState().cameraPosition;
+      
+      if (saved) {
+        this.camera.position.set(saved.x, saved.y, saved.z);
+        this.controls.target.set(saved.targetX, saved.targetY, saved.targetZ);
+        this.controls.update();
+        console.log('[AvatarRenderer] Restored saved camera position');
+        return true;
+      }
+    } catch (e) {
+      console.warn('[AvatarRenderer] Could not load camera position:', e);
+    }
+    
+    return false;
+  }
+
+  /**
+   * Check if camera should drift back to home and apply drift
+   */
+  private updateCameraDrift(): void {
+    if (!this.controls || !this.camera) return;
+    
+    const timeSinceInteraction = performance.now() - this.lastInteractionTime;
+    
+    // Start drifting after delay
+    if (timeSinceInteraction > this.DRIFT_DELAY_MS && this.lastInteractionTime > 0) {
+      this.isDriftingHome = true;
+    }
+    
+    if (this.isDriftingHome) {
+      // Lerp camera position toward home
+      this.camera.position.lerp(this.homePosition, this.DRIFT_SPEED);
+      this.controls.target.lerp(this.homeTarget, this.DRIFT_SPEED);
+      
+      // Stop drifting when close enough
+      if (this.camera.position.distanceTo(this.homePosition) < 0.01) {
+        this.isDriftingHome = false;
+        this.camera.position.copy(this.homePosition);
+        this.controls.target.copy(this.homeTarget);
+      }
+      
+      this.controls.update();
+    }
+  }
+
+  /**
+   * Apply alphaToCoverage to MToon materials
+   */
+  private applyAlphaToCoverage(vrm: VRM, enabled: boolean): void {
+    vrm.scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh && mesh.material) {
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mat of materials) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const material = mat as any;
+          if (material.isMToonMaterial) {
+            material.alphaToCoverage = enabled;
+          }
+        }
+      }
+    });
   }
 
   /**
@@ -221,8 +515,14 @@ export class AvatarRenderer {
           VRMUtils.rotateVRM0(vrm);
           this.scene?.add(vrm.scene);
 
+          // Apply alphaToCoverage to MToon materials
+          this.applyAlphaToCoverage(vrm, this._currentQuality.alphaToCoverage);
+
+          // Auto-frame camera based on head bone position
+          this.frameCameraToHead(vrm);
+
           // Shadows
-          if (this.options.enableShadows) {
+          if (this.options.enableShadows && this._currentQuality.shadows) {
             vrm.scene.traverse((obj) => {
               if ((obj as THREE.Mesh).isMesh) {
                 obj.castShadow = true;
@@ -237,7 +537,19 @@ export class AvatarRenderer {
           this.expressionController = new ExpressionController(vrm);
           this.lipSyncEngine = new LipSyncEngine(vrm);
 
-          // Connect animation player to idle system for pausing during triggered animations
+          // Initialize look-at system (eyes + head tracking)
+          // DISABLED: Causing VRM load issues - needs debugging
+          // this.lookAtSystem = new LookAtSystem(vrm, {
+          //   maxAngle: 35,      // Return to home beyond 35 degrees
+          //   eyeWeight: 1.0,    // Full eye movement
+          //   headWeight: 0.25,  // Subtle head movement
+          //   smoothSpeed: 8,
+          // });
+          // if (this.camera) {
+          //   this.lookAtSystem.setCamera(this.camera);
+          // }
+
+          // Connect animation player to idle system
           this.animationPlayer.setIdleAnimations(this.idleAnimations);
 
           // Preload registered animations
@@ -318,16 +630,22 @@ export class AvatarRenderer {
       const deltaTime = this.clock.getDelta();
 
       // Update systems
-      // TODO: Re-enable animations after fixing lip sync conflict
-      // if (this.idleAnimations) this.idleAnimations.update(deltaTime);
-      // if (this.animationPlayer) this.animationPlayer.update(deltaTime);
-      // if (this.expressionController) this.expressionController.update(deltaTime);
       if (this.lipSyncEngine) this.lipSyncEngine.update(deltaTime);
+      
+      // LookAt runs after animations but before VRM update
+      // DISABLED: Causing issues - needs debugging
+      // if (this.lookAtSystem) this.lookAtSystem.update(deltaTime);
+      
       if (this.vrm) this.vrm.update(deltaTime);
       if (this.controls) this.controls.update();
+      
+      // Camera drift back to home
+      this.updateCameraDrift();
 
-      // Render
-      if (this.renderer && this.scene && this.camera) {
+      // Render (use post-processing if enabled)
+      if (this.postProcessing && this._currentQuality.postProcessing) {
+        this.postProcessing.render();
+      } else if (this.renderer && this.scene && this.camera) {
         this.renderer.render(this.scene, this.camera);
       }
     };
@@ -361,7 +679,17 @@ export class AvatarRenderer {
     }
 
     if (this.controls) {
+      this.controls.removeEventListener('start', this.onCameraInteractionStart);
+      this.controls.removeEventListener('end', this.onCameraInteractionEnd);
       this.controls.dispose();
+    }
+
+    if (this.postProcessing) {
+      this.postProcessing.dispose();
+    }
+
+    if (this.lookAtSystem) {
+      this.lookAtSystem.dispose();
     }
 
     if (this.vrm) {
