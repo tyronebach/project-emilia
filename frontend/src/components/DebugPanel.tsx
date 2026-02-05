@@ -85,9 +85,9 @@ function DebugPanel({
   if (!open) return null;
 
   return (
-    <div className="fixed top-14 right-0 h-[60vh] w-80 bg-black/50 backdrop-blur-sm border-l border-b border-white/10 rounded-bl-lg z-30 flex flex-col overflow-hidden">
+    <div className="fixed top-12 md:top-16 right-4 bottom-28 w-[22rem] max-w-[92vw] bg-bg-primary/70 backdrop-blur-md border border-white/10 rounded-2xl z-30 flex flex-col overflow-hidden shadow-[0_24px_60px_-40px_rgba(0,0,0,0.9)]">
       {/* Header */}
-      <div className="h-8 px-2 flex items-center justify-between border-b border-white/10 shrink-0">
+      <div className="h-9 px-3 flex items-center justify-between border-b border-white/10 shrink-0">
         <div className="flex items-center gap-1">
           <Activity className="w-3 h-3 text-accent" />
           <span className="text-xs font-medium text-text-primary">Debug HUD</span>
@@ -124,19 +124,19 @@ function DebugPanel({
 
         {/* Stats Grid */}
         <div className="grid grid-cols-4 gap-1 text-xs">
-          <div className="bg-white/5 rounded px-2 py-1 text-center">
+          <div className="bg-bg-secondary/60 rounded px-2 py-1 text-center border border-white/10">
             <div className="text-sm font-bold text-text-primary">{userMessages}</div>
             <div className="text-[10px] text-text-secondary">User</div>
           </div>
-          <div className="bg-white/5 rounded px-2 py-1 text-center">
+          <div className="bg-bg-secondary/60 rounded px-2 py-1 text-center border border-white/10">
             <div className="text-sm font-bold text-accent">{assistantMessages}</div>
             <div className="text-[10px] text-text-secondary">Agent</div>
           </div>
-          <div className="bg-white/5 rounded px-2 py-1 text-center">
+          <div className="bg-bg-secondary/60 rounded px-2 py-1 text-center border border-white/10">
             <div className="text-sm font-bold text-text-primary">{avgLatency}ms</div>
             <div className="text-[10px] text-text-secondary">Avg</div>
           </div>
-          <div className="bg-white/5 rounded px-2 py-1 text-center">
+          <div className="bg-bg-secondary/60 rounded px-2 py-1 text-center border border-white/10">
             <div className="text-sm font-bold text-text-primary">{ttsEnabled ? 'On' : 'Off'}</div>
             <div className="text-[10px] text-text-secondary">TTS</div>
           </div>
@@ -148,7 +148,7 @@ function DebugPanel({
           <select
             value={ttsVoiceId || ''}
             onChange={(e) => setTtsVoiceId(e.target.value)}
-            className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1 text-[11px] text-text-primary focus:border-accent focus:outline-none"
+            className="w-full bg-bg-tertiary/80 border border-white/10 rounded px-2 py-1 text-[11px] text-text-primary focus:border-accent focus:outline-none"
           >
             <option value="">Agent default</option>
             {voiceOptions.map((voice) => (
@@ -186,8 +186,8 @@ function DebugPanel({
             <VoiceDebugTimeline
               entries={voiceDebugEvents}
               onClear={onClearVoiceDebug}
-              className="max-h-64 overflow-hidden"
-              listHeightClass="h-32"
+              className="max-h-96 overflow-hidden"
+              listHeightClass="h-72"
             />
           </div>
         </div>

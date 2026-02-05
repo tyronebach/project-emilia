@@ -1,0 +1,207 @@
+[
+  {
+    "id": "bow.glb",
+    "name": "Bow",
+    "type": "glb"
+  },
+  {
+    "id": "dataset-1_bow_normal_001.glb",
+    "name": "Dataset-1 bow normal 001",
+    "type": "glb"
+  },
+  {
+    "id": "dataset-1_bye_normal_001.glb",
+    "name": "Dataset-1 bye normal 001",
+    "type": "glb"
+  },
+  {
+    "id": "dataset-1_dance-short_normal_001.glb",
+    "name": "Dataset-1 dance-short normal 001",
+    "type": "glb"
+  },
+  {
+    "id": "dataset-1_walk_normal_001.glb",
+    "name": "Dataset-1 walk normal 001",
+    "type": "glb"
+  },
+  {
+    "id": "hip_hop_dancing.glb",
+    "name": "Hip hop dancing",
+    "type": "glb"
+  },
+  {
+    "id": "wave.glb",
+    "name": "Wave",
+    "type": "glb"
+  },
+  {
+    "id": "blingBangBangBorn.vrma",
+    "name": "BlingBangBangBorn",
+    "type": "vrma"
+  },
+  {
+    "id": "caughtInTheWheatField.vrma",
+    "name": "CaughtInTheWheatField",
+    "type": "vrma"
+  },
+  {
+    "id": "fm_vrma_motion_pack_01_01.vrma",
+    "name": "Fm vrma motion pack 01 01",
+    "type": "vrma"
+  },
+  {
+    "id": "fm_vrma_motion_pack_01_02.vrma",
+    "name": "Fm vrma motion pack 01 02",
+    "type": "vrma"
+  },
+  {
+    "id": "fm_vrma_motion_pack_01_03.vrma",
+    "name": "Fm vrma motion pack 01 03",
+    "type": "vrma"
+  },
+  {
+    "id": "fm_vrma_motion_pack_01_04.vrma",
+    "name": "Fm vrma motion pack 01 04",
+    "type": "vrma"
+  },
+  {
+    "id": "fm_vrma_motion_pack_01_05.vrma",
+    "name": "Fm vrma motion pack 01 05",
+    "type": "vrma"
+  },
+  {
+    "id": "fm_vrma_motion_pack_01_06.vrma",
+    "name": "Fm vrma motion pack 01 06",
+    "type": "vrma"
+  },
+  {
+    "id": "fm_vrma_motion_pack_01_07.vrma",
+    "name": "Fm vrma motion pack 01 07",
+    "type": "vrma"
+  },
+  {
+    "id": "fm_vrma_motion_pack_01_08.vrma",
+    "name": "Fm vrma motion pack 01 08",
+    "type": "vrma"
+  },
+  {
+    "id": "maitakeDance.vrma",
+    "name": "MaitakeDance",
+    "type": "vrma"
+  },
+  {
+    "id": "notADevil.vrma",
+    "name": "NotADevil",
+    "type": "vrma"
+  },
+  {
+    "id": "shikaIroDays.vrma",
+    "name": "ShikaIroDays",
+    "type": "vrma"
+  },
+  {
+    "id": "shikanoko_koshitantan_fixed.vrma",
+    "name": "Shikanoko koshitantan fixed",
+    "type": "vrma"
+  },
+  {
+    "id": "tetris_20250104.vrma",
+    "name": "Tetris 20250104",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmaMotionPack_01.vrma",
+    "name": "VrmaMotionPack 01",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmaMotionPack_02.vrma",
+    "name": "VrmaMotionPack 02",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmaMotionPack_03.vrma",
+    "name": "VrmaMotionPack 03",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmaMotionPack_04.vrma",
+    "name": "VrmaMotionPack 04",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmaMotionPack_05.vrma",
+    "name": "VrmaMotionPack 05",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmaMotionPack_06.vrma",
+    "name": "VrmaMotionPack 06",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmaMotionPack_07.vrma",
+    "name": "VrmaMotionPack 07",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmViewerMain_01.vrma",
+    "name": "VrmViewerMain 01",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmViewerMain_02.vrma",
+    "name": "VrmViewerMain 02",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmViewerMain_03.vrma",
+    "name": "VrmViewerMain 03",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmViewerMain_04.vrma",
+    "name": "VrmViewerMain 04",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmViewerMain_05.vrma",
+    "name": "VrmViewerMain 05",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmViewerMain_06.vrma",
+    "name": "VrmViewerMain 06",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmViewerMain_07.vrma",
+    "name": "VrmViewerMain 07",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmViewerMain_08.vrma",
+    "name": "VrmViewerMain 08",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmViewerMain_09.vrma",
+    "name": "VrmViewerMain 09",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmViewerMain_10.vrma",
+    "name": "VrmViewerMain 10",
+    "type": "vrma"
+  },
+  {
+    "id": "vrmViewerMain_11.vrma",
+    "name": "VrmViewerMain 11",
+    "type": "vrma"
+  },
+  {
+    "id": "wonderfulPrecure_funfunWonderfulDays.vrma",
+    "name": "WonderfulPrecure funfunWonderfulDays",
+    "type": "vrma"
+  }
+]

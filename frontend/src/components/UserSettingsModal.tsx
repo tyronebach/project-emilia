@@ -65,8 +65,8 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/70 z-[60]" onClick={onClose} />
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-bg-secondary border border-bg-tertiary rounded-lg shadow-xl z-[70] p-5 w-96">
+      <div className="fixed inset-0 bg-bg-primary/70 z-[60]" onClick={onClose} />
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-bg-secondary border border-white/10 rounded-2xl shadow-xl z-[70] p-5 w-96">
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -95,7 +95,7 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
           <label className="flex items-start gap-3 cursor-pointer">
             <input
               type="checkbox"
-              className="mt-1 h-4 w-4"
+              className="mt-1 h-4 w-4 accent-accent"
               checked={ttsEnabled}
               disabled={!currentUser || savingKey === 'tts_enabled'}
               onChange={(e) =>
@@ -103,12 +103,12 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
               }
             />
             <div>
-              <div className="text-sm text-text-primary">Text-to-speech (TTS)</div>
-              <div className="text-xs text-text-secondary">
-                Enables voice responses by default.
-              </div>
+            <div className="text-sm text-text-primary">Voice replies (TTS)</div>
+            <div className="text-xs text-text-secondary">
+              Enables spoken responses by default.
             </div>
-          </label>
+          </div>
+        </label>
 
           {!currentUser && (
             <div className="text-xs text-text-secondary">

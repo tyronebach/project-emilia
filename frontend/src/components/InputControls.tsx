@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { AudioLines, Paperclip } from 'lucide-react';
+import { AudioLines, Paperclip, ArrowUp } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../hooks/useChat';
 import { chatInputSchema, ChatInput } from '../schemas/chat';
@@ -17,7 +17,7 @@ interface InputControlsProps {
 }
 
 function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
-  const { status, addMessage } = useApp();
+  const { status, addMessage, ttsEnabled } = useApp();
   const { sendMessage, isLoading } = useChat();
   const handsFreeEnabled = useAppStore((state) => state.handsFreeEnabled);
   const setHandsFreeEnabled = useAppStore((state) => state.setHandsFreeEnabled);
@@ -28,6 +28,7 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
     handleSubmit,
     reset,
     setFocus,
+    watch,
     formState: { errors },
   } = useForm<ChatInput>({
     resolver: zodResolver(chatInputSchema),
@@ -73,76 +74,126 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
     }
   };
 
+  const messageValue = watch('message') || '';
+  const canSend = Boolean(messageValue.trim()) && !isDisabled;
+
   const isListening = handsFreeEnabled && voiceState === 'ACTIVE';
   const isProcessing = handsFreeEnabled && voiceState === 'PROCESSING';
   const isSpeaking = handsFreeEnabled && voiceState === 'SPEAKING';
+  const immersiveMode = handsFreeEnabled && ttsEnabled;
 
   let voiceButtonClasses = 'bg-bg-tertiary text-text-secondary';
   if (isListening) {
-    voiceButtonClasses = 'bg-white text-gray-900';
+    voiceButtonClasses = 'bg-emerald-100 text-slate-900';
   } else if (isProcessing) {
-    voiceButtonClasses = 'bg-amber-500 text-white';
+    voiceButtonClasses = 'bg-cyan-200 text-slate-900';
   } else if (isSpeaking) {
-    voiceButtonClasses = 'bg-indigo-500 text-white';
+    voiceButtonClasses = 'bg-purple-200 text-slate-900';
   }
 
   const { ref: messageRef, ...messageField } = register('message');
 
   return (
-    <div className="absolute bottom-4 left-4 right-4 z-20 rounded-3xl bg-bg-secondary p-4">
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col">
-        {/* Row 1: Message input */}
-        <textarea
-          {...messageField}
-          ref={(node) => {
-            messageRef(node);
-            inputRef.current = node;
-          }}
-          placeholder="Ask anything"
-          disabled={isDisabled}
-          rows={1}
-          onKeyDown={handleKeyDown}
-          className="w-full bg-transparent text-text-primary placeholder-text-secondary/50 text-base leading-6
-                     border-0 outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 
-                     resize-none disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ boxShadow: 'none' }}
-          autoComplete="off"
-        />
+    <>
+      <div
+        className={`absolute bottom-4 left-4 right-4 z-20 rounded-[28px] bg-bg-secondary/80 border border-white/10 p-4 backdrop-blur-md shadow-[0_30px_60px_-40px_rgba(0,0,0,0.8)] transition-all duration-300 focus-within:shadow-[0_35px_70px_-40px_rgba(0,0,0,0.9)] ${
+          immersiveMode ? 'translate-y-20 opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'
+        }`}
+      >
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col">
+          {/* Row 1: Message input */}
+          <textarea
+            {...messageField}
+            ref={(node) => {
+              messageRef(node);
+              inputRef.current = node;
+            }}
+            placeholder="Ask anything"
+            disabled={isDisabled}
+            rows={1}
+            onKeyDown={handleKeyDown}
+            className="w-full bg-transparent text-text-primary placeholder-text-secondary/50 text-base leading-6
+                       border-0 outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 
+                       resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ boxShadow: 'none' }}
+            autoComplete="off"
+          />
 
-        {/* Row 2: Attachments + Voice */}
-        <div className="mt-3 flex items-center justify-between">
-          <button
-            type="button"
-            className="h-10 w-10 rounded-full bg-bg-tertiary text-text-secondary transition-colors hover:bg-bg-tertiary/80
-                       flex items-center justify-center
-                       focus:outline-none focus:ring-0"
-            aria-label="Add attachment"
-          >
-            <Paperclip className="h-5 w-5" />
-          </button>
+          {/* Row 2: Attachments + Voice */}
+          <div className="mt-3 flex items-center justify-between">
+            <button
+              type="button"
+              className="h-10 w-10 rounded-full bg-bg-tertiary/80 border border-white/10 text-text-secondary transition-colors hover:bg-bg-tertiary
+                         flex items-center justify-center
+                         focus:outline-none focus:ring-0"
+              aria-label="Add attachment"
+            >
+              <Paperclip className="h-5 w-5" />
+            </button>
 
-          <button
-            type="button"
-            onClick={handleVoiceToggle}
-            aria-pressed={handsFreeEnabled}
-            aria-label={handsFreeEnabled ? 'Disable hands-free voice' : 'Enable hands-free voice'}
-            className={`relative h-12 w-12 rounded-full flex items-center justify-center transition-colors focus:outline-none focus:ring-0 ${voiceButtonClasses}`}
-          >
-            {isListening && (
-              <span
-                aria-hidden="true"
-                className="absolute -inset-1 rounded-full bg-white/40 animate-ping"
-              />
-            )}
-            <AudioLines className="relative h-6 w-6" />
-          </button>
-        </div>
-      </form>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleSubmit(onSubmit)()}
+                disabled={!canSend}
+                aria-label="Send message"
+                className={`h-11 w-11 rounded-full flex items-center justify-center transition-colors focus:outline-none focus:ring-0 border ${
+                  canSend
+                    ? 'bg-accent text-black border-accent/60 hover:bg-accent-hover'
+                    : 'bg-bg-tertiary/70 text-text-secondary border-white/10'
+                }`}
+              >
+                <ArrowUp className="h-5 w-5" />
+              </button>
 
-      {errors.message && (
-        <div className="pt-2 text-xs text-error text-center">{errors.message.message}</div>
-      )}
-    </div>
+              <button
+                type="button"
+                onClick={handleVoiceToggle}
+                aria-pressed={handsFreeEnabled}
+                aria-label={handsFreeEnabled ? 'Disable hands-free voice' : 'Enable hands-free voice'}
+                className={`relative h-12 w-12 rounded-full flex items-center justify-center transition-colors focus:outline-none focus:ring-0 border border-white/10 ${voiceButtonClasses}`}
+              >
+                {isListening && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute -inset-1 rounded-full bg-white/40 animate-ping"
+                  />
+                )}
+                <AudioLines className="relative h-6 w-6" />
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {errors.message && (
+          <div className="pt-2 text-xs text-error text-center">{errors.message.message}</div>
+        )}
+      </div>
+
+      <div
+        className={`absolute left-1/2 -translate-x-1/2 bottom-10 z-20 transition-all duration-300 ${
+          immersiveMode ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={handleVoiceToggle}
+          aria-pressed={handsFreeEnabled}
+          aria-label="Disable hands-free voice"
+          className={`relative h-20 w-20 md:h-24 md:w-24 rounded-full flex items-center justify-center transition-all duration-300 border border-white/10 shadow-[0_25px_60px_-40px_rgba(0,0,0,0.9)] ${voiceButtonClasses} ${
+            immersiveMode ? 'translate-y-0 scale-100' : 'translate-y-8 scale-90'
+          }`}
+        >
+          {isListening && (
+            <span
+              aria-hidden="true"
+              className="absolute -inset-2 rounded-full bg-white/30 animate-ping"
+            />
+          )}
+          <AudioLines className="relative h-9 w-9 md:h-10 md:w-10" />
+        </button>
+      </div>
+    </>
   );
 }
 

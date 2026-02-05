@@ -166,20 +166,20 @@ function AdminPanel() {
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
       {/* Header */}
-      <div className="border-b border-bg-tertiary px-4 py-3 flex items-center gap-4">
+      <div className="border-b border-white/10 px-4 py-3 flex items-center gap-4">
         <button
           onClick={() => navigate({ to: '/' })}
-          className="flex items-center gap-2 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors"
+          className="flex items-center gap-2 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h1 className="text-lg font-semibold">Agent Settings</h1>
+        <h1 className="font-display text-lg">Agent Settings</h1>
         <div className="ml-auto">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => navigate({ to: '/debug' })}
-            className="gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+            className="gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10 border border-white/10"
           >
             <Bug className="w-4 h-4" />
             Debug Avatar
@@ -215,12 +215,12 @@ function AdminPanel() {
               return (
                 <div
                   key={agent.id}
-                  className={`bg-bg-secondary border rounded-lg p-5 ${changed ? 'border-accent/50' : 'border-bg-tertiary'}`}
+                  className={`bg-bg-secondary/70 border rounded-2xl p-5 ${changed ? 'border-accent/50' : 'border-white/10'} shadow-[0_20px_40px_-30px_rgba(0,0,0,0.6)]`}
                 >
                   {/* Header */}
-                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-bg-tertiary">
+                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
                     <div>
-                      <h3 className="font-semibold text-lg">{agent.display_name}</h3>
+                      <h3 className="font-display text-lg">{agent.display_name}</h3>
                       <span className="text-xs text-text-secondary font-mono">{agent.id}</span>
                     </div>
                     <div className="text-xs text-text-secondary">

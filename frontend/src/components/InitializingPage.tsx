@@ -136,7 +136,7 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
         ) : (
           <>
             <div className="w-16 h-16 border-4 border-accent border-t-transparent rounded-full animate-spin" />
-            <h2 className="text-2xl font-bold text-center">
+            <h2 className="font-display text-2xl text-center">
               {status === 'verifying' ? 'Setting up...' : 'Bringing to life...'}
             </h2>
             <p className="text-text-secondary text-center">
