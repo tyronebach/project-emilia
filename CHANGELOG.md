@@ -19,17 +19,21 @@ All notable changes to Emilia Web App will be documented in this file.
 - **Character-to-mouth mapping** - Vowels and consonants map to appropriate VRM mouth shapes
 - **Auto-detection** - Detects available mouth shapes on VRM model load
 - **Fallback support** - Works with both lowercase (`aa`) and uppercase (`A`) expression names
-- **Better blending** - Faster blend speed (0.2) and stronger weight (0.8) for visible movement
+- **Consolidated scaling** - Timestamp scaling moved into `LipSyncEngine.setAlignment(alignment, audioDurationMs)`
+- **Tunable parameters** - `LipSyncConfig` with `maxWeight`, `blendSpeed`, `minHoldMs`
+- **State reset fix** - `startSync()` now resets state to avoid delayed animation start
 
 #### Debug Panel Enhancements
-- **Timestamp scaling** - Slider to scale ElevenLabs timing to match actual audio duration
+- **Timestamp scaling toggle** - Enable/disable scaling to actual audio duration
+- **Live tuning sliders** - Adjust maxWeight, blendSpeed, minHoldMs in real-time
 - **Expression logging** - Console shows all available VRM expressions and shape transitions
 
 #### Files Modified
 - `backend/services/elevenlabs.py` - Complete rewrite: WebSocket → REST with-timestamps API
 - `backend/routers/chat.py` - Cleaned up speak endpoint
-- `frontend/src/avatar/LipSyncEngine.ts` - Rewritten for VRM standard mouth shapes
-- `frontend/src/components/AvatarDebugPanel.tsx` - Added scaling controls and better logging
+- `frontend/src/avatar/LipSyncEngine.ts` - Rewritten with tunable config and proper state reset
+- `frontend/src/components/AvatarDebugPanel.tsx` - Added tuning controls
+- `frontend/src/hooks/useChat.ts` - Uses consolidated scaling API
 
 ---
 
