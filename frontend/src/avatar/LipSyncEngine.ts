@@ -116,18 +116,34 @@ export class LipSyncEngine {
   
   /**
    * Set alignment data from TTS response
+   * @param alignment - Character timing data from ElevenLabs
+   * @param audioDurationMs - Actual audio duration in ms (for scaling timestamps)
    */
-  setAlignment(alignment: AlignmentData): void {
+  setAlignment(alignment: AlignmentData, audioDurationMs?: number): void {
     this.alignment = alignment;
     this.timingData = [];
     
     if (!alignment) return;
     
-    const { chars, charStartTimesMs, charDurationsMs } = alignment;
+    let { chars, charStartTimesMs, charDurationsMs } = alignment;
     
     if (!chars || !charStartTimesMs || !charDurationsMs) {
       console.warn('[LipSync] Incomplete alignment data');
       return;
+    }
+    
+    // Scale timestamps to actual audio duration if provided
+    if (audioDurationMs && audioDurationMs > 0 && charStartTimesMs.length > 0) {
+      const lastIdx = charStartTimesMs.length - 1;
+      const predictedMs = charStartTimesMs[lastIdx] + (charDurationsMs[lastIdx] || 0);
+      
+      if (predictedMs > 0) {
+        const scale = audioDurationMs / predictedMs;
+        console.log(`[LipSync] Scaling: predicted=${predictedMs}ms, actual=${audioDurationMs}ms, scale=${scale.toFixed(3)}`);
+        
+        charStartTimesMs = charStartTimesMs.map(t => Math.round(t * scale));
+        charDurationsMs = charDurationsMs.map(d => Math.round(d * scale));
+      }
     }
     
     for (let i = 0; i < chars.length; i++) {

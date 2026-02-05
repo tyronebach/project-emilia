@@ -302,9 +302,10 @@ export class AvatarRenderer {
       const deltaTime = this.clock.getDelta();
 
       // Update systems
-      if (this.idleAnimations) this.idleAnimations.update(deltaTime);
-      if (this.animationPlayer) this.animationPlayer.update(deltaTime);
-      if (this.expressionController) this.expressionController.update(deltaTime);
+      // TODO: Re-enable animations after fixing lip sync conflict
+      // if (this.idleAnimations) this.idleAnimations.update(deltaTime);
+      // if (this.animationPlayer) this.animationPlayer.update(deltaTime);
+      // if (this.expressionController) this.expressionController.update(deltaTime);
       if (this.lipSyncEngine) this.lipSyncEngine.update(deltaTime);
       if (this.vrm) this.vrm.update(deltaTime);
 

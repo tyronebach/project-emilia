@@ -296,30 +296,6 @@ function AvatarDebugPanel() {
     setLastAction(`Mood: ${currentMood} @ ${(moodStrength * 100).toFixed(0)}%`);
   }, [currentMood, moodStrength]);
 
-  // Scale alignment timestamps to match actual audio duration
-  const scaleAlignment = useCallback((
-    alignment: { chars: string[]; charStartTimesMs: number[]; charDurationsMs: number[] },
-    actualMs: number
-  ) => {
-    const { chars, charStartTimesMs, charDurationsMs } = alignment;
-    if (!chars.length || !charStartTimesMs.length) return alignment;
-    
-    // Calculate predicted duration from alignment data
-    const lastIdx = charStartTimesMs.length - 1;
-    const predictedMs = charStartTimesMs[lastIdx] + (charDurationsMs[lastIdx] || 0);
-    
-    if (predictedMs <= 0) return alignment;
-    
-    const scale = actualMs / predictedMs;
-    console.log(`[LipSync] Scaling: predicted=${predictedMs}ms, actual=${actualMs}ms, scale=${scale.toFixed(3)}`);
-    
-    return {
-      chars,
-      charStartTimesMs: charStartTimesMs.map(t => Math.round(t * scale)),
-      charDurationsMs: charDurationsMs.map(d => Math.round(d * scale))
-    };
-  }, []);
-
   // Test TTS with ElevenLabs API (real visemes)
   const testTTS = useCallback(async () => {
     const renderer = rendererRef.current;
@@ -400,7 +376,7 @@ function AvatarDebugPanel() {
       if (result.alignment) {
         console.log('[Debug] ElevenLabs alignment:', result.alignment);
         
-        // Calculate predicted duration
+        // Calculate predicted duration for UI display
         const { charStartTimesMs, charDurationsMs } = result.alignment;
         if (charStartTimesMs?.length) {
           const lastIdx = charStartTimesMs.length - 1;
@@ -408,13 +384,12 @@ function AvatarDebugPanel() {
           setPredictedDurationMs(predicted);
         }
         
-        // Optionally scale timestamps to actual duration
-        const alignmentToUse = enableScaling 
-          ? scaleAlignment(result.alignment, actualMs)
-          : result.alignment;
+        // Store alignment for UI display
+        setAlignmentData(result.alignment);
         
-        setAlignmentData(alignmentToUse);
-        renderer.lipSyncEngine.setAlignment(alignmentToUse);
+        // LipSyncEngine handles scaling internally when audioDurationMs is provided
+        const audioDurationMs = enableScaling ? actualMs : undefined;
+        renderer.lipSyncEngine.setAlignment(result.alignment, audioDurationMs);
         renderer.lipSyncEngine.startSync(audio);
         setLastAction(`TTS: ${result.alignment.chars?.length || 0} chars, ${(actualMs/1000).toFixed(2)}s`);
       } else {
@@ -450,7 +425,7 @@ function AvatarDebugPanel() {
     } finally {
       setTtsLoading(false);
     }
-  }, [ttsText, voiceId, enableScaling, scaleAlignment]);
+  }, [ttsText, voiceId, enableScaling]);
 
   // Test lip sync with audio file (uses fake visemes)
   const handleAudioFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
