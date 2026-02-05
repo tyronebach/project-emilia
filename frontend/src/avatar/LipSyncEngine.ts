@@ -210,7 +210,14 @@ export class LipSyncEngine {
     
     this.audioElement = audioElement;
     this.isActive = true;
-    console.log('[LipSync] Started');
+    
+    // Reset state for fresh start
+    this.currentShape = 'sil';
+    this.currentWeight = 0;
+    this.targetWeight = 0;
+    this.lastShapeChangeMs = -1000; // Allow immediate first shape change
+    
+    console.log('[LipSync] Started, config:', this.config);
   }
   
   /**
