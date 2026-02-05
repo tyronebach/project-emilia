@@ -1,19 +1,27 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Send } from 'lucide-react';
+import { AudioLines, Paperclip } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useChat } from '../hooks/useChat';
 import { chatInputSchema, ChatInput } from '../schemas/chat';
-import { Button } from './ui/button';
+import { useAppStore } from '../store';
+import type { VoiceState } from '../services/VoiceService';
 
 /**
  * ChatGPT-style floating input bar
  * Only shown on active chat sessions (not on new chat page)
  */
-function InputControls() {
+interface InputControlsProps {
+  voiceState?: VoiceState;
+}
+
+function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
   const { status, addMessage } = useApp();
   const { sendMessage, isLoading } = useChat();
+  const handsFreeEnabled = useAppStore((state) => state.handsFreeEnabled);
+  const setHandsFreeEnabled = useAppStore((state) => state.setHandsFreeEnabled);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const {
     register,
@@ -31,10 +39,10 @@ function InputControls() {
 
   // Focus input on mount and after sending
   useEffect(() => {
-    if (!isDisabled) {
+    if (!isDisabled && !handsFreeEnabled) {
       setFocus('message');
     }
-  }, [isDisabled, setFocus]);
+  }, [isDisabled, handsFreeEnabled, setFocus]);
 
   // Handle send
   const onSubmit = async (data: ChatInput) => {
@@ -50,41 +58,87 @@ function InputControls() {
     await sendMessage(trimmedText);
   };
 
-  return (
-    <div className="absolute bottom-0 left-0 right-0 z-20 bg-bg-primary border-t border-bg-tertiary">
-      {/* Full-width input bar - larger for mobile visibility */}
-      <form
-        onSubmit={handleSubmit(onSubmit)}
-        className="flex items-center gap-3 px-4 py-4"
-      >
-        {/* Text input - taller for mobile */}
-        <div className="flex-1 bg-bg-tertiary rounded-full px-5 py-3">
-          <input
-            {...register('message')}
-            placeholder="Message..."
-            disabled={isDisabled}
-            className="w-full bg-transparent text-text-primary placeholder-text-secondary/50
-                       text-base outline-none ring-0 focus:ring-0 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-            autoComplete="off"
-          />
-        </div>
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isDisabled) return;
+    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    void handleSubmit(onSubmit)();
+  };
 
-        {/* Send button - larger for mobile */}
-        <Button
-          type="submit"
-          size="icon"
+  const handleVoiceToggle = () => {
+    const nextEnabled = !handsFreeEnabled;
+    setHandsFreeEnabled(nextEnabled);
+    if (nextEnabled) {
+      inputRef.current?.blur();
+    }
+  };
+
+  const isListening = handsFreeEnabled && voiceState === 'ACTIVE';
+  const isProcessing = handsFreeEnabled && voiceState === 'PROCESSING';
+  const isSpeaking = handsFreeEnabled && voiceState === 'SPEAKING';
+
+  let voiceButtonClasses = 'bg-bg-tertiary text-text-secondary';
+  if (isListening) {
+    voiceButtonClasses = 'bg-white text-gray-900';
+  } else if (isProcessing) {
+    voiceButtonClasses = 'bg-amber-500 text-white';
+  } else if (isSpeaking) {
+    voiceButtonClasses = 'bg-indigo-500 text-white';
+  }
+
+  const { ref: messageRef, ...messageField } = register('message');
+
+  return (
+    <div className="absolute bottom-0 left-0 right-0 z-20 rounded-3xl bg-bg-secondary p-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col">
+        {/* Row 1: Message input */}
+        <textarea
+          {...messageField}
+          ref={(node) => {
+            messageRef(node);
+            inputRef.current = node;
+          }}
+          placeholder="Ask anything"
           disabled={isDisabled}
-          className="shrink-0 h-12 w-12 rounded-full"
-        >
-          <Send className="w-6 h-6" />
-        </Button>
+          rows={1}
+          onKeyDown={handleKeyDown}
+          className="w-full bg-transparent text-text-primary placeholder-text-secondary/50 text-base leading-6
+                     outline-none ring-0 focus:outline-none focus:ring-0 resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+          autoComplete="off"
+        />
+
+        {/* Row 2: Attachments + Voice */}
+        <div className="mt-3 flex items-center justify-between">
+          <button
+            type="button"
+            className="h-10 w-10 rounded-full bg-bg-tertiary text-text-secondary transition-colors hover:bg-bg-tertiary/80
+                       flex items-center justify-center
+                       focus:outline-none focus:ring-0"
+            aria-label="Add attachment"
+          >
+            <Paperclip className="h-5 w-5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleVoiceToggle}
+            aria-pressed={handsFreeEnabled}
+            aria-label={handsFreeEnabled ? 'Disable hands-free voice' : 'Enable hands-free voice'}
+            className={`relative h-12 w-12 rounded-full flex items-center justify-center transition-colors focus:outline-none focus:ring-0 ${voiceButtonClasses}`}
+          >
+            {isListening && (
+              <span
+                aria-hidden="true"
+                className="absolute -inset-1 rounded-full bg-white/40 animate-ping"
+              />
+            )}
+            <AudioLines className="relative h-6 w-6" />
+          </button>
+        </div>
       </form>
 
-      {/* Error display */}
       {errors.message && (
-        <div className="text-xs text-error text-center pb-2">
-          {errors.message.message}
-        </div>
+        <div className="pt-2 text-xs text-error text-center">{errors.message.message}</div>
       )}
     </div>
   );

@@ -15,7 +15,6 @@ function AgentSelection({ userId }: AgentSelectionProps) {
   const navigate = useNavigate();
   const setUser = useUserStore((state) => state.setUser);
   const setAgent = useUserStore((state) => state.setAgent);
-  const setHandsFreeEnabled = useAppStore((state) => state.setHandsFreeEnabled);
   const setTtsEnabled = useAppStore((state) => state.setTtsEnabled);
 
   const { data: userData, isLoading, error } = useQuery({
@@ -36,14 +35,11 @@ function AgentSelection({ userId }: AgentSelectionProps) {
       if (userData.preferences) {
         try {
           const parsed = JSON.parse(userData.preferences);
-          setHandsFreeEnabled(Boolean(parsed?.voice_hands_free));
           setTtsEnabled(Boolean(parsed?.tts_enabled));
         } catch {
-          setHandsFreeEnabled(false);
           setTtsEnabled(false);
         }
       } else {
-        setHandsFreeEnabled(false);
         setTtsEnabled(false);
       }
     }
