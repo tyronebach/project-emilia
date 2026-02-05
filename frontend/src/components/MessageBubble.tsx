@@ -82,24 +82,24 @@ function MessageBubble({ message }: MessageBubbleProps) {
   }, [meta?.processing_ms]);
   
   return (
-    <div className={`flex items-start gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
+    <div className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
       {/* Avatar */}
-      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-        isUser ? 'bg-zinc-600/60' : 'bg-slate-600/60'
+      <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 border ${
+        isUser ? 'bg-accent/15 border-accent/30' : 'bg-bg-tertiary/80 border-white/10'
       }`}>
         <span className="text-xs text-text-primary">{isUser ? 'U' : 'E'}</span>
       </div>
-      
+
       {/* Bubble */}
       <div className={`max-w-[85%] md:max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}>
-        <div className={`rounded-2xl px-4 py-2 ${
+        <div className={`rounded-2xl px-4 py-2 border shadow-sm ${
           isUser 
-            ? 'bg-zinc-700/70 rounded-tr-sm' 
-            : 'bg-slate-700/70 rounded-tl-sm'
+            ? 'bg-accent/15 border-accent/30 rounded-tr-sm' 
+            : 'bg-bg-secondary/80 border-white/10 rounded-tl-sm'
         }`}>
           <p className="text-sm whitespace-pre-wrap break-words text-text-primary">{content}</p>
         </div>
-        
+
         {/* Meta info */}
         <div className={`flex items-center gap-2 mt-1 text-xs text-text-secondary/70 flex-wrap ${
           isUser ? 'justify-end' : 'justify-start'

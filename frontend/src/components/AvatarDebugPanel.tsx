@@ -854,12 +854,12 @@ function AvatarDebugPanel() {
   return (
     <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
       {/* Header */}
-      <header className="flex items-center gap-3 p-4 border-b border-bg-tertiary shrink-0">
+      <header className="flex items-center gap-3 p-4 border-b border-white/10 bg-bg-secondary/60 backdrop-blur-md shrink-0">
         <Button variant="ghost" size="icon" onClick={() => navigate({ to: '/manage' })}>
           <ArrowLeft className="w-5 h-5" />
         </Button>
         <h1 className="text-lg font-semibold">Avatar Debug Panel</h1>
-        <span className="ml-auto text-xs text-text-secondary bg-bg-tertiary px-2 py-1 rounded max-w-[200px] truncate">
+        <span className="ml-auto text-xs text-text-secondary bg-bg-secondary/70 border border-white/10 px-3 py-1 rounded-full max-w-[200px] truncate">
           {lastAction}
         </span>
       </header>
@@ -877,11 +877,11 @@ function AvatarDebugPanel() {
           )}
           
           {/* Model selector overlay */}
-          <div className="absolute top-4 left-4 bg-bg-primary/90 backdrop-blur rounded-lg p-2">
+          <div className="absolute top-4 left-4 bg-bg-primary/80 border border-white/10 backdrop-blur rounded-xl p-2">
             <select
               value={selectedModel}
               onChange={(e) => switchModel(e.target.value)}
-              className="bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1 text-sm"
+              className="bg-bg-tertiary/80 border border-white/10 rounded px-2 py-1 text-sm"
             >
               {availableModels.map((m) => (
                 <option key={m.id} value={m.id}>{m.name}{m.version ? ` (${m.version})` : ''}</option>
@@ -891,11 +891,11 @@ function AvatarDebugPanel() {
         </div>
 
         {/* Controls Panel */}
-        <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-bg-tertiary overflow-y-auto shrink-0">
-          <Accordion type="multiple" defaultValue={["tts"]} className="px-2">
+        <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-white/10 bg-bg-secondary/40 overflow-y-auto shrink-0">
+          <Accordion type="multiple" defaultValue={["tts"]} className="px-3">
             
             {/* Animations */}
-            <AccordionItem value="animations" className="border-bg-tertiary">
+            <AccordionItem value="animations" className="border-white/10">
               <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
                 Animations
               </AccordionTrigger>
@@ -907,7 +907,7 @@ function AvatarDebugPanel() {
                       variant="ghost"
                       size="sm"
                       onClick={() => playAnimation(anim)}
-                      className="justify-start text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                      className="justify-start text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
                     >
                       <Play className="w-3 h-3 mr-1" />
                       {anim}
@@ -921,7 +921,7 @@ function AvatarDebugPanel() {
             </AccordionItem>
 
             {/* Mood / Expression */}
-            <AccordionItem value="mood" className="border-bg-tertiary">
+            <AccordionItem value="mood" className="border-white/10">
               <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
                 Mood / Expression
               </AccordionTrigger>
@@ -932,7 +932,7 @@ function AvatarDebugPanel() {
                     <select
                       value={currentMood}
                       onChange={(e) => setCurrentMood(e.target.value)}
-                      className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1"
+                      className="w-full bg-bg-tertiary/80 border border-white/10 rounded px-2 py-1.5 text-sm mt-1"
                     >
                       {AVAILABLE_MOODS.map((mood) => (
                         <option key={mood} value={mood}>{mood}</option>
@@ -951,14 +951,14 @@ function AvatarDebugPanel() {
                       step="0.05"
                       value={moodStrength}
                       onChange={(e) => setMoodStrength(parseFloat(e.target.value))}
-                      className="w-full mt-1"
+                      className="w-full mt-1 accent-accent"
                     />
                   </div>
                   
                   <Button 
                     onClick={applyMood} 
                     size="sm" 
-                    className="w-full bg-indigo-500 text-white hover:bg-indigo-400"
+                    className="w-full bg-accent text-black hover:bg-accent-hover"
                   >
                     Apply Mood
                   </Button>
@@ -967,7 +967,7 @@ function AvatarDebugPanel() {
             </AccordionItem>
 
             {/* TTS Test */}
-            <AccordionItem value="tts" className="border-bg-tertiary">
+            <AccordionItem value="tts" className="border-white/10">
               <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
                 TTS (ElevenLabs)
               </AccordionTrigger>
@@ -980,7 +980,7 @@ function AvatarDebugPanel() {
                       onChange={(e) => setTtsText(e.target.value)}
                       placeholder="Enter text..."
                       rows={3}
-                      className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1 resize-none"
+                      className="w-full bg-bg-tertiary/80 border border-white/10 rounded px-2 py-1.5 text-sm mt-1 resize-none"
                     />
                   </div>
                   
@@ -989,7 +989,7 @@ function AvatarDebugPanel() {
                     <select
                       value={voiceId || ''}
                       onChange={(e) => setVoiceId(e.target.value)}
-                      className="w-full bg-bg-tertiary border border-bg-tertiary rounded px-2 py-1.5 text-sm mt-1 focus:border-accent focus:outline-none"
+                      className="w-full bg-bg-tertiary/80 border border-white/10 rounded px-2 py-1.5 text-sm mt-1 focus:border-accent focus:outline-none"
                     >
                       <option value="">
                         {voicesLoading ? 'Loading voices...' : 'Default'}
@@ -1011,7 +1011,7 @@ function AvatarDebugPanel() {
                     onClick={testTTS}
                     disabled={ttsLoading || !ttsText.trim()}
                     size="sm" 
-                    className="w-full bg-indigo-500 text-white hover:bg-indigo-400 disabled:opacity-50"
+                    className="w-full bg-accent text-black hover:bg-accent-hover disabled:opacity-50"
                   >
                     {ttsLoading ? (
                       <>
@@ -1030,19 +1030,19 @@ function AvatarDebugPanel() {
                     variant="ghost" 
                     size="sm" 
                     onClick={stopSpeaking} 
-                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
                   >
                     Stop
                   </Button>
                   
                   {/* Timestamp Scaling Toggle */}
-                  <div className="flex items-center gap-2 p-2 bg-bg-tertiary rounded">
+                  <div className="flex items-center gap-2 p-2 bg-bg-tertiary/80 border border-white/10 rounded">
                     <input
                       type="checkbox"
                       id="enableScaling"
                       checked={enableScaling}
                       onChange={(e) => setEnableScaling(e.target.checked)}
-                      className="w-4 h-4 accent-indigo-500"
+                      className="w-4 h-4 accent-accent"
                     />
                     <label htmlFor="enableScaling" className="text-xs text-text-secondary cursor-pointer">
                       Scale timestamps to actual audio duration
@@ -1050,14 +1050,14 @@ function AvatarDebugPanel() {
                   </div>
                   
                   {/* Lip Sync Tuning */}
-                  <div className="p-2 bg-bg-tertiary rounded space-y-3">
+                  <div className="p-2 bg-bg-tertiary/80 border border-white/10 rounded space-y-3">
                     <div className="text-xs text-text-secondary font-semibold">🎚️ Lip Sync Tuning</div>
                     
                     {/* Weight Multiplier */}
                     <div>
                       <div className="flex justify-between text-xs text-text-secondary mb-1">
                         <span>Volume Multiplier</span>
-                        <span className="text-indigo-400">{lipSyncWeightMultiplier.toFixed(2)}x</span>
+                        <span className="text-accent">{lipSyncWeightMultiplier.toFixed(2)}x</span>
                       </div>
                       <input
                         type="range"
@@ -1066,7 +1066,7 @@ function AvatarDebugPanel() {
                         step="0.1"
                         value={lipSyncWeightMultiplier}
                         onChange={(e) => setLipSyncWeightMultiplier(parseFloat(e.target.value))}
-                        className="w-full h-2 accent-indigo-500"
+                        className="w-full h-2 accent-accent"
                       />
                     </div>
                     
@@ -1074,7 +1074,7 @@ function AvatarDebugPanel() {
                     <div>
                       <div className="flex justify-between text-xs text-text-secondary mb-1">
                         <span>Blend Speed (smoothing)</span>
-                        <span className="text-indigo-400">{lipSyncBlendSpeed.toFixed(2)}</span>
+                        <span className="text-accent">{lipSyncBlendSpeed.toFixed(2)}</span>
                       </div>
                       <input
                         type="range"
@@ -1083,7 +1083,7 @@ function AvatarDebugPanel() {
                         step="0.01"
                         value={lipSyncBlendSpeed}
                         onChange={(e) => setLipSyncBlendSpeed(parseFloat(e.target.value))}
-                        className="w-full h-2 accent-indigo-500"
+                        className="w-full h-2 accent-accent"
                       />
                     </div>
                     
@@ -1091,7 +1091,7 @@ function AvatarDebugPanel() {
                     <div>
                       <div className="flex justify-between text-xs text-text-secondary mb-1">
                         <span>Min Hold (anti-flicker)</span>
-                        <span className="text-indigo-400">{lipSyncMinHoldMs}ms</span>
+                        <span className="text-accent">{lipSyncMinHoldMs}ms</span>
                       </div>
                       <input
                         type="range"
@@ -1100,7 +1100,7 @@ function AvatarDebugPanel() {
                         step="10"
                         value={lipSyncMinHoldMs}
                         onChange={(e) => setLipSyncMinHoldMs(parseInt(e.target.value))}
-                        className="w-full h-2 accent-indigo-500"
+                        className="w-full h-2 accent-accent"
                       />
                     </div>
                     
@@ -1113,14 +1113,14 @@ function AvatarDebugPanel() {
                         setLipSyncBlendSpeed(0.3);
                         setLipSyncMinHoldMs(50);
                       }}
-                      className="w-full text-xs text-text-secondary hover:text-text-primary hover:bg-white/10"
+                      className="w-full text-xs text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60"
                     >
                       Reset to Defaults
                     </Button>
                   </div>
                   
                   {/* Timing Analysis Display */}
-                  <div className="p-2 bg-bg-tertiary rounded text-xs font-mono space-y-2">
+                  <div className="p-2 bg-bg-tertiary/80 border border-white/10 rounded text-xs font-mono space-y-2">
                     <div className="text-text-secondary font-semibold">⏱️ Timing Analysis:</div>
                     
                     {/* Duration comparison */}
@@ -1158,18 +1158,18 @@ function AvatarDebugPanel() {
                           <span>Playback:</span>
                           <span>{(currentPlaybackMs/1000).toFixed(2)}s / {(actualDurationMs/1000).toFixed(2)}s</span>
                         </div>
-                        <div className="h-2 bg-bg-secondary rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-indigo-500 transition-all duration-100"
-                            style={{ width: `${(currentPlaybackMs / actualDurationMs) * 100}%` }}
-                          />
-                        </div>
+                      <div className="h-2 bg-bg-secondary rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-accent transition-all duration-100"
+                          style={{ width: `${(currentPlaybackMs / actualDurationMs) * 100}%` }}
+                        />
                       </div>
-                    )}
+                    </div>
+                  )}
                   </div>
                   
                   {/* Alignment Data Display */}
-                  <div className="p-2 bg-bg-tertiary rounded text-xs font-mono">
+                  <div className="p-2 bg-bg-tertiary/80 border border-white/10 rounded text-xs font-mono">
                     <div className="text-text-secondary mb-1">Alignment Data:</div>
                     {alignmentData ? (
                       <div className="space-y-1">
@@ -1190,7 +1190,7 @@ function AvatarDebugPanel() {
                   </div>
                   
                   {/* Info about the issue */}
-                  <div className="text-xs text-text-secondary/70 p-2 bg-yellow-500/10 rounded border border-yellow-500/30">
+                  <div className="text-xs text-text-secondary/70 p-2 bg-warning/10 rounded border border-warning/30">
                     <strong>Known Issue:</strong> ElevenLabs timing is estimated, not measured from audio. 
                     Enable scaling to adjust timestamps to actual audio duration.
                   </div>
@@ -1199,7 +1199,7 @@ function AvatarDebugPanel() {
             </AccordionItem>
 
             {/* Voice Chat Test */}
-            <AccordionItem value="voice-chat" className="border-bg-tertiary">
+            <AccordionItem value="voice-chat" className="border-white/10">
               <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
                 <span className="flex items-center gap-2">
                   <Volume2 className="w-4 h-4" />
@@ -1228,7 +1228,7 @@ function AvatarDebugPanel() {
                   
                   {/* Last transcript */}
                   {voiceTranscript && (
-                    <div className="p-3 bg-bg-tertiary rounded-lg">
+                    <div className="p-3 bg-bg-tertiary/80 border border-white/10 rounded-lg">
                       <div className="text-xs text-text-secondary mb-1">Last Transcript:</div>
                       <div className="text-sm text-text-primary">{voiceTranscript}</div>
                     </div>
@@ -1242,7 +1242,7 @@ function AvatarDebugPanel() {
                   />
                   
                   {/* Info */}
-                  <div className="text-xs text-text-secondary space-y-1 bg-bg-tertiary p-2 rounded">
+                  <div className="text-xs text-text-secondary space-y-1 bg-bg-tertiary/80 border border-white/10 p-2 rounded">
                     <div className="font-semibold">How it works:</div>
                     <ol className="list-decimal list-inside space-y-0.5">
                       <li>Enable Voice → starts wake word listener (mocked)</li>
@@ -1257,13 +1257,13 @@ function AvatarDebugPanel() {
             </AccordionItem>
 
             {/* Audio File Test */}
-            <AccordionItem value="audio-file" className="border-bg-tertiary">
+            <AccordionItem value="audio-file" className="border-white/10">
               <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
                 Audio File Test
               </AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-3">
-                  <label className="flex items-center justify-center gap-2 bg-bg-tertiary border border-dashed border-text-secondary/30 rounded-lg p-3 cursor-pointer hover:bg-bg-secondary transition-colors">
+                  <label className="flex items-center justify-center gap-2 bg-bg-tertiary/70 border border-dashed border-white/10 rounded-lg p-3 cursor-pointer hover:bg-bg-secondary transition-colors">
                     <Upload className="w-4 h-4" />
                     <span className="text-sm">Upload MP3/WAV</span>
                     <input
@@ -1281,7 +1281,7 @@ function AvatarDebugPanel() {
             </AccordionItem>
 
             {/* Animation Upload Test */}
-            <AccordionItem value="anim-upload" className="border-bg-tertiary">
+            <AccordionItem value="anim-upload" className="border-white/10">
               <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
                 Animation Upload ⭐
               </AccordionTrigger>
@@ -1289,10 +1289,10 @@ function AvatarDebugPanel() {
                 <div className="space-y-4">
                   {/* FBX Upload */}
                   <div className="space-y-2">
-                    <div className="text-xs font-semibold text-indigo-400">Mixamo FBX (vrm-mixamo-retarget)</div>
-                    <label className="flex items-center justify-center gap-2 bg-indigo-500/20 border border-dashed border-indigo-400/50 rounded-lg p-3 cursor-pointer hover:bg-indigo-500/30 transition-colors">
-                      <FileUp className="w-4 h-4 text-indigo-400" />
-                      <span className="text-sm text-indigo-300">{fbxStatus}</span>
+                    <div className="text-xs font-semibold text-text-secondary">Mixamo FBX (vrm-mixamo-retarget)</div>
+                    <label className="flex items-center justify-center gap-2 bg-bg-tertiary/70 border border-dashed border-white/10 rounded-lg p-3 cursor-pointer hover:bg-bg-secondary transition-colors">
+                      <FileUp className="w-4 h-4 text-text-secondary" />
+                      <span className="text-sm text-text-secondary">{fbxStatus}</span>
                       <input
                         type="file"
                         accept=".fbx"
@@ -1304,10 +1304,10 @@ function AvatarDebugPanel() {
                   
                   {/* GLB Upload */}
                   <div className="space-y-2">
-                    <div className="text-xs font-semibold text-green-400">GLB Animation (convert3d.org etc)</div>
-                    <label className="flex items-center justify-center gap-2 bg-green-500/20 border border-dashed border-green-400/50 rounded-lg p-3 cursor-pointer hover:bg-green-500/30 transition-colors">
-                      <FileUp className="w-4 h-4 text-green-400" />
-                      <span className="text-sm text-green-300">{glbStatus}</span>
+                    <div className="text-xs font-semibold text-text-secondary">GLB Animation (convert3d.org etc)</div>
+                    <label className="flex items-center justify-center gap-2 bg-bg-tertiary/70 border border-dashed border-white/10 rounded-lg p-3 cursor-pointer hover:bg-bg-secondary transition-colors">
+                      <FileUp className="w-4 h-4 text-text-secondary" />
+                      <span className="text-sm text-text-secondary">{glbStatus}</span>
                       <input
                         type="file"
                         accept=".glb,.gltf"
@@ -1321,12 +1321,12 @@ function AvatarDebugPanel() {
                     variant="ghost" 
                     size="sm" 
                     onClick={stopFbxAnimation} 
-                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
                   >
                     Stop Animation
                   </Button>
                   
-                  <div className="text-xs text-text-secondary space-y-1 bg-bg-tertiary p-2 rounded">
+                  <div className="text-xs text-text-secondary space-y-1 bg-bg-tertiary/80 border border-white/10 p-2 rounded">
                     <div className="font-semibold">Sources:</div>
                     <ul className="list-disc list-inside space-y-0.5">
                       <li><strong>FBX:</strong> mixamo.com → Download FBX (With Skin)</li>
@@ -1338,7 +1338,7 @@ function AvatarDebugPanel() {
             </AccordionItem>
 
             {/* Quick Actions */}
-            <AccordionItem value="quick" className="border-bg-tertiary border-b-0">
+            <AccordionItem value="quick" className="border-white/10 border-b-0">
               <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
                 Quick Actions
               </AccordionTrigger>
@@ -1347,7 +1347,7 @@ function AvatarDebugPanel() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
                     onClick={() => {
                       rendererRef.current?.expressionController?.setMood('happy', 1.0);
                       setLastAction('Max Happy');
@@ -1358,7 +1358,7 @@ function AvatarDebugPanel() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
                     onClick={() => {
                       rendererRef.current?.expressionController?.setMood('neutral', 0);
                       setLastAction('Reset Neutral');
@@ -1369,7 +1369,7 @@ function AvatarDebugPanel() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
                     onClick={waveHappy}
                   >
                     👋 Wave + Happy
@@ -1377,7 +1377,7 @@ function AvatarDebugPanel() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary"
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
                     onClick={() => {
                       rendererRef.current?.animationPlayer?.play('bow');
                       setLastAction('Bow');
@@ -1388,7 +1388,7 @@ function AvatarDebugPanel() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full text-text-secondary hover:text-text-primary hover:bg-white/10 border border-bg-tertiary bg-yellow-500/20"
+                    className="w-full text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10 bg-warning/10"
                     onClick={() => {
                       (rendererRef.current?.animationPlayer as any)?.testDirectBone?.();
                       setLastAction('Direct bone test');

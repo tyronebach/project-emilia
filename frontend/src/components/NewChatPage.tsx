@@ -5,6 +5,7 @@ import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
 import { useSession } from '../hooks/useSession';
 import { Button } from './ui/button';
+import agentPlaceholder from '../assets/placeholder-agent.jpg';
 
 interface NewChatPageProps {
   userId: string;
@@ -65,51 +66,73 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
 
   return (
     <div className="h-screen w-screen bg-bg-primary text-text-primary flex items-center justify-center overflow-hidden relative">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-28 right-[-8rem] h-[30rem] w-[30rem] rounded-full bg-[radial-gradient(circle_at_top,var(--color-glow-teal),transparent_65%)] blur-3xl opacity-60" />
+        <div className="absolute -bottom-40 left-[-12rem] h-[36rem] w-[36rem] rounded-full bg-[radial-gradient(circle_at_top,var(--color-glow-amber),transparent_70%)] blur-3xl opacity-60" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.08),transparent_55%)]" />
+      </div>
+
       {/* Back button */}
       <Button
         variant="ghost"
         size="icon"
         onClick={handleBack}
-        className="absolute top-4 left-4 text-text-primary hover:bg-white/10"
+        className="absolute top-4 left-4 text-text-primary hover:bg-white/10 bg-bg-secondary/70 border border-white/10"
       >
         <ArrowLeft className="w-6 h-6" />
       </Button>
 
-      <div className="flex flex-col items-center gap-8 max-w-md px-6">
-        {/* Agent Avatar Placeholder */}
-        <div className="w-48 h-48 rounded-full bg-bg-tertiary flex items-center justify-center text-6xl">
-          {currentAgent?.display_name?.[0] || '✨'}
-        </div>
-
-        {/* Agent Name */}
-        <h1 className="text-3xl font-bold text-center">
-          {currentAgent?.display_name || 'Agent'}
-        </h1>
-
-        {/* Description */}
-        <p className="text-text-secondary text-center text-lg">
-          Start a new conversation and bring your AI companion to life
-        </p>
-
-        {/* Start Chat Button */}
-        {isCreating ? (
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin" />
-            <span className="text-sm text-text-secondary">
-              Creating session...
-            </span>
+      <div className="relative z-10 w-full max-w-lg px-6">
+        <div className="rounded-[32px] border border-white/10 bg-bg-secondary/70 backdrop-blur-md shadow-[0_30px_70px_-50px_rgba(0,0,0,0.8)] overflow-hidden">
+          <div className="relative aspect-[4/3] w-full overflow-hidden">
+            <img
+              src={agentPlaceholder}
+              alt={`${currentAgent?.display_name || 'Agent'} avatar`}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-bg-primary/90 via-bg-primary/50 to-transparent" />
+            <div className="absolute bottom-5 left-5 right-5 flex items-end justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.3em] text-text-secondary">
+                  New
+                </div>
+                <h1 className="font-display text-3xl md:text-4xl text-balance">
+                  {currentAgent?.display_name || 'Agent'}
+                </h1>
+              </div>
+              <div className="h-11 w-11 rounded-full bg-bg-secondary/80 border border-white/10 flex items-center justify-center text-sm font-semibold text-text-primary">
+                <Sparkles className="h-4 w-4 text-text-secondary/70 absolute" />
+                <span className="relative">1</span>
+              </div>
+            </div>
           </div>
-        ) : (
-          <Button
-            onClick={handleStartChat}
-            disabled={!currentAgent}
-            size="lg"
-            className="px-12 py-8 text-xl gap-3 shadow-lg hover:shadow-xl transition-shadow"
-          >
-            <Sparkles className="w-6 h-6" />
-            Chat with {currentAgent?.display_name || 'Agent'}
-          </Button>
-        )}
+
+          <div className="px-6 pb-6 pt-5 text-center">
+            <p className="text-text-secondary text-base md:text-lg text-balance">
+              Start a fresh conversation and bring your companion to life.
+            </p>
+
+            {isCreating ? (
+              <div className="mt-6 flex flex-col items-center gap-4">
+                <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm text-text-secondary">
+                  Creating session...
+                </span>
+              </div>
+            ) : (
+              <Button
+                onClick={handleStartChat}
+                disabled={!currentAgent}
+                size="lg"
+                className="mt-6 px-10 py-7 text-lg gap-3 shadow-lg hover:shadow-xl transition-shadow"
+              >
+                <Sparkles className="w-6 h-6" />
+                Chat with {currentAgent?.display_name || 'Agent'}
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

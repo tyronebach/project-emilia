@@ -41,10 +41,10 @@ export function VoiceToggle({
       <button
         onClick={isEnabled ? onDisable : onEnable}
         className={`
-          px-6 py-3 rounded-lg font-medium transition-all
-          ${isEnabled 
-            ? 'bg-red-600 hover:bg-red-700 text-white' 
-            : 'bg-green-600 hover:bg-green-700 text-white'
+          px-6 py-3 rounded-lg font-medium transition-all border border-white/10
+          ${isEnabled
+            ? 'bg-accent/20 text-text-primary hover:bg-accent/30'
+            : 'bg-bg-tertiary/80 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60'
           }
         `}
       >
@@ -57,7 +57,7 @@ export function VoiceToggle({
           {state === 'PASSIVE' && (
             <button
               onClick={onActivate}
-              className="px-4 py-2 text-sm bg-green-700 hover:bg-green-600 text-white rounded-lg transition-colors"
+              className="px-4 py-2 text-sm bg-accent/20 text-text-primary border border-accent/30 hover:bg-accent/30 rounded-lg transition-colors"
             >
               ▶️ Start Listening
             </button>
@@ -66,7 +66,7 @@ export function VoiceToggle({
           {state === 'ACTIVE' && (
             <button
               onClick={onDeactivate}
-              className="px-4 py-2 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg transition-colors"
+              className="px-4 py-2 text-sm bg-bg-tertiary/80 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 rounded-lg transition-colors"
             >
               ⏹️ Stop Listening
             </button>
@@ -75,7 +75,7 @@ export function VoiceToggle({
           {(state === 'ACTIVE' || state === 'PROCESSING') && (
             <button
               onClick={onCancel}
-              className="px-4 py-2 text-sm bg-yellow-700 hover:bg-yellow-600 text-white rounded-lg transition-colors"
+              className="px-4 py-2 text-sm bg-warning/15 border border-warning/30 text-text-primary hover:bg-warning/25 rounded-lg transition-colors"
             >
               ✖️ Cancel
             </button>
@@ -85,8 +85,8 @@ export function VoiceToggle({
 
       {/* State debug info */}
       {isEnabled && (
-        <div className="text-xs text-gray-500">
-          State: <code className="text-gray-400">{state}</code>
+        <div className="text-xs text-text-secondary">
+          State: <code className="text-text-secondary">{state}</code>
         </div>
       )}
     </div>

@@ -85,7 +85,7 @@ function MemoryModal({ open, onClose }: MemoryModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed top-14 left-0 right-0 h-[45vh] bg-black/50 backdrop-blur-sm border-b border-white/10 z-30 flex flex-col overflow-hidden">
+    <div className="fixed top-12 md:top-16 left-4 right-4 h-[45vh] bg-bg-primary/70 backdrop-blur-md border border-white/10 rounded-2xl z-30 flex flex-col overflow-hidden shadow-[0_20px_60px_-40px_rgba(0,0,0,0.85)]">
       {/* Header */}
       <div className="h-10 px-3 flex items-center justify-between border-b border-white/10 shrink-0">
         <div className="flex items-center gap-2">
@@ -101,14 +101,14 @@ function MemoryModal({ open, onClose }: MemoryModalProps) {
                 e.stopPropagation();
                 setDropdownOpen(!dropdownOpen);
               }}
-              className="flex items-center gap-1 px-2 py-1 text-xs bg-bg-tertiary rounded hover:bg-bg-tertiary/80 text-text-secondary"
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-bg-tertiary/80 border border-white/10 rounded hover:bg-bg-tertiary text-text-secondary"
             >
               <span className="max-w-[120px] truncate">{selectedFile}</span>
               <ChevronDown className="w-3 h-3" />
             </button>
             
             {dropdownOpen && (
-              <div className="absolute top-full right-0 mt-1 bg-bg-secondary border border-bg-tertiary rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto min-w-[160px]">
+              <div className="absolute top-full right-0 mt-1 bg-bg-secondary border border-white/10 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto min-w-[160px]">
                 {sortedFiles.map((file) => (
                   <button
                     key={file}

@@ -24,7 +24,7 @@ export function VoiceDebugTimeline({
   entries,
   onClear,
   className = '',
-  listHeightClass = 'h-40',
+  listHeightClass = 'h-48',
 }: VoiceDebugTimelineProps) {
   const [filter, setFilter] = useState<VoiceDebugFilter>('all');
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -100,7 +100,7 @@ export function VoiceDebugTimeline({
   }, [filteredEntries]);
 
   return (
-    <div className={`p-3 bg-bg-tertiary rounded-lg space-y-2 ${className}`}>
+    <div className={`p-3 bg-bg-tertiary/80 border border-white/10 rounded-lg space-y-2 ${className}`}>
       <div className="flex items-center justify-between">
         <div className="text-xs text-text-secondary">Debug Timeline</div>
         {onClear && (

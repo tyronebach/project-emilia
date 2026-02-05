@@ -52,7 +52,7 @@ function AwakeningOverlay() {
         style={{
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
-          background: 'rgba(0, 0, 0, 0.5)',
+          background: 'rgba(11, 17, 23, 0.55)',
         }}
       />
 
@@ -61,7 +61,7 @@ function AwakeningOverlay() {
         <div className="flex flex-col items-center gap-6">
           <div className="w-20 h-20 border-4 border-accent border-t-transparent rounded-full animate-spin" />
           <div className="text-center px-4">
-            <h2 className="text-2xl font-semibold text-text-primary mb-2">
+            <h2 className="font-display text-2xl text-text-primary mb-2">
               Bringing {agentName} to life...
             </h2>
             <p className="text-text-secondary text-sm h-5 transition-opacity duration-300">

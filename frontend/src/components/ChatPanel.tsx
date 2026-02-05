@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { useAppStore } from '../store';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
 import MessageBubble from './MessageBubble';
@@ -10,9 +11,18 @@ import MessageBubble from './MessageBubble';
  * Collapsible - toggle button at top-right when open, bottom-right when hidden
  */
 function ChatPanel() {
-  const { messages } = useApp();
+  const { messages, ttsEnabled } = useApp();
+  const handsFreeEnabled = useAppStore((state) => state.handsFreeEnabled);
   const [collapsed, setCollapsed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const immersiveMode = handsFreeEnabled && ttsEnabled;
+  const panelHeight = immersiveMode ? 0 : 26;
+
+  useEffect(() => {
+    if (immersiveMode) {
+      setCollapsed(true);
+    }
+  }, [immersiveMode]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -21,6 +31,8 @@ function ChatPanel() {
     }
   }, [messages, collapsed]);
 
+  if (immersiveMode) return null;
+
   // When collapsed, show just the toggle button
   if (collapsed) {
     return (
@@ -28,7 +40,7 @@ function ChatPanel() {
         variant="ghost"
         size="icon"
         onClick={() => setCollapsed(false)}
-        className="fixed bottom-36 right-4 z-20 bg-black/70 backdrop-blur-sm hover:bg-black/80 rounded-full h-10 w-10"
+        className="fixed bottom-36 right-4 z-20 bg-bg-secondary/80 border border-white/10 backdrop-blur-sm hover:bg-bg-tertiary/80 rounded-full h-10 w-10 shadow-lg"
         title="Show chat history"
       >
         <ChevronUp className="w-5 h-5" />
@@ -48,7 +60,8 @@ function ChatPanel() {
         variant="ghost"
         size="icon"
         onClick={() => setCollapsed(true)}
-        className="fixed bottom-[calc(26vh+9rem-2rem)] right-2 z-20 bg-black/60 hover:bg-black/70 rounded-full h-8 w-8"
+        className="fixed right-2 z-20 bg-bg-secondary/70 border border-white/10 hover:bg-bg-tertiary/80 rounded-full h-8 w-8"
+        style={{ bottom: `calc(${panelHeight}vh + 9rem - 2rem)` }}
         title="Hide chat history"
       >
         <ChevronDown className="w-4 h-4" />
@@ -56,23 +69,19 @@ function ChatPanel() {
 
       {/* Chat panel with mask - 1/3 of screen height */}
       <div
-        className="absolute bottom-36 left-0 right-0 h-[26vh] z-10"
+        className="absolute bottom-36 left-0 right-0 z-10"
         style={{
+          height: `${panelHeight}vh`,
           maskImage: 'linear-gradient(to top, black 60%, transparent 100%)',
           WebkitMaskImage: 'linear-gradient(to top, black 60%, transparent 100%)',
         }}
       >
-        {/* Chat container with gradient background */}
-        <div
-          className="h-full relative"
-          style={{
-            background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 50%, transparent 100%)',
-          }}
-        >
+        {/* Chat container */}
+        <div className="h-full relative">
           <ScrollArea className="h-full">
             <div className="p-4 space-y-3 pb-2">
               {messages.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-text-secondary/50 text-sm py-12">
+                <div className="h-full flex items-center justify-center text-text-secondary/60 text-sm py-12">
                   Send a message to start chatting
                 </div>
               ) : (

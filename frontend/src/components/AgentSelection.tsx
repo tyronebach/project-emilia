@@ -6,6 +6,7 @@ import { getUser, getSessions } from '../utils/api';
 import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
 import type { Agent } from '../utils/api';
+import agentPlaceholder from '../assets/placeholder-agent.jpg';
 
 interface AgentSelectionProps {
   userId: string;
@@ -72,45 +73,63 @@ function AgentSelection({ userId }: AgentSelectionProps) {
   };
 
   return (
-    <div className="min-h-screen bg-bg-primary text-text-primary flex flex-col">
-      {/* Back button - top left */}
-      <div className="absolute top-4 left-4">
-        <button
-          onClick={() => navigate({ to: '/' })}
-          className="flex items-center gap-2 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          <span className="text-sm">Back</span>
-        </button>
+    <div className="min-h-screen bg-bg-primary text-text-primary relative overflow-hidden">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-24 left-[-8rem] h-[26rem] w-[26rem] rounded-full bg-[radial-gradient(circle_at_top,var(--color-glow-teal),transparent_65%)] blur-3xl opacity-60" />
+        <div className="absolute -bottom-40 right-[-10rem] h-[34rem] w-[34rem] rounded-full bg-[radial-gradient(circle_at_top,var(--color-glow-amber),transparent_70%)] blur-3xl opacity-60" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.08),transparent_55%)]" />
       </div>
 
-      {/* Main content - centered */}
-      <div className="flex-1 flex items-center justify-center px-4 py-10">
-        <div className="w-full max-w-3xl">
-          <div className="text-center mb-12">
-            <p className="text-sm uppercase tracking-[0.2em] text-text-secondary">Select a character</p>
-            <h2 className="text-3xl md:text-4xl font-semibold mt-2">Pick your companion</h2>
+      <div className="relative z-10 flex min-h-screen flex-col">
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-6 pt-6">
+          <button
+            onClick={() => navigate({ to: '/' })}
+            className="flex items-center gap-2 p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span className="text-sm">Back</span>
+          </button>
+          <div className="hidden sm:flex items-center gap-2 text-xs text-text-secondary">
+            <Sparkles className="w-4 h-4 text-accent" />
+            Pick a companion to start
           </div>
+        </div>
 
-          {isLoading && (
-            <div className="text-center text-text-secondary">Loading characters...</div>
-          )}
-          {error && (
-            <div className="text-center text-error">Failed to load characters.</div>
-          )}
-          {!isLoading && !error && agents.length === 0 && (
-            <div className="text-center text-text-secondary">No characters available.</div>
-          )}
+        <div className="flex-1 flex items-center justify-center px-4 py-12">
+          <div className="w-full max-w-5xl">
+            <div className="text-center mb-12">
+              <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full border border-white/10 bg-bg-secondary/60 text-xs uppercase tracking-[0.28em] text-text-secondary">
+                Characters
+              </div>
+              <h2 className="font-display text-3xl md:text-5xl mt-4 text-balance">
+                Pick your companion
+              </h2>
+              <p className="text-text-secondary mt-3 text-base md:text-lg text-balance">
+                Every character has its own memory, voice, and personality.
+              </p>
+            </div>
 
-          {/* Agent avatars grid */}
-          <div className="flex justify-center gap-12 flex-wrap">
-            {agents.map((agent) => (
-              <AgentAvatar
-                key={agent.id}
-                agent={agent}
-                onSelect={() => handleSelect(agent)}
-              />
-            ))}
+            {isLoading && (
+              <div className="text-center text-text-secondary">Loading characters...</div>
+            )}
+            {error && (
+              <div className="text-center text-error">Failed to load characters.</div>
+            )}
+            {!isLoading && !error && agents.length === 0 && (
+              <div className="text-center text-text-secondary">No characters available.</div>
+            )}
+
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {agents.map((agent, index) => (
+                <AgentAvatar
+                  key={agent.id}
+                  agent={agent}
+                  index={index + 1}
+                  onSelect={() => handleSelect(agent)}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -120,27 +139,39 @@ function AgentSelection({ userId }: AgentSelectionProps) {
 
 interface AgentAvatarProps {
   agent: Agent;
+  index: number;
   onSelect: () => void;
 }
 
-function AgentAvatar({ agent, onSelect }: AgentAvatarProps) {
+function AgentAvatar({ agent, index, onSelect }: AgentAvatarProps) {
   return (
     <button
       onClick={onSelect}
-      className="flex flex-col items-center gap-3 group focus:outline-none"
+      className="group relative overflow-hidden rounded-3xl border border-white/10 bg-bg-secondary/60 text-left shadow-[0_25px_60px_-40px_rgba(0,0,0,0.8)] backdrop-blur-md transition-all duration-200 hover:-translate-y-1 hover:border-accent/40 hover:bg-bg-secondary/80 focus:outline-none"
     >
-      {/* Avatar circle */}
       <div className="relative">
-        <div className="w-32 h-32 rounded-full bg-gradient-to-br from-accent/20 to-accent/5 border-2 border-transparent group-hover:border-accent group-focus:border-accent transition-all duration-200 flex items-center justify-center overflow-hidden">
-          {/* Placeholder avatar - can be replaced with VRM thumbnail */}
-          <Sparkles className="w-16 h-16 text-accent/50 group-hover:text-accent transition-colors" />
+        <div className="aspect-square w-full overflow-hidden">
+          <img
+            src={agentPlaceholder}
+            alt={`${agent.display_name} avatar`}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+            loading="lazy"
+          />
+        </div>
+        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-bg-primary/90 via-bg-primary/40 to-transparent" />
+        <div className="absolute bottom-3 right-3">
+          <div className="relative h-10 w-10 rounded-full bg-bg-secondary/80 border border-white/10 flex items-center justify-center text-sm font-semibold text-text-primary">
+            <Sparkles className="absolute h-4 w-4 text-text-secondary/70" />
+            <span className="relative">{index}</span>
+          </div>
         </div>
       </div>
 
-      {/* Name footer */}
-      <span className="text-lg font-medium text-text-primary group-hover:text-accent transition-colors">
-        {agent.display_name}
-      </span>
+      <div className="px-4 py-4">
+        <span className="text-lg font-semibold text-text-primary group-hover:text-accent transition-colors">
+          {agent.display_name}
+        </span>
+      </div>
     </button>
   );
 }

@@ -173,7 +173,7 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
     <>
       {/* Backdrop */}
       <div
-        className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300 ${
+        className={`fixed inset-0 bg-bg-primary/70 backdrop-blur-md z-40 transition-opacity duration-300 ${
           open ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
         onClick={onClose}
@@ -181,13 +181,13 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
 
       {/* Drawer Panel */}
       <div
-        className={`fixed top-0 left-0 h-full w-72 bg-bg-secondary border-r border-bg-tertiary z-50 flex flex-col transition-transform duration-300 ${
+        className={`fixed top-0 left-0 h-full w-72 bg-bg-secondary/95 border-r border-white/10 z-50 flex flex-col transition-transform duration-300 shadow-[20px_0_60px_-40px_rgba(0,0,0,0.9)] backdrop-blur-md ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Drawer Header */}
-        <div className="h-14 px-4 flex items-center justify-between border-b border-bg-tertiary shrink-0">
-          <span className="text-lg font-semibold text-text-primary">
+        <div className="h-14 px-4 flex items-center justify-between border-b border-white/10 shrink-0">
+          <span className="font-display text-lg text-text-primary">
             {currentAgent?.display_name || 'Emilia'}
           </span>
           <Button variant="ghost" size="icon" onClick={onClose} className="hover:bg-white/10">
@@ -196,7 +196,7 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
         </div>
 
         {/* Top Actions - Switch User, Select Agent, TTS */}
-        <div className="border-b border-bg-tertiary p-3 space-y-1 shrink-0">
+        <div className="border-b border-white/10 p-3 space-y-1 shrink-0">
           {/* Switch User */}
           <Button
             variant="ghost"
@@ -220,7 +220,7 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
         </div>
 
         {/* New Session Button - transparent background */}
-        <div className="p-3 border-b border-bg-tertiary">
+        <div className="p-3 border-b border-white/10">
           <Button
             variant="ghost"
             className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10"
@@ -254,10 +254,10 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
                     <div key={session.id} className="relative group">
                       <button
                         onClick={() => handleSwitchSession(session.id)}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left ${
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-colors text-left ${
                           isActive
-                            ? 'bg-accent/20 text-accent'
-                            : 'text-text-secondary hover:text-text-primary hover:bg-white/10'
+                            ? 'bg-accent/15 text-accent border border-accent/30'
+                            : 'text-text-secondary hover:text-text-primary hover:bg-white/10 border border-transparent'
                         }`}
                       >
                         <MessageSquare className="w-4 h-4 shrink-0" />
@@ -275,7 +275,7 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
                           e.stopPropagation();
                           setMenuOpenFor(isMenuOpen ? null : session.id);
                         }}
-                        className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded text-text-secondary/50 hover:text-text-primary hover:bg-white/10"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded text-text-secondary/50 hover:text-text-primary hover:bg-white/10"
                       >
                         <MoreVertical className="w-4 h-4" />
                       </button>
@@ -283,7 +283,7 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
                       {/* Dropdown menu */}
                       {isMenuOpen && (
                         <div
-                          className="absolute right-0 top-full mt-1 bg-bg-secondary border border-bg-tertiary rounded-lg shadow-lg z-50 py-1 min-w-[120px]"
+                          className="absolute right-0 top-full mt-1 bg-bg-secondary border border-white/10 rounded-lg shadow-lg z-50 py-1 min-w-[120px]"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
@@ -311,13 +311,15 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
         </ScrollArea>
 
         {/* Bottom - User Settings */}
-        <div className="border-t border-bg-tertiary p-3 shrink-0">
+        <div className="border-t border-white/10 p-3 shrink-0">
           <Button
             variant="ghost"
-            className="w-full justify-start gap-3 text-text-secondary hover:text-text-primary hover:bg-white/10 h-auto py-3"
+            className="w-full justify-start gap-4 text-text-secondary hover:text-text-primary hover:bg-white/10 h-auto py-4 border border-white/5 rounded-2xl"
             onClick={onOpenUserSettings}
           >
-            <Settings className="w-5 h-5 shrink-0" />
+            <div className="h-10 w-10 rounded-2xl bg-bg-tertiary/80 border border-white/10 flex items-center justify-center">
+              <Settings className="w-5 h-5 shrink-0" />
+            </div>
             <div className="flex flex-col items-start">
               <span className="text-sm font-medium text-text-primary">
                 {currentUser?.display_name || 'User'}
@@ -332,17 +334,17 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
       {renameModalOpen && (
         <>
           <div
-            className="fixed inset-0 bg-black/70 z-[60]"
+            className="fixed inset-0 bg-bg-primary/70 z-[60]"
             onClick={() => setRenameModalOpen(false)}
           />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-bg-secondary border border-bg-tertiary rounded-lg shadow-xl z-[70] p-4 w-80">
-            <h3 className="text-lg font-semibold text-text-primary mb-4">Rename Session</h3>
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-bg-secondary border border-white/10 rounded-2xl shadow-xl z-[70] p-5 w-80">
+            <h3 className="font-display text-lg text-text-primary mb-4">Rename Session</h3>
             <input
               type="text"
               value={renameValue}
               onChange={(e) => setRenameValue(e.target.value)}
               placeholder="Session name"
-              className="w-full bg-bg-tertiary text-text-primary rounded-lg px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-accent"
+              className="w-full bg-bg-tertiary/80 border border-white/10 text-text-primary rounded-lg px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-accent"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleRename()}
             />
@@ -362,11 +364,11 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
       {deleteModalOpen && (
         <>
           <div
-            className="fixed inset-0 bg-black/70 z-[60]"
+            className="fixed inset-0 bg-bg-primary/70 z-[60]"
             onClick={() => setDeleteModalOpen(false)}
           />
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-bg-secondary border border-bg-tertiary rounded-lg shadow-xl z-[70] p-4 w-80">
-            <h3 className="text-lg font-semibold text-text-primary mb-2">Delete Session</h3>
+          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-bg-secondary border border-white/10 rounded-2xl shadow-xl z-[70] p-5 w-80">
+            <h3 className="font-display text-lg text-text-primary mb-2">Delete Session</h3>
             <p className="text-text-secondary text-sm mb-4">
               Are you sure you want to delete this session? This action cannot be undone.
             </p>

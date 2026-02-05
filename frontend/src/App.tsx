@@ -17,6 +17,7 @@ import DebugPanel from './components/DebugPanel';
 import MemoryModal from './components/MemoryModal';
 import UserSettingsModal from './components/UserSettingsModal';
 import AwakeningOverlay from './components/AwakeningOverlay';
+import type { AppStatus } from './types';
 
 interface AppProps {
   userId: string;
@@ -142,7 +143,7 @@ function AppContent({
   userSettingsOpen: boolean;
   setUserSettingsOpen: (open: boolean) => void;
 }) {
-  const { messages, status, addMessage, addError, setTtsEnabled } = useApp();
+  const { messages, status, addMessage, addError, setTtsEnabled, ttsEnabled } = useApp();
   const { sendMessage } = useChat();
   const handsFreeEnabled = useAppStore((state) => state.handsFreeEnabled);
   const currentUser = useUserStore((state) => state.currentUser);
@@ -188,6 +189,7 @@ function AppContent({
 
   // Awakening mode: no assistant messages AND thinking
   const isAwakening = !hasAwakened && !hasAssistantMessage && status === 'thinking';
+  const immersiveMode = handsFreeEnabled && ttsEnabled;
 
   // Latch: once we exit awakening, never go back
   useEffect(() => {
@@ -293,9 +295,11 @@ function AppContent({
         debugOpen={debugOpen}
         memoryOpen={memoryOpen}
         handsFreeEnabled={handsFreeEnabled}
-        voiceState={voiceChat.voiceState}
         voicePermissionWarning={voicePermissionWarning}
       />
+
+      {/* Status pill - left side */}
+      <StatusPill status={status} immersive={immersiveMode} />
 
       {/* Chat History Overlay - hidden during awakening */}
       {!isAwakening && <ChatPanel />}
@@ -326,6 +330,42 @@ function AppContent({
 
       {/* User Settings Modal */}
       <UserSettingsModal open={userSettingsOpen} onClose={() => setUserSettingsOpen(false)} />
+    </div>
+  );
+}
+
+function StatusPill({ status, immersive }: { status: AppStatus; immersive: boolean }) {
+  const statusColors: Record<AppStatus, string> = {
+    initializing: 'bg-warning animate-pulse',
+    ready: 'bg-success',
+    recording: 'bg-error animate-pulse',
+    processing: 'bg-warning animate-pulse',
+    thinking: 'bg-warning animate-pulse',
+    speaking: 'bg-accent animate-pulse',
+    error: 'bg-error',
+  };
+
+  const getStatusText = () => {
+    if (status === 'processing') return 'Transcribing...';
+    if (status === 'thinking') return 'Thinking...';
+    if (status === 'speaking') return 'Speaking...';
+    return null;
+  };
+
+  const statusText = getStatusText();
+  if (!statusText) return null;
+
+  const panelHeight = immersive ? 0 : 26;
+
+  return (
+    <div
+      className="fixed left-4 z-20"
+      style={{ bottom: `calc(${panelHeight}vh + 9rem + 0.5rem)` }}
+    >
+      <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-bg-secondary/35 border border-white/5 backdrop-blur-sm text-text-secondary text-sm">
+        <span className={`w-2 h-2 rounded-full ${statusColors[status]}`} />
+        <span>{statusText}</span>
+      </div>
     </div>
   );
 }
