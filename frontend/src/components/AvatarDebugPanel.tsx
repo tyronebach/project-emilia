@@ -92,6 +92,11 @@ function AvatarDebugPanel() {
   const [isPlaying, setIsPlaying] = useState(false);
   const playbackIntervalRef = useRef<number | null>(null);
   
+  // Lip sync config (tunable parameters)
+  const [lipSyncMaxWeight, setLipSyncMaxWeight] = useState(0.8);
+  const [lipSyncBlendSpeed, setLipSyncBlendSpeed] = useState(0.2);
+  const [lipSyncMinHoldMs, setLipSyncMinHoldMs] = useState(50);
+  
   // FBX retarget test state
   const [fbxStatus, setFbxStatus] = useState<string>('Upload Mixamo FBX');
   const [glbStatus, setGlbStatus] = useState<string>('Upload GLB Animation');
@@ -271,6 +276,18 @@ function AvatarDebugPanel() {
       cancelAnimationFrame(animationId);
     };
   }, []);
+
+  // Sync lip sync config to engine when values change
+  useEffect(() => {
+    const engine = rendererRef.current?.lipSyncEngine;
+    if (engine) {
+      engine.setConfig({
+        maxWeight: lipSyncMaxWeight,
+        blendSpeed: lipSyncBlendSpeed,
+        minHoldMs: lipSyncMinHoldMs,
+      });
+    }
+  }, [lipSyncMaxWeight, lipSyncBlendSpeed, lipSyncMinHoldMs]);
 
   // Play animation
   const playAnimation = useCallback((name: string) => {
@@ -1030,6 +1047,76 @@ function AvatarDebugPanel() {
                     <label htmlFor="enableScaling" className="text-xs text-text-secondary cursor-pointer">
                       Scale timestamps to actual audio duration
                     </label>
+                  </div>
+                  
+                  {/* Lip Sync Tuning */}
+                  <div className="p-2 bg-bg-tertiary rounded space-y-3">
+                    <div className="text-xs text-text-secondary font-semibold">🎚️ Lip Sync Tuning</div>
+                    
+                    {/* Max Weight */}
+                    <div>
+                      <div className="flex justify-between text-xs text-text-secondary mb-1">
+                        <span>Max Weight (openness)</span>
+                        <span className="text-indigo-400">{lipSyncMaxWeight.toFixed(2)}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.1"
+                        max="1"
+                        step="0.05"
+                        value={lipSyncMaxWeight}
+                        onChange={(e) => setLipSyncMaxWeight(parseFloat(e.target.value))}
+                        className="w-full h-2 accent-indigo-500"
+                      />
+                    </div>
+                    
+                    {/* Blend Speed */}
+                    <div>
+                      <div className="flex justify-between text-xs text-text-secondary mb-1">
+                        <span>Blend Speed (smoothing)</span>
+                        <span className="text-indigo-400">{lipSyncBlendSpeed.toFixed(2)}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.05"
+                        max="0.5"
+                        step="0.01"
+                        value={lipSyncBlendSpeed}
+                        onChange={(e) => setLipSyncBlendSpeed(parseFloat(e.target.value))}
+                        className="w-full h-2 accent-indigo-500"
+                      />
+                    </div>
+                    
+                    {/* Min Hold Time */}
+                    <div>
+                      <div className="flex justify-between text-xs text-text-secondary mb-1">
+                        <span>Min Hold (anti-flicker)</span>
+                        <span className="text-indigo-400">{lipSyncMinHoldMs}ms</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="150"
+                        step="10"
+                        value={lipSyncMinHoldMs}
+                        onChange={(e) => setLipSyncMinHoldMs(parseInt(e.target.value))}
+                        className="w-full h-2 accent-indigo-500"
+                      />
+                    </div>
+                    
+                    {/* Reset button */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setLipSyncMaxWeight(0.8);
+                        setLipSyncBlendSpeed(0.2);
+                        setLipSyncMinHoldMs(50);
+                      }}
+                      className="w-full text-xs text-text-secondary hover:text-text-primary hover:bg-white/10"
+                    >
+                      Reset to Defaults
+                    </Button>
                   </div>
                   
                   {/* Timing Analysis Display */}
