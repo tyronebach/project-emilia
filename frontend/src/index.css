@@ -1,20 +1,23 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap");
 
 @custom-variant dark (&:is(.dark *));
 
 @theme {
   /* Custom colors */
-  --color-bg-primary: #0f0f0f;
-  --color-bg-secondary: #1a1a1a;
-  --color-bg-tertiary: #252525;
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #a0a0a0;
-  --color-accent: #6366f1;
-  --color-accent-hover: #818cf8;
+  --color-bg-primary: #0b1117;
+  --color-bg-secondary: #121922;
+  --color-bg-tertiary: #1a2430;
+  --color-text-primary: #f8fafc;
+  --color-text-secondary: #94a3b8;
+  --color-accent: #22c3a6;
+  --color-accent-hover: #3ddbc0;
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-error: #ef4444;
+  --color-glow-teal: rgba(34, 195, 166, 0.35);
+  --color-glow-amber: rgba(251, 191, 36, 0.25);
 
   /* Accordion animations */
   --animate-slideDown: slideDown 200ms ease-out;
@@ -34,7 +37,7 @@
 /* Global styles */
 body {
   @apply bg-bg-primary text-text-primary antialiased;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: "Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 /* Scrollbar styling */
@@ -58,6 +61,11 @@ body {
 /* Focus styles */
 input:focus, textarea:focus, button:focus-visible {
   @apply outline-none ring-2 ring-accent/50;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 30%, transparent);
+  color: var(--color-text-primary);
 }
 
 @theme inline {
@@ -176,5 +184,17 @@ input:focus, textarea:focus, button:focus-visible {
   }
   body {
     @apply bg-background text-foreground;
+    font-family: "Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: "Bricolage Grotesque", "Space Grotesk", system-ui, sans-serif;
+    letter-spacing: -0.01em;
+  }
+
+  .text-balance {
+    text-wrap: balance;
   }
 }

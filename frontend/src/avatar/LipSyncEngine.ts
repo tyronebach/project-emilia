@@ -12,14 +12,14 @@ import type { AlignmentData, TimingEntry } from './types';
  */
 function charToMouthShape(char: string): string {
   const c = char.toLowerCase();
-  
+
   // Vowels - map to VRM standard mouth shapes
   if (c === 'a') return 'aa';
   if (c === 'e') return 'ee';
   if (c === 'i') return 'ih';
   if (c === 'o') return 'oh';
   if (c === 'u') return 'ou';
-  
+
   // Consonants that open the mouth
   if ('pbm'.includes(c)) return 'aa';  // bilabial - closed then open
   if ('fv'.includes(c)) return 'ih';   // labiodental
@@ -29,10 +29,10 @@ function charToMouthShape(char: string): string {
   if (c === 'r') return 'oh';
   if (c === 'n' || c === 'l') return 'ih';
   if ('wyw'.includes(c)) return 'ou';
-  
+
   // Space or punctuation = silence
   if (' .,!?;:\'"'.includes(c)) return 'sil';
-  
+
   // Default for other consonants - slight mouth opening
   return 'ih';
 }
@@ -67,37 +67,37 @@ export class LipSyncEngine {
   private alignment: AlignmentData | null = null;
   private audioElement: HTMLAudioElement | null = null;
   private isActive: boolean = false;
-  
+
   // Tunable config
   private config: LipSyncConfig = { ...DEFAULT_CONFIG };
-  
+
   private currentShape: MouthShape = 'sil';
   private currentWeight: number = 0;
   private targetWeight: number = 0;
   private lastShapeChangeMs: number = 0;
-  
+
   private timingData: TimingEntry[] = [];
   private availableMouthShapes: Set<string> = new Set();
-  
+
   // Audio volume analysis
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private sourceNode: MediaElementAudioSourceNode | null = null;
   private dataArray: Uint8Array | null = null;
   private currentVolume: number = 0;
-  
+
   constructor(vrm: VRM) {
     this.vrm = vrm;
     this.detectAvailableMouthShapes();
   }
-  
+
   /**
    * Get current config
    */
   getConfig(): LipSyncConfig {
     return { ...this.config };
   }
-  
+
   /**
    * Update config (partial updates allowed)
    */
@@ -105,7 +105,7 @@ export class LipSyncEngine {
     this.config = { ...this.config, ...updates };
     console.log('[LipSync] Config updated:', this.config);
   }
-  
+
   /**
    * Detect which VRM mouth expressions are available
    */
@@ -115,13 +115,13 @@ export class LipSyncEngine {
       console.warn('[LipSync] No expression manager');
       return;
     }
-    
+
     // Log all expressions in the VRM
-    const emAny = em as VRMExpressionManager & { 
+    const emAny = em as VRMExpressionManager & {
       expressionMap?: Map<string, unknown> | Record<string, unknown>;
       _expressionMap?: Map<string, unknown>;
     };
-    
+
     const allExpressions: string[] = [];
     if (emAny.expressionMap instanceof Map) {
       for (const [name] of emAny.expressionMap) allExpressions.push(name);
@@ -131,7 +131,7 @@ export class LipSyncEngine {
       allExpressions.push(...Object.keys(emAny.expressionMap));
     }
     console.log('[LipSync] ALL VRM expressions:', allExpressions);
-    
+
     // Check for VRM standard mouth shapes
     for (const shape of VRM_MOUTH_SHAPES) {
       try {
@@ -141,7 +141,7 @@ export class LipSyncEngine {
         }
       } catch (_e) { /* ignore */ }
     }
-    
+
     // Also check uppercase variants (some VRM models use 'A', 'I', 'U', 'E', 'O')
     const upperMap: Record<string, string> = { 'A': 'aa', 'I': 'ih', 'U': 'ou', 'E': 'ee', 'O': 'oh' };
     for (const [upper, lower] of Object.entries(upperMap)) {
@@ -152,14 +152,14 @@ export class LipSyncEngine {
         }
       } catch (_e) { /* ignore */ }
     }
-    
+
     console.log('[LipSync] Available mouth shapes:', Array.from(this.availableMouthShapes));
-    
+
     if (this.availableMouthShapes.size === 0) {
       console.warn('[LipSync] ⚠️ No mouth shape expressions found on this VRM model!');
     }
   }
-  
+
   /**
    * Set alignment data from TTS response
    * @param alignment - Character timing data from ElevenLabs
@@ -168,30 +168,30 @@ export class LipSyncEngine {
   setAlignment(alignment: AlignmentData, audioDurationMs?: number): void {
     this.alignment = alignment;
     this.timingData = [];
-    
+
     if (!alignment) return;
-    
+
     let { chars, charStartTimesMs, charDurationsMs } = alignment;
-    
+
     if (!chars || !charStartTimesMs || !charDurationsMs) {
       console.warn('[LipSync] Incomplete alignment data');
       return;
     }
-    
+
     // Scale timestamps to actual audio duration if provided
     if (audioDurationMs && audioDurationMs > 0 && charStartTimesMs.length > 0) {
       const lastIdx = charStartTimesMs.length - 1;
       const predictedMs = charStartTimesMs[lastIdx] + (charDurationsMs[lastIdx] || 0);
-      
+
       if (predictedMs > 0) {
         const scale = audioDurationMs / predictedMs;
         console.log(`[LipSync] Scaling: predicted=${predictedMs}ms, actual=${audioDurationMs}ms, scale=${scale.toFixed(3)}`);
-        
+
         charStartTimesMs = charStartTimesMs.map(t => Math.round(t * scale));
         charDurationsMs = charDurationsMs.map(d => Math.round(d * scale));
       }
     }
-    
+
     for (let i = 0; i < chars.length; i++) {
       const mouthShape = charToMouthShape(chars[i]);
       this.timingData.push({
@@ -201,11 +201,11 @@ export class LipSyncEngine {
         viseme: mouthShape  // Now using VRM mouth shapes
       });
     }
-    
+
     console.log(`[LipSync] Prepared ${this.timingData.length} timing entries`);
     console.log(`[LipSync] Sample entries:`, this.timingData.slice(0, 5).map(e => `'${e.char}'→${e.viseme}`).join(', '));
   }
-  
+
   /**
    * Start sync with audio element
    */
@@ -214,23 +214,23 @@ export class LipSyncEngine {
       console.log('[LipSync] No alignment data');
       return;
     }
-    
+
     this.audioElement = audioElement;
     this.isActive = true;
-    
+
     // Reset state for fresh start
     this.currentShape = 'sil';
     this.currentWeight = 0;
     this.targetWeight = 0;
     this.lastShapeChangeMs = -1000; // Allow immediate first shape change
     this.currentVolume = 0;
-    
+
     // Set up audio analyser for volume detection
     this.setupAudioAnalyser(audioElement);
-    
+
     console.log('[LipSync] Started, config:', this.config);
   }
-  
+
   /**
    * Set up Web Audio API analyser for volume detection
    */
@@ -240,12 +240,12 @@ export class LipSyncEngine {
       if (!this.audioContext || this.audioContext.state === 'closed') {
         this.audioContext = new AudioContext();
       }
-      
+
       // Create analyser
       this.analyser = this.audioContext.createAnalyser();
       this.analyser.fftSize = 256;
       this.analyser.smoothingTimeConstant = 0.3; // Lower = more responsive
-      
+
       // Connect audio element to analyser
       // Note: Each audio element can only have one source node, so we track it
       if (!this.sourceNode) {
@@ -253,10 +253,10 @@ export class LipSyncEngine {
       }
       this.sourceNode.connect(this.analyser);
       this.analyser.connect(this.audioContext.destination);
-      
+
       // Create data array for reading volume
       this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-      
+
       console.log('[LipSync] Audio analyser ready');
     } catch (e) {
       console.warn('[LipSync] Failed to set up audio analyser:', e);
@@ -264,38 +264,38 @@ export class LipSyncEngine {
       this.analyser = null;
     }
   }
-  
+
   /**
    * Get current audio volume (0-1)
    */
   private getAudioVolume(): number {
     if (!this.analyser || !this.dataArray) return 0.7; // Fallback
-    
+
     this.analyser.getByteFrequencyData(this.dataArray);
-    
+
     // Calculate RMS volume from frequency data
     let sum = 0;
     for (let i = 0; i < this.dataArray.length; i++) {
       sum += this.dataArray[i];
     }
     const average = sum / this.dataArray.length;
-    
+
     // Normalize to 0-1 range (byte values are 0-255)
     // Apply slight boost and clamp
     const normalized = Math.min(1, (average / 128) * 1.2);
-    
+
     return normalized;
   }
-  
+
   /**
    * Update each frame
    */
   update(_deltaTime: number): void {
     if (!this.vrm?.expressionManager) return;
-    
+
     const em = this.vrm.expressionManager;
     const { weightMultiplier, blendSpeed, silenceThreshold, minHoldMs } = this.config;
-    
+
     if (!this.isActive || !this.audioElement) {
       // Decay to neutral - reset all mouth shapes
       if (this.currentWeight > silenceThreshold) {
@@ -304,19 +304,19 @@ export class LipSyncEngine {
       }
       return;
     }
-    
+
     const currentTimeMs = this.audioElement.currentTime * 1000;
     const audioDuration = this.audioElement.duration * 1000;
-    
+
     // Get audio volume for dynamic weight
     this.currentVolume = this.getAudioVolume();
-    
+
     // Debug: log timing periodically (every 500ms)
     if (Math.floor(currentTimeMs / 500) !== Math.floor((currentTimeMs - 16) / 500)) {
       const lastEntry = this.timingData[this.timingData.length - 1];
       console.log(`[LipSync] Audio: ${currentTimeMs.toFixed(0)}ms / ${audioDuration.toFixed(0)}ms, Vol: ${this.currentVolume.toFixed(2)}, Shape: ${this.currentShape} @ ${this.currentWeight.toFixed(2)}`);
     }
-    
+
     // Find current mouth shape from timing data
     let targetShape: MouthShape = 'sil';
     let matchedEntry: TimingEntry | null = null;
@@ -327,7 +327,7 @@ export class LipSyncEngine {
         break;
       }
     }
-    
+
     // On shape change, reset previous and start new (with min hold time to prevent flicker)
     const timeSinceLastChange = currentTimeMs - this.lastShapeChangeMs;
     if (targetShape !== this.currentShape && timeSinceLastChange >= minHoldMs) {
@@ -337,7 +337,7 @@ export class LipSyncEngine {
       this.currentWeight = 0;
       this.lastShapeChangeMs = currentTimeMs;
     }
-    
+
     // Calculate target weight from audio volume
     // Volume drives openness (0-1), multiplier scales it (0-2)
     // Base weight of 0.3 ensures some movement even on quiet parts
@@ -345,66 +345,66 @@ export class LipSyncEngine {
     const volumeWeight = this.currentVolume * 0.7; // Volume adds up to 0.7 more
     const rawWeight = targetShape !== 'sil' ? (baseWeight + volumeWeight) * weightMultiplier : 0;
     this.targetWeight = Math.min(1, rawWeight); // Clamp to 1
-    
+
     this.currentWeight += (this.targetWeight - this.currentWeight) * blendSpeed;
-    
+
     this.applyMouthShape(em, this.currentShape, this.currentWeight);
   }
-  
+
   /**
    * Map mouth shape to available expression name
    */
   private mapToAvailable(shape: string): string | null {
     // Direct match
     if (this.availableMouthShapes.has(shape)) return shape;
-    
+
     // Try uppercase variant (some VRM models use 'A', 'I', 'U', 'E', 'O')
     const upperMap: Record<string, string> = { 'aa': 'A', 'ih': 'I', 'ou': 'U', 'ee': 'E', 'oh': 'O' };
     const upper = upperMap[shape];
     if (upper && this.availableMouthShapes.has(upper)) return upper;
-    
+
     // Fallback to 'aa' or 'A' for any mouth movement
     if (shape !== 'sil') {
       if (this.availableMouthShapes.has('aa')) return 'aa';
       if (this.availableMouthShapes.has('A')) return 'A';
     }
-    
+
     return null;
   }
-  
+
   /**
    * Apply mouth shape to VRM expression manager
    */
   private applyMouthShape(em: VRMExpressionManager, shape: MouthShape, weight: number): void {
     const clampedWeight = Math.min(1, Math.max(0, weight));
-    
+
     // Reset all mouth shapes first
     for (const s of this.availableMouthShapes) {
       try { em.setValue(s, 0); } catch (_e) { /* ignore */ }
     }
-    
+
     // Apply target shape if not silence
     if (shape !== 'sil' && clampedWeight > 0.01) {
       const exprName = this.mapToAvailable(shape);
       if (exprName) {
-        try { 
+        try {
           em.setValue(exprName, clampedWeight);
-          
+
           // Throttled logging
           const now = Date.now();
           if (!this._lastApplyLog || now - this._lastApplyLog > 200) {
             console.log(`[LipSync] Apply: ${exprName} = ${clampedWeight.toFixed(2)}`);
             this._lastApplyLog = now;
           }
-        } catch (e) { 
+        } catch (e) {
           console.warn(`[LipSync] Failed to set ${exprName}:`, e);
         }
       }
     }
   }
-  
+
   private _lastApplyLog?: number;
-  
+
   /**
    * Stop and reset
    */
@@ -413,7 +413,7 @@ export class LipSyncEngine {
     this.audioElement = null;
     this.alignment = null;
     this.timingData = [];
-    
+
     // Disconnect audio analyser (but keep context for reuse)
     if (this.sourceNode && this.analyser) {
       try {
@@ -425,7 +425,7 @@ export class LipSyncEngine {
     this.sourceNode = null;
     this.dataArray = null;
     this.currentVolume = 0;
-    
+
     // Reset all mouth shapes
     if (this.vrm?.expressionManager) {
       for (const shape of this.availableMouthShapes) {
@@ -434,13 +434,13 @@ export class LipSyncEngine {
         } catch (_e) { /* ignore */ }
       }
     }
-    
+
     this.currentShape = 'sil';
     this.currentWeight = 0;
-    
+
     console.log('[LipSync] Stopped');
   }
-  
+
   get active(): boolean {
     return this.isActive;
   }
