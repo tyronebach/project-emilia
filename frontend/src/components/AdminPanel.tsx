@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, Save, AlertCircle, CheckCircle, RotateCcw, Bug } from 'lucide-react';
+import { Save, AlertCircle, CheckCircle, RotateCcw, Bug, Sliders } from 'lucide-react';
 import { Button } from './ui/button';
 import { fetchWithAuth, type Agent } from '../utils/api';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
+import { useVrmOptions } from '../hooks/useVrmOptions';
+import AppTopNav from './AppTopNav';
 
 type EditableField = 'display_name' | 'voice_id' | 'vrm_model' | 'workspace';
 
@@ -18,6 +20,7 @@ type FieldProps = {
   onChange: (v: string) => void;
   placeholder?: string;
   mono?: boolean;
+  readOnly?: boolean;
 };
 
 function Field({
@@ -25,7 +28,8 @@ function Field({
   value,
   onChange,
   placeholder,
-  mono = false
+  mono = false,
+  readOnly = false
 }: FieldProps) {
   return (
     <div>
@@ -35,7 +39,8 @@ function Field({
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none ${mono ? 'font-mono text-xs' : ''}`}
+        readOnly={readOnly}
+        className={`w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none ${mono ? 'font-mono text-xs' : ''} ${readOnly ? 'opacity-70 cursor-not-allowed' : ''}`}
       />
     </div>
   );
@@ -50,6 +55,7 @@ function AdminPanel() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const { voices: voiceOptions, loading: voicesLoading } = useVoiceOptions();
+  const { models: vrmOptions, loading: vrmLoading } = useVrmOptions();
 
   useEffect(() => {
     fetchAgents();
@@ -169,27 +175,28 @@ function AdminPanel() {
 
   return (
     <div className="min-h-[100svh] bg-bg-primary text-text-primary flex flex-col">
-      {/* Header */}
-      <div className="border-b border-white/10 px-4 py-3 flex items-center gap-4">
-        <button
-          onClick={() => navigate({ to: '/' })}
-          className="flex items-center gap-2 p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h1 className="font-display text-lg">Agent Settings</h1>
-        <div className="ml-auto">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate({ to: '/debug' })}
-            className="gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10 border border-white/10"
-          >
-            <Bug className="w-4 h-4" />
-            Debug Avatar
-          </Button>
-        </div>
-      </div>
+      <AppTopNav
+        onBack={() => navigate({ to: '/' })}
+        subtitle="Agent Settings"
+        rightSlot={(
+          <>
+            <button
+              onClick={() => navigate({ to: '/manage' })}
+              className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
+              title="Agent Settings"
+            >
+              <Sliders className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => navigate({ to: '/debug' })}
+              className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
+              title="Debug Avatar"
+            >
+              <Bug className="w-5 h-5" />
+            </button>
+          </>
+        )}
+      />
 
       {/* Content */}
       <div className="flex-1 p-6 max-w-3xl mx-auto w-full">
@@ -263,18 +270,36 @@ function AdminPanel() {
                         ))}
                       </select>
                     </div>
-                    <Field
-                      label="VRM Model"
-                      value={agent.vrm_model}
-                      onChange={(v) => handleFieldChange(agent.id, 'vrm_model', v)}
-                      placeholder="e.g., emilia.vrm"
-                    />
+                    <div>
+                      <label className="block text-xs text-text-secondary mb-1">VRM Model</label>
+                      <select
+                        value={agent.vrm_model || ''}
+                        onChange={(e) => handleFieldChange(agent.id, 'vrm_model', e.target.value)}
+                        disabled={saving === agent.id}
+                        className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                      >
+                        <option value="">
+                          {vrmLoading ? 'Loading models...' : 'Default (emilia.vrm)'}
+                        </option>
+                        {!vrmLoading && agent.vrm_model && !vrmOptions.some((model) => model.id === agent.vrm_model) && (
+                          <option value={agent.vrm_model}>
+                            Custom ({agent.vrm_model})
+                          </option>
+                        )}
+                        {vrmOptions.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.name} ({model.id})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <Field
                       label="Workspace Path"
                       value={agent.workspace}
                       onChange={(v) => handleFieldChange(agent.id, 'workspace', v)}
                       placeholder="/home/user/agent-workspace"
                       mono
+                      readOnly
                     />
                   </div>
 

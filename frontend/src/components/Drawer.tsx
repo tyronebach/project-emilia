@@ -171,7 +171,7 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
         {/* Drawer Header */}
         <div className="h-14 px-4 flex items-center justify-between border-b border-white/10 shrink-0">
           <DialogTitle className="font-display text-lg text-text-primary">
-            {currentAgent?.display_name || 'Emilia'}
+            {currentAgent?.display_name || 'Kokoro'}
           </DialogTitle>
           <DialogClose asChild>
             <Button variant="ghost" size="icon" className="hover:bg-white/10">

@@ -1,12 +1,13 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Sliders, Bug, User as UserIcon } from 'lucide-react';
+import { Sliders, Bug } from 'lucide-react';
 import { getUsers } from '../utils/api';
 import { useUserStore } from '../store/userStore';
 import type { User } from '../types';
 import userPlaceholder from '../assets/placeholder-user.jpg';
 import AmbientBackground from './AmbientBackground';
+import AppTopNav from './AppTopNav';
 
 function UserSelection() {
   const navigate = useNavigate();
@@ -31,44 +32,36 @@ function UserSelection() {
       <AmbientBackground variant="user" />
 
       <div className="relative z-10 flex min-h-[100svh] flex-col">
-        {/* Top bar */}
-        <div className="flex items-center justify-between px-6 pt-6">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-bg-tertiary/80 border border-white/10 flex items-center justify-center text-sm font-semibold tracking-wide">
-              E
-            </div>
-            <div>
-              <div className="font-display text-lg">Emilia</div>
-              <div className="text-xs text-text-secondary">Select a profile</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate({ to: '/manage' })}
-              className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
-              title="Agent Settings"
-            >
-              <Sliders className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => navigate({ to: '/debug' })}
-              className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
-              title="Debug Avatar"
-            >
-              <Bug className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
+        <AppTopNav
+          showBrand={false}
+          rightSlot={(
+            <>
+              <button
+                onClick={() => navigate({ to: '/manage' })}
+                className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
+                title="Agent Settings"
+              >
+                <Sliders className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => navigate({ to: '/debug' })}
+                className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
+                title="Debug Avatar"
+              >
+                <Bug className="w-5 h-5" />
+              </button>
+            </>
+          )}
+        />
 
         {/* Main content */}
         <div className="flex-1 flex items-center justify-center px-4 py-12">
           <div className="w-full max-w-5xl">
             <div className="text-center mb-12">
-              <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full border border-white/10 bg-bg-secondary/60 text-xs uppercase tracking-[0.28em] text-text-secondary">
-                Profiles
+              <div className="font-display text-4xl md:text-6xl text-balance">
+                Kokoro
               </div>
-              <h2 className="font-display text-3xl md:text-5xl mt-4 text-balance">
+              <h2 className="font-display text-3xl md:text-5xl mt-3 text-balance">
                 Who&rsquo;s chatting today?
               </h2>
               <p className="text-text-secondary mt-3 text-base md:text-lg text-balance">
@@ -86,7 +79,7 @@ function UserSelection() {
               <div className="text-center text-text-secondary">No users found.</div>
             )}
 
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3">
               {users.map((user) => (
                 <UserAvatar
                   key={user.id}
@@ -108,7 +101,7 @@ interface UserAvatarProps {
 }
 
 function UserAvatar({ user, onSelect }: UserAvatarProps) {
-  const agentCount = user.agents?.length ?? 0;
+  const agentCount = user.avatar_count ?? user.agents?.length ?? 0;
 
   return (
     <button
@@ -125,18 +118,15 @@ function UserAvatar({ user, onSelect }: UserAvatarProps) {
           />
         </div>
         <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-bg-primary/90 via-bg-primary/40 to-transparent" />
-        <div className="absolute bottom-3 right-3">
-          <div className="relative h-10 w-10 rounded-full bg-bg-secondary/80 border border-white/10 flex items-center justify-center text-sm font-semibold text-text-primary">
-            <UserIcon className="absolute h-4 w-4 text-text-secondary/70" />
-            <span className="relative">{agentCount}</span>
-          </div>
-        </div>
       </div>
 
-      <div className="px-4 py-4">
+      <div className="px-3 py-3 sm:px-4 sm:py-4 flex items-center justify-between gap-3">
         <span className="text-lg font-semibold text-text-primary group-hover:text-accent transition-colors">
           {user.display_name}
         </span>
+        <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-bg-secondary/80 border border-white/10 flex items-center justify-center text-xs sm:text-sm font-semibold text-text-primary shrink-0">
+          {agentCount}
+        </div>
       </div>
     </button>
   );
