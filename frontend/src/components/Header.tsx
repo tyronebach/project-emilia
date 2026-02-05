@@ -73,7 +73,7 @@ function Header({
         {/* Center: Agent name + status */}
         <div className="flex items-center gap-3 rounded-full border border-white/10 bg-bg-secondary/45 px-3 md:px-4 py-1 shadow-sm">
           <span className="font-display text-sm md:text-base text-text-primary">
-            {currentAgent?.display_name || 'Emilia'}
+            {currentAgent?.display_name || 'Kokoro'}
           </span>
           <span
             className={`w-2 h-2 rounded-full ${statusColors[status]}`}

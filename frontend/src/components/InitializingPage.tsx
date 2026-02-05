@@ -6,6 +6,7 @@ import { useAppStore } from '../store';
 import { useChat } from '../hooks/useChat';
 import { getSession } from '../utils/api';
 import { preloadVRM } from '../avatar/preloadVRM';
+import AppTopNav from './AppTopNav';
 
 interface InitializingPageProps {
   userId: string;
@@ -124,8 +125,15 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
   }, [sessionId]); // Only re-run if sessionId changes
 
   return (
-    <div className="min-h-[100svh] w-full bg-bg-primary text-text-primary flex items-center justify-center overflow-hidden">
-      <div className="flex flex-col items-center gap-6 max-w-md px-6">
+    <div className="min-h-[100svh] w-full bg-bg-primary text-text-primary flex flex-col overflow-hidden">
+      <AppTopNav
+        onBack={() => navigate({ to: '/user/$userId/chat/new', params: { userId } })}
+        className="relative z-10"
+        subtitle="Initializing"
+      />
+
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-6 max-w-md px-6">
         {status === 'error' ? (
           <>
             <div className="text-error text-6xl">⚠️</div>
@@ -150,6 +158,7 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
             </p>
           </>
         )}
+        </div>
       </div>
     </div>
   );

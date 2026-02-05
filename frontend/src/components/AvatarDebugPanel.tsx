@@ -5,7 +5,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, Play, Upload, RefreshCw, Mic, FileUp, Volume2 } from 'lucide-react';
+import { Play, Upload, RefreshCw, Mic, FileUp, Volume2, Sliders, Bug } from 'lucide-react';
 import { useVoiceChat } from '../hooks/useVoiceChat';
 import { VoiceIndicator } from './VoiceIndicator';
 import { VoiceToggle } from './VoiceToggle';
@@ -15,23 +15,19 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './
 import { AvatarRenderer } from '../avatar/AvatarRenderer';
 import { fetchWithAuth } from '../utils/api';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
+import { useVrmOptions, type VrmOption } from '../hooks/useVrmOptions';
 import type { VRM } from '@pixiv/three-vrm';
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { retargetAnimation } from 'vrm-mixamo-retarget';
 import { VRMAnimationLoaderPlugin, VRMAnimation, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
-
-type VrmModel = {
-  id: string;
-  name: string;
-  version?: string;
-};
+import AppTopNav from './AppTopNav';
 
 const VRM_BASE_PATH = '/vrm';
 
 // Fallback models if manifest fails to load
-const DEFAULT_MODELS: VrmModel[] = [
+const DEFAULT_MODELS: VrmOption[] = [
   { id: 'emilia.vrm', name: 'Emilia' },
   { id: 'rem.vrm', name: 'Rem' },
 ];
@@ -71,7 +67,6 @@ function AvatarDebugPanel() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
   // State
-  const [availableModels, setAvailableModels] = useState<VrmModel[]>(DEFAULT_MODELS);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODELS[0].id);
   const [currentMood, setCurrentMood] = useState('neutral');
   const [moodStrength, setMoodStrength] = useState(0.7);
@@ -84,6 +79,8 @@ function AvatarDebugPanel() {
   const [ttsLoading, setTtsLoading] = useState(false);
   const [alignmentData, setAlignmentData] = useState<{ chars: string[]; charStartTimesMs: number[]; charDurationsMs: number[] } | null>(null);
   const { voices: voiceOptions, loading: voicesLoading } = useVoiceOptions();
+  const { models: vrmOptions } = useVrmOptions();
+  const availableModels = vrmOptions.length ? vrmOptions : DEFAULT_MODELS;
   
   // Lip sync timing analysis state
   const [actualDurationMs, setActualDurationMs] = useState<number | null>(null);
@@ -150,7 +147,6 @@ function AvatarDebugPanel() {
     }
   }, [voiceChat.isEnabled, clearVoiceDebugEvents]);
 
-
   // Handle model switch
   const switchModel = useCallback(async (modelId: string) => {
     const renderer = rendererRef.current;
@@ -171,51 +167,15 @@ function AvatarDebugPanel() {
     }
   }, []);
 
-  // Load VRM manifest (public/vrm/vrm-manifest.json)
   useEffect(() => {
-    let isActive = true;
-
-    const loadManifest = async () => {
-      try {
-        const response = await fetch(`${VRM_BASE_PATH}/vrm-manifest.json`, { cache: 'no-store' });
-        if (!response.ok) {
-          throw new Error(`Manifest request failed: ${response.status}`);
-        }
-
-        const manifest = await response.json();
-        if (!Array.isArray(manifest)) {
-          throw new Error('Manifest is not an array');
-        }
-
-        const models = manifest
-          .filter((item) => item && typeof item.id === 'string')
-          .map((item) => ({
-            id: item.id,
-            name: typeof item.name === 'string' ? item.name : item.id,
-            version: typeof item.version === 'string' ? item.version : undefined,
-          }));
-
-        if (!models.length || !isActive) return;
-
-        setAvailableModels(models);
-
-        if (!models.some((m) => m.id === selectedModel)) {
-          setSelectedModel(models[0].id);
-          if (rendererRef.current) {
-            switchModel(models[0].id);
-          }
-        }
-      } catch (err) {
-        console.warn('[AvatarDebugPanel] Failed to load VRM manifest:', err);
-      }
-    };
-
-    loadManifest();
-
-    return () => {
-      isActive = false;
-    };
-  }, [selectedModel, switchModel]);
+    if (availableModels.some((model) => model.id === selectedModel)) return;
+    const fallback = availableModels[0]?.id;
+    if (!fallback) return;
+    setSelectedModel(fallback);
+    if (rendererRef.current) {
+      switchModel(fallback);
+    }
+  }, [availableModels, selectedModel, switchModel]);
 
   // Initialize renderer
   useEffect(() => {
@@ -1000,16 +960,31 @@ function AvatarDebugPanel() {
 
   return (
     <div className="min-h-[100svh] bg-bg-primary text-text-primary flex flex-col">
-      {/* Header */}
-      <header className="flex items-center gap-3 p-4 border-b border-white/10 bg-bg-secondary/60 backdrop-blur-md shrink-0">
-        <Button variant="ghost" size="icon" onClick={() => navigate({ to: '/manage' })}>
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
-        <h1 className="text-lg font-semibold">Avatar Debug Panel</h1>
-        <span className="ml-auto text-xs text-text-secondary bg-bg-secondary/70 border border-white/10 px-3 py-1 rounded-full max-w-[200px] truncate">
-          {lastAction}
-        </span>
-      </header>
+      <AppTopNav
+        onBack={() => navigate({ to: '/manage' })}
+        subtitle="Avatar Debug Panel"
+        rightSlot={(
+          <>
+            <span className="text-xs text-text-secondary bg-bg-secondary/70 border border-white/10 px-3 py-1 rounded-full max-w-[200px] truncate">
+              {lastAction}
+            </span>
+            <button
+              onClick={() => navigate({ to: '/manage' })}
+              className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
+              title="Agent Settings"
+            >
+              <Sliders className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => navigate({ to: '/debug' })}
+              className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
+              title="Debug Avatar"
+            >
+              <Bug className="w-5 h-5" />
+            </button>
+          </>
+        )}
+      />
 
       <div className="flex-1 flex flex-col lg:flex-row min-h-0">
         {/* Avatar Viewport */}
