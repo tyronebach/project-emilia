@@ -59,6 +59,7 @@ npm run build         # Production build
 | [AGENTS.md](./AGENTS.md) | Guide for coding agents |
 | [CHANGELOG.md](./CHANGELOG.md) | Version history |
 | [docs/API.md](./docs/API.md) | Endpoint reference |
+| [docs/DESIGN.md](./docs/DESIGN.md) | UI design guide |
 
 ## Avatar Assets
 

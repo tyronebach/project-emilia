@@ -1,3 +1,10 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+
 # Logs
 logs
 *.log
@@ -7,10 +14,25 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
+# Environment variables
+.env
+.env.*
 *.local
+
+# Temporary files
+tmp/
+
+# Vite
+.vite/
+
+# TanStack Router
+.tanstack/
+
+# TypeScript
+*.tsbuildinfo
+
+# Test coverage
+coverage/
 
 # Editor directories and files
 .vscode/*

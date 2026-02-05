@@ -58,8 +58,13 @@ function UserSelection() {
         <div className="flex-1 flex items-center justify-center px-4 py-12">
           <div className="w-full max-w-5xl">
             <div className="text-center mb-12">
-              <div className="font-display text-4xl md:text-6xl text-balance">
-                Kokoro
+              <div className="flex flex-col items-center justify-center gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="font-display text-5xl md:text-7xl text-accent leading-none">心</span>
+                  <span className="font-display text-4xl md:text-6xl text-balance tracking-[0.08em] uppercase text-accent">
+                    Kokoro
+                  </span>
+                </div>
               </div>
               <h2 className="font-display text-3xl md:text-5xl mt-3 text-balance">
                 Who&rsquo;s chatting today?
