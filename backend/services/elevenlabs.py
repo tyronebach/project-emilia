@@ -1,10 +1,9 @@
 """
 ElevenLabs TTS service.
+Uses the with-timestamps REST API to get character-level alignment data.
 """
-import asyncio
 import base64
-import json
-import websockets
+import httpx
 from config import settings
 from core.exceptions import TTSError, bad_request
 
@@ -18,7 +17,7 @@ class ElevenLabsService:
         voice_id: str | None = None
     ) -> dict:
         """
-        Synthesize speech from text using ElevenLabs WebSocket API.
+        Synthesize speech from text using ElevenLabs with-timestamps API.
 
         Args:
             text: Text to synthesize
@@ -39,94 +38,90 @@ class ElevenLabsService:
         if not text:
             raise bad_request("Empty text")
 
-        ws_url = (
-            f"wss://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream-input"
-            f"?model_id={settings.elevenlabs_model}&output_format=mp3_44100_128"
-        )
+        # Use the with-timestamps endpoint for alignment data
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps"
+
+        headers = {
+            "xi-api-key": settings.elevenlabs_api_key,
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "text": text,
+            "model_id": settings.elevenlabs_model,
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75
+            }
+        }
 
         try:
-            audio_chunks = []
-            # Accumulate alignment data from multiple chunks
-            all_chars = []
-            all_start_times = []
-            all_end_times = []
-
-            async with websockets.connect(
-                ws_url,
-                additional_headers={"xi-api-key": settings.elevenlabs_api_key}
-            ) as ws:
-                # Send initial config
-                await ws.send(json.dumps({
-                    "text": " ",
-                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-                    "generation_config": {"chunk_length_schedule": [120, 160, 250, 290]},
-                    "xi_api_key": settings.elevenlabs_api_key
-                }))
-
-                # Send text with alignment request
-                await ws.send(json.dumps({
-                    "text": text,
-                    "try_trigger_generation": True,
-                    "flush": True,
-                    "alignment": True
-                }))
-
-                await ws.send(json.dumps({"text": ""}))
-
-                # Receive audio
-                while True:
-                    try:
-                        msg = await asyncio.wait_for(ws.recv(), timeout=30.0)
-                        data = json.loads(msg)
-
-                        if data.get("audio"):
-                            audio_chunks.append(base64.b64decode(data["audio"]))
-
-                        # Accumulate alignment data from each chunk
-                        if data.get("alignment"):
-                            chunk = data["alignment"]
-                            all_chars.extend(chunk.get("characters", []))
-                            all_start_times.extend(chunk.get("character_start_times_seconds", []))
-                            all_end_times.extend(chunk.get("character_end_times_seconds", []))
-
-                        if data.get("isFinal"):
-                            break
-
-                    except asyncio.TimeoutError:
-                        break
-
-            if not audio_chunks:
-                raise TTSError("No audio generated")
-
-            audio_bytes = b"".join(audio_chunks)
-            audio_base64 = base64.b64encode(audio_bytes).decode()
-
-            # Transform accumulated alignment data to frontend format
-            transformed_alignment = None
-            if all_chars:
-                # Convert to ms and calculate durations
-                charStartTimesMs = [int(t * 1000) for t in all_start_times]
-                charDurationsMs = [
-                    int((all_end_times[i] - all_start_times[i]) * 1000) 
-                    for i in range(min(len(all_start_times), len(all_end_times)))
-                ]
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(url, headers=headers, json=payload)
                 
-                transformed_alignment = {
-                    "chars": all_chars,
-                    "charStartTimesMs": charStartTimesMs,
-                    "charDurationsMs": charDurationsMs
+                if response.status_code != 200:
+                    error_text = response.text
+                    raise TTSError(f"ElevenLabs API error: {response.status_code} - {error_text[:200]}")
+                
+                data = response.json()
+                
+                # Debug: log response structure to stderr (shows in docker logs)
+                import sys
+                print(f"[ElevenLabs] Response keys: {list(data.keys())}", file=sys.stderr, flush=True)
+                
+                audio_base64 = data.get("audio_base64", "")
+                if not audio_base64:
+                    raise TTSError("No audio in response")
+                
+                # Extract alignment data
+                alignment = data.get("alignment") or data.get("normalized_alignment")
+                transformed_alignment = None
+                
+                if alignment:
+                    print(f"[ElevenLabs] Alignment keys: {list(alignment.keys())}", file=sys.stderr, flush=True)
+                    
+                    # Handle ElevenLabs response format
+                    chars = alignment.get("characters", [])
+                    start_times = alignment.get("character_start_times_seconds", [])
+                    end_times = alignment.get("character_end_times_seconds", [])
+                    
+                    if chars and start_times and end_times:
+                        # Convert to ms and calculate durations
+                        charStartTimesMs = [int(t * 1000) for t in start_times]
+                        charDurationsMs = [
+                            int((end_times[i] - start_times[i]) * 1000) 
+                            for i in range(min(len(start_times), len(end_times)))
+                        ]
+                        
+                        transformed_alignment = {
+                            "chars": chars,
+                            "charStartTimesMs": charStartTimesMs,
+                            "charDurationsMs": charDurationsMs
+                        }
+                        print(f"[ElevenLabs] Transformed {len(chars)} characters with timing", file=sys.stderr, flush=True)
+                else:
+                    print("[ElevenLabs] No alignment data in response", file=sys.stderr, flush=True)
+
+                # Estimate duration from audio size (rough)
+                audio_bytes = base64.b64decode(audio_base64)
+                duration_estimate = len(audio_bytes) / (44100 * 2 / 8)
+
+                return {
+                    "audio_base64": audio_base64,
+                    "alignment": transformed_alignment,
+                    "voice_id": voice_id,
+                    "duration_estimate": duration_estimate
                 }
 
-            return {
-                "audio_base64": audio_base64,
-                "alignment": transformed_alignment,
-                "voice_id": voice_id,
-                "duration_estimate": len(audio_bytes) / (44100 * 2 / 8)
-            }
-
-        except websockets.exceptions.WebSocketException as e:
-            raise TTSError(f"TTS WebSocket error: {e}")
+        except httpx.RequestError as e:
+            import sys
+            print(f"[ElevenLabs] Request error: {e}", file=sys.stderr, flush=True)
+            raise TTSError(f"ElevenLabs request error: {e}")
         except Exception as e:
+            import sys
+            print(f"[ElevenLabs] Exception: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
             if isinstance(e, TTSError):
                 raise
             raise TTSError(f"TTS error: {str(e)}")

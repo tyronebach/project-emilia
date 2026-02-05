@@ -4,6 +4,35 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.6.0] - 2026-02-04
+
+### Fixed - VRM Lip Sync 👄
+
+#### Backend: ElevenLabs TTS Rewrite
+- **Switched from WebSocket to REST API** - Uses `/v1/text-to-speech/{voice_id}/with-timestamps` endpoint
+- **Reliable alignment data** - Character-level timing now returned consistently
+- **Simplified code** - Removed async WebSocket complexity, uses httpx client
+- **Debug logging** - Logs response structure to stderr for troubleshooting
+
+#### Frontend: LipSyncEngine Rewrite
+- **VRM standard expressions** - Now uses `aa, ih, ou, ee, oh` instead of Oculus `viseme_*`
+- **Character-to-mouth mapping** - Vowels and consonants map to appropriate VRM mouth shapes
+- **Auto-detection** - Detects available mouth shapes on VRM model load
+- **Fallback support** - Works with both lowercase (`aa`) and uppercase (`A`) expression names
+- **Better blending** - Faster blend speed (0.2) and stronger weight (0.8) for visible movement
+
+#### Debug Panel Enhancements
+- **Timestamp scaling** - Slider to scale ElevenLabs timing to match actual audio duration
+- **Expression logging** - Console shows all available VRM expressions and shape transitions
+
+#### Files Modified
+- `backend/services/elevenlabs.py` - Complete rewrite: WebSocket → REST with-timestamps API
+- `backend/routers/chat.py` - Cleaned up speak endpoint
+- `frontend/src/avatar/LipSyncEngine.ts` - Rewritten for VRM standard mouth shapes
+- `frontend/src/components/AvatarDebugPanel.tsx` - Added scaling controls and better logging
+
+---
+
 ## [5.5.5] - 2026-02-04
 
 ### Fixed - Session State Management 🔧
