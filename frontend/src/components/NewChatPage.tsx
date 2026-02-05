@@ -83,20 +83,7 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
                 loading="lazy"
               />
               <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-bg-primary/90 via-bg-primary/50 to-transparent" />
-              <div className="absolute bottom-5 left-5 right-5 flex items-end justify-between">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.3em] text-text-secondary">
-                    New
-                  </div>
-                  <h1 className="font-display text-3xl md:text-4xl text-balance">
-                    {currentAgent?.display_name || 'Agent'}
-                  </h1>
-                </div>
-                <div className="h-11 w-11 rounded-full bg-bg-secondary/80 border border-white/10 flex items-center justify-center text-sm font-semibold text-text-primary">
-                  <Sparkles className="h-4 w-4 text-text-secondary/70 absolute" />
-                  <span className="relative">1</span>
-                </div>
-              </div>
+              <div className="absolute bottom-5 left-5 right-5 flex items-end" />
             </div>
 
             <div className="px-6 pb-6 pt-5 text-center">

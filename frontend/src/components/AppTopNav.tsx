@@ -40,8 +40,8 @@ function AppTopNav({
           )}
           {showBrand && (
             <div className="flex items-center gap-3">
-              <div className="h-8 w-8 md:h-10 md:w-10 rounded-2xl bg-bg-tertiary/80 border border-white/10 flex items-center justify-center text-xs md:text-sm font-semibold tracking-wide">
-                K
+              <div className="h-8 w-8 md:h-10 md:w-10 rounded-2xl bg-bg-tertiary/80 border border-white/10 flex items-center justify-center text-sm md:text-base font-semibold tracking-wide">
+                心
               </div>
               <div className="leading-tight">
                 <div className="font-display text-base md:text-lg">Kokoro</div>
