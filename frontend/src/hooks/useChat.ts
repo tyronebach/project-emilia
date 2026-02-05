@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { fetchWithAuth, streamChat } from '../utils/api';
+import { fetchWithAuth, streamChat, stripAvatarTags, stripAvatarTagsStreaming } from '../utils/api';
+import { useAppStore } from '../store';
+import type { AvatarRenderer } from '../avatar/AvatarRenderer';
 import { useStatsStore } from '../store/statsStore';
 import { useUserStore } from '../store/userStore';
 import type { TokenUsage } from '../types';
@@ -15,6 +17,21 @@ interface StreamResponse {
   usage?: TokenUsage;
 }
 
+const LIP_SYNC_WAIT_MS = 4000;
+const LIP_SYNC_POLL_MS = 50;
+
+async function waitForLipSyncRenderer(timeoutMs: number = LIP_SYNC_WAIT_MS): Promise<AvatarRenderer | null> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const renderer = useAppStore.getState().avatarRenderer;
+    if (renderer?.lipSyncEngine) return renderer;
+    await new Promise(resolve => setTimeout(resolve, LIP_SYNC_POLL_MS));
+  }
+
+  return null;
+}
+
 export function useChat() {
   const {
     status,
@@ -23,8 +40,7 @@ export function useChat() {
     updateMessage,
     applyAvatarCommand,
     ttsEnabled,
-    ttsVoiceId,
-    avatarRendererRef
+    ttsVoiceId
   } = useApp();
 
   const { updateStats, addStateEntry } = useStatsStore();
@@ -92,6 +108,8 @@ export function useChat() {
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
       audioUrlRef.current = audioUrl;
+      let activeLipSync: { stop: () => void } | null = null;
+      let playbackFinished = false;
 
       // Wait for audio metadata to get duration
       await new Promise<void>((resolve) => {
@@ -102,29 +120,45 @@ export function useChat() {
         }
       });
 
-      // Setup lip sync
-      const renderer = avatarRendererRef.current;
-      
-      if (renderer?.lipSyncEngine && result.alignment) {
-        const audioDurationMs = audio.duration * 1000;
-        renderer.lipSyncEngine.setAlignment(result.alignment, audioDurationMs);
-        renderer.lipSyncEngine.startSync(audio);
-      }
+      const audioDurationMs = audio.duration * 1000;
+
+      const startLipSync = async (): Promise<void> => {
+        if (!result.alignment || playbackFinished) return;
+
+        const tryStart = (renderer: AvatarRenderer | null): boolean => {
+          if (!renderer?.lipSyncEngine || playbackFinished) return false;
+          renderer.lipSyncEngine.setAlignment(result.alignment, audioDurationMs);
+          renderer.lipSyncEngine.startSync(audio);
+          activeLipSync = renderer.lipSyncEngine;
+          return true;
+        };
+
+        const immediate = useAppStore.getState().avatarRenderer;
+        if (tryStart(immediate)) return;
+
+        const waited = await waitForLipSyncRenderer();
+        tryStart(waited);
+      };
+
+      void startLipSync();
 
       // Play and wait
       await new Promise<void>((resolve) => {
         audio.onended = () => {
-          renderer?.lipSyncEngine?.stop();
+          playbackFinished = true;
+          activeLipSync?.stop();
           cleanupAudio();
           resolve();
         };
         audio.onerror = () => {
-          renderer?.lipSyncEngine?.stop();
+          playbackFinished = true;
+          activeLipSync?.stop();
           cleanupAudio();
           resolve();
         };
         audio.play().catch(() => {
-          renderer?.lipSyncEngine?.stop();
+          playbackFinished = true;
+          activeLipSync?.stop();
           cleanupAudio();
           resolve();
         });
@@ -138,7 +172,7 @@ export function useChat() {
     } finally {
       setStatus('ready');
     }
-  }, [setStatus, avatarRendererRef, cleanupAudio, ttsVoiceId]);
+  }, [setStatus, cleanupAudio, ttsVoiceId]);
 
   /**
    * Send message and handle streaming response
@@ -162,7 +196,7 @@ export function useChat() {
         // onChunk
         (chunk) => {
           fullContent += chunk;
-          updateMessage(messageId, { content: fullContent });
+          updateMessage(messageId, { content: stripAvatarTagsStreaming(fullContent) });
         },
         // onAvatar
         (avatarData) => {
@@ -170,9 +204,10 @@ export function useChat() {
         },
         // onDone
         (data) => {
-          finalResponse = data;
+          const cleanedResponse = stripAvatarTags(data.response || fullContent);
+          finalResponse = { ...data, response: cleanedResponse };
           updateMessage(messageId, {
-            content: data.response || fullContent,
+            content: cleanedResponse,
             meta: {
               processing_ms: data.processing_ms,
               model: data.model,

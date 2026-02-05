@@ -4,6 +4,21 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.6.1] - 2026-02-05
+
+### Fixed - Streaming Chat + First Reply Lip Sync
+
+- **Streaming tag cleanup** - Bracketed `[MOOD:...]`/`[ANIM:...]` (and angle) tags are stripped during streaming, not just on final response
+- **First message lip sync** - TTS now waits briefly for the avatar renderer before starting lip sync on the initial greeting
+
+#### Files Modified
+- `frontend/src/utils/api.ts` - Streaming-safe avatar tag stripping
+- `frontend/src/hooks/useChat.ts` - Streaming cleanup + lip sync wait for renderer
+- `frontend/src/utils/api.test.ts` - Added tag/streaming tests
+
+#### Test Results
+- **Frontend tests**: 88/88 passing ✅
+
 ## [5.6.0] - 2026-02-04
 
 ### Fixed - VRM Lip Sync 👄
