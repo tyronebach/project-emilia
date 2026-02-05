@@ -145,7 +145,6 @@ function AppContent({
   const { messages, status, addMessage, addError, setTtsEnabled } = useApp();
   const { sendMessage } = useChat();
   const handsFreeEnabled = useAppStore((state) => state.handsFreeEnabled);
-  const setHandsFreeEnabled = useAppStore((state) => state.setHandsFreeEnabled);
   const currentUser = useUserStore((state) => state.currentUser);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [voiceDebugEvents, setVoiceDebugEvents] = useState<VoiceDebugEntry[]>([]);
@@ -202,19 +201,16 @@ function AppContent({
 
   useEffect(() => {
     if (!currentUser?.preferences) {
-      setHandsFreeEnabled(false);
       setTtsEnabled(false);
       return;
     }
     try {
       const parsed = JSON.parse(currentUser.preferences);
-      setHandsFreeEnabled(Boolean(parsed?.voice_hands_free));
       setTtsEnabled(Boolean(parsed?.tts_enabled));
     } catch {
-      setHandsFreeEnabled(false);
       setTtsEnabled(false);
     }
-  }, [currentUser?.preferences, setHandsFreeEnabled, setTtsEnabled]);
+  }, [currentUser?.preferences, setTtsEnabled]);
 
   useEffect(() => {
     if (voiceEnabledRef.current === null) {
@@ -305,7 +301,7 @@ function AppContent({
       {!isAwakening && <ChatPanel />}
 
       {/* Floating Input Bar - hidden during awakening */}
-      {!isAwakening && <InputControls />}
+      {!isAwakening && <InputControls voiceState={voiceChat.voiceState} />}
 
       {/* Side Drawer */}
       <Drawer

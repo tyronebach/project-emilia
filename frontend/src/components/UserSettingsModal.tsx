@@ -13,33 +13,28 @@ interface UserSettingsModalProps {
 function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
   const currentUser = useUserStore((state) => state.currentUser);
   const updatePreferences = useUserStore((state) => state.updatePreferences);
-  const handsFreeEnabled = useAppStore((state) => state.handsFreeEnabled);
-  const setHandsFreeEnabled = useAppStore((state) => state.setHandsFreeEnabled);
   const ttsEnabled = useAppStore((state) => state.ttsEnabled);
   const setTtsEnabled = useAppStore((state) => state.setTtsEnabled);
 
   const [error, setError] = useState<string | null>(null);
-  const [savingKey, setSavingKey] = useState<'voice_hands_free' | 'tts_enabled' | null>(null);
+  const [savingKey, setSavingKey] = useState<'tts_enabled' | null>(null);
 
   useEffect(() => {
     if (!open) return;
     if (!currentUser?.preferences) {
-      setHandsFreeEnabled(false);
       setTtsEnabled(false);
       return;
     }
     try {
       const parsed = JSON.parse(currentUser.preferences);
-      setHandsFreeEnabled(Boolean(parsed?.voice_hands_free));
       setTtsEnabled(Boolean(parsed?.tts_enabled));
     } catch {
-      setHandsFreeEnabled(false);
       setTtsEnabled(false);
     }
-  }, [open, currentUser?.preferences, setHandsFreeEnabled, setTtsEnabled]);
+  }, [open, currentUser?.preferences, setTtsEnabled]);
 
   const handleToggle = async (
-    key: 'voice_hands_free' | 'tts_enabled',
+    key: 'tts_enabled',
     enabled: boolean,
     setter: (v: boolean) => void,
     previous: boolean
@@ -93,27 +88,9 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
           <div>
             <div className="text-xs font-semibold text-text-primary">Voice</div>
             <div className="text-[11px] text-text-secondary">
-              Defaults for hands-free listening and speech synthesis.
+              Defaults for speech synthesis.
             </div>
           </div>
-
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              className="mt-1 h-4 w-4"
-              checked={handsFreeEnabled}
-              disabled={!currentUser || savingKey === 'voice_hands_free'}
-              onChange={(e) =>
-                handleToggle('voice_hands_free', e.target.checked, setHandsFreeEnabled, handsFreeEnabled)
-              }
-            />
-            <div>
-              <div className="text-sm text-text-primary">Hands-free listening</div>
-              <div className="text-xs text-text-secondary">
-                Uses VAD + backend STT, listens continuously.
-              </div>
-            </div>
-          </label>
 
           <label className="flex items-start gap-3 cursor-pointer">
             <input
