@@ -1,38 +1,23 @@
 /**
- * LookAt System
- * Controls eye gaze and head tracking toward camera.
- * Returns to "home" position when camera exceeds angle threshold.
- * Applies AFTER bone animations so it takes priority.
+ * LookAt System - Using VRM's built-in lookAt
+ * 
+ * Based on official three-vrm example:
+ * - Create an Object3D as target
+ * - Add it as child of camera  
+ * - Set vrm.lookAt.target to the Object3D
+ * - Let vrm.update() handle the rest
+ * 
+ * VRM has its own angle limits built-in, so we just let it track continuously.
  */
 
 import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
 
-/** Target types for look-at tracking */
-export type LookAtTarget =
-  | { type: 'camera' }                     // Track camera (user)
-  | { type: 'point'; position: THREE.Vector3 }  // Track world point
-  | { type: 'wander' }                     // Random gentle wandering
-  | { type: 'fixed'; direction: THREE.Vector3 } // Fixed direction
-
 export interface LookAtConfig {
-  /** Max angle in degrees before returning to home (default: 35) */
-  maxAngle: number;
-  /** How much eyes move relative to target (0-1, default: 1.0) */
-  eyeWeight: number;
-  /** How much head moves relative to target (0-1, default: 0.25) */
-  headWeight: number;
-  /** Smoothing speed (higher = faster, default: 8) */
-  smoothSpeed: number;
-  /** Enable/disable system */
   enabled: boolean;
 }
 
 const DEFAULT_CONFIG: LookAtConfig = {
-  maxAngle: 35,
-  eyeWeight: 1.0,
-  headWeight: 0.25,
-  smoothSpeed: 8,
   enabled: true,
 };
 
@@ -40,302 +25,144 @@ export class LookAtSystem {
   private vrm: VRM;
   private camera: THREE.Camera | null = null;
   private config: LookAtConfig;
-  private target: LookAtTarget = { type: 'camera' };
-
-  // Current interpolated angles (radians)
-  private currentYaw: number = 0;
-  private currentPitch: number = 0;
-
-  // Home position (straight ahead)
-  private readonly homeYaw: number = 0;
-  private readonly homePitch: number = 0;
-
-  // Wander state
-  private wanderYaw: number = 0;
-  private wanderPitch: number = 0;
-  private wanderTimer: number = 0;
-  private wanderInterval: number = 2.5; // seconds between wander updates
-
-  // Cached objects
-  private headWorldPos = new THREE.Vector3();
-  private headWorldQuat = new THREE.Quaternion();
-  private tempVec = new THREE.Vector3();
-  private tempQuat = new THREE.Quaternion();
-
-  // Bone references
-  private headBone: THREE.Object3D | null = null;
-  private leftEyeBone: THREE.Object3D | null = null;
-  private rightEyeBone: THREE.Object3D | null = null;
-  private neckBone: THREE.Object3D | null = null;
-
-  // Original rotations (captured after animation applies)
-  private headOriginalQuat = new THREE.Quaternion();
-  private neckOriginalQuat = new THREE.Quaternion();
+  
+  // The target Object3D that VRM looks at
+  private lookAtTarget: THREE.Object3D;
+  
+  // Debug info
+  private _lastAngle: number = 0;
+  private _hasLookAt: boolean = false;
+  private _lookAtType: string = 'none';
+  private _isVRM0: boolean = false;
 
   constructor(vrm: VRM, config: Partial<LookAtConfig> = {}) {
     this.vrm = vrm;
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this._hasLookAt = !!vrm.lookAt;
+    // Type can be 'bone' or 'expression', or check the applier type
+    if (vrm.lookAt) {
+      // Try different ways to get the type
+      const rawType = (vrm.lookAt as any).type;
+      const applierType = (vrm.lookAt as any).applier?.type;
+      this._lookAtType = rawType || applierType || 'unknown';
+      console.log('[LookAtSystem] lookAt object:', {
+        type: rawType,
+        applierType: applierType,
+        autoUpdate: vrm.lookAt.autoUpdate,
+        target: vrm.lookAt.target,
+      });
+    } else {
+      this._lookAtType = 'none';
+    }
 
-    this.cacheBones();
-    console.log('[LookAtSystem] Initialized', {
-      hasHead: !!this.headBone,
-      hasNeck: !!this.neckBone,
-      hasEyes: !!(this.leftEyeBone && this.rightEyeBone),
-      hasVrmLookAt: !!vrm.lookAt,
+    // Create the lookAt target Object3D
+    this.lookAtTarget = new THREE.Object3D();
+    this.lookAtTarget.name = 'LookAtTarget';
+
+    // Detect VRM version (0.x vs 1.0)
+    // VRM 1.0 has meta.metaVersion, VRM 0.x doesn't
+    const meta = vrm.meta as any;
+    this._isVRM0 = !meta?.metaVersion;
+    
+    console.log('[LookAtSystem] Init:', {
+      hasVrmLookAt: this._hasLookAt,
+      lookAtType: this._lookAtType,
+      isVRM0: this._isVRM0,
+      metaVersion: meta?.metaVersion,
     });
-  }
 
-  private cacheBones(): void {
-    if (!this.vrm.humanoid) return;
-
-    // Use normalized bones (we apply after VRM copies to raw)
-    this.headBone = this.vrm.humanoid.getNormalizedBoneNode('head');
-    this.neckBone = this.vrm.humanoid.getNormalizedBoneNode('neck');
-    this.leftEyeBone = this.vrm.humanoid.getNormalizedBoneNode('leftEye');
-    this.rightEyeBone = this.vrm.humanoid.getNormalizedBoneNode('rightEye');
-  }
-
-  /**
-   * Set camera to track
-   */
-  setCamera(camera: THREE.Camera): void {
-    this.camera = camera;
-  }
-
-  /**
-   * Set look-at target
-   */
-  setTarget(target: LookAtTarget): void {
-    this.target = target;
-    // Reset wander timer when switching to wander mode
-    if (target.type === 'wander') {
-      this.wanderTimer = 0;
-      this.updateWanderTarget();
+    // Set up VRM lookAt - let it always track
+    if (vrm.lookAt) {
+      vrm.lookAt.target = this.lookAtTarget;
+      console.log('[LookAtSystem] Target set');
     }
   }
 
-  /**
-   * Get current target
-   */
-  getTarget(): LookAtTarget {
-    return this.target;
+  setCamera(camera: THREE.Camera): void {
+    this.camera = camera;
+    
+    // Add lookAtTarget as child of camera
+    camera.add(this.lookAtTarget);
+    
+    // Position target at camera position (0,0,0 in camera local space)
+    // This makes avatar look directly at where camera is
+    this.lookAtTarget.position.set(0, 0, 0);
+    
+    console.log('[LookAtSystem] Camera set, target at camera position');
   }
 
-  /**
-   * Update config
-   */
   setConfig(config: Partial<LookAtConfig>): void {
     this.config = { ...this.config, ...config };
   }
 
-  /**
-   * Enable/disable
-   */
   setEnabled(enabled: boolean): void {
     this.config.enabled = enabled;
+    
+    if (!enabled && this.vrm.lookAt) {
+      this.vrm.lookAt.target = null;
+    } else if (enabled && this.vrm.lookAt) {
+      this.vrm.lookAt.target = this.lookAtTarget;
+    }
   }
 
   /**
-   * Update wander target with random offset
-   */
-  private updateWanderTarget(): void {
-    const maxWander = 15 * (Math.PI / 180); // 15 degrees max wander
-    this.wanderYaw = (Math.random() - 0.5) * 2 * maxWander;
-    this.wanderPitch = (Math.random() - 0.5) * maxWander; // Less vertical
-  }
-
-  /**
-   * Update each frame - call AFTER animation mixer update, BEFORE vrm.update()
+   * Update - calculate angle for debug display
+   * Eyes are handled by VRM lookAt automatically via vrm.update()
+   * Head tracking disabled pending further research
    */
   update(deltaTime: number): void {
     if (!this.config.enabled) return;
+    if (!this.camera) return;
 
-    // Get target angles based on current target type
-    const { targetYaw, targetPitch } = this.getTargetAngles(deltaTime);
-
-    // Smooth interpolation
-    const lerpFactor = 1 - Math.exp(-this.config.smoothSpeed * deltaTime);
-    this.currentYaw += (targetYaw - this.currentYaw) * lerpFactor;
-    this.currentPitch += (targetPitch - this.currentPitch) * lerpFactor;
-
-    // Apply to bones
-    this.applyToHead();
-    this.applyToEyes();
-  }
-
-  /**
-   * Get target angles based on current target type
-   */
-  private getTargetAngles(deltaTime: number): { targetYaw: number; targetPitch: number } {
-    switch (this.target.type) {
-      case 'camera': {
-        if (!this.camera) return { targetYaw: this.homeYaw, targetPitch: this.homePitch };
-        const { yaw, pitch, isInRange } = this.calculateAnglesTo(this.camera.position);
-        return {
-          targetYaw: isInRange ? yaw : this.homeYaw,
-          targetPitch: isInRange ? pitch : this.homePitch,
-        };
-      }
-      
-      case 'point': {
-        const { yaw, pitch, isInRange } = this.calculateAnglesTo(this.target.position);
-        return {
-          targetYaw: isInRange ? yaw : this.homeYaw,
-          targetPitch: isInRange ? pitch : this.homePitch,
-        };
-      }
-      
-      case 'wander': {
-        // Update wander target periodically
-        this.wanderTimer += deltaTime;
-        if (this.wanderTimer >= this.wanderInterval) {
-          this.wanderTimer = 0;
-          this.updateWanderTarget();
-        }
-        return { targetYaw: this.wanderYaw, targetPitch: this.wanderPitch };
-      }
-      
-      case 'fixed': {
-        // Calculate angles to look in the fixed direction
-        const { yaw, pitch } = this.calculateAnglesFromDirection(this.target.direction);
-        return { targetYaw: yaw, targetPitch: pitch };
-      }
-      
-      default:
-        return { targetYaw: this.homeYaw, targetPitch: this.homePitch };
-    }
-  }
-
-  /**
-   * Calculate yaw/pitch to a world position and whether it's in range
-   */
-  private calculateAnglesTo(targetPos: THREE.Vector3): { yaw: number; pitch: number; isInRange: boolean } {
-    if (!this.headBone) {
-      return { yaw: 0, pitch: 0, isInRange: true };
-    }
-
-    // Get head world position
-    this.headBone.getWorldPosition(this.headWorldPos);
-
-    // Direction from head to target
-    this.tempVec.subVectors(targetPos, this.headWorldPos);
-    this.tempVec.normalize();
-
-    // Get head's forward direction in world space
-    this.headBone.getWorldQuaternion(this.headWorldQuat);
-    const headForward = new THREE.Vector3(0, 0, 1).applyQuaternion(this.headWorldQuat);
-
-    // Calculate angles relative to head's forward
-    // Yaw = horizontal angle, Pitch = vertical angle
-    const yaw = Math.atan2(this.tempVec.x, this.tempVec.z) - Math.atan2(headForward.x, headForward.z);
-    const pitch = Math.asin(this.tempVec.y) - Math.asin(headForward.y);
-
-    // Check if within max angle threshold
-    const maxAngleRad = (this.config.maxAngle * Math.PI) / 180;
-    const totalAngle = Math.sqrt(yaw * yaw + pitch * pitch);
-    const isInRange = totalAngle <= maxAngleRad;
-
-    // Clamp angles even when in range (don't break neck)
-    const clampedYaw = Math.max(-maxAngleRad, Math.min(maxAngleRad, yaw));
-    const clampedPitch = Math.max(-maxAngleRad * 0.6, Math.min(maxAngleRad * 0.6, pitch));
-
-    return { yaw: clampedYaw, pitch: clampedPitch, isInRange };
-  }
-
-  /**
-   * Calculate angles from a direction vector
-   */
-  private calculateAnglesFromDirection(direction: THREE.Vector3): { yaw: number; pitch: number } {
-    const normalizedDir = direction.clone().normalize();
-    const yaw = Math.atan2(normalizedDir.x, normalizedDir.z);
-    const pitch = Math.asin(normalizedDir.y);
+    // Calculate angle for debug display only
+    const headBone = this.vrm.humanoid?.getNormalizedBoneNode('head');
+    if (!headBone) return;
     
-    // Clamp to max angles
-    const maxAngleRad = (this.config.maxAngle * Math.PI) / 180;
+    const headPos = new THREE.Vector3();
+    headBone.getWorldPosition(headPos);
+
+    const camPos = this.camera.position.clone();
+
+    const toCamera = new THREE.Vector3().subVectors(camPos, headPos);
+    toCamera.y = 0;
+    if (toCamera.length() < 0.01) return;
+    toCamera.normalize();
+
+    const worldQuat = new THREE.Quaternion();
+    this.vrm.scene.getWorldQuaternion(worldQuat);
+    const avatarForward = new THREE.Vector3(0, 0, -1).applyQuaternion(worldQuat);
+    avatarForward.y = 0;
+    if (avatarForward.length() > 0.01) avatarForward.normalize();
+
+    const dot = avatarForward.dot(toCamera);
+    this._lastAngle = Math.acos(Math.max(-1, Math.min(1, dot))) * (180 / Math.PI);
+    
+    // Head tracking disabled - eyes only via VRM lookAt
+  }
+
+  getState() {
     return {
-      yaw: Math.max(-maxAngleRad, Math.min(maxAngleRad, yaw)),
-      pitch: Math.max(-maxAngleRad * 0.6, Math.min(maxAngleRad * 0.6, pitch)),
+      blend: this.config.enabled ? 1 : 0,
+      enabled: this.config.enabled,
+      angleToCamera: this._lastAngle,
+      hasCamera: !!this.camera,
+      hasHead: !!this.vrm.humanoid?.getNormalizedBoneNode('head'),
+      hasNeck: !!this.vrm.humanoid?.getNormalizedBoneNode('neck'),
+      hasVrmLookAt: this._hasLookAt,
+      lookAtType: this._lookAtType, // "bone" or "expression"
+      config: this.config,
     };
   }
 
-  /**
-   * Apply look-at rotation to head (and neck for natural movement)
-   */
-  private applyToHead(): void {
-    if (!this.headBone || this.config.headWeight <= 0) return;
-
-    const headYaw = this.currentYaw * this.config.headWeight;
-    const headPitch = this.currentPitch * this.config.headWeight;
-
-    // Create rotation quaternion for look-at
-    // Apply as additional rotation on top of animation
-    this.tempQuat.setFromEuler(new THREE.Euler(headPitch, headYaw, 0, 'YXZ'));
-
-    // Multiply with current rotation (additive)
-    this.headBone.quaternion.multiply(this.tempQuat);
-
-    // Apply smaller portion to neck for natural movement
-    if (this.neckBone && this.config.headWeight > 0.1) {
-      const neckWeight = this.config.headWeight * 0.3;
-      this.tempQuat.setFromEuler(new THREE.Euler(
-        headPitch * neckWeight,
-        headYaw * neckWeight,
-        0,
-        'YXZ'
-      ));
-      this.neckBone.quaternion.multiply(this.tempQuat);
-    }
-  }
-
-  /**
-   * Apply look-at to eye bones (if available) or VRM lookAt
-   */
-  private applyToEyes(): void {
-    if (this.config.eyeWeight <= 0) return;
-
-    const eyeYaw = this.currentYaw * this.config.eyeWeight;
-    const eyePitch = this.currentPitch * this.config.eyeWeight;
-
-    // Use VRM's lookAt system if available (handles expression-based eyes)
-    if (this.vrm.lookAt) {
-      // VRM lookAt expects a world-space target point
-      // Calculate target point in front of avatar at the look direction
-      this.headBone?.getWorldPosition(this.headWorldPos);
-      const lookDistance = 5;
-      const lookTarget = new THREE.Vector3(
-        this.headWorldPos.x + Math.sin(eyeYaw) * lookDistance,
-        this.headWorldPos.y + Math.sin(eyePitch) * lookDistance,
-        this.headWorldPos.z + Math.cos(eyeYaw) * lookDistance
-      );
-      this.vrm.lookAt.target = lookTarget;
-      return;
-    }
-
-    // Fallback: Direct eye bone manipulation
-    if (this.leftEyeBone && this.rightEyeBone) {
-      this.tempQuat.setFromEuler(new THREE.Euler(eyePitch, eyeYaw, 0, 'YXZ'));
-      this.leftEyeBone.quaternion.copy(this.tempQuat);
-      this.rightEyeBone.quaternion.copy(this.tempQuat);
-    }
-  }
-
-  /**
-   * Get current look angles for debugging
-   */
-  getState(): { yaw: number; pitch: number; yawDeg: number; pitchDeg: number } {
-    return {
-      yaw: this.currentYaw,
-      pitch: this.currentPitch,
-      yawDeg: (this.currentYaw * 180) / Math.PI,
-      pitchDeg: (this.currentPitch * 180) / Math.PI,
-    };
-  }
-
-  /**
-   * Dispose
-   */
   dispose(): void {
+    if (this.camera) {
+      this.camera.remove(this.lookAtTarget);
+    }
     this.camera = null;
+    
+    if (this.vrm.lookAt) {
+      this.vrm.lookAt.target = null;
+    }
   }
 }
 

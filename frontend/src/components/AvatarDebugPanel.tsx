@@ -118,6 +118,14 @@ function AvatarDebugPanel() {
   const [lookAtMaxAngle, setLookAtMaxAngle] = useState(35);
   const [lookAtEyeWeight, setLookAtEyeWeight] = useState(1.0);
   const [lookAtHeadWeight, setLookAtHeadWeight] = useState(0.25);
+  const [lookAtDebug, setLookAtDebug] = useState<{
+    blend: number;
+    angleToCamera: number;
+    hasCamera: boolean;
+    hasHead: boolean;
+    hasNeck: boolean;
+    hasVrmLookAt?: boolean;
+  } | null>(null);
 
   const MAX_VOICE_DEBUG_EVENTS = 80;
 
@@ -290,6 +298,25 @@ function AvatarDebugPanel() {
     return () => {
       cancelAnimationFrame(animationId);
     };
+  }, []);
+
+  // LookAt debug polling
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const state = rendererRef.current?.lookAtSystem?.getState();
+      if (state) {
+        setLookAtDebug({
+          blend: state.blend,
+          angleToCamera: state.angleToCamera,
+          hasCamera: state.hasCamera,
+          hasHead: state.hasHead,
+          hasNeck: state.hasNeck,
+          hasVrmLookAt: state.hasVrmLookAt,
+        });
+      }
+    }, 100); // Update 10x per second
+    
+    return () => clearInterval(interval);
   }, []);
 
   // Play animation
@@ -1405,6 +1432,48 @@ function AvatarDebugPanel() {
                       <p className="text-xs text-text-secondary/70 mt-2">
                         Eyes and head follow camera. Returns to home position when camera angle exceeds max.
                       </p>
+
+                      {/* Debug output */}
+                      <div className="mt-3 p-2 bg-bg-primary/80 border border-white/10 rounded font-mono text-xs">
+                        <div className="text-text-secondary font-semibold mb-1">Debug State:</div>
+                        {lookAtDebug ? (
+                          <>
+                            <div className={lookAtDebug.hasCamera ? 'text-green-400' : 'text-red-400'}>
+                              Camera: {lookAtDebug.hasCamera ? '✓' : '✗ NOT SET'}
+                            </div>
+                            <div className={lookAtDebug.hasHead ? 'text-green-400' : 'text-red-400'}>
+                              Head bone: {lookAtDebug.hasHead ? '✓' : '✗ NOT FOUND'}
+                            </div>
+                            <div className={lookAtDebug.hasNeck ? 'text-green-400' : 'text-yellow-400'}>
+                              Neck bone: {lookAtDebug.hasNeck ? '✓' : '○ optional'}
+                            </div>
+                            <div className={lookAtDebug.hasVrmLookAt ? 'text-green-400' : 'text-red-400'}>
+                              VRM LookAt: {lookAtDebug.hasVrmLookAt ? '✓' : '✗ NOT FOUND'}
+                            </div>
+                            {lookAtDebug.hasVrmLookAt && (
+                              <div className="text-text-secondary">
+                                Type: <span className="text-accent">{(lookAtDebug as any).lookAtType || 'unknown'}</span>
+                                <span className="text-xs ml-1">(bone=eyes+head, expression=eyes only)</span>
+                              </div>
+                            )}
+                            <div className="mt-1 text-text-primary">
+                              Angle to camera: <span className="text-accent">{lookAtDebug.angleToCamera.toFixed(1)}°</span>
+                            </div>
+                            <div className="text-text-primary">
+                              Blend weight: <span className="text-accent">{(lookAtDebug.blend * 100).toFixed(0)}%</span>
+                            </div>
+                            {/* Visual blend bar */}
+                            <div className="mt-1 h-2 bg-bg-tertiary rounded overflow-hidden">
+                              <div 
+                                className="h-full bg-accent transition-all duration-100"
+                                style={{ width: `${lookAtDebug.blend * 100}%` }}
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-red-400">LookAtSystem not initialized</div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
