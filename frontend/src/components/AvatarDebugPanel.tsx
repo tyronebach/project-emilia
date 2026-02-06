@@ -183,6 +183,10 @@ function AvatarDebugPanel() {
       const vrm = await renderer.loadVRM(buildVrmUrl(modelId));
       const metaName = (vrm.meta as { name?: string })?.name;
       setLastAction(`Loaded: ${metaName || modelId}`);
+      
+      // Refresh animation list for new VRM
+      const animations = await animationLibrary.getAvailableAnimations();
+      setAvailableAnimations(animations);
     } catch (err) {
       setLastAction(`Error: ${err}`);
     } finally {

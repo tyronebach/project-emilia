@@ -549,7 +549,15 @@ export class AvatarRenderer {
             });
           }
 
-          // Initialize animation systems via controller
+          // Set VRM for animation library FIRST (needed for VRMA animations)
+          animationLibrary.setVRM(vrm);
+          
+          // Fetch animation manifest
+          animationLibrary.fetchManifest().catch(err => {
+            console.warn('[AvatarRenderer] Failed to fetch animation manifest:', err);
+          });
+
+          // Initialize animation systems via controller (after animationLibrary is ready)
           this.animationController = new AnimationController();
           this.animationController.init(vrm, this.camera ?? undefined);
           this.animationController.lookAt?.setConfig({
@@ -559,14 +567,6 @@ export class AvatarRenderer {
             maxPitchDown: 15,
             headWeight: 0.4,
             smoothSpeed: 6,
-          });
-
-          // Set VRM for animation library (needed for VRMA animations)
-          animationLibrary.setVRM(vrm);
-          
-          // Fetch animation manifest
-          animationLibrary.fetchManifest().catch(err => {
-            console.warn('[AvatarRenderer] Failed to fetch animation manifest:', err);
           });
 
           // Debug: Log available humanoid bones
