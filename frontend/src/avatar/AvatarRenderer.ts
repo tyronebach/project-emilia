@@ -538,16 +538,16 @@ export class AvatarRenderer {
           this.lipSyncEngine = new LipSyncEngine(vrm);
 
           // Initialize look-at system (eyes + head tracking)
-          // DISABLED: Causing VRM load issues - needs debugging
-          // this.lookAtSystem = new LookAtSystem(vrm, {
-          //   maxAngle: 35,      // Return to home beyond 35 degrees
-          //   eyeWeight: 1.0,    // Full eye movement
-          //   headWeight: 0.25,  // Subtle head movement
-          //   smoothSpeed: 8,
-          // });
-          // if (this.camera) {
-          //   this.lookAtSystem.setCamera(this.camera);
-          // }
+          this.lookAtSystem = new LookAtSystem(vrm, {
+            maxAngle: 35,
+            fadeStartAngle: 25,
+            headWeight: 0.3,
+            neckWeight: 0.15,
+            smoothSpeed: 8,
+          });
+          if (this.camera) {
+            this.lookAtSystem.setCamera(this.camera);
+          }
 
           // Connect animation player to idle system
           this.animationPlayer.setIdleAnimations(this.idleAnimations);
@@ -633,8 +633,8 @@ export class AvatarRenderer {
       if (this.lipSyncEngine) this.lipSyncEngine.update(deltaTime);
       
       // LookAt runs after animations but before VRM update
-      // DISABLED: Causing issues - needs debugging
-      // if (this.lookAtSystem) this.lookAtSystem.update(deltaTime);
+      // This ensures look-at blends with (not fights) animation
+      if (this.lookAtSystem) this.lookAtSystem.update(deltaTime);
       
       if (this.vrm) this.vrm.update(deltaTime);
       if (this.controls) this.controls.update();
