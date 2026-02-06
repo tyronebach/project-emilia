@@ -148,8 +148,14 @@ export class AnimationPlayer {
     action.clampWhenFinished = !options.loop;
     action.timeScale = options.timeScale;
 
+    // Stop and clean up current animation if any
     if (this.currentAction) {
+      const oldClip = this.currentAction.getClip();
       this.currentAction.fadeOut(options.fadeIn);
+      setTimeout(() => {
+        this.mixer.uncacheAction(oldClip);
+        this.mixer.uncacheClip(oldClip);
+      }, options.fadeIn * 1000);
     }
 
     if (this.idleAnimations) {
@@ -181,9 +187,15 @@ export class AnimationPlayer {
     action.clampWhenFinished = !options.loop;
     action.timeScale = options.timeScale;
 
-    // Fade out current animation if any
+    // Stop and clean up current animation if any
     if (this.currentAction) {
+      const oldClip = this.currentAction.getClip();
       this.currentAction.fadeOut(options.fadeIn);
+      // Schedule cleanup after fade
+      setTimeout(() => {
+        this.mixer.uncacheAction(oldClip);
+        this.mixer.uncacheClip(oldClip);
+      }, options.fadeIn * 1000);
     }
 
     // Pause idle animations
@@ -368,18 +380,27 @@ export class AnimationPlayer {
    * Handle animation finished event
    */
   private onAnimationFinished(_event: THREE.Event): void {
+    // Stop and uncache the finished action to release the pose
+    if (this.currentAction) {
+      this.currentAction.stop();
+      // Uncache to fully remove from mixer (allows clean restart)
+      const clip = this.currentAction.getClip();
+      this.mixer.uncacheAction(clip);
+      this.mixer.uncacheClip(clip);
+    }
+    
     this.currentAction = null;
     this.currentAnimationName = null;
 
-    // Resume idle animations
-    if (this.idleAnimations) {
-      this.idleAnimations.resume();
-    }
-
-    // Play next in queue
+    // Play next in queue OR resume idle
     if (this.queue.length > 0) {
       const next = this.queue.shift()!;
       this.play(next.name, next.options);
+    } else {
+      // Resume idle animations (will return to rest pose)
+      if (this.idleAnimations) {
+        this.idleAnimations.resume();
+      }
     }
   }
 
