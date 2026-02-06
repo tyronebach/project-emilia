@@ -1,15 +1,13 @@
 /**
  * Idle Animation System
- * Plays a looping VRMA animation as the base idle state.
- * Triggered animations fade out from idle, then fade back when done.
+ * Plays a looping animation as the base idle state.
+ * Uses AnimationStateMachine config to determine which file to play.
  */
 
 import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
 import { animationLibrary } from './AnimationLibrary';
-
-// Default idle animation file
-const DEFAULT_IDLE_ANIMATION = 'fm_vrma_motion_pack_01_03.vrma';
+import { animationStateMachine } from './AnimationStateMachine';
 
 export class IdleAnimations {
   private vrm: VRM;
@@ -18,7 +16,9 @@ export class IdleAnimations {
   private idleClip: THREE.AnimationClip | null = null;
   private isPaused: boolean = false;
   private isLoaded: boolean = false;
-  private currentIdleFile: string = DEFAULT_IDLE_ANIMATION;
+  private currentIdleFile: string = '';
+  private fadeIn: number = 0.3;
+  private fadeOut: number = 0.3;
 
   constructor(vrm: VRM) {
     this.vrm = vrm;
@@ -27,8 +27,27 @@ export class IdleAnimations {
     const mixerRoot = vrm.humanoid?.normalizedHumanBonesRoot || vrm.scene;
     this.mixer = new THREE.AnimationMixer(mixerRoot);
     
-    // Auto-load default idle
-    this.loadIdle(DEFAULT_IDLE_ANIMATION);
+    // Load idle from state machine config
+    this.loadFromStateMachine();
+  }
+
+  /**
+   * Load idle config from state machine
+   */
+  private async loadFromStateMachine(): Promise<void> {
+    // Ensure state machine is loaded
+    if (!animationStateMachine.isLoaded()) {
+      await animationStateMachine.load();
+    }
+
+    const idle = animationStateMachine.getIdle();
+    if (idle) {
+      this.fadeIn = idle.fadeIn;
+      this.fadeOut = idle.fadeOut;
+      await this.loadIdle(idle.file);
+    } else {
+      console.warn('[IdleAnimations] No idle config found in state machine');
+    }
   }
 
   /**
@@ -79,7 +98,7 @@ export class IdleAnimations {
   pause(): void {
     this.isPaused = true;
     if (this.idleAction) {
-      this.idleAction.fadeOut(0.25);
+      this.idleAction.fadeOut(this.fadeOut);
     }
   }
 
@@ -90,7 +109,7 @@ export class IdleAnimations {
     this.isPaused = false;
     if (this.idleAction) {
       this.idleAction.reset();
-      this.idleAction.fadeIn(0.25);
+      this.idleAction.fadeIn(this.fadeIn);
       this.idleAction.play();
     }
   }
