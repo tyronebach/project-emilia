@@ -9,7 +9,7 @@ import type { VRM } from '@pixiv/three-vrm';
 import { animationLibrary } from './AnimationLibrary';
 
 // Default idle animation file
-const DEFAULT_IDLE_ANIMATION = 'fm_vrma_motion_pack_01_02.vrma';
+const DEFAULT_IDLE_ANIMATION = 'fm_vrma_motion_pack_01_03.vrma';
 
 export class IdleAnimations {
   private vrm: VRM;
