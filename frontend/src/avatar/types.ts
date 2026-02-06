@@ -17,16 +17,6 @@ export interface AvatarRendererOptions {
   onProgress?: (percent: number) => void;
 }
 
-export interface Rotation3D {
-  x: number;
-  y: number;
-  z: number;
-}
-
-export interface Position1D {
-  y: number;
-}
-
 export interface AlignmentData {
   chars: string[];
   charStartTimesMs: number[];
@@ -43,4 +33,3 @@ export interface TimingEntry {
 export type AppStatus = 'ready' | 'recording' | 'thinking' | 'speaking' | 'error';
 
 export type { VRM };
-export type Bone = THREE.Object3D | null;
