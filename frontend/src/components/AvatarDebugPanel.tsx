@@ -12,7 +12,7 @@ import { VoiceToggle } from './VoiceToggle';
 import { VoiceDebugTimeline, type VoiceDebugEntry } from './VoiceDebugTimeline';
 import { Button } from './ui/button';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './ui/accordion';
-import { AvatarRenderer, QUALITY_PRESETS, getPreset, type QualityPreset, type QualitySettings } from '../avatar';
+import { AvatarRenderer, QUALITY_PRESETS, getPreset, type QualityPreset, type QualitySettings, animationLibrary, type ManifestEntry } from '../avatar';
 import { fetchWithAuth } from '../utils/api';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
 import { useVrmOptions, type VrmOption } from '../hooks/useVrmOptions';
@@ -34,17 +34,8 @@ const DEFAULT_MODELS: VrmOption[] = [
 
 const buildVrmUrl = (modelId: string) => `${VRM_BASE_PATH}/${modelId}`;
 
-// Animations registered in AnimationLibrary
-const AVAILABLE_ANIMATIONS = [
-  'test_wave',  // Procedural test - no file needed
-  'hip_hop',    // Mixamo - should work!
-  'wave',
-  'bow',
-  'nod',
-  'thinking',
-  'surprised',
-  'head_shake',
-];
+// Legacy animations (procedural test)
+const LEGACY_ANIMATIONS = ['test_wave'];
 
 // Moods/expressions available
 const AVAILABLE_MOODS = [
@@ -98,6 +89,10 @@ function AvatarDebugPanel() {
   // FBX retarget test state
   const [fbxStatus, setFbxStatus] = useState<string>('Upload Mixamo FBX');
   const [glbStatus, setGlbStatus] = useState<string>('Upload GLB Animation');
+  
+  // Animation library state
+  const [availableAnimations, setAvailableAnimations] = useState<ManifestEntry[]>([]);
+  const [selectedAnimation, setSelectedAnimation] = useState<string>('');
   const fbxMixerRef = useRef<THREE.AnimationMixer | null>(null);
   const fbxActionRef = useRef<THREE.AnimationAction | null>(null);
   
@@ -115,16 +110,23 @@ function AvatarDebugPanel() {
 
   // LookAt state
   const [lookAtEnabled, setLookAtEnabled] = useState(true);
-  const [lookAtMaxAngle, setLookAtMaxAngle] = useState(35);
-  const [lookAtEyeWeight, setLookAtEyeWeight] = useState(1.0);
-  const [lookAtHeadWeight, setLookAtHeadWeight] = useState(0.25);
+  const [lookAtHeadTrackingEnabled, setLookAtHeadTrackingEnabled] = useState(true);
+  const [lookAtMaxYaw, setLookAtMaxYaw] = useState(30);
+  const [lookAtMaxPitchUp, setLookAtMaxPitchUp] = useState(25);
+  const [lookAtMaxPitchDown, setLookAtMaxPitchDown] = useState(15);
+  const [lookAtHeadWeight, setLookAtHeadWeight] = useState(0.4);
+  const [lookAtSmoothSpeed, setLookAtSmoothSpeed] = useState(6);
   const [lookAtDebug, setLookAtDebug] = useState<{
-    blend: number;
+    enabled: boolean;
+    headTrackingEnabled: boolean;
     angleToCamera: number;
+    currentHeadYaw: number;
+    currentHeadPitch: number;
     hasCamera: boolean;
-    hasHead: boolean;
-    hasNeck: boolean;
-    hasVrmLookAt?: boolean;
+    hasHeadBone: boolean;
+    hasVrmLookAt: boolean;
+    lookAtType: string;
+    isVRM0: boolean;
   } | null>(null);
 
   const MAX_VOICE_DEBUG_EVENTS = 80;
@@ -207,10 +209,21 @@ function AvatarDebugPanel() {
       cameraDistance: 3.0,  // Pulled back to see full body
       cameraHeight: 1.0,    // Lower to center on body
       enableOrbitControls: true,  // Enable camera orbit for debug
-      onLoad: (vrm: VRM) => {
+      onLoad: async (vrm: VRM) => {
         const metaName = (vrm.meta as { name?: string })?.name;
         setLastAction(`Loaded: ${metaName || selectedModel}`);
         setLoading(false);
+        
+        // Fetch animation manifest
+        try {
+          const animations = await animationLibrary.getAvailableAnimations();
+          setAvailableAnimations(animations);
+          if (animations.length > 0) {
+            setSelectedAnimation(animations[0].id);
+          }
+        } catch (err) {
+          console.warn('Failed to fetch animations:', err);
+        }
       },
       onError: (err: Error) => {
         setLastAction(`Error: ${err.message}`);
@@ -306,12 +319,16 @@ function AvatarDebugPanel() {
       const state = rendererRef.current?.lookAtSystem?.getState();
       if (state) {
         setLookAtDebug({
-          blend: state.blend,
+          enabled: state.enabled,
+          headTrackingEnabled: state.headTrackingEnabled,
           angleToCamera: state.angleToCamera,
+          currentHeadYaw: state.currentHeadYaw,
+          currentHeadPitch: state.currentHeadPitch,
           hasCamera: state.hasCamera,
-          hasHead: state.hasHead,
-          hasNeck: state.hasNeck,
+          hasHeadBone: state.hasHeadBone,
           hasVrmLookAt: state.hasVrmLookAt,
+          lookAtType: state.lookAtType,
+          isVRM0: state.isVRM0,
         });
       }
     }, 100); // Update 10x per second
@@ -1350,7 +1367,7 @@ function AvatarDebugPanel() {
               </AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-4">
-                  {/* Enable toggle */}
+                  {/* Enable toggles */}
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="checkbox"
@@ -1361,48 +1378,82 @@ function AvatarDebugPanel() {
                       }}
                       className="w-4 h-4 accent-accent"
                     />
-                    <span className="text-sm text-text-secondary">Enable Look At</span>
+                    <span className="text-sm text-text-secondary">Enable Look At (eyes via VRM)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={lookAtHeadTrackingEnabled}
+                      onChange={(e) => {
+                        setLookAtHeadTrackingEnabled(e.target.checked);
+                        rendererRef.current?.setLookAtConfig({ headTrackingEnabled: e.target.checked });
+                      }}
+                      className="w-4 h-4 accent-accent"
+                    />
+                    <span className="text-sm text-text-secondary">Enable Head Tracking (manual)</span>
                   </label>
 
                   {lookAtEnabled && (
                     <div className="space-y-3 p-3 bg-bg-tertiary/60 border border-white/10 rounded-lg">
-                      {/* Max Angle */}
+                      {/* Max Yaw */}
                       <div>
                         <div className="flex justify-between text-xs text-text-secondary mb-1">
-                          <span>Max Angle (return to home)</span>
-                          <span className="text-accent">{lookAtMaxAngle}°</span>
+                          <span>Max Yaw (left/right)</span>
+                          <span className="text-accent">{lookAtMaxYaw}°</span>
                         </div>
                         <input
                           type="range"
                           min={10}
-                          max={80}
+                          max={60}
                           step={5}
-                          value={lookAtMaxAngle}
+                          value={lookAtMaxYaw}
                           onChange={(e) => {
                             const val = parseInt(e.target.value);
-                            setLookAtMaxAngle(val);
-                            rendererRef.current?.setLookAtConfig({ maxAngle: val });
+                            setLookAtMaxYaw(val);
+                            rendererRef.current?.setLookAtConfig({ maxYaw: val });
                           }}
                           className="w-full accent-accent"
                         />
                       </div>
 
-                      {/* Eye Weight */}
+                      {/* Max Pitch Up */}
                       <div>
                         <div className="flex justify-between text-xs text-text-secondary mb-1">
-                          <span>Eye Movement</span>
-                          <span className="text-accent">{(lookAtEyeWeight * 100).toFixed(0)}%</span>
+                          <span>Max Pitch Up (looking up)</span>
+                          <span className="text-accent">{lookAtMaxPitchUp}°</span>
                         </div>
                         <input
                           type="range"
-                          min={0}
-                          max={1}
-                          step={0.1}
-                          value={lookAtEyeWeight}
+                          min={5}
+                          max={40}
+                          step={5}
+                          value={lookAtMaxPitchUp}
                           onChange={(e) => {
-                            const val = parseFloat(e.target.value);
-                            setLookAtEyeWeight(val);
-                            rendererRef.current?.setLookAtConfig({ eyeWeight: val });
+                            const val = parseInt(e.target.value);
+                            setLookAtMaxPitchUp(val);
+                            rendererRef.current?.setLookAtConfig({ maxPitchUp: val });
+                          }}
+                          className="w-full accent-accent"
+                        />
+                      </div>
+
+                      {/* Max Pitch Down */}
+                      <div>
+                        <div className="flex justify-between text-xs text-text-secondary mb-1">
+                          <span>Max Pitch Down (looking down)</span>
+                          <span className="text-accent">{lookAtMaxPitchDown}°</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={5}
+                          max={30}
+                          step={5}
+                          value={lookAtMaxPitchDown}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setLookAtMaxPitchDown(val);
+                            rendererRef.current?.setLookAtConfig({ maxPitchDown: val });
                           }}
                           className="w-full accent-accent"
                         />
@@ -1411,13 +1462,13 @@ function AvatarDebugPanel() {
                       {/* Head Weight */}
                       <div>
                         <div className="flex justify-between text-xs text-text-secondary mb-1">
-                          <span>Head Movement</span>
+                          <span>Head Weight (how much head follows)</span>
                           <span className="text-accent">{(lookAtHeadWeight * 100).toFixed(0)}%</span>
                         </div>
                         <input
                           type="range"
                           min={0}
-                          max={0.5}
+                          max={0.8}
                           step={0.05}
                           value={lookAtHeadWeight}
                           onChange={(e) => {
@@ -1429,8 +1480,30 @@ function AvatarDebugPanel() {
                         />
                       </div>
 
+                      {/* Smooth Speed */}
+                      <div>
+                        <div className="flex justify-between text-xs text-text-secondary mb-1">
+                          <span>Smooth Speed (higher = snappier)</span>
+                          <span className="text-accent">{lookAtSmoothSpeed}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={2}
+                          max={15}
+                          step={1}
+                          value={lookAtSmoothSpeed}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setLookAtSmoothSpeed(val);
+                            rendererRef.current?.setLookAtConfig({ smoothSpeed: val });
+                          }}
+                          className="w-full accent-accent"
+                        />
+                      </div>
+
                       <p className="text-xs text-text-secondary/70 mt-2">
-                        Eyes and head follow camera. Returns to home position when camera angle exceeds max.
+                        Eyes: VRM handles via lookAt.target (bone or expression type)<br/>
+                        Head: Manual bone rotation with configurable limits
                       </p>
 
                       {/* Debug output */}
@@ -1441,33 +1514,42 @@ function AvatarDebugPanel() {
                             <div className={lookAtDebug.hasCamera ? 'text-green-400' : 'text-red-400'}>
                               Camera: {lookAtDebug.hasCamera ? '✓' : '✗ NOT SET'}
                             </div>
-                            <div className={lookAtDebug.hasHead ? 'text-green-400' : 'text-red-400'}>
-                              Head bone: {lookAtDebug.hasHead ? '✓' : '✗ NOT FOUND'}
+                            <div className={lookAtDebug.hasHeadBone ? 'text-green-400' : 'text-red-400'}>
+                              Head bone: {lookAtDebug.hasHeadBone ? '✓' : '✗ NOT FOUND'}
                             </div>
-                            <div className={lookAtDebug.hasNeck ? 'text-green-400' : 'text-yellow-400'}>
-                              Neck bone: {lookAtDebug.hasNeck ? '✓' : '○ optional'}
-                            </div>
-                            <div className={lookAtDebug.hasVrmLookAt ? 'text-green-400' : 'text-red-400'}>
-                              VRM LookAt: {lookAtDebug.hasVrmLookAt ? '✓' : '✗ NOT FOUND'}
+                            <div className={lookAtDebug.hasVrmLookAt ? 'text-green-400' : 'text-yellow-400'}>
+                              VRM LookAt: {lookAtDebug.hasVrmLookAt ? '✓' : '○ not available'}
                             </div>
                             {lookAtDebug.hasVrmLookAt && (
                               <div className="text-text-secondary">
-                                Type: <span className="text-accent">{(lookAtDebug as any).lookAtType || 'unknown'}</span>
-                                <span className="text-xs ml-1">(bone=eyes+head, expression=eyes only)</span>
+                                Type: <span className="text-accent">{lookAtDebug.lookAtType}</span>
+                                <span className="text-xs ml-1">({lookAtDebug.lookAtType === 'bone' ? 'eye bones' : 'blend shapes'})</span>
                               </div>
                             )}
-                            <div className="mt-1 text-text-primary">
+                            <div className="text-text-secondary">
+                              VRM: <span className="text-accent">{lookAtDebug.isVRM0 ? '0.x' : '1.0'}</span>
+                            </div>
+                            <div className="mt-2 text-text-primary">
                               Angle to camera: <span className="text-accent">{lookAtDebug.angleToCamera.toFixed(1)}°</span>
                             </div>
                             <div className="text-text-primary">
-                              Blend weight: <span className="text-accent">{(lookAtDebug.blend * 100).toFixed(0)}%</span>
+                              Head Yaw: <span className="text-accent">{lookAtDebug.currentHeadYaw.toFixed(1)}°</span>
+                              {' / '}
+                              Pitch: <span className="text-accent">{lookAtDebug.currentHeadPitch.toFixed(1)}°</span>
                             </div>
-                            {/* Visual blend bar */}
-                            <div className="mt-1 h-2 bg-bg-tertiary rounded overflow-hidden">
-                              <div 
-                                className="h-full bg-accent transition-all duration-100"
-                                style={{ width: `${lookAtDebug.blend * 100}%` }}
-                              />
+                            {/* Visual yaw bar */}
+                            <div className="mt-1">
+                              <div className="text-xs text-text-secondary mb-0.5">Head Yaw</div>
+                              <div className="h-2 bg-bg-tertiary rounded overflow-hidden relative">
+                                <div className="absolute inset-y-0 left-1/2 w-px bg-white/30" />
+                                <div 
+                                  className="absolute h-full w-2 bg-accent transition-all duration-100 rounded"
+                                  style={{ 
+                                    left: `${50 + (lookAtDebug.currentHeadYaw / lookAtMaxYaw) * 50}%`,
+                                    transform: 'translateX(-50%)'
+                                  }}
+                                />
+                              </div>
                             </div>
                           </>
                         ) : (
@@ -1483,26 +1565,68 @@ function AvatarDebugPanel() {
             {/* Animations */}
             <AccordionItem value="animations" className="border-white/10">
               <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
-                Animations
+                Animations ({availableAnimations.length})
               </AccordionTrigger>
               <AccordionContent>
-                <div className="grid grid-cols-2 gap-2">
-                  {AVAILABLE_ANIMATIONS.map((anim) => (
+                <div className="space-y-3">
+                  {/* Animation dropdown */}
+                  <div>
+                    <label className="text-xs text-text-secondary">Select Animation</label>
+                    <select
+                      value={selectedAnimation}
+                      onChange={(e) => setSelectedAnimation(e.target.value)}
+                      className="w-full bg-bg-tertiary/80 border border-white/10 rounded px-2 py-1.5 text-sm mt-1"
+                    >
+                      <optgroup label="VRMA Animations">
+                        {availableAnimations.filter(a => a.type === 'vrma').map((anim) => (
+                          <option key={anim.id} value={anim.id}>{anim.name}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="GLB Animations">
+                        {availableAnimations.filter(a => a.type === 'glb').map((anim) => (
+                          <option key={anim.id} value={anim.id}>{anim.name}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Procedural">
+                        {LEGACY_ANIMATIONS.map((anim) => (
+                          <option key={anim} value={anim}>{anim}</option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  </div>
+                  
+                  {/* Play + Refresh buttons */}
+                  <div className="flex gap-2">
                     <Button
-                      key={anim}
                       variant="ghost"
                       size="sm"
-                      onClick={() => playAnimation(anim)}
-                      className="justify-start text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
+                      onClick={() => playAnimation(selectedAnimation)}
+                      disabled={!selectedAnimation}
+                      className="flex-1 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
                     >
                       <Play className="w-3 h-3 mr-1" />
-                      {anim}
+                      Play
                     </Button>
-                  ))}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        setLastAction('Refreshing animations...');
+                        const animations = await animationLibrary.refreshManifest();
+                        setAvailableAnimations(animations);
+                        setLastAction(`Found ${animations.length} animations`);
+                      }}
+                      className="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
+                      title="Refresh animation list"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                    </Button>
+                  </div>
+                  
+                  <p className="text-xs text-text-secondary">
+                    {availableAnimations.filter(a => a.type === 'vrma').length} VRMA, {availableAnimations.filter(a => a.type === 'glb').length} GLB
+                  </p>
                 </div>
-                <p className="text-xs text-text-secondary mt-2">
-                  GLB files → /public/animations/
-                </p>
               </AccordionContent>
             </AccordionItem>
 

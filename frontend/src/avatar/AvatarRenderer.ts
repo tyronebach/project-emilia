@@ -561,9 +561,12 @@ export class AvatarRenderer {
             smoothSpeed: 6,
           });
 
-          // Preload registered animations
-          animationLibrary.preloadAll().catch(err => {
-            console.warn('[AvatarRenderer] Failed to preload animations:', err);
+          // Set VRM for animation library (needed for VRMA animations)
+          animationLibrary.setVRM(vrm);
+          
+          // Fetch animation manifest
+          animationLibrary.fetchManifest().catch(err => {
+            console.warn('[AvatarRenderer] Failed to fetch animation manifest:', err);
           });
 
           // Debug: Log available humanoid bones

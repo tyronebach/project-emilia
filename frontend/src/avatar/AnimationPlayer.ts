@@ -169,14 +169,14 @@ export class AnimationPlayer {
    * Play a clip directly
    */
   private playClip(animData: AnimationClipData, options: Required<PlayOptions>): boolean {
-    const { clip } = animData;
+    const { clip, type } = animData;
 
-    // Retarget animation to VRM if needed
-    // VRM uses normalized bone names, may need to map from Mixamo etc.
-    const retargetedClip = this.retargetToVRM(clip);
+    // VRMA clips are already bound to VRM, no retargeting needed
+    // GLB clips may need bone name mapping (Mixamo, BVH, etc.)
+    const finalClip = type === 'vrma' ? clip : this.retargetToVRM(clip);
 
     // Create action
-    const action = this.mixer.clipAction(retargetedClip);
+    const action = this.mixer.clipAction(finalClip);
     action.setLoop(options.loop ? THREE.LoopRepeat : THREE.LoopOnce, options.loop ? Infinity : 1);
     action.clampWhenFinished = !options.loop;
     action.timeScale = options.timeScale;
