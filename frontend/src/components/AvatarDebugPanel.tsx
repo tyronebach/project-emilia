@@ -12,7 +12,7 @@ import { VoiceToggle } from './VoiceToggle';
 import { VoiceDebugTimeline, type VoiceDebugEntry } from './VoiceDebugTimeline';
 import { Button } from './ui/button';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './ui/accordion';
-import { AvatarRenderer, QUALITY_PRESETS, getPreset, type QualityPreset, type QualitySettings, animationLibrary, type ManifestEntry } from '../avatar';
+import { AvatarRenderer, QUALITY_PRESETS, getPreset, type QualityPreset, type QualitySettings, animationLibrary, animationStateMachine, type ManifestEntry } from '../avatar';
 import { fetchWithAuth } from '../utils/api';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
 import { useVrmOptions, type VrmOption } from '../hooks/useVrmOptions';
@@ -34,8 +34,6 @@ const DEFAULT_MODELS: VrmOption[] = [
 
 const buildVrmUrl = (modelId: string) => `${VRM_BASE_PATH}/${modelId}`;
 
-// Legacy animations (procedural test)
-const LEGACY_ANIMATIONS = ['test_wave'];
 
 // Moods/expressions available
 const AVAILABLE_MOODS = [
@@ -93,6 +91,7 @@ function AvatarDebugPanel() {
   // Animation library state
   const [availableAnimations, setAvailableAnimations] = useState<ManifestEntry[]>([]);
   const [selectedAnimation, setSelectedAnimation] = useState<string>('');
+  const [stateMachineActions, setStateMachineActions] = useState<string[]>([]);
   const fbxMixerRef = useRef<THREE.AnimationMixer | null>(null);
   const fbxActionRef = useRef<THREE.AnimationAction | null>(null);
   
@@ -184,9 +183,13 @@ function AvatarDebugPanel() {
       const metaName = (vrm.meta as { name?: string })?.name;
       setLastAction(`Loaded: ${metaName || modelId}`);
       
-      // Refresh animation list for new VRM
+      // Refresh animation list and state machine for new VRM
       const animations = await animationLibrary.getAvailableAnimations();
       setAvailableAnimations(animations);
+      
+      // Load state machine actions
+      await animationStateMachine.load();
+      setStateMachineActions(animationStateMachine.getAvailableActions());
     } catch (err) {
       setLastAction(`Error: ${err}`);
     } finally {
@@ -218,11 +221,20 @@ function AvatarDebugPanel() {
         setLastAction(`Loaded: ${metaName || selectedModel}`);
         setLoading(false);
         
-        // Fetch animation manifest
+        // Fetch animation manifest and state machine
         try {
           const animations = await animationLibrary.getAvailableAnimations();
           setAvailableAnimations(animations);
-          if (animations.length > 0) {
+          
+          // Load state machine
+          await animationStateMachine.load();
+          const actions = animationStateMachine.getAvailableActions();
+          setStateMachineActions(actions);
+          
+          // Default to first state machine action if available
+          if (actions.length > 0) {
+            setSelectedAnimation(actions[0]);
+          } else if (animations.length > 0) {
             setSelectedAnimation(animations[0].id);
           }
         } catch (err) {
@@ -1569,7 +1581,7 @@ function AvatarDebugPanel() {
             {/* Animations */}
             <AccordionItem value="animations" className="border-white/10">
               <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
-                Animations ({availableAnimations.length})
+                Animations ({stateMachineActions.length} actions, {availableAnimations.length} files)
               </AccordionTrigger>
               <AccordionContent>
                 <div className="space-y-3">
@@ -1581,19 +1593,19 @@ function AvatarDebugPanel() {
                       onChange={(e) => setSelectedAnimation(e.target.value)}
                       className="w-full bg-bg-tertiary/80 border border-white/10 rounded px-2 py-1.5 text-sm mt-1"
                     >
-                      <optgroup label="VRMA Animations">
+                      <optgroup label="⚡ State Machine Actions">
+                        {stateMachineActions.map((action) => (
+                          <option key={action} value={action}>🎬 {action}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="📁 VRMA Files">
                         {availableAnimations.filter(a => a.type === 'vrma').map((anim) => (
                           <option key={anim.id} value={anim.id}>{anim.name}</option>
                         ))}
                       </optgroup>
-                      <optgroup label="GLB Animations">
+                      <optgroup label="📁 GLB Files">
                         {availableAnimations.filter(a => a.type === 'glb').map((anim) => (
                           <option key={anim.id} value={anim.id}>{anim.name}</option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Procedural">
-                        {LEGACY_ANIMATIONS.map((anim) => (
-                          <option key={anim} value={anim}>{anim}</option>
                         ))}
                       </optgroup>
                     </select>
@@ -1628,7 +1640,7 @@ function AvatarDebugPanel() {
                   </div>
                   
                   <p className="text-xs text-text-secondary">
-                    {availableAnimations.filter(a => a.type === 'vrma').length} VRMA, {availableAnimations.filter(a => a.type === 'glb').length} GLB
+                    State machine: {stateMachineActions.length} actions | Files: {availableAnimations.filter(a => a.type === 'vrma').length} VRMA, {availableAnimations.filter(a => a.type === 'glb').length} GLB
                   </p>
                 </div>
               </AccordionContent>
