@@ -14,9 +14,8 @@ export { BlinkController } from './layers/BlinkController';
 export { LookAtSystem } from './layers/LookAtSystem';
 export type { LookAtConfig } from './layers/LookAtSystem';
 
-// Legacy systems (still used, to be migrated)
+// Animation subsystems (used by AnimationController)
 export { LipSyncEngine } from './LipSyncEngine';
-export { ExpressionController } from './ExpressionController';
 export { IdleAnimations } from './IdleAnimations';
 export { AnimationPlayer } from './AnimationPlayer';
 export { AnimationLibrary, animationLibrary } from './AnimationLibrary';

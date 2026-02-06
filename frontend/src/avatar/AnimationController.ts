@@ -4,10 +4,10 @@
  * Coordinates expressions, lip sync, look-at, blinks, and body animations.
  */
 
-import type { VRM } from '@pixiv/three-vrm';
+import type { VRM, VRMExpressionManager } from '@pixiv/three-vrm';
 import { ExpressionMixer, CHANNEL_PRIORITY } from './expression/ExpressionMixer';
 import { BlinkController } from './layers/BlinkController';
-import { LookAtSystem, type LookAtTarget } from './layers/LookAtSystem';
+import { LookAtSystem } from './layers/LookAtSystem';
 import { LipSyncEngine } from './LipSyncEngine';
 import type { AlignmentData } from './types';
 import { IdleAnimations } from './IdleAnimations';
@@ -32,6 +32,34 @@ const EMOTION_MAP: Record<Emotion, string> = {
   excited: 'happy',
   worried: 'sad',
   confused: 'surprised',
+};
+
+const MOOD_ALIASES: Record<string, Emotion> = {
+  neutral: 'neutral',
+  happy: 'happy',
+  joy: 'happy',
+  sad: 'sad',
+  sorrow: 'sad',
+  angry: 'angry',
+  surprised: 'surprised',
+  surprise: 'surprised',
+  thinking: 'thinking',
+  curious: 'surprised',
+  relaxed: 'relaxed',
+  excited: 'excited',
+  worried: 'worried',
+  confused: 'confused',
+  bored: 'neutral',
+  love: 'happy',
+  playful: 'happy',
+  shy: 'neutral',
+  embarrassed: 'neutral',
+  sleepy: 'relaxed',
+};
+
+const normalizeEmotion = (emotion: Emotion | string): Emotion => {
+  const key = String(emotion).toLowerCase();
+  return MOOD_ALIASES[key] ?? 'neutral';
 };
 
 export interface GestureOptions {
@@ -84,7 +112,8 @@ export class AnimationController {
     }
 
     // Initialize subsystems
-    this.blinkController = new BlinkController(this.expressionMixer);
+    const blinkExpressions = this.detectBlinkExpressions(vrm.expressionManager ?? null);
+    this.blinkController = new BlinkController(this.expressionMixer, { expressions: blinkExpressions });
     this.lookAtSystem = new LookAtSystem(vrm);
     this.lipSyncEngine = new LipSyncEngine(vrm);
     this.idleAnimations = new IdleAnimations(vrm);
@@ -98,11 +127,52 @@ export class AnimationController {
       this.lookAtSystem.setCamera(camera);
     }
 
-    // Default look-at target
-    this.lookAtSystem.setTarget({ type: 'camera' });
-
     this.initialized = true;
     console.log('[AnimationController] Initialized');
+  }
+
+  private detectBlinkExpressions(expressionManager: VRMExpressionManager | null): string[] {
+    if (!expressionManager) return ['blink'];
+
+    const hasBlink = this.hasExpression(expressionManager, 'blink');
+    const hasBlinkLeft = this.hasExpression(expressionManager, 'blinkLeft');
+    const hasBlinkRight = this.hasExpression(expressionManager, 'blinkRight');
+
+    if (hasBlink) return ['blink'];
+
+    const expressions: string[] = [];
+    if (hasBlinkLeft) expressions.push('blinkLeft');
+    if (hasBlinkRight) expressions.push('blinkRight');
+
+    return expressions.length > 0 ? expressions : ['blink'];
+  }
+
+  private hasExpression(expressionManager: VRMExpressionManager, name: string): boolean {
+    try {
+      if (typeof expressionManager.getValue === 'function') {
+        const value = expressionManager.getValue(name as never);
+        if (value !== undefined) return true;
+      }
+    } catch (_e) { /* ignore */ }
+
+    try {
+      const expr = (expressionManager as { getExpression?: (name: string) => unknown }).getExpression?.(name);
+      if (expr) return true;
+    } catch (_e) { /* ignore */ }
+
+    const emAny = expressionManager as VRMExpressionManager & {
+      expressionMap?: Map<string, unknown> | Record<string, unknown>;
+      _expressionMap?: Map<string, unknown>;
+    };
+    const map = emAny.expressionMap || emAny._expressionMap;
+    if (map instanceof Map) {
+      return map.has(name);
+    }
+    if (map && typeof map === 'object') {
+      return Object.prototype.hasOwnProperty.call(map, name);
+    }
+
+    return false;
   }
 
   /**
@@ -116,10 +186,10 @@ export class AnimationController {
 
     // Update subsystems
     this.blinkController?.update(deltaTime);
-    this.lookAtSystem?.update(deltaTime);
     this.lipSyncEngine?.update(deltaTime);
     this.idleAnimations?.update(deltaTime);
     this.animationPlayer?.update(deltaTime);
+    this.lookAtSystem?.update(deltaTime);
 
     // Apply final expression values
     this.expressionMixer.apply();
@@ -128,18 +198,18 @@ export class AnimationController {
   /**
    * Set mood/emotion
    */
-  async setMood(emotion: Emotion, intensity: number = 1.0): Promise<void> {
+  async setMood(emotion: Emotion | string, intensity: number = 1.0): Promise<void> {
     intensity = Math.max(0, Math.min(1, intensity));
-    
-    console.log(`[AnimationController] setMood: ${emotion} @ ${intensity}`);
+    const normalizedEmotion = normalizeEmotion(emotion);
+
 
     // If emotion is changing, handle blink sync
-    if (emotion !== this.currentEmotion && this.blinkController) {
+    if (normalizedEmotion !== this.currentEmotion && this.blinkController) {
       // Pause blink and wait for eyes to open
       await this.blinkController.setEnabled(false);
     }
 
-    this.targetEmotion = emotion;
+    this.targetEmotion = normalizedEmotion;
     this.targetIntensity = intensity;
   }
 
@@ -188,7 +258,6 @@ export class AnimationController {
   async triggerGesture(name: string, options: GestureOptions = {}): Promise<boolean> {
     if (!this.animationPlayer) return false;
 
-    console.log(`[AnimationController] triggerGesture: ${name}`);
 
     return this.animationPlayer.play(name, {
       loop: false,
@@ -203,12 +272,8 @@ export class AnimationController {
   startSpeaking(alignment: AlignmentData, audioElement: HTMLAudioElement): void {
     if (!this.lipSyncEngine) return;
 
-    console.log('[AnimationController] startSpeaking');
     
     this.isSpeaking = true;
-
-    // Set look-at to camera (look at user while speaking)
-    this.lookAtSystem?.setTarget({ type: 'camera' });
 
     // Start lip sync
     const audioDurationMs = audioElement.duration * 1000;
@@ -223,7 +288,6 @@ export class AnimationController {
    * Stop speaking
    */
   stopSpeaking(): void {
-    console.log('[AnimationController] stopSpeaking');
     
     this.isSpeaking = false;
 
@@ -233,15 +297,6 @@ export class AnimationController {
     // Resume idle animations
     this.idleAnimations?.resume();
 
-    // Return to wander mode
-    this.lookAtSystem?.setTarget({ type: 'wander' });
-  }
-
-  /**
-   * Set look-at target
-   */
-  setLookAtTarget(target: LookAtTarget): void {
-    this.lookAtSystem?.setTarget(target);
   }
 
   /**

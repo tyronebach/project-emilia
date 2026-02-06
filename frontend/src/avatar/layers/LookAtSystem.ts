@@ -1,13 +1,33 @@
 /**
- * LookAt System - Using VRM's built-in lookAt
+ * LookAt System - Eyes via VRM + Manual Head Tracking
  * 
- * Based on official three-vrm example:
- * - Create an Object3D as target
- * - Add it as child of camera  
- * - Set vrm.lookAt.target to the Object3D
- * - Let vrm.update() handle the rest
+ * VRM's built-in lookAt only handles eyes (bone or expression type).
+ * Head tracking must be done manually by rotating head/neck bones.
  * 
- * VRM has its own angle limits built-in, so we just let it track continuously.
+ * Architecture:
+ * - Eyes: VRM handles via vrm.lookAt.target + vrm.update()
+ * - Head: We manually rotate head bone toward target with constraints
+ * 
+ * ## Why Two Code Paths (VRM 0.x vs 1.0)?
+ * 
+ * VRM versions have different coordinate systems:
+ * - VRM 0.x: Model faces -Z in local space (like Unity default)
+ * - VRM 1.0: Model faces +Z in local space (glTF standard)
+ * 
+ * Even though VRMUtils.rotateVRM0() rotates the scene for visual consistency,
+ * the bone-local coordinate system remains different. When calculating head
+ * rotation from camera direction in avatar-local space:
+ * 
+ * VRM 0.x: targetYaw = atan2(-toCamera.x, -toCamera.z)
+ *          (forward is -Z, negate both for correct direction)
+ * 
+ * VRM 1.0: targetYaw = atan2(toCamera.x, toCamera.z)
+ *          (forward is +Z, use as-is)
+ * 
+ * The pitch calculation also differs due to the Y-axis relationship with
+ * the forward direction in each coordinate system.
+ * 
+ * Detection: vrm.meta.metaVersion === '0' for VRM 0.x, '1' for VRM 1.0
  */
 
 import * as THREE from 'three';
@@ -15,10 +35,25 @@ import type { VRM } from '@pixiv/three-vrm';
 
 export interface LookAtConfig {
   enabled: boolean;
+  headTrackingEnabled: boolean;
+  // Head rotation limits (degrees)
+  maxYaw: number;        // Left/right
+  maxPitchUp: number;    // Looking up (positive pitch)
+  maxPitchDown: number;  // Looking down (negative pitch)
+  // How much of the look direction head follows (0-1)
+  headWeight: number;
+  // Smoothing speed (higher = faster response)
+  smoothSpeed: number;
 }
 
 const DEFAULT_CONFIG: LookAtConfig = {
   enabled: true,
+  headTrackingEnabled: true,
+  maxYaw: 30,
+  maxPitchUp: 25,      // Can look up more
+  maxPitchDown: 15,    // Less range looking down
+  headWeight: 0.4,
+  smoothSpeed: 6,
 };
 
 export class LookAtSystem {
@@ -26,8 +61,14 @@ export class LookAtSystem {
   private camera: THREE.Camera | null = null;
   private config: LookAtConfig;
   
-  // The target Object3D that VRM looks at
+  // The target Object3D that VRM looks at (for eyes)
   private lookAtTarget: THREE.Object3D;
+  
+  // Head tracking state
+  private headBone: THREE.Object3D | null = null;
+  private headRestQuaternion: THREE.Quaternion = new THREE.Quaternion();
+  private currentHeadYaw: number = 0;
+  private currentHeadPitch: number = 0;
   
   // Debug info
   private _lastAngle: number = 0;
@@ -35,60 +76,68 @@ export class LookAtSystem {
   private _lookAtType: string = 'none';
   private _isVRM0: boolean = false;
 
+  // Reusable objects (avoid GC)
+  private _tempVec3: THREE.Vector3 = new THREE.Vector3();
+  private _tempVec3B: THREE.Vector3 = new THREE.Vector3();
+  private _tempQuat: THREE.Quaternion = new THREE.Quaternion();
+  private _tempEuler: THREE.Euler = new THREE.Euler();
+
   constructor(vrm: VRM, config: Partial<LookAtConfig> = {}) {
     this.vrm = vrm;
     this.config = { ...DEFAULT_CONFIG, ...config };
     this._hasLookAt = !!vrm.lookAt;
-    // Type can be 'bone' or 'expression', or check the applier type
+    
+    // Detect lookAt type
     if (vrm.lookAt) {
-      // Try different ways to get the type
-      const rawType = (vrm.lookAt as any).type;
-      const applierType = (vrm.lookAt as any).applier?.type;
-      this._lookAtType = rawType || applierType || 'unknown';
-      console.log('[LookAtSystem] lookAt object:', {
-        type: rawType,
-        applierType: applierType,
-        autoUpdate: vrm.lookAt.autoUpdate,
-        target: vrm.lookAt.target,
-      });
-    } else {
-      this._lookAtType = 'none';
+      const applier = vrm.lookAt.applier as { type?: string } | undefined;
+      this._lookAtType = applier?.type || 'unknown';
     }
 
-    // Create the lookAt target Object3D
+    // Detect VRM version (0.x vs 1.0)
+    // metaVersion is '0' for VRM 0.x, '1' for VRM 1.0
+    const meta = vrm.meta as { metaVersion?: string };
+    this._isVRM0 = meta?.metaVersion === '0';
+
+    // Create the lookAt target Object3D for eyes
     this.lookAtTarget = new THREE.Object3D();
     this.lookAtTarget.name = 'LookAtTarget';
 
-    // Detect VRM version (0.x vs 1.0)
-    // VRM 1.0 has meta.metaVersion, VRM 0.x doesn't
-    const meta = vrm.meta as any;
-    this._isVRM0 = !meta?.metaVersion;
-    
+    // Set up VRM lookAt for eyes
+    if (vrm.lookAt) {
+      vrm.lookAt.target = this.lookAtTarget;
+    }
+
+    // Get head bone and store rest pose
+    this.headBone = vrm.humanoid?.getNormalizedBoneNode('head') || null;
+    if (this.headBone) {
+      this.headRestQuaternion.copy(this.headBone.quaternion);
+    }
+
     console.log('[LookAtSystem] Init:', {
       hasVrmLookAt: this._hasLookAt,
       lookAtType: this._lookAtType,
       isVRM0: this._isVRM0,
       metaVersion: meta?.metaVersion,
+      hasHeadBone: !!this.headBone,
+      headRestQuat: this.headBone ? {
+        x: this.headRestQuaternion.x.toFixed(3),
+        y: this.headRestQuaternion.y.toFixed(3),
+        z: this.headRestQuaternion.z.toFixed(3),
+        w: this.headRestQuaternion.w.toFixed(3),
+      } : null,
     });
-
-    // Set up VRM lookAt - let it always track
-    if (vrm.lookAt) {
-      vrm.lookAt.target = this.lookAtTarget;
-      console.log('[LookAtSystem] Target set');
-    }
   }
 
   setCamera(camera: THREE.Camera): void {
     this.camera = camera;
     
-    // Add lookAtTarget as child of camera
+    // Add lookAtTarget as child of camera (for eye tracking)
     camera.add(this.lookAtTarget);
     
     // Position target at camera position (0,0,0 in camera local space)
-    // This makes avatar look directly at where camera is
     this.lookAtTarget.position.set(0, 0, 0);
     
-    console.log('[LookAtSystem] Camera set, target at camera position');
+    console.log('[LookAtSystem] Camera set');
   }
 
   setConfig(config: Partial<LookAtConfig>): void {
@@ -103,53 +152,123 @@ export class LookAtSystem {
     } else if (enabled && this.vrm.lookAt) {
       this.vrm.lookAt.target = this.lookAtTarget;
     }
+    
+    // Reset head to rest pose when disabled
+    if (!enabled && this.headBone) {
+      this.headBone.quaternion.copy(this.headRestQuaternion);
+      this.currentHeadYaw = 0;
+      this.currentHeadPitch = 0;
+    }
   }
 
   /**
-   * Update - calculate angle for debug display
-   * Eyes are handled by VRM lookAt automatically via vrm.update()
-   * Head tracking disabled pending further research
+   * Update head tracking
+   * Eyes are handled by VRM automatically via vrm.update()
    */
   update(deltaTime: number): void {
     if (!this.config.enabled) return;
     if (!this.camera) return;
 
-    // Calculate angle for debug display only
-    const headBone = this.vrm.humanoid?.getNormalizedBoneNode('head');
+    // Calculate direction to camera
+    const headBone = this.headBone;
     if (!headBone) return;
     
-    const headPos = new THREE.Vector3();
-    headBone.getWorldPosition(headPos);
+    // Get head world position
+    const headWorldPos = this._tempVec3;
+    headBone.getWorldPosition(headWorldPos);
 
-    const camPos = this.camera.position.clone();
+    // Get camera world position
+    const camWorldPos = this._tempVec3B;
+    this.camera.getWorldPosition(camWorldPos);
 
-    const toCamera = new THREE.Vector3().subVectors(camPos, headPos);
-    toCamera.y = 0;
-    if (toCamera.length() < 0.01) return;
-    toCamera.normalize();
-
-    const worldQuat = new THREE.Quaternion();
-    this.vrm.scene.getWorldQuaternion(worldQuat);
-    const avatarForward = new THREE.Vector3(0, 0, -1).applyQuaternion(worldQuat);
-    avatarForward.y = 0;
-    if (avatarForward.length() > 0.01) avatarForward.normalize();
-
-    const dot = avatarForward.dot(toCamera);
-    this._lastAngle = Math.acos(Math.max(-1, Math.min(1, dot))) * (180 / Math.PI);
+    // Direction from head to camera
+    const toCamera = camWorldPos.sub(headWorldPos);
     
-    // Head tracking disabled - eyes only via VRM lookAt
+    // Get avatar's world rotation to transform to local space
+    const avatarWorldQuat = this._tempQuat;
+    this.vrm.scene.getWorldQuaternion(avatarWorldQuat);
+    
+    // Transform direction to avatar local space
+    const avatarWorldQuatInverse = avatarWorldQuat.clone().invert();
+    toCamera.applyQuaternion(avatarWorldQuatInverse);
+    
+    // Calculate yaw (Y rotation) and pitch (X rotation) in degrees
+    const horizontalDist = Math.sqrt(toCamera.x * toCamera.x + toCamera.z * toCamera.z);
+    
+    let targetYaw: number;
+    let targetPitch: number;
+    
+    if (this._isVRM0) {
+      // VRM 0.x: faces -Z, this was working
+      targetYaw = Math.atan2(-toCamera.x, -toCamera.z) * (180 / Math.PI);
+      targetPitch = Math.atan2(toCamera.y - 0.1, horizontalDist) * (180 / Math.PI);
+    } else {
+      // VRM 1.0: faces +Z, needs different calculation
+      // Invert yaw and pitch based on Thai's feedback
+      targetYaw = Math.atan2(toCamera.x, toCamera.z) * (180 / Math.PI);
+      targetPitch = Math.atan2(-(toCamera.y - 0.1), horizontalDist) * (180 / Math.PI);
+    }
+
+    // Store for debug
+    this._lastAngle = Math.abs(targetYaw);
+
+    // Head tracking
+    if (this.config.headTrackingEnabled && this.headBone) {
+      this.updateHeadTracking(targetYaw, targetPitch, deltaTime);
+    }
+  }
+
+  /**
+   * Apply head rotation toward target with constraints and smoothing
+   */
+  private updateHeadTracking(targetYaw: number, targetPitch: number, deltaTime: number): void {
+    if (!this.headBone) return;
+
+    const { maxYaw, maxPitchUp, maxPitchDown, headWeight, smoothSpeed } = this.config;
+
+    // Apply weight (head follows partially, eyes do the rest)
+    let headYaw = targetYaw * headWeight;
+    let headPitch = targetPitch * headWeight;
+
+    // Clamp to limits (asymmetric pitch: up is positive, down is negative)
+    headYaw = Math.max(-maxYaw, Math.min(maxYaw, headYaw));
+    headPitch = Math.max(-maxPitchDown, Math.min(maxPitchUp, headPitch));
+
+    // Smooth interpolation
+    const t = 1 - Math.exp(-smoothSpeed * deltaTime);
+    this.currentHeadYaw += (headYaw - this.currentHeadYaw) * t;
+    this.currentHeadPitch += (headPitch - this.currentHeadPitch) * t;
+
+    // Apply rotation on top of rest pose
+    // Order: Y (yaw) then X (pitch)
+    const euler = this._tempEuler;
+    euler.set(
+      this.currentHeadPitch * (Math.PI / 180),
+      this.currentHeadYaw * (Math.PI / 180),
+      0,
+      'YXZ'
+    );
+
+    const rotationQuat = this._tempQuat;
+    rotationQuat.setFromEuler(euler);
+
+    // Combine with rest pose
+    this.headBone.quaternion.copy(this.headRestQuaternion);
+    this.headBone.quaternion.multiply(rotationQuat);
   }
 
   getState() {
     return {
-      blend: this.config.enabled ? 1 : 0,
       enabled: this.config.enabled,
+      headTrackingEnabled: this.config.headTrackingEnabled,
       angleToCamera: this._lastAngle,
+      currentHeadYaw: this.currentHeadYaw,
+      currentHeadPitch: this.currentHeadPitch,
       hasCamera: !!this.camera,
-      hasHead: !!this.vrm.humanoid?.getNormalizedBoneNode('head'),
-      hasNeck: !!this.vrm.humanoid?.getNormalizedBoneNode('neck'),
+      hasHeadBone: !!this.headBone,
       hasVrmLookAt: this._hasLookAt,
-      lookAtType: this._lookAtType, // "bone" or "expression"
+      lookAtType: this._lookAtType,
+      isVRM0: this._isVRM0,
       config: this.config,
     };
   }
@@ -162,6 +281,11 @@ export class LookAtSystem {
     
     if (this.vrm.lookAt) {
       this.vrm.lookAt.target = null;
+    }
+    
+    // Reset head to rest pose
+    if (this.headBone) {
+      this.headBone.quaternion.copy(this.headRestQuaternion);
     }
   }
 }

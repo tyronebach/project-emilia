@@ -7,13 +7,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VRMLoaderPlugin, VRMUtils, VRM } from '@pixiv/three-vrm';
-import { LipSyncEngine } from './LipSyncEngine';
-import { ExpressionController } from './ExpressionController';
-import { IdleAnimations } from './IdleAnimations';
-import { AnimationPlayer } from './AnimationPlayer';
+import { AnimationController } from './AnimationController';
 import { animationLibrary } from './AnimationLibrary';
 import { PostProcessingPipeline } from './PostProcessingPipeline';
-import { LookAtSystem, type LookAtConfig } from './layers/LookAtSystem';
+import type { LipSyncEngine } from './LipSyncEngine';
+import type { AnimationPlayer } from './AnimationPlayer';
+import type { LookAtSystem, LookAtConfig } from './layers/LookAtSystem';
 import { getDefaultQuality, type QualitySettings } from './QualityPresets';
 import type { AvatarRendererOptions } from './types';
 
@@ -43,11 +42,7 @@ export class AvatarRenderer {
   private controls: OrbitControls | null = null;
 
   // Animation systems
-  public lipSyncEngine: LipSyncEngine | null = null;
-  private idleAnimations: IdleAnimations | null = null;
-  public animationPlayer: AnimationPlayer | null = null;
-  public expressionController: ExpressionController | null = null;
-  public lookAtSystem: LookAtSystem | null = null;
+  private animationController: AnimationController | null = null;
 
   // Post-processing
   private postProcessing: PostProcessingPipeline | null = null;
@@ -102,6 +97,25 @@ export class AvatarRenderer {
    */
   get currentQuality(): QualitySettings {
     return { ...this._currentQuality };
+  }
+
+  /**
+   * Backward-compatible accessors for animation systems
+   */
+  get lipSyncEngine(): LipSyncEngine | null {
+    return this.animationController?.lipSync ?? null;
+  }
+
+  get animationPlayer(): AnimationPlayer | null {
+    return this.animationController?.animations ?? null;
+  }
+
+  get expressionController(): AnimationController | null {
+    return this.animationController;
+  }
+
+  get lookAtSystem(): LookAtSystem | null {
+    return this.animationController?.lookAt ?? null;
   }
 
   /**
@@ -506,6 +520,10 @@ export class AvatarRenderer {
           }
 
           // Remove previous VRM
+          if (this.animationController) {
+            this.animationController.dispose();
+            this.animationController = null;
+          }
           if (this.vrm && this.scene) {
             VRMUtils.deepDispose(this.vrm.scene);
             this.scene.remove(this.vrm.scene);
@@ -531,26 +549,17 @@ export class AvatarRenderer {
             });
           }
 
-          // Initialize animation systems
-          this.idleAnimations = new IdleAnimations(vrm);
-          this.animationPlayer = new AnimationPlayer(vrm);
-          this.expressionController = new ExpressionController(vrm);
-          this.lipSyncEngine = new LipSyncEngine(vrm);
-
-          // Initialize look-at system (eyes + head tracking)
-          this.lookAtSystem = new LookAtSystem(vrm, {
-            maxAngle: 35,
-            fadeStartAngle: 25,
-            headWeight: 0.3,
-            neckWeight: 0.15,
-            smoothSpeed: 8,
+          // Initialize animation systems via controller
+          this.animationController = new AnimationController();
+          this.animationController.init(vrm, this.camera ?? undefined);
+          this.animationController.lookAt?.setConfig({
+            headTrackingEnabled: true,
+            maxYaw: 30,
+            maxPitchUp: 25,
+            maxPitchDown: 15,
+            headWeight: 0.4,
+            smoothSpeed: 6,
           });
-          if (this.camera) {
-            this.lookAtSystem.setCamera(this.camera);
-          }
-
-          // Connect animation player to idle system
-          this.animationPlayer.setIdleAnimations(this.idleAnimations);
 
           // Preload registered animations
           animationLibrary.preloadAll().catch(err => {
@@ -630,12 +639,8 @@ export class AvatarRenderer {
       const deltaTime = this.clock.getDelta();
 
       // Update systems
-      if (this.lipSyncEngine) this.lipSyncEngine.update(deltaTime);
-      
-      // LookAt runs after animations but before VRM update
-      // This ensures look-at blends with (not fights) animation
-      if (this.lookAtSystem) this.lookAtSystem.update(deltaTime);
-      
+      if (this.animationController) this.animationController.update(deltaTime);
+
       if (this.vrm) this.vrm.update(deltaTime);
       if (this.controls) this.controls.update();
       
@@ -688,8 +693,9 @@ export class AvatarRenderer {
       this.postProcessing.dispose();
     }
 
-    if (this.lookAtSystem) {
-      this.lookAtSystem.dispose();
+    if (this.animationController) {
+      this.animationController.dispose();
+      this.animationController = null;
     }
 
     if (this.vrm) {

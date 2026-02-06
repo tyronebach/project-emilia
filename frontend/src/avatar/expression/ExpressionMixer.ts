@@ -18,7 +18,6 @@ export const CHANNEL_PRIORITY = {
   lipsync: 100,
   emotion: 80,
   blink: 60,
-  lookat: 50,
   gesture: 40,
   clip: 20,
 } as const;
@@ -26,6 +25,7 @@ export const CHANNEL_PRIORITY = {
 export class ExpressionMixer {
   private channels: Map<string, ExpressionChannel> = new Map();
   private finalValues: Map<string, number> = new Map();
+  private appliedExpressions: Set<string> = new Set();
   private expressionManager: VRMExpressionManager | null = null;
 
   /**
@@ -134,6 +134,18 @@ export class ExpressionMixer {
 
     // Reset expressions not in final values (that were previously set)
     // This prevents stale expressions from lingering
+    for (const expr of this.appliedExpressions) {
+      if (!this.finalValues.has(expr)) {
+        try {
+          this.expressionManager.setValue(expr, 0);
+        } catch (_e) {
+          // Expression may not exist on this model
+        }
+      }
+    }
+
+    // Track what we applied this frame
+    this.appliedExpressions = new Set(this.finalValues.keys());
   }
 
   /**
@@ -162,6 +174,7 @@ export class ExpressionMixer {
   dispose(): void {
     this.channels.clear();
     this.finalValues.clear();
+    this.appliedExpressions.clear();
     this.expressionManager = null;
   }
 }
