@@ -39,7 +39,6 @@ export class AnimationPlayer {
     // Use normalized humanoid root for mixer - VRM copies normalized → raw on update
     const mixerRoot = vrm.humanoid?.normalizedHumanBonesRoot || vrm.scene;
     this.mixer = new THREE.AnimationMixer(mixerRoot);
-    console.log('[AnimationPlayer] Mixer root:', mixerRoot.name || 'scene');
 
     // Listen for animation end
     this.mixer.addEventListener('finished', this.onAnimationFinished.bind(this));
@@ -61,7 +60,6 @@ export class AnimationPlayer {
 
     // If already playing something, queue this animation
     if (this.currentAction && !this.currentAction.paused) {
-      console.log(`[AnimationPlayer] Queuing '${name}' (currently playing '${this.currentAnimationName}')`);
       this.queue.push({ name, options: opts });
       return true;
     }
@@ -78,8 +76,6 @@ export class AnimationPlayer {
     // Try to load GLB animation
     const animData = await animationLibrary.load(name);
     if (!animData) {
-      // Animation not available - skip silently
-      console.log(`[AnimationPlayer] Animation '${name}' not found (add /animations/${name}.glb)`);
       return false;
     }
 
@@ -97,7 +93,6 @@ export class AnimationPlayer {
     const rightLowerArm = this.vrm.humanoid.getNormalizedBoneNode('rightLowerArm');
     
     if (!rightUpperArm || !rightLowerArm) {
-      console.warn('[AnimationPlayer] Could not find arm bones for test_wave');
       return null;
     }
 
@@ -141,14 +136,6 @@ export class AnimationPlayer {
       lowerArmValues
     ));
 
-    console.log('[AnimationPlayer] Created procedural wave:', rightUpperArm.name, rightLowerArm.name);
-    
-    // Debug: log bone world position to verify we have the right objects
-    const worldPos = new THREE.Vector3();
-    rightUpperArm.getWorldPosition(worldPos);
-    console.log('[AnimationPlayer] rightUpperArm world pos:', worldPos.toArray());
-    console.log('[AnimationPlayer] rightUpperArm parent:', rightUpperArm.parent?.name);
-    
     return new THREE.AnimationClip('test_wave', duration, tracks);
   }
 
@@ -156,16 +143,6 @@ export class AnimationPlayer {
    * Play a clip directly (for procedural animations)
    */
   private playClipDirect(clip: THREE.AnimationClip, name: string, options: Required<PlayOptions>): boolean {
-    // Debug: Check if bones exist in the scene
-    for (const track of clip.tracks) {
-      const boneName = track.name.split('.')[0];
-      let found = false;
-      this.vrm.scene.traverse((obj) => {
-        if (obj.name === boneName) found = true;
-      });
-      console.log(`[AnimationPlayer] Track target '${boneName}': ${found ? 'FOUND' : 'NOT FOUND'}`);
-    }
-
     const action = this.mixer.clipAction(clip);
     action.setLoop(options.loop ? THREE.LoopRepeat : THREE.LoopOnce, options.loop ? Infinity : 1);
     action.clampWhenFinished = !options.loop;
@@ -185,9 +162,6 @@ export class AnimationPlayer {
 
     this.currentAction = action;
     this.currentAnimationName = name;
-
-    console.log(`[AnimationPlayer] Playing '${name}' (${clip.duration.toFixed(2)}s)`);
-    console.log(`[AnimationPlayer] Action enabled: ${action.enabled}, weight: ${action.weight}, time: ${action.time}`);
     return true;
   }
 
@@ -224,8 +198,6 @@ export class AnimationPlayer {
 
     this.currentAction = action;
     this.currentAnimationName = animData.name;
-
-    console.log(`[AnimationPlayer] Playing '${animData.name}' (${animData.duration.toFixed(2)}s)`);
     return true;
   }
 
@@ -323,17 +295,13 @@ export class AnimationPlayer {
     // Build VRM bone name cache - use NORMALIZED bones (mixer targets normalized root)
     const vrmBoneNodes: Record<string, THREE.Object3D> = {};
     if (this.vrm.humanoid) {
-      console.log('[AnimationPlayer] Building bone map (normalized bones)...');
       for (const [srcName, vrmName] of Object.entries(boneMap)) {
         const node = this.vrm.humanoid.getNormalizedBoneNode(vrmName as any);
         if (node) {
           vrmBoneNodes[srcName] = node;
-          console.log(`  ${srcName} → ${vrmName} → ${node.name}`);
         }
       }
     }
-
-    console.log('[AnimationPlayer] VRM bone nodes found:', Object.keys(vrmBoneNodes).length);
 
     // Filter and remap tracks
     const newTracks: THREE.KeyframeTrack[] = [];
@@ -379,7 +347,6 @@ export class AnimationPlayer {
       // Find VRM bone node
       const vrmNode = vrmBoneNodes[boneName];
       if (!vrmNode) {
-        console.log(`[AnimationPlayer] No VRM bone for: ${boneName}`);
         skippedCount++;
         continue;
       }
@@ -392,8 +359,6 @@ export class AnimationPlayer {
       mappedCount++;
     }
 
-    console.log(`[AnimationPlayer] Retargeted: ${mappedCount} tracks, skipped: ${skippedCount}`);
-
     // Create new clip with filtered tracks
     const newClip = new THREE.AnimationClip(clip.name, clip.duration, newTracks);
     return newClip;
@@ -403,8 +368,6 @@ export class AnimationPlayer {
    * Handle animation finished event
    */
   private onAnimationFinished(_event: THREE.Event): void {
-    console.log(`[AnimationPlayer] Animation '${this.currentAnimationName}' finished`);
-    
     this.currentAction = null;
     this.currentAnimationName = null;
 
@@ -453,7 +416,6 @@ export class AnimationPlayer {
     this.debugBoneTest = this.vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
     this.debugTestTime = 0;
     this.debugTestActive = true;
-    console.log('[AnimationPlayer] Direct bone test started (normalized bone):', this.debugBoneTest?.name);
   }
 
   /**
@@ -474,7 +436,6 @@ export class AnimationPlayer {
         // Reset to identity
         this.debugBoneTest.quaternion.identity();
         this.debugTestActive = false;
-        console.log('[AnimationPlayer] Direct bone test finished');
       }
     }
   }

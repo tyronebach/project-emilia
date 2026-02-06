@@ -12,9 +12,15 @@ const DEFAULT_BLINK_DURATION = 120; // ms - how long eyes stay closed
 
 type BlinkPhase = 'open' | 'closing' | 'closed' | 'opening';
 
+export interface BlinkControllerOptions {
+  expressions?: string[];
+  channelName?: string;
+}
+
 export class BlinkController {
   private mixer: ExpressionMixer;
   private channelName = 'blink';
+  private expressions: string[] = ['blink'];
 
   private enabled: boolean = true;
   private phase: BlinkPhase = 'open';
@@ -32,8 +38,10 @@ export class BlinkController {
   private pauseResolve: (() => void) | null = null;
   private nextBlinkTime: number = 0;
 
-  constructor(mixer: ExpressionMixer) {
+  constructor(mixer: ExpressionMixer, options: BlinkControllerOptions = {}) {
     this.mixer = mixer;
+    this.channelName = options.channelName ?? this.channelName;
+    this.expressions = options.expressions?.length ? options.expressions : this.expressions;
     this.mixer.createChannel(this.channelName, 60);
     this.scheduleNextBlink();
   }
@@ -159,7 +167,9 @@ export class BlinkController {
     }
 
     // Apply to mixer
-    this.mixer.setExpression(this.channelName, 'blink', this.blinkValue);
+    for (const expr of this.expressions) {
+      this.mixer.setExpression(this.channelName, expr, this.blinkValue);
+    }
   }
 
   /**
