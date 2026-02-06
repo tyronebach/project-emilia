@@ -19,7 +19,7 @@
       "fadeOut": 0.25
     },
     "bow": {
-      "file": "bow.glb",
+      "file": "fm_vrma_motion_pack_01_01.vrma",
       "loop": false,
       "fadeIn": 0.25,
       "fadeOut": 0.25
@@ -47,6 +47,18 @@
       "loop": false,
       "fadeIn": 0.25,
       "fadeOut": 0.3
+    },
+    "shy": {
+      "file": "fm_vrma_motion_pack_01_05.vrma",
+      "loop": false,
+      "fadeIn": 0.25,
+      "fadeOut": 0.25
+    },
+    "surprised": {
+      "file": "fm_vrma_motion_pack_01_06.vrma",
+      "loop": false,
+      "fadeIn": 0.2,
+      "fadeOut": 0.25
     }
   },
   
