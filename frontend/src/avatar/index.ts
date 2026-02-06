@@ -19,6 +19,7 @@ export { LipSyncEngine } from './LipSyncEngine';
 export { IdleAnimations } from './IdleAnimations';
 export { AnimationPlayer } from './AnimationPlayer';
 export { AnimationLibrary, animationLibrary } from './AnimationLibrary';
+export type { ManifestEntry, AnimationClipData } from './AnimationLibrary';
 
 // VRM preloading
 export { preloadVRM, isVRMCached, clearVRMCache } from './preloadVRM';
