@@ -21,6 +21,9 @@ export { AnimationPlayer } from './AnimationPlayer';
 export { AnimationLibrary, animationLibrary } from './AnimationLibrary';
 export type { ManifestEntry, AnimationClipData } from './AnimationLibrary';
 
+export { AnimationStateMachine, animationStateMachine } from './AnimationStateMachine';
+export type { AnimationStateMachineConfig, AnimationStateConfig, ResolvedAction } from './AnimationStateMachine';
+
 // VRM preloading
 export { preloadVRM, isVRMCached, clearVRMCache } from './preloadVRM';
 

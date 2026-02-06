@@ -9,6 +9,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VRMLoaderPlugin, VRMUtils, VRM } from '@pixiv/three-vrm';
 import { AnimationController } from './AnimationController';
 import { animationLibrary } from './AnimationLibrary';
+import { animationStateMachine } from './AnimationStateMachine';
 import { PostProcessingPipeline } from './PostProcessingPipeline';
 import type { LipSyncEngine } from './LipSyncEngine';
 import type { AnimationPlayer } from './AnimationPlayer';
@@ -552,7 +553,11 @@ export class AvatarRenderer {
           // Set VRM for animation library FIRST (needed for VRMA animations)
           animationLibrary.setVRM(vrm);
           
-          // Fetch animation manifest
+          // Load animation state machine and manifest (don't await - can load in parallel)
+          animationStateMachine.load().catch(err => {
+            console.warn('[AvatarRenderer] Failed to load animation state machine:', err);
+          });
+          
           animationLibrary.fetchManifest().catch(err => {
             console.warn('[AvatarRenderer] Failed to fetch animation manifest:', err);
           });

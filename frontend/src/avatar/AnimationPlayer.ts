@@ -9,6 +9,7 @@
 import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
 import { animationLibrary, type AnimationClipData } from './AnimationLibrary';
+import { animationStateMachine } from './AnimationStateMachine';
 import type { IdleAnimations } from './IdleAnimations';
 
 export interface PlayOptions {
@@ -52,15 +53,34 @@ export class AnimationPlayer {
   }
 
   /**
-   * Play an animation by name
-   * Animations must exist as GLB files in public/animations/
+   * Play an animation by action name or filename
+   * First checks state machine for action config, then falls back to direct file load
    */
   async play(name: string, options: PlayOptions = {}): Promise<boolean> {
-    const opts = { ...DEFAULT_OPTIONS, ...options };
+    // Check state machine for action config
+    const actionConfig = animationStateMachine.getAction(name);
+    
+    let file: string;
+    let opts: Required<PlayOptions>;
+    
+    if (actionConfig) {
+      // Use state machine config
+      file = actionConfig.file;
+      opts = {
+        loop: options.loop ?? actionConfig.loop,
+        fadeIn: options.fadeIn ?? actionConfig.fadeIn,
+        fadeOut: options.fadeOut ?? actionConfig.fadeOut,
+        timeScale: options.timeScale ?? DEFAULT_OPTIONS.timeScale,
+      };
+    } else {
+      // Fall back to direct file name (for dropdown selection, etc.)
+      file = name;
+      opts = { ...DEFAULT_OPTIONS, ...options };
+    }
 
     // If already playing something, queue this animation
     if (this.currentAction && !this.currentAction.paused) {
-      this.queue.push({ name, options: opts });
+      this.queue.push({ name: file, options: opts });
       return true;
     }
 
@@ -73,8 +93,8 @@ export class AnimationPlayer {
       return false;
     }
 
-    // Try to load GLB animation
-    const animData = await animationLibrary.load(name);
+    // Load animation from library
+    const animData = await animationLibrary.load(file);
     if (!animData) {
       return false;
     }

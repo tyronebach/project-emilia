@@ -1,0 +1,59 @@
+{
+  "$schema": "./state-machine.schema.json",
+  "version": 1,
+  "name": "Default Animation State Machine",
+  "description": "Default animation config - can be overridden per agent",
+  
+  "idle": {
+    "file": "fm_vrma_motion_pack_01_03.vrma",
+    "loop": true,
+    "fadeIn": 0.3,
+    "fadeOut": 0.3
+  },
+  
+  "actions": {
+    "wave": {
+      "file": "vrmaMotionPack_01.vrma",
+      "loop": false,
+      "fadeIn": 0.25,
+      "fadeOut": 0.25
+    },
+    "bow": {
+      "file": "bow.glb",
+      "loop": false,
+      "fadeIn": 0.25,
+      "fadeOut": 0.25
+    },
+    "nod": {
+      "file": "fm_vrma_motion_pack_01_02.vrma",
+      "loop": false,
+      "fadeIn": 0.2,
+      "fadeOut": 0.2
+    },
+    "dance": {
+      "file": "blingBangBangBorn.vrma",
+      "loop": false,
+      "fadeIn": 0.3,
+      "fadeOut": 0.5
+    },
+    "thinking": {
+      "file": "fm_vrma_motion_pack_01_04.vrma",
+      "loop": true,
+      "fadeIn": 0.3,
+      "fadeOut": 0.3
+    },
+    "excited": {
+      "file": "maitakeDance.vrma",
+      "loop": false,
+      "fadeIn": 0.25,
+      "fadeOut": 0.3
+    }
+  },
+  
+  "defaults": {
+    "fadeIn": 0.25,
+    "fadeOut": 0.25,
+    "loop": false,
+    "returnToIdle": true
+  }
+}
