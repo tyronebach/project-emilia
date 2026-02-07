@@ -1,16 +1,14 @@
 /**
  * Animation Player
- * Plays GLB animations on VRM model using Three.js AnimationMixer
- * 
- * Animation files go in: public/animations/{name}.glb
- * Supported: nod, wave, thinking, surprised, etc.
+ * Plays GLB/VRMA gesture animations on VRM model via AnimationGraph.
+ * Handles retargeting, queuing, and state machine config lookup.
  */
 
 import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
 import { animationLibrary, type AnimationClipData } from './AnimationLibrary';
 import { animationStateMachine } from './AnimationStateMachine';
-import type { IdleAnimations } from './IdleAnimations';
+import type { AnimationGraph } from './AnimationGraph';
 
 export interface PlayOptions {
   loop?: boolean;
@@ -28,28 +26,20 @@ const DEFAULT_OPTIONS: Required<PlayOptions> = {
 
 export class AnimationPlayer {
   private vrm: VRM;
-  private mixer: THREE.AnimationMixer;
-  private currentAction: THREE.AnimationAction | null = null;
+  private animationGraph: AnimationGraph | null = null;
   private currentAnimationName: string | null = null;
   private queue: Array<{ name: string; options: PlayOptions }> = [];
-  private idleAnimations: IdleAnimations | null = null;
 
-  constructor(vrm: VRM) {
+  constructor(vrm: VRM, animationGraph?: AnimationGraph) {
     this.vrm = vrm;
-    
-    // Use normalized humanoid root for mixer - VRM copies normalized → raw on update
-    const mixerRoot = vrm.humanoid?.normalizedHumanBonesRoot || vrm.scene;
-    this.mixer = new THREE.AnimationMixer(mixerRoot);
-
-    // Listen for animation end
-    this.mixer.addEventListener('finished', this.onAnimationFinished.bind(this));
+    this.animationGraph = animationGraph ?? null;
   }
 
   /**
-   * Set reference to idle animation system for pausing during triggered animations
+   * Set the AnimationGraph (for deferred init)
    */
-  setIdleAnimations(idleAnimations: IdleAnimations): void {
-    this.idleAnimations = idleAnimations;
+  setAnimationGraph(graph: AnimationGraph): void {
+    this.animationGraph = graph;
   }
 
   /**
@@ -59,12 +49,11 @@ export class AnimationPlayer {
   async play(name: string, options: PlayOptions = {}): Promise<boolean> {
     // Check state machine for action config
     const actionConfig = animationStateMachine.getAction(name);
-    
+
     let file: string;
     let opts: Required<PlayOptions>;
-    
+
     if (actionConfig) {
-      // Use state machine config
       file = actionConfig.file;
       opts = {
         loop: options.loop ?? actionConfig.loop,
@@ -73,13 +62,12 @@ export class AnimationPlayer {
         timeScale: options.timeScale ?? DEFAULT_OPTIONS.timeScale,
       };
     } else {
-      // Fall back to direct file name (for dropdown selection, etc.)
       file = name;
       opts = { ...DEFAULT_OPTIONS, ...options };
     }
 
     // If already playing something, queue this animation
-    if (this.currentAction && !this.currentAction.paused) {
+    if (this.animationGraph?.isGesturePlaying()) {
       this.queue.push({ name: file, options: opts });
       return true;
     }
@@ -88,7 +76,7 @@ export class AnimationPlayer {
     if (name === 'test_wave') {
       const clip = this.createProceduralWave();
       if (clip) {
-        return this.playClipDirect(clip, 'test_wave', opts);
+        return this.playClipViaGraph(clip, 'test_wave', opts);
       }
       return false;
     }
@@ -108,10 +96,9 @@ export class AnimationPlayer {
   private createProceduralWave(): THREE.AnimationClip | null {
     if (!this.vrm.humanoid) return null;
 
-    // Use NORMALIZED bones - mixer targets normalized root
     const rightUpperArm = this.vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
     const rightLowerArm = this.vrm.humanoid.getNormalizedBoneNode('rightLowerArm');
-    
+
     if (!rightUpperArm || !rightLowerArm) {
       return null;
     }
@@ -119,17 +106,11 @@ export class AnimationPlayer {
     const duration = 2.0;
     const tracks: THREE.KeyframeTrack[] = [];
 
-    // Right upper arm - raise up (rotate around Z axis for VRM)
-    // VRM T-pose: arms down, Z is forward/back, X is up/down for shoulder rotation
     const upperArmTimes = [0, 0.5, 1.5, 2.0];
     const upperArmValues = [
-      // Start: neutral (identity quaternion components: x, y, z, w)
       0, 0, 0, 1,
-      // Raised: rotate to raise arm (around local Z, about -90 degrees)
       0, 0, -0.6, 0.8,
-      // Still raised
       0, 0, -0.6, 0.8,
-      // Back to neutral
       0, 0, 0, 1,
     ];
     tracks.push(new THREE.QuaternionKeyframeTrack(
@@ -138,17 +119,16 @@ export class AnimationPlayer {
       upperArmValues
     ));
 
-    // Right lower arm - wave motion (small oscillation)
     const lowerArmTimes = [0, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 2.0];
     const lowerArmValues = [
-      0, 0, 0, 1,           // Start
-      0.2, 0, 0, 0.98,      // Bend slightly
-      0.3, 0, 0, 0.95,      // Wave 1
-      0.1, 0, 0, 0.99,      // Wave 2
-      0.3, 0, 0, 0.95,      // Wave 3
-      0.1, 0, 0, 0.99,      // Wave 4
-      0.2, 0, 0, 0.98,      // Wave 5
-      0, 0, 0, 1,           // End
+      0, 0, 0, 1,
+      0.2, 0, 0, 0.98,
+      0.3, 0, 0, 0.95,
+      0.1, 0, 0, 0.99,
+      0.3, 0, 0, 0.95,
+      0.1, 0, 0, 0.99,
+      0.2, 0, 0, 0.98,
+      0, 0, 0, 1,
     ];
     tracks.push(new THREE.QuaternionKeyframeTrack(
       `${rightLowerArm.name}.quaternion`,
@@ -160,87 +140,83 @@ export class AnimationPlayer {
   }
 
   /**
-   * Play a clip directly (for procedural animations)
+   * Play a clip via AnimationGraph (for procedural animations)
    */
-  private playClipDirect(clip: THREE.AnimationClip, name: string, options: Required<PlayOptions>): boolean {
-    const action = this.mixer.clipAction(clip);
-    action.setLoop(options.loop ? THREE.LoopRepeat : THREE.LoopOnce, options.loop ? Infinity : 1);
-    action.clampWhenFinished = !options.loop;
-    action.timeScale = options.timeScale;
+  private playClipViaGraph(clip: THREE.AnimationClip, name: string, options: Required<PlayOptions>): boolean {
+    if (!this.animationGraph) return false;
 
-    // Stop and clean up current animation if any
-    if (this.currentAction) {
-      const oldClip = this.currentAction.getClip();
-      this.currentAction.fadeOut(options.fadeIn);
-      setTimeout(() => {
-        this.mixer.uncacheAction(oldClip);
-        this.mixer.uncacheClip(oldClip);
-      }, options.fadeIn * 1000);
-    }
+    this.animationGraph.playCrossfade(clip, {
+      fadeIn: options.fadeIn,
+      fadeOut: options.fadeOut,
+      loop: options.loop,
+      timeScale: options.timeScale,
+    });
 
-    if (this.idleAnimations) {
-      this.idleAnimations.pause();
-    }
-
-    action.reset();
-    action.fadeIn(options.fadeIn);
-    action.play();
-
-    this.currentAction = action;
     this.currentAnimationName = name;
+
+    // Schedule cleanup tracking
+    if (!options.loop) {
+      const duration = clip.duration / options.timeScale;
+      setTimeout(() => {
+        if (this.currentAnimationName === name) {
+          this.currentAnimationName = null;
+          this.playNextInQueue();
+        }
+      }, (duration + options.fadeOut) * 1000);
+    }
+
     return true;
   }
 
   /**
-   * Play a clip directly
+   * Play a loaded animation clip
    */
   private playClip(animData: AnimationClipData, options: Required<PlayOptions>): boolean {
     const { clip, type } = animData;
 
     // VRMA clips are already bound to VRM, no retargeting needed
-    // GLB clips may need bone name mapping (Mixamo, BVH, etc.)
     const finalClip = type === 'vrma' ? clip : this.retargetToVRM(clip);
 
-    // Create action
-    const action = this.mixer.clipAction(finalClip);
-    action.setLoop(options.loop ? THREE.LoopRepeat : THREE.LoopOnce, options.loop ? Infinity : 1);
-    action.clampWhenFinished = !options.loop;
-    action.timeScale = options.timeScale;
+    if (!this.animationGraph) return false;
 
-    // Stop and clean up current animation if any
-    if (this.currentAction) {
-      const oldClip = this.currentAction.getClip();
-      this.currentAction.fadeOut(options.fadeIn);
-      // Schedule cleanup after fade
-      setTimeout(() => {
-        this.mixer.uncacheAction(oldClip);
-        this.mixer.uncacheClip(oldClip);
-      }, options.fadeIn * 1000);
-    }
+    this.animationGraph.playCrossfade(finalClip, {
+      fadeIn: options.fadeIn,
+      fadeOut: options.fadeOut,
+      loop: options.loop,
+      timeScale: options.timeScale,
+    });
 
-    // Pause idle animations
-    if (this.idleAnimations) {
-      this.idleAnimations.pause();
-    }
-
-    // Start new animation
-    action.reset();
-    action.fadeIn(options.fadeIn);
-    action.play();
-
-    this.currentAction = action;
     this.currentAnimationName = animData.name;
+
+    // Schedule cleanup tracking for non-looping
+    if (!options.loop) {
+      const duration = finalClip.duration / options.timeScale;
+      setTimeout(() => {
+        if (this.currentAnimationName === animData.name) {
+          this.currentAnimationName = null;
+          this.playNextInQueue();
+        }
+      }, (duration + options.fadeOut) * 1000);
+    }
+
     return true;
   }
 
   /**
+   * Play next queued animation or clean up
+   */
+  private playNextInQueue(): void {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift()!;
+      this.play(next.name, next.options);
+    }
+  }
+
+  /**
    * Retarget animation clip to VRM bone names
-   * Converts common naming conventions (Mixamo, BVH/Bandai-Namco, etc.) to VRM standard
    */
   private retargetToVRM(clip: THREE.AnimationClip): THREE.AnimationClip {
-    // Bone name mapping (various formats → VRM humanoid bone names)
     const boneMap: Record<string, string> = {
-      // Mixamo format (with colon separator)
       'mixamorig:Hips': 'hips',
       'mixamorig:Spine': 'spine',
       'mixamorig:Spine1': 'chest',
@@ -263,7 +239,6 @@ export class AnimationPlayer {
       'mixamorig:RightLeg': 'rightLowerLeg',
       'mixamorig:RightFoot': 'rightFoot',
       'mixamorig:RightToeBase': 'rightToes',
-      // Mixamo format (no separator - legacy)
       'mixamorigHips': 'hips',
       'mixamorigSpine': 'spine',
       'mixamorigSpine1': 'chest',
@@ -284,7 +259,6 @@ export class AnimationPlayer {
       'mixamorigRightUpLeg': 'rightUpperLeg',
       'mixamorigRightLeg': 'rightLowerLeg',
       'mixamorigRightFoot': 'rightFoot',
-      // Bandai-Namco BVH format (from Blender export)
       'Hips': 'hips',
       'Spine': 'spine',
       'Chest': 'chest',
@@ -308,11 +282,8 @@ export class AnimationPlayer {
       'Toes_R': 'rightToes',
     };
 
-    // Bones to skip (root bones, helpers)
     const skipBones = new Set(['joint_Root', 'Armature', 'Root']);
-    
-    // Allow all mapped bones for Mixamo (their rig matches humanoid standard)
-    // Only restrict BVH bones (rest pose mismatch)
+
     const bvhOnlyBones = new Set([
       'Spine', 'Chest', 'Neck', 'Head',
       'Shoulder_L', 'UpperArm_L', 'LowerArm_L', 'Hand_L',
@@ -320,11 +291,9 @@ export class AnimationPlayer {
       'Hips', 'UpperLeg_L', 'LowerLeg_L', 'Foot_L', 'Toes_L',
       'UpperLeg_R', 'LowerLeg_R', 'Foot_R', 'Toes_R',
     ]);
-    
-    // Check if this is a Mixamo animation (has mixamorig: prefix)
+
     const isMixamo = clip.tracks.some(t => t.name.includes('mixamorig'));
 
-    // Build VRM bone name cache - use NORMALIZED bones (mixer targets normalized root)
     const vrmBoneNodes: Record<string, THREE.Object3D> = {};
     if (this.vrm.humanoid) {
       for (const [srcName, vrmName] of Object.entries(boneMap)) {
@@ -335,157 +304,61 @@ export class AnimationPlayer {
       }
     }
 
-    // Filter and remap tracks
     const newTracks: THREE.KeyframeTrack[] = [];
-    let mappedCount = 0;
-    let skippedCount = 0;
 
     for (const track of clip.tracks) {
-      // Track names are like "Hips.position" or "Head.quaternion"
       const dotIndex = track.name.indexOf('.');
-      if (dotIndex === -1) {
-        skippedCount++;
-        continue;
-      }
+      if (dotIndex === -1) continue;
 
       const boneName = track.name.substring(0, dotIndex);
       const property = track.name.substring(dotIndex + 1);
 
-      // Skip root/helper bones
-      if (skipBones.has(boneName)) {
-        skippedCount++;
-        continue;
-      }
+      if (skipBones.has(boneName)) continue;
 
-      // For BVH (non-Mixamo): only allow upper body until rest pose retargeting is fixed
       if (!isMixamo && bvhOnlyBones.has(boneName)) {
-        // BVH bone - check if it's upper body
-        const upperBodyBvh = ['Spine', 'Chest', 'Neck', 'Head', 
+        const upperBodyBvh = ['Spine', 'Chest', 'Neck', 'Head',
           'Shoulder_L', 'UpperArm_L', 'LowerArm_L', 'Hand_L',
           'Shoulder_R', 'UpperArm_R', 'LowerArm_R', 'Hand_R'];
-        if (!upperBodyBvh.includes(boneName)) {
-          skippedCount++;
-          continue;
-        }
+        if (!upperBodyBvh.includes(boneName)) continue;
       }
 
-      // Skip position/translation tracks (causes flying/movement)
-      // Only keep quaternion (rotation) tracks
-      if (property === 'position' || property === 'translation') {
-        skippedCount++;
-        continue;
-      }
+      if (property === 'position' || property === 'translation') continue;
 
-      // Find VRM bone node
       const vrmNode = vrmBoneNodes[boneName];
-      if (!vrmNode) {
-        skippedCount++;
-        continue;
-      }
+      if (!vrmNode) continue;
 
-      // Clone track with new target name
       const newTrackName = `${vrmNode.name}.${property}`;
       const newTrack = track.clone();
       newTrack.name = newTrackName;
       newTracks.push(newTrack);
-      mappedCount++;
     }
 
-    // Create new clip with filtered tracks
-    const newClip = new THREE.AnimationClip(clip.name, clip.duration, newTracks);
-    return newClip;
-  }
-
-  /**
-   * Handle animation finished event
-   */
-  private onAnimationFinished(_event: THREE.Event): void {
-    // Stop and uncache the finished action to release the pose
-    if (this.currentAction) {
-      this.currentAction.stop();
-      // Uncache to fully remove from mixer (allows clean restart)
-      const clip = this.currentAction.getClip();
-      this.mixer.uncacheAction(clip);
-      this.mixer.uncacheClip(clip);
-    }
-    
-    this.currentAction = null;
-    this.currentAnimationName = null;
-
-    // Play next in queue OR resume idle
-    if (this.queue.length > 0) {
-      const next = this.queue.shift()!;
-      this.play(next.name, next.options);
-    } else {
-      // Resume idle animations (will return to rest pose)
-      if (this.idleAnimations) {
-        this.idleAnimations.resume();
-      }
-    }
+    return new THREE.AnimationClip(clip.name, clip.duration, newTracks);
   }
 
   /**
    * Stop current animation
    */
   stop(fadeOut: number = 0.25): void {
-    if (this.currentAction) {
-      this.currentAction.fadeOut(fadeOut);
-      setTimeout(() => {
-        if (this.currentAction) {
-          this.currentAction.stop();
-          this.currentAction = null;
-          this.currentAnimationName = null;
-        }
-        if (this.idleAnimations) {
-          this.idleAnimations.resume();
-        }
-      }, fadeOut * 1000);
+    if (this.animationGraph) {
+      this.animationGraph.stopGesture(fadeOut);
     }
+    this.currentAnimationName = null;
     this.queue = [];
   }
 
-  // Debug: direct bone test
-  private debugBoneTest: THREE.Object3D | null = null;
-  private debugTestTime: number = 0;
-  private debugTestActive: boolean = false;
-
   /**
-   * Start direct bone manipulation test using VRM normalized bone
+   * Update - no-op since AnimationGraph owns the mixer now
    */
-  testDirectBone(): void {
-    if (!this.vrm.humanoid) return;
-    this.debugBoneTest = this.vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
-    this.debugTestTime = 0;
-    this.debugTestActive = true;
-  }
-
-  /**
-   * Update mixer (call each frame)
-   */
-  update(deltaTime: number): void {
-    this.mixer.update(deltaTime);
-
-    // Direct bone manipulation test - manipulate NORMALIZED bone (before VRM copies to raw)
-    if (this.debugTestActive && this.debugBoneTest) {
-      this.debugTestTime += deltaTime;
-      const angle = Math.sin(this.debugTestTime * 3) * 0.5; // oscillate
-      
-      // Set rotation on normalized bone - VRM will copy to raw bone in vrm.update()
-      this.debugBoneTest.quaternion.setFromEuler(new THREE.Euler(0, 0, angle));
-      
-      if (this.debugTestTime > 3) {
-        // Reset to identity
-        this.debugBoneTest.quaternion.identity();
-        this.debugTestActive = false;
-      }
-    }
+  update(_deltaTime: number): void {
+    // AnimationGraph.update() handles mixer updates
   }
 
   /**
    * Check if currently playing
    */
   isPlaying(): boolean {
-    return this.currentAction !== null && !this.currentAction.paused;
+    return this.animationGraph?.isGesturePlaying() ?? false;
   }
 
   /**
@@ -499,8 +372,7 @@ export class AnimationPlayer {
    * Dispose
    */
   dispose(): void {
-    this.mixer.stopAllAction();
-    this.mixer.uncacheRoot(this.vrm.scene);
+    // AnimationGraph handles cleanup
   }
 }
 

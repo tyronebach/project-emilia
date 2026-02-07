@@ -64,8 +64,7 @@ class ChatResponse(BaseModel):
     session_id: str
     processing_ms: int
     model: Optional[str] = None
-    moods: List[dict] = []
-    animations: List[str] = []
+    behavior: dict = {}
     usage: Optional[dict] = None
 
 

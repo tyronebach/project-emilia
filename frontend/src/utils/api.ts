@@ -50,8 +50,12 @@ interface StreamResponse {
   session_id?: string;
   processing_ms?: number;
   model?: string;
-  moods?: Array<{ mood: string; intensity: number }>;
-  animations?: string[];
+  behavior?: {
+    intent?: string | null;
+    mood?: string | null;
+    mood_intensity?: number;
+    energy?: string | null;
+  };
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
@@ -196,16 +200,14 @@ export async function renameSession(sessionId: string, name: string): Promise<Se
 
 // ============ CHAT API ============
 
-const AVATAR_TAG_REGEX = /<mood:[^>]+>|<animation:[^>]+>|\[(?:mood|anim):[^\]]*\]/gi;
+const AVATAR_TAG_REGEX = /\[(?:mood|intent|energy):[^\]]*\]/gi;
 
 function stripAvatarTagsRaw(text: string): string {
   return text.replace(AVATAR_TAG_REGEX, '');
 }
 
 function stripTrailingPartialTag(text: string): string {
-  return text
-    .replace(/\[(?:mood|anim):[^\]]*$/i, '')
-    .replace(/<(?:mood|animation):[^>]*$/i, '');
+  return text.replace(/\[(?:mood|intent|energy):[^\]]*$/i, '');
 }
 
 export function stripAvatarTagsStreaming(text: string): string {
@@ -290,8 +292,7 @@ export async function streamChat(
                 session_id: data.session_id,
                 processing_ms: data.processing_ms,
                 model: data.model,
-                moods: data.moods,
-                animations: data.animations,
+                behavior: data.behavior,
                 usage: data.usage,
               });
             }

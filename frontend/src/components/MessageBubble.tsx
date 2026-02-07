@@ -111,16 +111,16 @@ function MessageBubble({ message }: MessageBubbleProps) {
               <span>🔄 {processingTime}</span>
             </>
           )}
-          {meta?.moods?.[0] && (
+          {meta?.behavior?.intent && (
             <>
               <span>•</span>
-              <span>🎭 {meta.moods[0].mood}{meta.moods[0].intensity ? ` ${Math.round(meta.moods[0].intensity * 100)}%` : ''}</span>
+              <span>🎭 {meta.behavior.intent}{meta.behavior.mood ? ` (${meta.behavior.mood})` : ''}</span>
             </>
           )}
-          {meta?.animations?.[0] && (
+          {!meta?.behavior?.intent && meta?.behavior?.mood && (
             <>
               <span>•</span>
-              <span>✨ {meta.animations[0]}</span>
+              <span>🎭 {meta.behavior.mood}</span>
             </>
           )}
           {meta?.audio_base64 && (

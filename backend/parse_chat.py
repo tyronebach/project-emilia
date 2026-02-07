@@ -5,57 +5,61 @@ from typing import Any, Dict, List, Optional, Tuple
 
 
 # Regex patterns for avatar control tags
-# Format 1: [MOOD:happy:0.8] [ANIM:wave]
-MOOD_PATTERN_BRACKET = re.compile(r'\[MOOD:([^:\]]+):?([\d.]*)\]', re.IGNORECASE)
-ANIM_PATTERN_BRACKET = re.compile(r'\[ANIM:([^\]]+)\]', re.IGNORECASE)
-
-# Format 2: <mood:happy> <mood:happy:0.8> <animation:wave>
-MOOD_PATTERN_ANGLE = re.compile(r'<mood:([^:>]+):?([\d.]*)>', re.IGNORECASE)
-ANIM_PATTERN_ANGLE = re.compile(r'<animation:([^>]+)>', re.IGNORECASE)
+# [MOOD:happy:0.8] [INTENT:greeting] [ENERGY:high]
+MOOD_PATTERN = re.compile(r'\[MOOD:([^:\]]+):?([\d.]*)\]', re.IGNORECASE)
+INTENT_PATTERN = re.compile(r'\[INTENT:([^\]]+)\]', re.IGNORECASE)
+ENERGY_PATTERN = re.compile(r'\[ENERGY:([^\]]+)\]', re.IGNORECASE)
 
 
-def extract_avatar_commands(text: str) -> Tuple[str, List[Dict[str, Any]], List[str]]:
-    """Extract mood and animation tags from text.
-    
-    Supports both formats:
-    - [MOOD:happy:0.8] [ANIM:wave]
-    - <mood:happy:0.8> <animation:wave>
-    
-    Returns: (clean_text, moods, animations)
+def extract_avatar_commands(text: str) -> Tuple[str, Dict[str, Any]]:
+    """Extract behavior tags from text.
+
+    Supported tags:
+    - [MOOD:happy:0.8] or [MOOD:happy]
+    - [INTENT:greeting]
+    - [ENERGY:high]
+
+    Returns: (clean_text, behavior)
     - clean_text: text with tags removed
-    - moods: list of {"mood": "happy", "intensity": 0.8}
-    - animations: list of animation names ["wave"]
+    - behavior: {"intent": str|None, "mood": str|None, "mood_intensity": float, "energy": str|None}
     """
-    moods: List[Dict[str, Any]] = []
-    animations: List[str] = []
-    
-    # Extract moods from both formats
-    for pattern in [MOOD_PATTERN_BRACKET, MOOD_PATTERN_ANGLE]:
-        for match in pattern.finditer(text):
-            mood_name = match.group(1)
-            intensity_str = match.group(2)
-            try:
-                intensity = float(intensity_str) if intensity_str else 1.0
-            except ValueError:
-                intensity = 1.0
-            intensity = max(0.0, min(1.0, intensity))
-            moods.append({"mood": mood_name, "intensity": intensity})
-    
-    # Extract animations from both formats
-    for pattern in [ANIM_PATTERN_BRACKET, ANIM_PATTERN_ANGLE]:
-        for match in pattern.finditer(text):
-            animations.append(match.group(1))
-    
-    # Remove all tag formats from text
-    clean_text = MOOD_PATTERN_BRACKET.sub('', text)
-    clean_text = ANIM_PATTERN_BRACKET.sub('', clean_text)
-    clean_text = MOOD_PATTERN_ANGLE.sub('', clean_text)
-    clean_text = ANIM_PATTERN_ANGLE.sub('', clean_text)
-    
+    behavior: Dict[str, Any] = {
+        "intent": None,
+        "mood": None,
+        "mood_intensity": 1.0,
+        "energy": None,
+    }
+
+    # Extract mood
+    mood_match = MOOD_PATTERN.search(text)
+    if mood_match:
+        behavior["mood"] = mood_match.group(1).lower()
+        intensity_str = mood_match.group(2)
+        try:
+            behavior["mood_intensity"] = float(intensity_str) if intensity_str else 1.0
+        except ValueError:
+            behavior["mood_intensity"] = 1.0
+        behavior["mood_intensity"] = max(0.0, min(1.0, behavior["mood_intensity"]))
+
+    # Extract intent
+    intent_match = INTENT_PATTERN.search(text)
+    if intent_match:
+        behavior["intent"] = intent_match.group(1).lower()
+
+    # Extract energy
+    energy_match = ENERGY_PATTERN.search(text)
+    if energy_match:
+        behavior["energy"] = energy_match.group(1).lower()
+
+    # Remove all tags from text
+    clean_text = MOOD_PATTERN.sub('', text)
+    clean_text = INTENT_PATTERN.sub('', clean_text)
+    clean_text = ENERGY_PATTERN.sub('', clean_text)
+
     # Clean up extra whitespace
     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-    
-    return clean_text, moods, animations
+
+    return clean_text, behavior
 
 
 def parse_chat_completion(result: Dict[str, Any]) -> Dict[str, Any]:
@@ -65,24 +69,21 @@ def parse_chat_completion(result: Dict[str, Any]) -> Dict[str, Any]:
     - message.content as a string
     - message.content as an array of content parts (e.g. [{type:'text', text:'...'}, ...])
 
-    Also extracts [MOOD:x:y] and [ANIM:z] avatar control tags.
+    Also extracts [INTENT:X], [MOOD:X:Y], [ENERGY:X] avatar behavior tags.
 
-    Returns dict with: response_text, reasoning, thinking, moods, animations
+    Returns dict with: response_text, reasoning, thinking, behavior
     """
     response_text: str = ""
     reasoning: Optional[str] = None
     thinking: Optional[str] = None
-    moods: List[Dict[str, Any]] = []
-    animations: List[str] = []
 
     choices = result.get("choices") or []
     if not choices:
         return {
-            "response_text": response_text, 
-            "reasoning": reasoning, 
+            "response_text": response_text,
+            "reasoning": reasoning,
             "thinking": thinking,
-            "moods": moods,
-            "animations": animations
+            "behavior": {"intent": None, "mood": None, "mood_intensity": 1.0, "energy": None}
         }
 
     message = (choices[0] or {}).get("message") or {}
@@ -112,12 +113,11 @@ def parse_chat_completion(result: Dict[str, Any]) -> Dict[str, Any]:
         response_text = "".join(text_parts).strip()
 
     # Extract avatar commands and clean the text
-    response_text, moods, animations = extract_avatar_commands(response_text)
+    response_text, behavior = extract_avatar_commands(response_text)
 
     return {
-        "response_text": response_text, 
-        "reasoning": reasoning, 
+        "response_text": response_text,
+        "reasoning": reasoning,
         "thinking": thinking,
-        "moods": moods,
-        "animations": animations
+        "behavior": behavior
     }

@@ -12,8 +12,12 @@ interface StreamResponse {
   session_id?: string;
   processing_ms?: number;
   model?: string;
-  moods?: Array<{ mood: string; intensity: number }>;
-  animations?: string[];
+  behavior?: {
+    intent?: string | null;
+    mood?: string | null;
+    mood_intensity?: number;
+    energy?: string | null;
+  };
   usage?: TokenUsage;
 }
 
@@ -211,8 +215,7 @@ export function useChat() {
             meta: {
               processing_ms: data.processing_ms,
               model: data.model,
-              moods: data.moods,
-              animations: data.animations,
+              behavior: data.behavior,
               usage: data.usage,
               streaming: false
             }
@@ -248,11 +251,9 @@ export function useChat() {
         if (audio_base64) {
           updateMessage(messageId, {
             meta: {
-              ...finalResponse,
               processing_ms: finalResponse.processing_ms,
               model: finalResponse.model,
-              moods: finalResponse.moods,
-              animations: finalResponse.animations,
+              behavior: finalResponse.behavior,
               usage: finalResponse.usage,
               streaming: false,
               audio_base64,
