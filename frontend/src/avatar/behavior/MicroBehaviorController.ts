@@ -6,6 +6,8 @@
 
 import type { MicroBehavior } from '../types/behavior';
 
+const EMPTY_MICROS: readonly MicroBehavior[] = [];
+
 interface ScheduledMicroBehavior {
   behavior: MicroBehavior;
   executeAt: number; // elapsed time in seconds when this should fire
@@ -37,8 +39,12 @@ export class MicroBehaviorController {
   /**
    * Update and return any ready micro-behaviors
    */
-  update(deltaTime: number): MicroBehavior[] {
+  update(deltaTime: number): readonly MicroBehavior[] {
     this.elapsed += deltaTime;
+
+    if (this.queue.length === 0 || this.queue[0].executeAt > this.elapsed) {
+      return EMPTY_MICROS;
+    }
 
     const ready: MicroBehavior[] = [];
     while (this.queue.length > 0 && this.queue[0].executeAt <= this.elapsed) {

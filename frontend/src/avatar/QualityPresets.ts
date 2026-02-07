@@ -57,7 +57,7 @@ export const QUALITY_PRESETS: Record<QualityPreset, QualitySettings> = {
   },
   high: {
     pixelRatio: Math.min(getDevicePixelRatio(), 2),
-    antialias: true,
+    antialias: false, // SMAA handles anti-aliasing via post-processing
     shadows: true,
     shadowMapSize: 2048,
     shadowBias: -0.0003,

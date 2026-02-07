@@ -6,6 +6,8 @@
 
 import type { MicroBehavior } from '../types/behavior';
 
+const EMPTY_MICROS: readonly MicroBehavior[] = [];
+
 interface AmbientState {
   isSpeaking: boolean;
   isListening: boolean;
@@ -29,13 +31,13 @@ export class AmbientBehavior {
   /**
    * Update and return any triggered micro-behaviors
    */
-  update(deltaTime: number, state: AmbientState): MicroBehavior[] {
-    const micros: MicroBehavior[] = [];
-
+  update(deltaTime: number, state: AmbientState): readonly MicroBehavior[] {
     // Don't generate ambient behaviors during active gestures
     if (state.isGesturePlaying) {
-      return micros;
+      return EMPTY_MICROS;
     }
+
+    const micros: MicroBehavior[] = [];
 
     this.glanceTimer += deltaTime;
     this.postureTimer += deltaTime;

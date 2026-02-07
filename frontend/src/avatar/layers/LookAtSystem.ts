@@ -87,6 +87,7 @@ export class LookAtSystem {
   private _tempVec3: THREE.Vector3 = new THREE.Vector3();
   private _tempVec3B: THREE.Vector3 = new THREE.Vector3();
   private _tempQuat: THREE.Quaternion = new THREE.Quaternion();
+  private _tempQuat2: THREE.Quaternion = new THREE.Quaternion();
   private _tempEuler: THREE.Euler = new THREE.Euler();
 
   constructor(vrm: VRM, config: Partial<LookAtConfig> = {}) {
@@ -225,8 +226,8 @@ export class LookAtSystem {
     const avatarWorldQuat = this._tempQuat;
     this.vrm.scene.getWorldQuaternion(avatarWorldQuat);
 
-    // Transform direction to avatar local space
-    const avatarWorldQuatInverse = avatarWorldQuat.clone().invert();
+    // Transform direction to avatar local space (reuse temp quat to avoid clone)
+    const avatarWorldQuatInverse = this._tempQuat2.copy(avatarWorldQuat).invert();
     toCamera.applyQuaternion(avatarWorldQuatInverse);
 
     // Calculate yaw (Y rotation) and pitch (X rotation) in degrees

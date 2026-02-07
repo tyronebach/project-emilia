@@ -60,6 +60,7 @@ export class AvatarRenderer {
   // Resize handling
   private resizeHandler: (() => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private resizeRAF: number | null = null;
 
   constructor(container: HTMLElement, options: AvatarRendererOptions = {}) {
     this.container = container;
@@ -236,7 +237,7 @@ export class AvatarRenderer {
    * Setup resize handler
    */
   private setupResizeHandler(): void {
-    this.resizeHandler = (): void => {
+    const doResize = (): void => {
       if (!this.container || !this.camera || !this.renderer) return;
 
       const width = this.container.clientWidth;
@@ -247,11 +248,20 @@ export class AvatarRenderer {
       this.camera.aspect = width / height;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(width, height);
-      
+
       // Update post-processing size
       if (this.postProcessing) {
         this.postProcessing.setSize(width, height);
       }
+    };
+
+    // Debounce resize via requestAnimationFrame to avoid redundant layout/GL work
+    this.resizeHandler = (): void => {
+      if (this.resizeRAF !== null) return;
+      this.resizeRAF = requestAnimationFrame(() => {
+        this.resizeRAF = null;
+        doResize();
+      });
     };
 
     window.addEventListener('resize', this.resizeHandler);
@@ -532,6 +542,7 @@ export class AvatarRenderer {
 
           this.vrm = vrm;
           VRMUtils.rotateVRM0(vrm);
+          VRMUtils.combineSkeletons(vrm.scene);
           this.scene?.add(vrm.scene);
 
           // Apply alphaToCoverage to MToon materials
@@ -649,7 +660,8 @@ export class AvatarRenderer {
       // Update systems
       if (this.animationController) this.animationController.update(deltaTime);
 
-      if (this.vrm) this.vrm.update(deltaTime);
+      // Clamp deltaTime for VRM update (spring bone stability after tab switches/GC pauses)
+      if (this.vrm) this.vrm.update(Math.min(deltaTime, 1 / 30));
       if (this.controls) this.controls.update();
       
       // Camera drift back to home
@@ -689,6 +701,11 @@ export class AvatarRenderer {
 
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
+    }
+
+    if (this.resizeRAF !== null) {
+      cancelAnimationFrame(this.resizeRAF);
+      this.resizeRAF = null;
     }
 
     if (this.controls) {
