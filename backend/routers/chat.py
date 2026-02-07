@@ -93,13 +93,14 @@ async def chat(
         db.update_session_last_used(session_id)
         db.increment_session_message_count(session_id)
 
+        behavior = parsed.get("behavior", {})
+
         return {
             "response": parsed["response_text"],
             "session_id": session_id,
             "processing_ms": processing_ms,
             "model": result.get("model"),
-            "moods": parsed.get("moods", []),
-            "animations": parsed.get("animations", []),
+            "behavior": behavior,
             "usage": result.get("usage")
         }
 
@@ -169,15 +170,21 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                     except json.JSONDecodeError:
                         continue
 
-                # Final response - extract moods/animations from full content
-                clean_full, moods, animations = extract_avatar_commands(full_content)
+                # Final response - extract behavior tags from full content
+                clean_full, behavior = extract_avatar_commands(full_content)
                 processing_ms = int((time.time() - start_time) * 1000)
 
-                # Send avatar events for extracted moods/animations
-                for m in moods:
-                    yield f"event: avatar\ndata: {json.dumps({'mood': m['mood'], 'intensity': m['intensity']})}\n\n"
-                for a in animations:
-                    yield f"event: avatar\ndata: {json.dumps({'animation': a})}\n\n"
+                # Send avatar event with behavior data
+                avatar_data = {}
+                if behavior.get("intent"):
+                    avatar_data["intent"] = behavior["intent"]
+                if behavior.get("mood"):
+                    avatar_data["mood"] = behavior["mood"]
+                    avatar_data["intensity"] = behavior["mood_intensity"]
+                if behavior.get("energy"):
+                    avatar_data["energy"] = behavior["energy"]
+                if avatar_data:
+                    yield f"event: avatar\ndata: {json.dumps(avatar_data)}\n\n"
 
                 db.update_session_last_used(session_id)
                 db.increment_session_message_count(session_id)
@@ -187,8 +194,7 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                     "response": clean_full,
                     "session_id": session_id,
                     "processing_ms": processing_ms,
-                    "moods": moods,
-                    "animations": animations
+                    "behavior": behavior
                 }
                 if usage:
                     final["usage"] = usage

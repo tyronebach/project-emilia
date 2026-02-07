@@ -157,7 +157,7 @@ async def get_session_history(
                 text_content = _extract_text_content(raw_content)
 
                 if role == "assistant":
-                    text_content, _, _ = extract_avatar_commands(text_content)
+                    text_content, _ = extract_avatar_commands(text_content)
 
                 if not text_content.strip():
                     continue

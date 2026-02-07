@@ -76,6 +76,13 @@ export class LookAtSystem {
   private _lookAtType: string = 'none';
   private _isVRM0: boolean = false;
 
+  // Glance state
+  private glanceActive: boolean = false;
+  private glanceYawOffset: number = 0;
+  private glancePitchOffset: number = 0;
+  private glanceTimer: number = 0;
+  private glanceDuration: number = 0;
+
   // Reusable objects (avoid GC)
   private _tempVec3: THREE.Vector3 = new THREE.Vector3();
   private _tempVec3B: THREE.Vector3 = new THREE.Vector3();
@@ -162,6 +169,28 @@ export class LookAtSystem {
   }
 
   /**
+   * Temporarily look away from the target
+   */
+  glanceAway(duration: number = 1.0): void {
+    this.glanceActive = true;
+    this.glanceDuration = duration;
+    this.glanceTimer = 0;
+
+    // Random offset direction
+    this.glanceYawOffset = (Math.random() > 0.5 ? 1 : -1) * (15 + Math.random() * 20);
+    this.glancePitchOffset = (Math.random() - 0.5) * 10;
+  }
+
+  /**
+   * Return gaze to target
+   */
+  glanceBack(): void {
+    this.glanceActive = false;
+    this.glanceYawOffset = 0;
+    this.glancePitchOffset = 0;
+  }
+
+  /**
    * Update head tracking
    * Eyes are handled by VRM automatically via vrm.update()
    */
@@ -169,10 +198,18 @@ export class LookAtSystem {
     if (!this.config.enabled) return;
     if (!this.camera) return;
 
+    // Update glance timer
+    if (this.glanceActive) {
+      this.glanceTimer += deltaTime;
+      if (this.glanceTimer >= this.glanceDuration) {
+        this.glanceBack();
+      }
+    }
+
     // Calculate direction to camera
     const headBone = this.headBone;
     if (!headBone) return;
-    
+
     // Get head world position
     const headWorldPos = this._tempVec3;
     headBone.getWorldPosition(headWorldPos);
@@ -183,30 +220,33 @@ export class LookAtSystem {
 
     // Direction from head to camera
     const toCamera = camWorldPos.sub(headWorldPos);
-    
+
     // Get avatar's world rotation to transform to local space
     const avatarWorldQuat = this._tempQuat;
     this.vrm.scene.getWorldQuaternion(avatarWorldQuat);
-    
+
     // Transform direction to avatar local space
     const avatarWorldQuatInverse = avatarWorldQuat.clone().invert();
     toCamera.applyQuaternion(avatarWorldQuatInverse);
-    
+
     // Calculate yaw (Y rotation) and pitch (X rotation) in degrees
     const horizontalDist = Math.sqrt(toCamera.x * toCamera.x + toCamera.z * toCamera.z);
-    
+
     let targetYaw: number;
     let targetPitch: number;
-    
+
     if (this._isVRM0) {
-      // VRM 0.x: faces -Z, this was working
       targetYaw = Math.atan2(-toCamera.x, -toCamera.z) * (180 / Math.PI);
       targetPitch = Math.atan2(toCamera.y - 0.1, horizontalDist) * (180 / Math.PI);
     } else {
-      // VRM 1.0: faces +Z, needs different calculation
-      // Invert yaw and pitch based on Thai's feedback
       targetYaw = Math.atan2(toCamera.x, toCamera.z) * (180 / Math.PI);
       targetPitch = Math.atan2(-(toCamera.y - 0.1), horizontalDist) * (180 / Math.PI);
+    }
+
+    // Apply glance offset
+    if (this.glanceActive) {
+      targetYaw += this.glanceYawOffset;
+      targetPitch += this.glancePitchOffset;
     }
 
     // Store for debug

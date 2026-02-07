@@ -1,7 +1,8 @@
 /**
  * Animation Controller
  * Central orchestrator for all avatar animation subsystems.
- * Coordinates expressions, lip sync, look-at, blinks, and body animations.
+ * Coordinates expressions, lip sync, look-at, blinks, body animations,
+ * and the behavior planning system.
  */
 
 import type { VRM, VRMExpressionManager } from '@pixiv/three-vrm';
@@ -9,14 +10,19 @@ import { ExpressionMixer, CHANNEL_PRIORITY } from './expression/ExpressionMixer'
 import { BlinkController } from './layers/BlinkController';
 import { LookAtSystem } from './layers/LookAtSystem';
 import { LipSyncEngine } from './LipSyncEngine';
+import { AnimationGraph } from './AnimationGraph';
 import type { AlignmentData } from './types';
 import { IdleAnimations } from './IdleAnimations';
 import { AnimationPlayer } from './AnimationPlayer';
+import { BehaviorPlanner } from './behavior/BehaviorPlanner';
+import { MicroBehaviorController } from './behavior/MicroBehaviorController';
+import { AmbientBehavior } from './behavior/AmbientBehavior';
+import type { BehaviorInput, BehaviorOutput, MicroBehavior } from './types/behavior';
 import type * as THREE from 'three';
 
 // Supported emotion names
-export type Emotion = 
-  | 'neutral' | 'happy' | 'sad' | 'angry' 
+export type Emotion =
+  | 'neutral' | 'happy' | 'sad' | 'angry'
   | 'surprised' | 'thinking' | 'relaxed'
   | 'excited' | 'worried' | 'confused';
 
@@ -27,7 +33,7 @@ const EMOTION_MAP: Record<Emotion, string> = {
   sad: 'sad',
   angry: 'angry',
   surprised: 'surprised',
-  thinking: 'neutral',  // With slight raised eyebrow if available
+  thinking: 'neutral',
   relaxed: 'relaxed',
   excited: 'happy',
   worried: 'sad',
@@ -77,13 +83,24 @@ export class AnimationController {
   private blinkController: BlinkController | null = null;
   private lookAtSystem: LookAtSystem | null = null;
   private lipSyncEngine: LipSyncEngine | null = null;
+  private animationGraph: AnimationGraph | null = null;
   private idleAnimations: IdleAnimations | null = null;
   private animationPlayer: AnimationPlayer | null = null;
+
+  // Behavior system
+  private behaviorPlanner: BehaviorPlanner;
+  private microBehaviorController: MicroBehaviorController;
+  private ambientBehavior: AmbientBehavior;
 
   // State
   private currentEmotion: Emotion = 'neutral';
   private emotionIntensity: number = 0;
   private isSpeaking: boolean = false;
+  private isListening: boolean = false;
+  private turnCount: number = 0;
+  private lastUserMessageTime: number = 0;
+  private lastBehaviorTime: number = 0;
+  private sessionStartTime: number = Date.now();
 
   // Emotion transition
   private targetEmotion: Emotion = 'neutral';
@@ -92,7 +109,10 @@ export class AnimationController {
 
   constructor() {
     this.expressionMixer = new ExpressionMixer();
-    
+    this.behaviorPlanner = new BehaviorPlanner();
+    this.microBehaviorController = new MicroBehaviorController();
+    this.ambientBehavior = new AmbientBehavior();
+
     // Pre-create channels
     this.expressionMixer.createChannel('lipsync', CHANNEL_PRIORITY.lipsync);
     this.expressionMixer.createChannel('emotion', CHANNEL_PRIORITY.emotion);
@@ -105,22 +125,22 @@ export class AnimationController {
    */
   init(vrm: VRM, camera?: THREE.Camera): void {
     this.vrm = vrm;
-    
+
     // Set up expression mixer
     if (vrm.expressionManager) {
       this.expressionMixer.setExpressionManager(vrm.expressionManager);
     }
 
+    // Create unified AnimationGraph
+    this.animationGraph = new AnimationGraph(vrm);
+
     // Initialize subsystems
     const blinkExpressions = this.detectBlinkExpressions(vrm.expressionManager ?? null);
     this.blinkController = new BlinkController(this.expressionMixer, { expressions: blinkExpressions });
     this.lookAtSystem = new LookAtSystem(vrm);
-    this.lipSyncEngine = new LipSyncEngine(vrm);
-    this.idleAnimations = new IdleAnimations(vrm);
-    this.animationPlayer = new AnimationPlayer(vrm);
-
-    // Connect animation player to idle system
-    this.animationPlayer.setIdleAnimations(this.idleAnimations);
+    this.lipSyncEngine = new LipSyncEngine(this.expressionMixer, vrm);
+    this.idleAnimations = new IdleAnimations(vrm, this.animationGraph);
+    this.animationPlayer = new AnimationPlayer(vrm, this.animationGraph);
 
     // Set camera for look-at
     if (camera) {
@@ -128,7 +148,7 @@ export class AnimationController {
     }
 
     this.initialized = true;
-    console.log('[AnimationController] Initialized');
+    console.log('[AnimationController] Initialized with AnimationGraph');
   }
 
   private detectBlinkExpressions(expressionManager: VRMExpressionManager | null): string[] {
@@ -187,12 +207,109 @@ export class AnimationController {
     // Update subsystems
     this.blinkController?.update(deltaTime);
     this.lipSyncEngine?.update(deltaTime);
-    this.idleAnimations?.update(deltaTime);
-    this.animationPlayer?.update(deltaTime);
+    this.animationGraph?.update(deltaTime);
     this.lookAtSystem?.update(deltaTime);
+
+    // Update ambient behavior and micro-behaviors
+    const ambientMicros = this.ambientBehavior.update(deltaTime, {
+      isSpeaking: this.isSpeaking,
+      isListening: this.isListening,
+      isGesturePlaying: this.animationGraph?.isGesturePlaying() ?? false,
+    });
+    for (const micro of ambientMicros) {
+      this.microBehaviorController.schedule(micro);
+    }
+
+    const readyMicros = this.microBehaviorController.update(deltaTime);
+    for (const micro of readyMicros) {
+      this.executeMicroBehavior(micro);
+    }
 
     // Apply final expression values
     this.expressionMixer.apply();
+  }
+
+  /**
+   * Handle an intent from the BehaviorPlanner (new primary API)
+   */
+  handleIntent(input: Partial<BehaviorInput>): void {
+    const now = Date.now();
+
+    // Enrich with conversation state
+    const fullInput: BehaviorInput = {
+      intent: input.intent ?? 'neutral',
+      mood: input.mood ?? 'neutral',
+      energy: input.energy ?? 'medium',
+      isSpeaking: this.isSpeaking,
+      isListening: this.isListening,
+      turnCount: this.turnCount,
+      timeSinceUserMessage: now - this.lastUserMessageTime,
+      timeSinceLastBehavior: now - this.lastBehaviorTime,
+      sessionDuration: now - this.sessionStartTime,
+    };
+
+    const output = this.behaviorPlanner.plan(fullInput);
+    this.executeBehavior(output);
+    this.lastBehaviorTime = now;
+    this.turnCount++;
+
+    console.log('[AnimationController] handleIntent:', input.intent, '→', {
+      emotion: output.facialEmotion.expression,
+      gesture: output.bodyAction?.gesture,
+    });
+  }
+
+  /**
+   * Execute a BehaviorOutput
+   */
+  private executeBehavior(output: BehaviorOutput): void {
+    // Facial emotion
+    if (output.facialEmotion) {
+      this.setMood(output.facialEmotion.expression, output.facialEmotion.intensity);
+    }
+
+    // Body action (gesture)
+    if (output.bodyAction?.gesture) {
+      this.triggerGesture(output.bodyAction.gesture, {
+        fadeIn: 0.25,
+        fadeOut: 0.25,
+      });
+    }
+
+    // Schedule micro-behaviors
+    if (output.microBehaviors) {
+      for (const micro of output.microBehaviors) {
+        this.microBehaviorController.schedule(micro);
+      }
+    }
+  }
+
+  /**
+   * Execute a single micro-behavior
+   */
+  private executeMicroBehavior(micro: MicroBehavior): void {
+    switch (micro.type) {
+      case 'glance_away':
+        this.lookAtSystem?.glanceAway(micro.duration ?? 1.0);
+        break;
+      case 'glance_back':
+        this.lookAtSystem?.glanceBack();
+        break;
+      case 'nod_small':
+        // Small nod via a brief head movement - could use a procedural animation
+        // For now, trigger through gesture system if available
+        this.triggerGesture('nod', { fadeIn: 0.15, fadeOut: 0.15 });
+        break;
+      case 'head_tilt':
+        this.triggerGesture('head_tilt', { fadeIn: 0.2, fadeOut: 0.2 });
+        break;
+      case 'posture_shift':
+        // Subtle body shift - handled by a brief gesture if available
+        break;
+      case 'anticipation':
+        // Pre-speech anticipation - slight forward lean
+        break;
+    }
   }
 
   /**
@@ -202,10 +319,8 @@ export class AnimationController {
     intensity = Math.max(0, Math.min(1, intensity));
     const normalizedEmotion = normalizeEmotion(emotion);
 
-
     // If emotion is changing, handle blink sync
     if (normalizedEmotion !== this.currentEmotion && this.blinkController) {
-      // Pause blink and wait for eyes to open
       await this.blinkController.setEnabled(false);
     }
 
@@ -228,17 +343,14 @@ export class AnimationController {
 
     // If switching emotions, fade out old first
     if (this.currentEmotion !== this.targetEmotion) {
-      // Fade out current
       const currentExpr = EMOTION_MAP[this.currentEmotion];
       const currentWeight = this.expressionMixer.getValue(currentExpr);
-      
+
       if (currentWeight > 0.01) {
         this.expressionMixer.setExpression('emotion', currentExpr, currentWeight * (1 - blendAmount));
       } else {
-        // Current faded out, switch to target
         this.currentEmotion = this.targetEmotion;
-        
-        // Resume blink after emotion change
+
         if (this.blinkController) {
           this.blinkController.setEnabled(true);
         }
@@ -258,7 +370,6 @@ export class AnimationController {
   async triggerGesture(name: string, options: GestureOptions = {}): Promise<boolean> {
     if (!this.animationPlayer) return false;
 
-
     return this.animationPlayer.play(name, {
       loop: false,
       fadeIn: options.fadeIn ?? 0.25,
@@ -272,7 +383,6 @@ export class AnimationController {
   startSpeaking(alignment: AlignmentData, audioElement: HTMLAudioElement): void {
     if (!this.lipSyncEngine) return;
 
-    
     this.isSpeaking = true;
 
     // Start lip sync
@@ -280,23 +390,26 @@ export class AnimationController {
     this.lipSyncEngine.setAlignment(alignment, audioDurationMs);
     this.lipSyncEngine.startSync(audioElement);
 
-    // Pause idle animation variations (stay in current pose)
-    this.idleAnimations?.pause();
+    // Idle stays running via AnimationGraph - no pause needed
   }
 
   /**
    * Stop speaking
    */
   stopSpeaking(): void {
-    
     this.isSpeaking = false;
-
-    // Stop lip sync
     this.lipSyncEngine?.stop();
+    // Idle stays running via AnimationGraph - no resume needed
+  }
 
-    // Resume idle animations
-    this.idleAnimations?.resume();
-
+  /**
+   * Set listening state (user is speaking)
+   */
+  setListening(listening: boolean): void {
+    this.isListening = listening;
+    if (listening) {
+      this.lastUserMessageTime = Date.now();
+    }
   }
 
   /**
@@ -328,18 +441,27 @@ export class AnimationController {
   }
 
   /**
+   * Get animation graph
+   */
+  get graph(): AnimationGraph | null {
+    return this.animationGraph;
+  }
+
+  /**
    * Get current state for debugging
    */
   getState(): {
     emotion: Emotion;
     intensity: number;
     isSpeaking: boolean;
+    isListening: boolean;
     isBlinking: boolean;
   } {
     return {
       emotion: this.currentEmotion,
       intensity: this.emotionIntensity,
       isSpeaking: this.isSpeaking,
+      isListening: this.isListening,
       isBlinking: this.blinkController?.isBlinking() ?? false,
     };
   }
@@ -351,9 +473,9 @@ export class AnimationController {
     this.blinkController?.dispose();
     this.lookAtSystem?.dispose();
     this.lipSyncEngine?.stop();
-    this.animationPlayer?.dispose();
+    this.animationGraph?.dispose();
     this.expressionMixer.dispose();
-    
+
     this.initialized = false;
     this.vrm = null;
 

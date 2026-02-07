@@ -4,22 +4,27 @@ import { stripAvatarTags, stripAvatarTagsStreaming } from './api';
 describe('api utilities', () => {
   describe('stripAvatarTags', () => {
     it('should remove mood tags', () => {
-      const text = 'Hello <mood:happy:0.8> world';
+      const text = 'Hello [MOOD:happy:0.8] world';
       expect(stripAvatarTags(text)).toBe('Hello  world');
     });
 
-    it('should remove animation tags', () => {
-      const text = 'Testing <animation:wave> animations';
-      expect(stripAvatarTags(text)).toBe('Testing  animations');
+    it('should remove intent tags', () => {
+      const text = 'Testing [INTENT:greeting] intents';
+      expect(stripAvatarTags(text)).toBe('Testing  intents');
+    });
+
+    it('should remove energy tags', () => {
+      const text = 'Hi [ENERGY:high] there';
+      expect(stripAvatarTags(text)).toBe('Hi  there');
     });
 
     it('should remove multiple tags', () => {
-      const text = '<mood:excited:1.0>Hello <animation:nod> there<mood:calm:0.5>';
-      expect(stripAvatarTags(text)).toBe('Hello  there');
+      const text = '[INTENT:greeting] [MOOD:happy:0.8] [ENERGY:high] Hello there';
+      expect(stripAvatarTags(text)).toBe('Hello there');
     });
 
     it('should trim whitespace', () => {
-      const text = '  <mood:happy:0.5>  Text  <animation:wave>  ';
+      const text = '  [MOOD:happy:0.5]  Text  [INTENT:greeting]  ';
       expect(stripAvatarTags(text)).toBe('Text');
     });
 
@@ -38,28 +43,18 @@ describe('api utilities', () => {
     });
 
     it('should preserve spacing between words', () => {
-      const text = 'Hello <mood:happy:0.5> my <animation:wave> friend';
+      const text = 'Hello [MOOD:happy:0.5] my [INTENT:greeting] friend';
       expect(stripAvatarTags(text)).toBe('Hello  my  friend');
     });
 
-    it('should handle complex nested scenarios', () => {
-      const text = 'Start <mood:thinking:0.7> middle <animation:shrug> end';
+    it('should handle case-insensitive tags', () => {
+      const text = 'Start [mood:thinking:0.7] middle [intent:curious] end';
       const result = stripAvatarTags(text);
-      expect(result).not.toContain('<');
-      expect(result).not.toContain('>');
+      expect(result).not.toContain('[');
+      expect(result).not.toContain(']');
       expect(result).toContain('Start');
       expect(result).toContain('middle');
       expect(result).toContain('end');
-    });
-
-    it('should remove bracketed mood tags', () => {
-      const text = 'Hello [MOOD:happy:0.7] world';
-      expect(stripAvatarTags(text)).toBe('Hello  world');
-    });
-
-    it('should remove bracketed animation tags', () => {
-      const text = 'Hi [ANIM:wave] there';
-      expect(stripAvatarTags(text)).toBe('Hi  there');
     });
   });
 
@@ -69,9 +64,14 @@ describe('api utilities', () => {
       expect(stripAvatarTagsStreaming(text)).toBe('Hello ');
     });
 
-    it('should remove trailing partial angle tags', () => {
-      const text = 'Hi <mood:hap';
+    it('should remove trailing partial intent tags', () => {
+      const text = 'Hi [INTENT:gre';
       expect(stripAvatarTagsStreaming(text)).toBe('Hi ');
+    });
+
+    it('should remove trailing partial energy tags', () => {
+      const text = 'Go [ENERGY:hi';
+      expect(stripAvatarTagsStreaming(text)).toBe('Go ');
     });
 
     it('should preserve whitespace while streaming', () => {

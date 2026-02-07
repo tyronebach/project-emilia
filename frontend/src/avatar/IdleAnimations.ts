@@ -2,33 +2,35 @@
  * Idle Animation System
  * Plays a looping animation as the base idle state.
  * Uses AnimationStateMachine config to determine which file to play.
+ * Delegates to AnimationGraph's base layer - idle never pauses.
  */
 
-import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
 import { animationLibrary } from './AnimationLibrary';
 import { animationStateMachine } from './AnimationStateMachine';
+import type { AnimationGraph } from './AnimationGraph';
 
 export class IdleAnimations {
   private vrm: VRM;
-  private mixer: THREE.AnimationMixer;
-  private idleAction: THREE.AnimationAction | null = null;
-  private idleClip: THREE.AnimationClip | null = null;
-  private isPaused: boolean = false;
+  private animationGraph: AnimationGraph | null = null;
   private isLoaded: boolean = false;
   private currentIdleFile: string = '';
   private fadeIn: number = 0.3;
   private fadeOut: number = 0.3;
 
-  constructor(vrm: VRM) {
+  constructor(vrm: VRM, animationGraph?: AnimationGraph) {
     this.vrm = vrm;
-    
-    // Use normalized humanoid root for mixer (same as AnimationPlayer)
-    const mixerRoot = vrm.humanoid?.normalizedHumanBonesRoot || vrm.scene;
-    this.mixer = new THREE.AnimationMixer(mixerRoot);
-    
+    this.animationGraph = animationGraph ?? null;
+
     // Load idle from state machine config
     this.loadFromStateMachine();
+  }
+
+  /**
+   * Set the AnimationGraph (for deferred init)
+   */
+  setAnimationGraph(graph: AnimationGraph): void {
+    this.animationGraph = graph;
   }
 
   /**
@@ -55,17 +57,6 @@ export class IdleAnimations {
    */
   async loadIdle(filename: string): Promise<boolean> {
     this.currentIdleFile = filename;
-    
-    // Stop current idle if any
-    if (this.idleAction) {
-      this.idleAction.stop();
-      if (this.idleClip) {
-        this.mixer.uncacheAction(this.idleClip);
-        this.mixer.uncacheClip(this.idleClip);
-      }
-      this.idleAction = null;
-      this.idleClip = null;
-    }
 
     // Load animation from library
     const animData = await animationLibrary.load(filename);
@@ -74,44 +65,21 @@ export class IdleAnimations {
       return false;
     }
 
-    this.idleClip = animData.clip;
-    this.idleAction = this.mixer.clipAction(this.idleClip);
-    this.idleAction.setLoop(THREE.LoopRepeat, Infinity);
-    this.idleAction.play();
-    this.isLoaded = true;
+    // Play via AnimationGraph base layer
+    if (this.animationGraph) {
+      this.animationGraph.playBase(animData.clip, this.fadeIn);
+    }
 
+    this.isLoaded = true;
     console.log(`[IdleAnimations] Playing idle: ${filename} (${animData.duration.toFixed(1)}s)`);
     return true;
   }
 
   /**
-   * Update mixer each frame
+   * Update - no-op since AnimationGraph owns the mixer now
    */
-  update(deltaTime: number): void {
-    if (this.isPaused) return;
-    this.mixer.update(deltaTime);
-  }
-
-  /**
-   * Pause idle animation (called when triggered animation plays)
-   */
-  pause(): void {
-    this.isPaused = true;
-    if (this.idleAction) {
-      this.idleAction.fadeOut(this.fadeOut);
-    }
-  }
-
-  /**
-   * Resume idle animation (called when triggered animation ends)
-   */
-  resume(): void {
-    this.isPaused = false;
-    if (this.idleAction) {
-      this.idleAction.reset();
-      this.idleAction.fadeIn(this.fadeIn);
-      this.idleAction.play();
-    }
+  update(_deltaTime: number): void {
+    // AnimationGraph.update() handles mixer updates
   }
 
   /**
@@ -125,18 +93,14 @@ export class IdleAnimations {
    * Check if idle is loaded and playing
    */
   isPlaying(): boolean {
-    return this.isLoaded && !this.isPaused && this.idleAction !== null;
+    return this.isLoaded && (this.animationGraph?.isBasePlaying() ?? false);
   }
 
   /**
    * Dispose
    */
   dispose(): void {
-    if (this.idleAction) {
-      this.idleAction.stop();
-    }
-    this.mixer.stopAllAction();
-    this.mixer.uncacheRoot(this.vrm.scene);
+    // AnimationGraph handles cleanup
   }
 }
 

@@ -110,79 +110,137 @@ def test_extract_text_content_mixed_types():
 # ========================================
 
 def test_extract_avatar_commands_mood():
-    """Test extracting MOOD tags with intensity."""
+    """Test extracting MOOD tag with intensity."""
     text = "[MOOD:happy:0.8] Hello there!"
-    clean, moods, anims = extract_avatar_commands(text)
+    clean, behavior = extract_avatar_commands(text)
     assert clean == "Hello there!"
-    assert len(moods) == 1
-    assert moods[0]["mood"] == "happy"
-    assert moods[0]["intensity"] == 0.8
-    assert len(anims) == 0
+    assert behavior["mood"] == "happy"
+    assert behavior["mood_intensity"] == 0.8
 
 
 def test_extract_avatar_commands_mood_no_intensity():
-    """Test extracting MOOD tags without intensity (defaults to 1.0)."""
+    """Test extracting MOOD tag without intensity (defaults to 1.0)."""
     text = "[MOOD:excited] Wow!"
-    clean, moods, anims = extract_avatar_commands(text)
+    clean, behavior = extract_avatar_commands(text)
     assert clean == "Wow!"
-    assert len(moods) == 1
-    assert moods[0]["mood"] == "excited"
-    assert moods[0]["intensity"] == 1.0
+    assert behavior["mood"] == "excited"
+    assert behavior["mood_intensity"] == 1.0
 
 
-def test_extract_avatar_commands_anim():
-    """Test extracting ANIM tags."""
-    text = "[ANIM:wave] Hi!"
-    clean, moods, anims = extract_avatar_commands(text)
-    assert clean == "Hi!"
-    assert len(anims) == 1
-    assert anims[0] == "wave"
-    assert len(moods) == 0
+def test_extract_avatar_commands_intent():
+    """Test extracting INTENT tag."""
+    text = "[INTENT:greeting] [MOOD:happy:0.8] Hello!"
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "Hello!"
+    assert behavior["intent"] == "greeting"
+    assert behavior["mood"] == "happy"
+    assert behavior["mood_intensity"] == 0.8
 
 
-def test_extract_avatar_commands_multiple():
-    """Test extracting multiple MOOD and ANIM tags."""
-    text = "[MOOD:thinking:0.6] [ANIM:thinking_pose] I tried to understand the problem."
-    clean, moods, anims = extract_avatar_commands(text)
-    assert clean == "I tried to understand the problem."
-    assert len(moods) == 1
-    assert moods[0]["mood"] == "thinking"
-    assert moods[0]["intensity"] == 0.6
-    assert len(anims) == 1
-    assert anims[0] == "thinking_pose"
+def test_extract_avatar_commands_energy():
+    """Test extracting ENERGY tag."""
+    text = "[ENERGY:high] Let's go!"
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "Let's go!"
+    assert behavior["energy"] == "high"
+
+
+def test_extract_avatar_commands_all_tags():
+    """Test extracting all behavior tags together."""
+    text = "[INTENT:greeting] [MOOD:happy] [ENERGY:high] Hello there!"
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "Hello there!"
+    assert behavior["intent"] == "greeting"
+    assert behavior["mood"] == "happy"
+    assert behavior["energy"] == "high"
+
+
+def test_extract_avatar_commands_case_insensitive():
+    """Test that tags are case-insensitive."""
+    text = "[intent:Thinking] [energy:Low] [mood:SAD] Hmm..."
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "Hmm..."
+    assert behavior["intent"] == "thinking"
+    assert behavior["energy"] == "low"
+    assert behavior["mood"] == "sad"
 
 
 def test_extract_avatar_commands_no_tags():
-    """Test text without any avatar tags."""
+    """Test text without any tags."""
     text = "Just regular text here."
-    clean, moods, anims = extract_avatar_commands(text)
+    clean, behavior = extract_avatar_commands(text)
     assert clean == "Just regular text here."
-    assert len(moods) == 0
-    assert len(anims) == 0
+    assert behavior["intent"] is None
+    assert behavior["mood"] is None
+    assert behavior["energy"] is None
 
 
 def test_extract_avatar_commands_empty():
     """Test empty text."""
-    clean, moods, anims = extract_avatar_commands("")
+    clean, behavior = extract_avatar_commands("")
     assert clean == ""
-    assert len(moods) == 0
-    assert len(anims) == 0
+    assert behavior["intent"] is None
+    assert behavior["mood"] is None
 
 
-def test_parse_chat_completion_with_avatar_tags():
-    """Test that parse_chat_completion extracts avatar commands."""
+def test_extract_avatar_commands_mood_only():
+    """Test mood without intent."""
+    text = "[MOOD:happy] Just mood."
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "Just mood."
+    assert behavior["mood"] == "happy"
+    assert behavior["intent"] is None
+
+
+def test_parse_chat_completion_with_behavior_tags():
+    """Test that parse_chat_completion extracts behavior data."""
     result = {
         "choices": [
             {
                 "message": {
-                    "content": "[MOOD:happy:0.9] [ANIM:dance] Hello, how are you?"
+                    "content": "[INTENT:greeting] [MOOD:happy:0.9] [ENERGY:high] Hello!"
+                }
+            }
+        ]
+    }
+    parsed = parse_chat_completion(result)
+    assert parsed["response_text"] == "Hello!"
+    assert parsed["behavior"]["intent"] == "greeting"
+    assert parsed["behavior"]["mood"] == "happy"
+    assert parsed["behavior"]["mood_intensity"] == 0.9
+    assert parsed["behavior"]["energy"] == "high"
+
+
+def test_parse_chat_completion_with_mood_only():
+    """Test that parse_chat_completion works with just a mood tag."""
+    result = {
+        "choices": [
+            {
+                "message": {
+                    "content": "[MOOD:happy:0.9] Hello, how are you?"
                 }
             }
         ]
     }
     parsed = parse_chat_completion(result)
     assert parsed["response_text"] == "Hello, how are you?"
-    assert len(parsed["moods"]) == 1
-    assert parsed["moods"][0]["mood"] == "happy"
-    assert len(parsed["animations"]) == 1
-    assert parsed["animations"][0] == "dance"
+    assert parsed["behavior"]["mood"] == "happy"
+    assert parsed["behavior"]["mood_intensity"] == 0.9
+    assert parsed["behavior"]["intent"] is None
+
+
+def test_parse_chat_completion_no_tags():
+    """Test parse_chat_completion with no tags at all."""
+    result = {
+        "choices": [
+            {
+                "message": {
+                    "content": "Just a plain response."
+                }
+            }
+        ]
+    }
+    parsed = parse_chat_completion(result)
+    assert parsed["response_text"] == "Just a plain response."
+    assert parsed["behavior"]["intent"] is None
+    assert parsed["behavior"]["mood"] is None

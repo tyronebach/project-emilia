@@ -85,18 +85,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ avatarState: command });
 
     const renderer = get().avatarRenderer;
-    console.log('[Store] renderer:', !!renderer);
-    if (!renderer) return;
+    if (!renderer?.expressionController) return;
 
-    if (command.mood && renderer.expressionController) {
-      console.log('[Store] Setting mood:', command.mood, command.intensity || 1.0);
-      renderer.expressionController.setMood(command.mood, command.intensity || 1.0);
-    }
-
-    if (command.animation && renderer.animationPlayer) {
-      console.log('[Store] Playing animation:', command.animation);
-      renderer.animationPlayer.play(command.animation);
-    }
+    // Route all commands through BehaviorPlanner
+    console.log('[Store] handleIntent:', command.intent, command.mood, command.energy);
+    renderer.expressionController.handleIntent({
+      intent: (command.intent ?? 'neutral') as any,
+      mood: command.mood as any,
+      energy: command.energy as any,
+    });
   },
 }));
 

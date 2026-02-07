@@ -14,6 +14,9 @@ export { BlinkController } from './layers/BlinkController';
 export { LookAtSystem } from './layers/LookAtSystem';
 export type { LookAtConfig } from './layers/LookAtSystem';
 
+// Unified animation system
+export { AnimationGraph } from './AnimationGraph';
+
 // Animation subsystems (used by AnimationController)
 export { LipSyncEngine } from './LipSyncEngine';
 export { IdleAnimations } from './IdleAnimations';
@@ -23,6 +26,12 @@ export type { ManifestEntry, AnimationClipData } from './AnimationLibrary';
 
 export { AnimationStateMachine, animationStateMachine } from './AnimationStateMachine';
 export type { AnimationStateMachineConfig, AnimationStateConfig, ResolvedAction } from './AnimationStateMachine';
+
+// Behavior system
+export { BehaviorPlanner } from './behavior/BehaviorPlanner';
+export { MicroBehaviorController } from './behavior/MicroBehaviorController';
+export { AmbientBehavior } from './behavior/AmbientBehavior';
+export type { Intent, Mood, EnergyLevel, BehaviorInput, BehaviorOutput, MicroBehavior, UserAction, BehaviorCandidate } from './types/behavior';
 
 // VRM preloading
 export { preloadVRM, isVRMCached, clearVRMCache } from './preloadVRM';

@@ -180,15 +180,12 @@ Body: {"message": "Hello!"}
 Returns SSE stream:
 ```
 event: avatar
-data: {"mood": "happy", "intensity": 0.7}
+data: {"intent": "greeting", "mood": "happy", "intensity": 0.7, "energy": "high"}
 
 data: {"content": "Hi"}
 data: {"content": " there!"}
 
-event: avatar
-data: {"animation": "wave"}
-
-data: {"done": true, "response": "Hi there!", "session_id": "uuid", "processing_ms": 1234, "usage": {...}}
+data: {"done": true, "response": "Hi there!", "session_id": "uuid", "processing_ms": 1234, "behavior": {"intent": "greeting", "mood": "happy", "mood_intensity": 0.7, "energy": "high"}, "usage": {...}}
 ```
 
 ### Send Message (Non-Streaming)
@@ -203,8 +200,12 @@ Body: {"message": "Hello!"}
   "session_id": "uuid",
   "processing_ms": 1234,
   "model": "...",
-  "moods": [],
-  "animations": [],
+  "behavior": {
+    "intent": "greeting",
+    "mood": "happy",
+    "mood_intensity": 0.7,
+    "energy": "high"
+  },
   "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
 }
 ```

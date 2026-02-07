@@ -10,14 +10,20 @@ export interface TokenUsage {
   total_tokens?: number;
 }
 
+export interface BehaviorData {
+  intent?: string | null;
+  mood?: string | null;
+  mood_intensity?: number;
+  energy?: string | null;
+}
+
 export interface MessageMeta {
   processing_ms?: number;
   model?: string;
   streaming?: boolean;
   error?: boolean;
   source?: 'text' | 'voice';
-  moods?: Array<{ mood: string; intensity: number }>;
-  animations?: string[];
+  behavior?: BehaviorData;
   usage?: TokenUsage;
   audio_base64?: string;  // Stored TTS audio for replay
 }
@@ -31,15 +37,17 @@ export interface Message {
 }
 
 export interface AvatarState {
+  intent?: string;
   mood?: string;
   intensity?: number;
-  animation?: string;
+  energy?: string;
 }
 
 export interface AvatarCommand {
+  intent?: string;
   mood?: string;
   intensity?: number;
-  animation?: string;
+  energy?: string;
 }
 
 // Re-export from api.ts for convenience

@@ -5,6 +5,7 @@
 
 import type { VRM, VRMExpressionManager } from '@pixiv/three-vrm';
 import type { AlignmentData, TimingEntry } from './types';
+import type { ExpressionMixer } from './expression/ExpressionMixer';
 
 /**
  * Map character to VRM mouth shape
@@ -64,6 +65,7 @@ const DEFAULT_CONFIG: LipSyncConfig = {
 
 export class LipSyncEngine {
   private vrm: VRM;
+  private expressionMixer: ExpressionMixer | null = null;
   private alignment: AlignmentData | null = null;
   private audioElement: HTMLAudioElement | null = null;
   private isActive: boolean = false;
@@ -86,7 +88,8 @@ export class LipSyncEngine {
   private dataArray: Uint8Array | null = null;
   private currentVolume: number = 0;
 
-  constructor(vrm: VRM) {
+  constructor(expressionMixer: ExpressionMixer, vrm: VRM) {
+    this.expressionMixer = expressionMixer;
     this.vrm = vrm;
     this.detectAvailableMouthShapes();
   }
@@ -291,16 +294,18 @@ export class LipSyncEngine {
    * Update each frame
    */
   update(_deltaTime: number): void {
-    if (!this.vrm?.expressionManager) return;
+    if (!this.expressionMixer) return;
 
-    const em = this.vrm.expressionManager;
     const { weightMultiplier, blendSpeed, silenceThreshold, minHoldMs } = this.config;
 
     if (!this.isActive || !this.audioElement) {
-      // Decay to neutral - reset all mouth shapes
+      // Decay to neutral - clear lipsync channel
       if (this.currentWeight > silenceThreshold) {
         this.currentWeight = Math.max(0, this.currentWeight - blendSpeed);
-        this.applyMouthShape(em, this.currentShape, this.currentWeight);
+        this.applyMouthShape(this.currentShape, this.currentWeight);
+      } else if (this.currentWeight <= silenceThreshold && this.currentWeight > 0) {
+        this.currentWeight = 0;
+        this.expressionMixer.clearChannel('lipsync');
       }
       return;
     }
@@ -313,7 +318,6 @@ export class LipSyncEngine {
 
     // Debug: log timing periodically (every 500ms)
     if (Math.floor(currentTimeMs / 500) !== Math.floor((currentTimeMs - 16) / 500)) {
-      const lastEntry = this.timingData[this.timingData.length - 1];
       console.log(`[LipSync] Audio: ${currentTimeMs.toFixed(0)}ms / ${audioDuration.toFixed(0)}ms, Vol: ${this.currentVolume.toFixed(2)}, Shape: ${this.currentShape} @ ${this.currentWeight.toFixed(2)}`);
     }
 
@@ -332,7 +336,6 @@ export class LipSyncEngine {
     const timeSinceLastChange = currentTimeMs - this.lastShapeChangeMs;
     if (targetShape !== this.currentShape && timeSinceLastChange >= minHoldMs) {
       console.log(`[LipSync] Shape: ${this.currentShape} → ${targetShape}`, matchedEntry ? `(char: '${matchedEntry.char}')` : '');
-      this.applyMouthShape(em, this.currentShape, 0);  // Reset old shape
       this.currentShape = targetShape;
       this.currentWeight = 0;
       this.lastShapeChangeMs = currentTimeMs;
@@ -348,7 +351,7 @@ export class LipSyncEngine {
 
     this.currentWeight += (this.targetWeight - this.currentWeight) * blendSpeed;
 
-    this.applyMouthShape(em, this.currentShape, this.currentWeight);
+    this.applyMouthShape(this.currentShape, this.currentWeight);
   }
 
   /**
@@ -373,31 +376,27 @@ export class LipSyncEngine {
   }
 
   /**
-   * Apply mouth shape to VRM expression manager
+   * Apply mouth shape via ExpressionMixer lipsync channel
    */
-  private applyMouthShape(em: VRMExpressionManager, shape: MouthShape, weight: number): void {
+  private applyMouthShape(shape: MouthShape, weight: number): void {
+    if (!this.expressionMixer) return;
+
     const clampedWeight = Math.min(1, Math.max(0, weight));
 
-    // Reset all mouth shapes first
-    for (const s of this.availableMouthShapes) {
-      try { em.setValue(s, 0); } catch (_e) { /* ignore */ }
-    }
+    // Clear previous lipsync expressions
+    this.expressionMixer.clearChannel('lipsync');
 
     // Apply target shape if not silence
     if (shape !== 'sil' && clampedWeight > 0.01) {
       const exprName = this.mapToAvailable(shape);
       if (exprName) {
-        try {
-          em.setValue(exprName, clampedWeight);
+        this.expressionMixer.setExpression('lipsync', exprName, clampedWeight);
 
-          // Throttled logging
-          const now = Date.now();
-          if (!this._lastApplyLog || now - this._lastApplyLog > 200) {
-            console.log(`[LipSync] Apply: ${exprName} = ${clampedWeight.toFixed(2)}`);
-            this._lastApplyLog = now;
-          }
-        } catch (e) {
-          console.warn(`[LipSync] Failed to set ${exprName}:`, e);
+        // Throttled logging
+        const now = Date.now();
+        if (!this._lastApplyLog || now - this._lastApplyLog > 200) {
+          console.log(`[LipSync] Apply: ${exprName} = ${clampedWeight.toFixed(2)}`);
+          this._lastApplyLog = now;
         }
       }
     }
@@ -426,13 +425,9 @@ export class LipSyncEngine {
     this.dataArray = null;
     this.currentVolume = 0;
 
-    // Reset all mouth shapes
-    if (this.vrm?.expressionManager) {
-      for (const shape of this.availableMouthShapes) {
-        try {
-          this.vrm.expressionManager.setValue(shape, 0);
-        } catch (_e) { /* ignore */ }
-      }
+    // Clear lipsync channel in ExpressionMixer
+    if (this.expressionMixer) {
+      this.expressionMixer.clearChannel('lipsync');
     }
 
     this.currentShape = 'sil';
