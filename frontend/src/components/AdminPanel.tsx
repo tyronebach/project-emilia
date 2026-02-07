@@ -299,7 +299,6 @@ function AdminPanel() {
                       onChange={(v) => handleFieldChange(agent.id, 'workspace', v)}
                       placeholder="/home/user/agent-workspace"
                       mono
-                      readOnly
                     />
                   </div>
 

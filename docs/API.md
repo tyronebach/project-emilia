@@ -146,7 +146,7 @@ DELETE /api/sessions/{session_id}
 Headers: X-User-Id
 ```
 ```json
-{"deleted": true}
+{"deleted": 1}
 ```
 
 ### Get Session History

@@ -96,7 +96,7 @@ Guardrails:
 ```json
 {
   "status": "ok",
-  "version": "5.5.4"
+  "version": "5.5.3"
 }
 ```
 

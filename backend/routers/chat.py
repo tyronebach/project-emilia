@@ -1,18 +1,18 @@
 """Chat and media routes (chat, transcribe, speak)"""
 import time
 import json
-import base64
-import asyncio
-from typing import Optional
+import logging
 import httpx
-import websockets
-from fastapi import APIRouter, File, UploadFile, HTTPException, Depends, Query, Header
+from fastapi import APIRouter, File, UploadFile, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
-from dependencies import verify_token
+from dependencies import verify_token, get_user_id, get_agent_id, get_optional_agent_id, get_session_id
 from schemas import ChatRequest, SpeakRequest
 from config import settings
+from core.exceptions import TTSError
 from parse_chat import parse_chat_completion, extract_avatar_commands
-import database as db
+from db.repositories import UserRepository, AgentRepository, SessionRepository
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -22,39 +22,37 @@ async def chat(
     request: ChatRequest,
     token: str = Depends(verify_token),
     stream: int = Query(0),
-    x_user_id: str = Header(..., alias="X-User-Id"),
-    x_agent_id: str = Header(..., alias="X-Agent-Id"),
-    x_session_id: Optional[str] = Header(None, alias="X-Session-Id")
+    user_id: str = Depends(get_user_id),
+    agent_id: str = Depends(get_agent_id),
+    session_id: str | None = Depends(get_session_id)
 ):
-    """Send message to agent"""
     start_time = time.time()
 
-    user = db.get_user(x_user_id)
+    user = UserRepository.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    if not db.user_can_access_agent(x_user_id, x_agent_id):
+    if not UserRepository.can_access_agent(user_id, agent_id):
         raise HTTPException(status_code=403, detail="User cannot access this agent")
 
-    agent = db.get_agent(x_agent_id)
+    agent = AgentRepository.get_by_id(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
     clawdbot_agent_id = agent["clawdbot_agent_id"]
 
-    # Get or create session
-    if x_session_id:
-        session = db.get_session(x_session_id)
-        if not session or not db.user_can_access_session(x_user_id, x_session_id):
+    if session_id:
+        session = SessionRepository.get_by_id(session_id)
+        if not session or not SessionRepository.user_can_access(user_id, session_id):
             raise HTTPException(status_code=403, detail="Cannot access this session")
     else:
-        session = db.get_or_create_default_session(x_user_id, x_agent_id)
+        session = SessionRepository.get_or_create_default(user_id, agent_id)
 
-    session_id = session["id"]
+    sid = session["id"]
 
     if stream == 1:
         return StreamingResponse(
-            _stream_chat_sse(request, start_time, clawdbot_agent_id, session_id),
+            _stream_chat_sse(request, start_time, clawdbot_agent_id, sid),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -66,41 +64,37 @@ async def chat(
     # Non-streaming
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            payload = {
-                "model": f"agent:{clawdbot_agent_id}",
-                "messages": [{"role": "user", "content": request.message}],
-                "stream": False,
-                "user": session_id
-            }
-
             response = await client.post(
                 f"{settings.clawdbot_url}/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {settings.clawdbot_token}",
                     "Content-Type": "application/json"
                 },
-                json=payload
+                json={
+                    "model": f"agent:{clawdbot_agent_id}",
+                    "messages": [{"role": "user", "content": request.message}],
+                    "stream": False,
+                    "user": sid
+                }
             )
 
             if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail=response.text)
+                raise HTTPException(status_code=response.status_code, detail="Chat service error")
 
             result = response.json()
 
         parsed = parse_chat_completion(result)
         processing_ms = int((time.time() - start_time) * 1000)
 
-        db.update_session_last_used(session_id)
-        db.increment_session_message_count(session_id)
-
-        behavior = parsed.get("behavior", {})
+        SessionRepository.update_last_used(sid)
+        SessionRepository.increment_message_count(sid)
 
         return {
             "response": parsed["response_text"],
-            "session_id": session_id,
+            "session_id": sid,
             "processing_ms": processing_ms,
             "model": result.get("model"),
-            "behavior": behavior,
+            "behavior": parsed.get("behavior", {}),
             "usage": result.get("usage")
         }
 
@@ -114,14 +108,6 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
     """SSE streaming chat"""
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            payload = {
-                "model": f"agent:{clawdbot_agent_id}",
-                "messages": [{"role": "user", "content": request.message}],
-                "stream": True,
-                "stream_options": {"include_usage": True},
-                "user": session_id
-            }
-
             async with client.stream(
                 "POST",
                 f"{settings.clawdbot_url}/v1/chat/completions",
@@ -129,7 +115,13 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                     "Authorization": f"Bearer {settings.clawdbot_token}",
                     "Content-Type": "application/json"
                 },
-                json=payload
+                json={
+                    "model": f"agent:{clawdbot_agent_id}",
+                    "messages": [{"role": "user", "content": request.message}],
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
+                    "user": session_id
+                }
             ) as response:
                 if response.status_code != 200:
                     yield f"data: {json.dumps({'error': 'API error'})}\n\n"
@@ -161,7 +153,6 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
 
                         if chunk:
                             full_content += chunk
-                            # Stream raw content - we'll extract tags at the end
                             yield f"data: {json.dumps({'content': chunk})}\n\n"
 
                         if choices[0].get("finish_reason"):
@@ -174,7 +165,6 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                 clean_full, behavior = extract_avatar_commands(full_content)
                 processing_ms = int((time.time() - start_time) * 1000)
 
-                # Send avatar event with behavior data
                 avatar_data = {}
                 if behavior.get("intent"):
                     avatar_data["intent"] = behavior["intent"]
@@ -186,8 +176,8 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                 if avatar_data:
                     yield f"event: avatar\ndata: {json.dumps(avatar_data)}\n\n"
 
-                db.update_session_last_used(session_id)
-                db.increment_session_message_count(session_id)
+                SessionRepository.update_last_used(session_id)
+                SessionRepository.increment_message_count(session_id)
 
                 final = {
                     "done": True,
@@ -201,8 +191,9 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
 
                 yield f"data: {json.dumps(final)}\n\n"
 
-    except Exception as e:
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    except Exception:
+        logger.exception("Streaming error")
+        yield f"data: {json.dumps({'error': 'Internal error'})}\n\n"
 
 
 @router.post("/transcribe")
@@ -213,8 +204,6 @@ async def transcribe(
     """Transcribe audio via STT service"""
     try:
         audio_data = await audio.read()
-
-        # Ensure we have valid content type
         content_type = audio.content_type or "audio/webm"
         filename = audio.filename or "recording.webm"
 
@@ -233,28 +222,29 @@ async def transcribe(
         raise HTTPException(status_code=504, detail="STT timeout")
     except httpx.ConnectError:
         raise HTTPException(status_code=503, detail="STT unavailable")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Transcription error: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Transcription error")
+        raise HTTPException(status_code=500, detail="Transcription error")
 
 
 @router.post("/speak")
 async def speak(
     request: SpeakRequest,
     token: str = Depends(verify_token),
-    x_agent_id: Optional[str] = Header(None, alias="X-Agent-Id")
+    agent_id: str | None = Depends(get_optional_agent_id)
 ):
     """Text-to-speech via ElevenLabs with-timestamps API for lip sync alignment"""
     from services.elevenlabs import ElevenLabsService
-    from core.exceptions import TTSError
-    
+
     if not settings.elevenlabs_api_key:
         raise HTTPException(status_code=503, detail="TTS not configured")
 
     voice_id = request.voice_id or settings.elevenlabs_voice_id
 
-    # Get agent-specific voice if available (unless explicitly overridden)
-    if x_agent_id and not request.voice_id:
-        agent = db.get_agent(x_agent_id)
+    if agent_id and not request.voice_id:
+        agent = AgentRepository.get_by_id(agent_id)
         if agent and agent.get("voice_id"):
             voice_id = agent["voice_id"]
 

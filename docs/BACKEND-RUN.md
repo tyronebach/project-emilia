@@ -7,38 +7,51 @@ Quick reference for running the backend with Docker.
 ## Prereqs
 
 - Docker daemon running
-- Access to the secrets env file used in `docker-compose.yml`
-  - Default: `/home/tbach/.clawdbot/secrets.env`
+- Secrets env file: `/home/tbach/.openclaw/secrets.env` (must contain `CLAWDBOT_TOKEN`, `ELEVENLABS_API_KEY`)
 
 ---
 
-## Run Backend (Docker Compose)
-
-From the repo root:
+## Build & Run
 
 ```bash
+# Build and start backend
 docker compose up -d --build backend
+
+# Build and start everything (backend + frontend nginx)
+docker compose up -d --build
 ```
 
-Logs:
+## Stop & Restart
 
 ```bash
-docker compose logs -f backend
-```
+# Stop all
+docker compose down
 
-Stop:
-
-```bash
+# Stop backend only
 docker compose stop backend
+
+# Restart backend
+docker compose restart backend
 ```
 
-Remove container:
+## Rebuild from Scratch
 
 ```bash
-docker compose rm -f backend
+# Full rebuild (no cache)
+docker compose down
+docker compose build --no-cache backend
+docker compose up -d
 ```
 
----
+## Logs
+
+```bash
+# Follow logs
+docker compose logs -f backend
+
+# Last 100 lines
+docker compose logs --tail 100 backend
+```
 
 ## Health Check
 
@@ -46,25 +59,24 @@ docker compose rm -f backend
 curl http://localhost:8080/api/health
 ```
 
----
-
-## Run Backend Tests in Docker (py3.11)
-
-This mounts the local backend source into the container so tests are available:
+## Run Tests in Docker (Python 3.11)
 
 ```bash
 docker compose run --rm \
   -e EMILIA_DB_PATH=/tmp/emilia-test.db \
   -e AUTH_ALLOW_DEV_TOKEN=1 \
   -e CLAWDBOT_TOKEN=test-token \
-  -e ELEVENLABS_API_KEY=test-elevenlabs-key \
+  -e ELEVENLABS_API_KEY=test-key \
+  -e EMILIA_SEED_DATA=0 \
   -v "$(pwd)/backend:/app" \
-  backend pytest -q --ignore tests/test_transcribe_manual.py
+  backend pytest -v
 ```
 
 ---
 
 ## Notes
 
-- The backend container uses `network_mode: host` and listens on port `8080`.
-- DB volume is mounted from `./data` to `/data` (see `docker-compose.yml`).
+- Backend uses `network_mode: host` and listens on port `8080`
+- DB volume: `./data:/data`
+- Agent workspaces: `/home/tbach/clawd-agents` mounted read-write
+- Frontend depends on backend being healthy before starting

@@ -16,6 +16,7 @@ import { AvatarRenderer, QUALITY_PRESETS, getPreset, type QualityPreset, type Qu
 import { fetchWithAuth } from '../utils/api';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
 import { useVrmOptions, type VrmOption } from '../hooks/useVrmOptions';
+import { useAppStore } from '../store';
 import type { VRM } from '@pixiv/three-vrm';
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
@@ -49,11 +50,139 @@ const AVAILABLE_MOODS = [
   'smug',
 ];
 
+const BEHAVIOR_SCENARIOS = [
+  {
+    id: 'happy-greeting',
+    label: 'Happy Greeting',
+    text: '[INTENT:greeting] [MOOD:happy:0.8] [ENERGY:high] Hi there!',
+  },
+  {
+    id: 'thinking-hard',
+    label: 'Thinking Hard',
+    text: '[INTENT:thinking] [MOOD:neutral:0.5] [ENERGY:low] Let me think about that...',
+  },
+  {
+    id: 'surprised',
+    label: 'Surprised',
+    text: '[INTENT:surprised] [MOOD:surprised:0.9] [ENERGY:high] Oh wow!',
+  },
+  {
+    id: 'affectionate',
+    label: 'Affectionate',
+    text: '[INTENT:affection] [MOOD:happy:0.9] [ENERGY:medium] I really appreciate you~',
+  },
+  {
+    id: 'warm-farewell',
+    label: 'Warm Farewell',
+    text: '[INTENT:farewell] [MOOD:happy:0.6] [ENERGY:medium] See you soon!',
+  },
+  {
+    id: 'agreeing',
+    label: 'Agreeing',
+    text: '[INTENT:agreement] [MOOD:happy:0.5] [ENERGY:medium] Totally agree.',
+  },
+  {
+    id: 'disagreeing',
+    label: 'Disagreeing',
+    text: '[INTENT:disagreement] [MOOD:neutral:0.4] [ENERGY:low] I see it differently.',
+  },
+  {
+    id: 'attentive-listening',
+    label: 'Attentive Listening',
+    text: '[INTENT:listening] [MOOD:neutral:0.3] [ENERGY:low] I am listening.',
+  },
+  {
+    id: 'playful',
+    label: 'Playful',
+    text: '[INTENT:playful] [MOOD:happy:0.8] [ENERGY:high] You are fun to talk to!',
+  },
+  {
+    id: 'curious',
+    label: 'Curious',
+    text: '[INTENT:curious] [MOOD:surprised:0.6] [ENERGY:medium] Tell me more about that?',
+  },
+];
+
+type ParsedBehavior = {
+  intent: string | null;
+  mood: string | null;
+  mood_intensity: number;
+  energy: string | null;
+};
+
+type BehaviorDebugInfo = {
+  intent: string;
+  mood: string;
+  energy: string;
+  emotion: string;
+  intensity: number;
+  gesture: string | null;
+};
+
+type BehaviorLogEntry = {
+  id: string;
+  time: string;
+  label: string;
+  intent: string;
+  mood: string;
+  energy: string;
+  gesture: string | null;
+  emotion: string;
+  intensity: number;
+};
+
+const MOOD_PATTERN = /\[MOOD:([^:\]]+):?([\d.]*)\]/i;
+const INTENT_PATTERN = /\[INTENT:([^\]]+)\]/i;
+const ENERGY_PATTERN = /\[ENERGY:([^\]]+)\]/i;
+const MOOD_PATTERN_GLOBAL = /\[MOOD:([^:\]]+):?([\d.]*)\]/gi;
+const INTENT_PATTERN_GLOBAL = /\[INTENT:([^\]]+)\]/gi;
+const ENERGY_PATTERN_GLOBAL = /\[ENERGY:([^\]]+)\]/gi;
+
+const parseBehaviorTags = (text: string): { cleanText: string; behavior: ParsedBehavior } => {
+  const behavior: ParsedBehavior = {
+    intent: null,
+    mood: null,
+    mood_intensity: 1.0,
+    energy: null,
+  };
+
+  const moodMatch = text.match(MOOD_PATTERN);
+  if (moodMatch) {
+    behavior.mood = moodMatch[1].toLowerCase();
+    const intensityStr = moodMatch[2];
+    const parsed = intensityStr ? Number.parseFloat(intensityStr) : 1.0;
+    if (Number.isFinite(parsed)) {
+      behavior.mood_intensity = Math.max(0, Math.min(1, parsed));
+    }
+  }
+
+  const intentMatch = text.match(INTENT_PATTERN);
+  if (intentMatch) {
+    behavior.intent = intentMatch[1].toLowerCase();
+  }
+
+  const energyMatch = text.match(ENERGY_PATTERN);
+  if (energyMatch) {
+    behavior.energy = energyMatch[1].toLowerCase();
+  }
+
+  const cleanText = text
+    .replace(MOOD_PATTERN_GLOBAL, '')
+    .replace(INTENT_PATTERN_GLOBAL, '')
+    .replace(ENERGY_PATTERN_GLOBAL, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return { cleanText, behavior };
+};
+
 function AvatarDebugPanel() {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<AvatarRenderer | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const applyAvatarCommand = useAppStore((state) => state.applyAvatarCommand);
+  const setAvatarRenderer = useAppStore((state) => state.setAvatarRenderer);
   
   // State
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODELS[0].id);
@@ -61,6 +190,15 @@ function AvatarDebugPanel() {
   const [moodStrength, setMoodStrength] = useState(0.7);
   const [lastAction, setLastAction] = useState<string>('Initializing...');
   const [loading, setLoading] = useState(true);
+  const [customScenarioText, setCustomScenarioText] = useState('');
+  const [lastScenarioParse, setLastScenarioParse] = useState<{
+    label: string;
+    rawText: string;
+    cleanText: string;
+    behavior: ParsedBehavior;
+  } | null>(null);
+  const [behaviorDebug, setBehaviorDebug] = useState<BehaviorDebugInfo | null>(null);
+  const [behaviorLog, setBehaviorLog] = useState<BehaviorLogEntry[]>([]);
   
   // TTS testing state
   const [ttsText, setTtsText] = useState('Welcome back~ I missed you while you were away. Is there anything I can help you with today?');
@@ -251,8 +389,10 @@ function AvatarDebugPanel() {
     renderer.loadVRM();
     renderer.startRenderLoop();
     rendererRef.current = renderer;
+    setAvatarRenderer(renderer);
 
     return () => {
+      setAvatarRenderer(null);
       renderer.dispose();
       rendererRef.current = null;
     };
@@ -375,6 +515,58 @@ function AvatarDebugPanel() {
     renderer.expressionController.setMood(currentMood, moodStrength);
     setLastAction(`Mood: ${currentMood} @ ${(moodStrength * 100).toFixed(0)}%`);
   }, [currentMood, moodStrength]);
+
+  const runBehaviorScenario = useCallback((label: string, rawText: string) => {
+    const renderer = rendererRef.current;
+    if (!renderer?.expressionController) {
+      setLastAction('Error: Behavior engine not ready');
+      return;
+    }
+
+    const { cleanText, behavior } = parseBehaviorTags(rawText);
+    applyAvatarCommand({
+      intent: behavior.intent ?? undefined,
+      mood: behavior.mood ?? undefined,
+      energy: behavior.energy ?? undefined,
+      intensity: behavior.mood_intensity,
+    });
+
+    const debug = renderer.expressionController.getLastBehaviorDebug?.() ?? null;
+    setBehaviorDebug(debug);
+    setLastScenarioParse({
+      label,
+      rawText,
+      cleanText,
+      behavior,
+    });
+
+    const resolved = debug ?? {
+      intent: behavior.intent ?? 'neutral',
+      mood: behavior.mood ?? 'neutral',
+      energy: behavior.energy ?? 'medium',
+      emotion: behavior.mood ?? 'neutral',
+      intensity: behavior.mood_intensity,
+      gesture: null,
+    };
+
+    setBehaviorLog((prev) => {
+      const entry: BehaviorLogEntry = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        time: new Date().toLocaleTimeString(),
+        label,
+        intent: resolved.intent,
+        mood: resolved.mood,
+        energy: resolved.energy,
+        emotion: resolved.emotion,
+        intensity: resolved.intensity,
+        gesture: resolved.gesture,
+      };
+      return [...prev, entry].slice(-5);
+    });
+
+    const gestureLabel = resolved.gesture ? ` → ${resolved.gesture}` : '';
+    setLastAction(`Behavior: ${label}${gestureLabel}`);
+  }, [applyAvatarCommand]);
 
   // Test TTS with ElevenLabs API (real visemes)
   const testTTS = useCallback(async () => {
@@ -1688,6 +1880,116 @@ function AvatarDebugPanel() {
                   >
                     Apply Mood
                   </Button>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Behavior Scenarios */}
+            <AccordionItem value="behavior-scenarios" className="border-white/10">
+              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
+                Behavior Scenarios
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-4">
+                  <div>
+                    <div className="text-xs text-text-secondary mb-2">Scripted Scenarios</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {BEHAVIOR_SCENARIOS.map((scenario) => (
+                        <Button
+                          key={scenario.id}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => runBehaviorScenario(scenario.label, scenario.text)}
+                          className="justify-start text-left text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
+                          title={scenario.text}
+                        >
+                          {scenario.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs text-text-secondary">Custom Scenario</label>
+                    <textarea
+                      value={customScenarioText}
+                      onChange={(e) => setCustomScenarioText(e.target.value)}
+                      placeholder="[INTENT:greeting] [MOOD:happy:0.8] [ENERGY:high] Hi there!"
+                      rows={3}
+                      className="w-full bg-bg-tertiary/80 border border-white/10 rounded px-2 py-1.5 text-sm mt-1 resize-none"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => runBehaviorScenario('Custom', customScenarioText)}
+                        disabled={!customScenarioText.trim()}
+                        size="sm"
+                        className="flex-1 bg-accent text-accent-foreground hover:bg-accent-hover disabled:opacity-50"
+                      >
+                        Run Custom
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCustomScenarioText('')}
+                        className="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="p-2 bg-bg-tertiary/80 border border-white/10 rounded space-y-1 text-xs">
+                    <div className="text-text-secondary font-semibold">Behavior Output</div>
+                    {lastScenarioParse ? (
+                      <>
+                        <div className="text-text-secondary">
+                          Scenario: <span className="text-text-primary">{lastScenarioParse.label}</span>
+                        </div>
+                        <div className="text-text-secondary">
+                          Parsed tags: intent <span className="text-accent">{lastScenarioParse.behavior.intent ?? 'none'}</span>, mood{' '}
+                          <span className="text-accent">{lastScenarioParse.behavior.mood ?? 'none'}</span> @{' '}
+                          {lastScenarioParse.behavior.mood_intensity.toFixed(2)}, energy{' '}
+                          <span className="text-accent">{lastScenarioParse.behavior.energy ?? 'none'}</span>
+                        </div>
+                        <div className="text-text-secondary">
+                          Clean text: <span className="text-text-primary">{lastScenarioParse.cleanText || '-'}</span>
+                        </div>
+                        <div className="text-text-secondary">
+                          Selected gesture: <span className="text-accent">{behaviorDebug?.gesture ?? 'none'}</span>
+                        </div>
+                        <div className="text-text-secondary">
+                          Facial emotion: <span className="text-accent">{behaviorDebug?.emotion ?? '-'}</span> @{' '}
+                          {(behaviorDebug?.intensity ?? 0).toFixed(2)}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-text-secondary">Run a scenario to see parsed tags and the planned gesture.</div>
+                    )}
+                  </div>
+
+                  <div className="p-2 bg-bg-tertiary/80 border border-white/10 rounded space-y-1 text-xs">
+                    <div className="text-text-secondary font-semibold">Recent Behaviors</div>
+                    {behaviorLog.length === 0 ? (
+                      <div className="text-text-secondary">No behaviors triggered yet.</div>
+                    ) : (
+                      <div className="space-y-1">
+                        {behaviorLog.map((entry) => (
+                          <div key={entry.id} className="rounded border border-white/10 bg-bg-tertiary/60 px-2 py-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-text-primary">{entry.label}</span>
+                              <span className="text-text-secondary">{entry.time}</span>
+                            </div>
+                            <div className="text-text-secondary">
+                              intent <span className="text-accent">{entry.intent}</span>, mood{' '}
+                              <span className="text-accent">{entry.mood}</span>, energy{' '}
+                              <span className="text-accent">{entry.energy}</span>, gesture{' '}
+                              <span className="text-accent">{entry.gesture ?? 'none'}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </AccordionContent>
             </AccordionItem>

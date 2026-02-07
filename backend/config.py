@@ -1,10 +1,6 @@
-"""
-Application configuration from environment variables.
-Uses Pydantic for validation and type safety.
-"""
+"""Application configuration from environment variables."""
 import os
 from pathlib import Path
-from typing import List
 
 
 class Settings:
@@ -20,13 +16,12 @@ class Settings:
         self.auth_allow_dev_token: bool = os.getenv("AUTH_ALLOW_DEV_TOKEN", "0") == "1"
         self.auth_token: str | None = os.getenv("AUTH_TOKEN")
 
-        # Handle dev token
         if self.auth_allow_dev_token and not self.auth_token:
             self.auth_token = "emilia-dev-token-2026"
 
         # CORS
         allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
-        self.allowed_origins: List[str] = [
+        self.allowed_origins: list[str] = [
             origin.strip() for origin in allowed_origins_str.split(",")
         ]
 

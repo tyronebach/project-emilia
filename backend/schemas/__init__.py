@@ -1,6 +1,4 @@
-"""
-Pydantic schemas for API requests and responses.
-"""
+"""Pydantic schemas for API requests and responses."""
 from .requests import (
     ChatRequest,
     CreateSessionRequest,
@@ -29,13 +27,11 @@ from .responses import (
 )
 
 __all__ = [
-    # Requests
     "ChatRequest",
     "CreateSessionRequest",
     "UpdateSessionRequest",
     "SpeakRequest",
     "AgentUpdate",
-    # Responses
     "UserResponse",
     "AgentResponse",
     "SessionResponse",
