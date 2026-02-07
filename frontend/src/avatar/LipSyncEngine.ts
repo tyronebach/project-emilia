@@ -79,7 +79,9 @@ export class LipSyncEngine {
   private lastShapeChangeMs: number = 0;
 
   private timingData: TimingEntry[] = [];
+  private timingCursor: number = 0;
   private availableMouthShapes: Set<string> = new Set();
+  private debug: boolean = false;
 
   // Audio volume analysis
   private audioContext: AudioContext | null = null;
@@ -171,6 +173,7 @@ export class LipSyncEngine {
   setAlignment(alignment: AlignmentData, audioDurationMs?: number): void {
     this.alignment = alignment;
     this.timingData = [];
+    this.timingCursor = 0;
 
     if (!alignment) return;
 
@@ -227,6 +230,7 @@ export class LipSyncEngine {
     this.targetWeight = 0;
     this.lastShapeChangeMs = -1000; // Allow immediate first shape change
     this.currentVolume = 0;
+    this.timingCursor = 0;
 
     // Set up audio analyser for volume detection
     this.setupAudioAnalyser(audioElement);
@@ -317,25 +321,31 @@ export class LipSyncEngine {
     this.currentVolume = this.getAudioVolume();
 
     // Debug: log timing periodically (every 500ms)
-    if (Math.floor(currentTimeMs / 500) !== Math.floor((currentTimeMs - 16) / 500)) {
+    if (this.debug && Math.floor(currentTimeMs / 500) !== Math.floor((currentTimeMs - 16) / 500)) {
       console.log(`[LipSync] Audio: ${currentTimeMs.toFixed(0)}ms / ${audioDuration.toFixed(0)}ms, Vol: ${this.currentVolume.toFixed(2)}, Shape: ${this.currentShape} @ ${this.currentWeight.toFixed(2)}`);
     }
 
-    // Find current mouth shape from timing data
+    // Find current mouth shape from timing data using cursor (O(1) amortized)
+    // Advance cursor past entries that have ended
+    while (this.timingCursor < this.timingData.length &&
+           this.timingData[this.timingCursor].endMs <= currentTimeMs) {
+      this.timingCursor++;
+    }
+
     let targetShape: MouthShape = 'sil';
     let matchedEntry: TimingEntry | null = null;
-    for (const entry of this.timingData) {
+    if (this.timingCursor < this.timingData.length) {
+      const entry = this.timingData[this.timingCursor];
       if (currentTimeMs >= entry.startMs && currentTimeMs < entry.endMs) {
         targetShape = entry.viseme as MouthShape;
         matchedEntry = entry;
-        break;
       }
     }
 
     // On shape change, reset previous and start new (with min hold time to prevent flicker)
     const timeSinceLastChange = currentTimeMs - this.lastShapeChangeMs;
     if (targetShape !== this.currentShape && timeSinceLastChange >= minHoldMs) {
-      console.log(`[LipSync] Shape: ${this.currentShape} → ${targetShape}`, matchedEntry ? `(char: '${matchedEntry.char}')` : '');
+      if (this.debug) console.log(`[LipSync] Shape: ${this.currentShape} → ${targetShape}`, matchedEntry ? `(char: '${matchedEntry.char}')` : '');
       this.currentShape = targetShape;
       this.currentWeight = 0;
       this.lastShapeChangeMs = currentTimeMs;
@@ -412,6 +422,7 @@ export class LipSyncEngine {
     this.audioElement = null;
     this.alignment = null;
     this.timingData = [];
+    this.timingCursor = 0;
 
     // Disconnect audio analyser (but keep context for reuse)
     if (this.sourceNode && this.analyser) {
