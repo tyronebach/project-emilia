@@ -36,20 +36,6 @@ const DEFAULT_MODELS: VrmOption[] = [
 const buildVrmUrl = (modelId: string) => `${VRM_BASE_PATH}/${modelId}`;
 
 
-// Moods/expressions available
-const AVAILABLE_MOODS = [
-  'neutral',
-  'happy',
-  'sad',
-  'angry',
-  'surprised',
-  'thinking',
-  'excited',
-  'confused',
-  'embarrassed',
-  'smug',
-];
-
 const BEHAVIOR_SCENARIOS = [
   {
     id: 'happy-greeting',
@@ -186,8 +172,6 @@ function AvatarDebugPanel() {
   
   // State
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODELS[0].id);
-  const [currentMood, setCurrentMood] = useState('neutral');
-  const [moodStrength, setMoodStrength] = useState(0.7);
   const [lastAction, setLastAction] = useState<string>('Initializing...');
   const [loading, setLoading] = useState(true);
   const [customScenarioText, setCustomScenarioText] = useState('');
@@ -504,18 +488,6 @@ function AvatarDebugPanel() {
     setLastAction(`Animation: ${name}`);
   }, []);
 
-  // Set mood
-  const applyMood = useCallback(() => {
-    const renderer = rendererRef.current;
-    if (!renderer?.expressionController) {
-      setLastAction('Error: Expression controller not ready');
-      return;
-    }
-
-    renderer.expressionController.setMood(currentMood, moodStrength);
-    setLastAction(`Mood: ${currentMood} @ ${(moodStrength * 100).toFixed(0)}%`);
-  }, [currentMood, moodStrength]);
-
   const runBehaviorScenario = useCallback((label: string, rawText: string) => {
     const renderer = rendererRef.current;
     if (!renderer?.expressionController) {
@@ -796,16 +768,6 @@ function AvatarDebugPanel() {
     renderer?.lipSyncEngine?.stop();
     setIsPlaying(false);
     setLastAction('Stopped');
-  }, []);
-
-  // Quick combo
-  const waveHappy = useCallback(() => {
-    const renderer = rendererRef.current;
-    if (!renderer) return;
-    
-    renderer.expressionController?.setMood('happy', 0.8);
-    renderer.animationPlayer?.play('wave');
-    setLastAction('Wave + Happy');
   }, []);
 
   // FBX retarget test using vrm-mixamo-retarget library
@@ -1838,52 +1800,6 @@ function AvatarDebugPanel() {
               </AccordionContent>
             </AccordionItem>
 
-            {/* Mood / Expression */}
-            <AccordionItem value="mood" className="border-white/10">
-              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
-                Mood / Expression
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="space-y-3">
-                  <div>
-                    <label className="text-xs text-text-secondary">Mood</label>
-                    <select
-                      value={currentMood}
-                      onChange={(e) => setCurrentMood(e.target.value)}
-                      className="w-full bg-bg-tertiary/80 border border-white/10 rounded px-2 py-1.5 text-sm mt-1"
-                    >
-                      {AVAILABLE_MOODS.map((mood) => (
-                        <option key={mood} value={mood}>{mood}</option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="text-xs text-text-secondary">
-                      Strength: {(moodStrength * 100).toFixed(0)}%
-                    </label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.05"
-                      value={moodStrength}
-                      onChange={(e) => setMoodStrength(parseFloat(e.target.value))}
-                      className="w-full mt-1 accent-accent"
-                    />
-                  </div>
-                  
-                  <Button 
-                    onClick={applyMood} 
-                    size="sm" 
-                    className="w-full bg-accent text-accent-foreground hover:bg-accent-hover"
-                  >
-                    Apply Mood
-                  </Button>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
             {/* Behavior Scenarios */}
             <AccordionItem value="behavior-scenarios" className="border-white/10">
               <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
@@ -2407,69 +2323,6 @@ function AvatarDebugPanel() {
                       <li><strong>VRMA:</strong> VRM Animation files (native VRM format)</li>
                     </ul>
                   </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            {/* Quick Actions */}
-            <AccordionItem value="quick" className="border-white/10 border-b-0">
-              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
-                Quick Actions
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="space-y-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
-                    onClick={() => {
-                      rendererRef.current?.expressionController?.setMood('happy', 1.0);
-                      setLastAction('Max Happy');
-                    }}
-                  >
-                    😊 Max Happy
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
-                    onClick={() => {
-                      rendererRef.current?.expressionController?.setMood('neutral', 0);
-                      setLastAction('Reset Neutral');
-                    }}
-                  >
-                    😐 Reset to Neutral
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
-                    onClick={waveHappy}
-                  >
-                    👋 Wave + Happy
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10"
-                    onClick={() => {
-                      rendererRef.current?.animationPlayer?.play('bow');
-                      setLastAction('Bow');
-                    }}
-                  >
-                    🙇 Bow
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10 bg-warning/10"
-                    onClick={() => {
-                      (rendererRef.current?.animationPlayer as any)?.testDirectBone?.();
-                      setLastAction('Direct bone test');
-                    }}
-                  >
-                    🔧 Direct Bone Test
-                  </Button>
                 </div>
               </AccordionContent>
             </AccordionItem>
