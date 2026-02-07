@@ -30,6 +30,6 @@ export interface TimingEntry {
   viseme: string;
 }
 
-export type AppStatus = 'ready' | 'recording' | 'thinking' | 'speaking' | 'error';
+export type { AppStatus } from '../types';
 
 export type { VRM };

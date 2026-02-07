@@ -2,10 +2,10 @@ import { useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AudioLines, Paperclip, ArrowUp } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAppStore } from '../store';
+import { useChatStore } from '../store/chatStore';
 import { useChat } from '../hooks/useChat';
 import { chatInputSchema, ChatInput } from '../schemas/chat';
-import { useAppStore } from '../store';
 import type { VoiceState } from '../services/VoiceService';
 
 /**
@@ -17,10 +17,12 @@ interface InputControlsProps {
 }
 
 function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
-  const { status, addMessage, ttsEnabled } = useApp();
+  const status = useAppStore((s) => s.status);
+  const ttsEnabled = useAppStore((s) => s.ttsEnabled);
+  const addMessage = useChatStore((s) => s.addMessage);
   const { sendMessage, isLoading } = useChat();
-  const handsFreeEnabled = useAppStore((state) => state.handsFreeEnabled);
-  const setHandsFreeEnabled = useAppStore((state) => state.setHandsFreeEnabled);
+  const handsFreeEnabled = useAppStore((s) => s.handsFreeEnabled);
+  const setHandsFreeEnabled = useAppStore((s) => s.setHandsFreeEnabled);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
   const {

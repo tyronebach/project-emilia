@@ -121,10 +121,9 @@ export class AnimationController {
     this.microBehaviorController = new MicroBehaviorController();
     this.ambientBehavior = new AmbientBehavior();
 
-    // Pre-create channels
+    // Pre-create channels (blink channel created by BlinkController)
     this.expressionMixer.createChannel('lipsync', CHANNEL_PRIORITY.lipsync);
     this.expressionMixer.createChannel('emotion', CHANNEL_PRIORITY.emotion);
-    this.expressionMixer.createChannel('blink', CHANNEL_PRIORITY.blink);
     this.expressionMixer.createChannel('gesture', CHANNEL_PRIORITY.gesture);
   }
 
@@ -332,10 +331,7 @@ export class AnimationController {
         this.triggerGesture('head_tilt', { fadeIn: 0.2, fadeOut: 0.2 });
         break;
       case 'posture_shift':
-        // Subtle body shift - handled by a brief gesture if available
-        break;
-      case 'anticipation':
-        // Pre-speech anticipation - slight forward lean
+        this.triggerGesture('posture_shift', { fadeIn: 0.3, fadeOut: 0.3 });
         break;
     }
   }

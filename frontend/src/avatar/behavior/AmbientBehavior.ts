@@ -27,6 +27,8 @@ export class AmbientBehavior {
 
   // Track if currently glancing away (to schedule glance back)
   private isGlancingAway: boolean = false;
+  private glanceResetTimer: number = 0;
+  private glanceResetDuration: number = 0;
 
   /**
    * Update and return any triggered micro-behaviors
@@ -35,6 +37,15 @@ export class AmbientBehavior {
     // Don't generate ambient behaviors during active gestures
     if (state.isGesturePlaying) {
       return EMPTY_MICROS;
+    }
+
+    // Frame-based glance reset timer
+    if (this.isGlancingAway) {
+      this.glanceResetTimer += deltaTime;
+      if (this.glanceResetTimer >= this.glanceResetDuration) {
+        this.isGlancingAway = false;
+        this.glanceResetTimer = 0;
+      }
     }
 
     const micros: MicroBehavior[] = [];
@@ -60,11 +71,8 @@ export class AmbientBehavior {
           delay: glanceDuration * 1000,
         });
         this.isGlancingAway = true;
-
-        // Reset after glance completes
-        setTimeout(() => {
-          this.isGlancingAway = false;
-        }, glanceDuration * 1000 + 200);
+        this.glanceResetTimer = 0;
+        this.glanceResetDuration = glanceDuration + 0.2;
       }
     }
 
@@ -114,6 +122,7 @@ export class AmbientBehavior {
     this.postureTimer = 0;
     this.nodTimer = 0;
     this.isGlancingAway = false;
+    this.glanceResetTimer = 0;
   }
 }
 

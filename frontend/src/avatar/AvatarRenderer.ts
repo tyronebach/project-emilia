@@ -16,6 +16,7 @@ import type { AnimationPlayer } from './AnimationPlayer';
 import type { LookAtSystem, LookAtConfig } from './layers/LookAtSystem';
 import { getDefaultQuality, type QualitySettings } from './QualityPresets';
 import type { AvatarRendererOptions } from './types';
+import { useRenderStore } from '../store/renderStore';
 
 const DEFAULT_VRM_URL = '/vrm/emilia.vrm';
 
@@ -420,7 +421,7 @@ export class AvatarRenderer {
     
     try {
       // Dynamic import to avoid circular dependency
-      const { useRenderStore } = require('../store/renderStore');
+
       useRenderStore.getState().setCameraPosition({
         x: this.camera.position.x,
         y: this.camera.position.y,
@@ -442,7 +443,7 @@ export class AvatarRenderer {
     if (!this.camera || !this.controls) return false;
     
     try {
-      const { useRenderStore } = require('../store/renderStore');
+
       const saved = useRenderStore.getState().cameraPosition;
       
       if (saved) {

@@ -5,7 +5,7 @@ import { useSession } from '../hooks/useSession';
 import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
 import { renameSession as renameSessionApi } from '../utils/api';
-import { formatSessionName } from '../utils/helpers';
+import { formatSessionName, formatDate } from '../utils/helpers';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
@@ -148,17 +148,6 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
     }
   };
 
-  const formatLastUsed = (timestamp: number) => {
-    const date = new Date(timestamp * 1000);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-
-    if (diff < 60000) return 'Just now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    return date.toLocaleDateString();
-  };
-
   return (
     <>
       <Dialog
@@ -252,7 +241,7 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
                         <div className="flex-1 min-w-0">
                           <div className="truncate">{formatSessionName(session.name, session.id)}</div>
                           <div className="text-xs text-text-secondary/70">
-                            {formatLastUsed(session.last_used)} · {session.message_count} msgs
+                            {formatDate(session.last_used)} · {session.message_count} msgs
                           </div>
                         </div>
                       </button>

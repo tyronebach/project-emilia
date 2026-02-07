@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { useApp } from '../context/AppContext';
 import { useAppStore } from '../store';
+import { useChatStore } from '../store/chatStore';
 import { ScrollArea } from './ui/scroll-area';
 import { Button } from './ui/button';
 import MessageBubble from './MessageBubble';
@@ -11,8 +11,9 @@ import MessageBubble from './MessageBubble';
  * Collapsible - toggle button at top-right when open, bottom-right when hidden
  */
 function ChatPanel() {
-  const { messages, ttsEnabled } = useApp();
-  const handsFreeEnabled = useAppStore((state) => state.handsFreeEnabled);
+  const messages = useChatStore((s) => s.messages);
+  const ttsEnabled = useAppStore((s) => s.ttsEnabled);
+  const handsFreeEnabled = useAppStore((s) => s.handsFreeEnabled);
   const [collapsed, setCollapsed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const immersiveMode = handsFreeEnabled && ttsEnabled;

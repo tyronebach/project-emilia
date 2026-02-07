@@ -8,7 +8,7 @@ import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
 
 const API_URL = '';
-const AUTH_TOKEN = 'emilia-dev-token-2026';
+const AUTH_TOKEN = import.meta.env.VITE_AUTH_TOKEN || 'emilia-dev-token-2026';
 
 // ============ TYPES ============
 
@@ -39,7 +39,7 @@ export interface Session {
   participants: string[];
 }
 
-export interface Message {
+export interface HistoryMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp?: string;
@@ -167,7 +167,7 @@ export async function getSession(sessionId: string): Promise<Session> {
   return response.json();
 }
 
-export async function getSessionHistory(sessionId: string, limit = 50): Promise<Message[]> {
+export async function getSessionHistory(sessionId: string, limit = 50): Promise<HistoryMessage[]> {
   const response = await fetchWithAuth(
     `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/history?limit=${limit}`
   );

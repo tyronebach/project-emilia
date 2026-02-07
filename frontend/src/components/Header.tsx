@@ -1,7 +1,7 @@
 import { Menu, Activity, Brain, MicOff, Volume2 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
-import type { AppStatus } from '../types';
+import { STATUS_COLORS } from '../types';
 import { Button } from './ui/button';
 import { updateUserPreferences } from '../utils/api';
 
@@ -24,21 +24,12 @@ function Header({
   handsFreeEnabled = false,
   voicePermissionWarning,
 }: HeaderProps) {
-  const { status, ttsEnabled, setTtsEnabled } = useApp();
+  const status = useAppStore((s) => s.status);
+  const ttsEnabled = useAppStore((s) => s.ttsEnabled);
+  const setTtsEnabled = useAppStore((s) => s.setTtsEnabled);
   const currentAgent = useUserStore((state) => state.currentAgent);
   const currentUser = useUserStore((state) => state.currentUser);
   const updatePreferences = useUserStore((state) => state.updatePreferences);
-
-  // Status indicator colors
-  const statusColors: Record<AppStatus, string> = {
-    initializing: 'bg-warning animate-pulse',
-    ready: 'bg-success',
-    recording: 'bg-error animate-pulse',
-    processing: 'bg-warning animate-pulse',
-    thinking: 'bg-warning animate-pulse',
-    speaking: 'bg-accent animate-pulse',
-    error: 'bg-error',
-  };
 
   const handleToggleTts = async () => {
     const nextEnabled = !ttsEnabled;
@@ -76,7 +67,7 @@ function Header({
             {currentAgent?.display_name || 'Kokoro'}
           </span>
           <span
-            className={`w-2 h-2 rounded-full ${statusColors[status]}`}
+            className={`w-2 h-2 rounded-full ${STATUS_COLORS[status]}`}
             title={`Status: ${status}`}
           />
         </div>

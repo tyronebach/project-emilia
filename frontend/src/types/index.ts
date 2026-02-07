@@ -36,13 +36,6 @@ export interface Message {
   meta: MessageMeta;
 }
 
-export interface AvatarState {
-  intent?: string;
-  mood?: string;
-  intensity?: number;
-  energy?: string;
-}
-
 export interface AvatarCommand {
   intent?: string;
   mood?: string;
@@ -50,5 +43,17 @@ export interface AvatarCommand {
   energy?: string;
 }
 
+export type AvatarState = AvatarCommand;
+
+export const STATUS_COLORS: Record<AppStatus, string> = {
+  initializing: 'bg-warning animate-pulse',
+  ready: 'bg-success',
+  recording: 'bg-error animate-pulse',
+  processing: 'bg-warning animate-pulse',
+  thinking: 'bg-warning animate-pulse',
+  speaking: 'bg-accent animate-pulse',
+  error: 'bg-error',
+};
+
 // Re-export from api.ts for convenience
-export type { User, Agent, Session } from '../utils/api';
+export type { User, Agent, Session, HistoryMessage } from '../utils/api';
