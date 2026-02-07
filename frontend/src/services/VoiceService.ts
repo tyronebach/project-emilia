@@ -1,15 +1,15 @@
 /**
  * VoiceService - Main orchestrator for hands-free voice control
- * 
+ *
  * State Machine:
  *   PASSIVE → ACTIVE → PROCESSING → SPEAKING → ACTIVE
  *      ↑_________|_________|___________|
  */
 
 import { VoiceActivityDetector } from './VoiceActivityDetector';
-import { WakeWordDetector, WakeWord } from './WakeWordDetector';
 import { fetchWithAuth } from '../utils/api';
 
+export type WakeWord = 'start-listening' | 'stop-listening' | 'cancel';
 export type VoiceState = 'PASSIVE' | 'ACTIVE' | 'PROCESSING' | 'SPEAKING';
 
 export type VoiceDebugEvent =
@@ -32,23 +32,21 @@ export interface VoiceServiceConfig {
   onInterimTranscript?: (text: string) => void;
   onDebug?: (event: VoiceDebugEvent) => void;
   autoResumeAfterTranscript?: boolean;
-  silenceTimeout?: number;      // ms before returning to passive (default 10000)
-  returnToPassiveAfterSpeaking?: boolean; // default false (stay active)
+  silenceTimeout?: number;
+  returnToPassiveAfterSpeaking?: boolean;
 }
 
 export class VoiceService {
   private state: VoiceState = 'PASSIVE';
   private config: VoiceServiceConfig | null = null;
-  
+
   private vad: VoiceActivityDetector;
-  private wakeWord: WakeWordDetector;
-  
+
   private inactivityTimer: ReturnType<typeof setTimeout> | null = null;
   private _isInitialized = false;
 
   constructor() {
     this.vad = new VoiceActivityDetector();
-    this.wakeWord = new WakeWordDetector();
   }
 
   get currentState(): VoiceState {
@@ -65,12 +63,6 @@ export class VoiceService {
 
   async init(config: VoiceServiceConfig): Promise<void> {
     this.config = config;
-
-    // Init wake word detector (mock)
-    await this.wakeWord.init({
-      onDetected: (keyword) => this.handleWakeWord(keyword),
-      onError: (error) => this.config?.onError?.(error),
-    });
 
     // Init VAD
     await this.vad.init({
@@ -90,15 +82,12 @@ export class VoiceService {
     if (!this._isInitialized) {
       throw new Error('VoiceService not initialized');
     }
-    
-    await this.wakeWord.start();
     this.setState('PASSIVE');
     console.log('[Voice] Started in PASSIVE mode');
   }
 
   async stop(): Promise<void> {
     this.clearInactivityTimer();
-    await this.wakeWord.stop();
     await this.vad.stop();
     this.setState('PASSIVE');
     console.log('[Voice] Stopped');
@@ -107,30 +96,29 @@ export class VoiceService {
   async destroy(): Promise<void> {
     await this.stop();
     await this.vad.destroy();
-    this.wakeWord.release();
     this._isInitialized = false;
     console.log('[Voice] Destroyed');
   }
 
   /**
-   * Manually activate listening (simulates wake word)
+   * Manually activate listening
    */
   activate(): void {
-    this.wakeWord.simulateWakeWord('start-listening');
+    this.handleWakeWord('start-listening');
   }
 
   /**
-   * Manually deactivate (simulates stop wake word)
+   * Manually deactivate
    */
   deactivate(): void {
-    this.wakeWord.simulateWakeWord('stop-listening');
+    this.handleWakeWord('stop-listening');
   }
 
   /**
    * Cancel current operation
    */
   cancel(): void {
-    this.wakeWord.simulateWakeWord('cancel');
+    this.handleWakeWord('cancel');
   }
 
   /**
@@ -177,9 +165,9 @@ export class VoiceService {
   }
 
   private handleWakeWord(keyword: WakeWord): void {
-    console.log(`[Voice] Wake word: ${keyword}`);
+    console.log(`[Voice] Command: ${keyword}`);
     this.config?.onDebug?.({ type: 'wakeword', keyword });
-    
+
     switch (keyword) {
       case 'start-listening':
         this.activateListening();
@@ -195,7 +183,7 @@ export class VoiceService {
 
   private async activateListening(): Promise<void> {
     if (this.state === 'ACTIVE') return;
-    
+
     try {
       await this.vad.start();
       this.setState('ACTIVE');
@@ -234,18 +222,17 @@ export class VoiceService {
 
   private async handleSpeechEnd(audio: Float32Array): Promise<void> {
     if (this.state !== 'ACTIVE') return;
-    
+
     const audioMs = Math.round((audio.length / 16000) * 1000);
     this.config?.onDebug?.({ type: 'vad_speech_end', samples: audio.length, ms: audioMs });
     console.log('[Voice] Speech ended, starting STT...');
-    
-    // Pause VAD while we do STT
+
     this.vad.pause();
     this.config?.onDebug?.({ type: 'vad_paused' });
-    
+
     try {
       const transcript = await this.transcribeWithBackend(audio);
-      
+
       if (transcript.trim()) {
         console.log('[Voice] Got transcript:', transcript);
         this.config?.onDebug?.({ type: 'stt_result', text: transcript });
@@ -335,7 +322,7 @@ export class VoiceService {
 
   private resetInactivityTimer(): void {
     this.clearInactivityTimer();
-    
+
     const timeout = this.config?.silenceTimeout ?? 10000;
     this.inactivityTimer = setTimeout(() => {
       if (this.state === 'ACTIVE') {

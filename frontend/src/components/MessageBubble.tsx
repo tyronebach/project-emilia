@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { Volume2 } from 'lucide-react';
 import type { Message } from '../types';
+import { base64ToAudioBlob } from '../utils/helpers';
 
 interface MessageBubbleProps {
   message: Message;
@@ -37,12 +38,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
     try {
       setIsPlaying(true);
       cleanupAudio();
-      const byteChars = atob(meta.audio_base64);
-      const byteArray = new Uint8Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) {
-        byteArray[i] = byteChars.charCodeAt(i);
-      }
-      const blob = new Blob([byteArray], { type: 'audio/mpeg' });
+      const blob = base64ToAudioBlob(meta.audio_base64);
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
       audioRef.current = audio;

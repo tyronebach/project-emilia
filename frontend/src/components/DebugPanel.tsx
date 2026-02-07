@@ -1,12 +1,14 @@
 import { useMemo } from 'react';
 import { X, Activity, AlertCircle } from 'lucide-react';
-import { useApp } from '../context/AppContext';
+import { useAppStore } from '../store';
+import { useChatStore } from '../store/chatStore';
 import { useStatsStore } from '../store/statsStore';
 import { useUserStore } from '../store/userStore';
 import { Button } from './ui/button';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
 import { VoiceIndicator } from './VoiceIndicator';
 import { VoiceDebugTimeline, type VoiceDebugEntry } from './VoiceDebugTimeline';
+import { STATUS_COLORS } from '../types';
 import type { AppStatus } from '../types';
 import type { VoiceState } from '../services/VoiceService';
 
@@ -29,7 +31,13 @@ function DebugPanel({
   voiceDebugEvents = [],
   onClearVoiceDebug,
 }: DebugPanelProps) {
-  const { messages, status, ttsEnabled, ttsVoiceId, setTtsVoiceId, errors, sessionId } = useApp();
+  const messages = useChatStore((s) => s.messages);
+  const status = useAppStore((s) => s.status);
+  const ttsEnabled = useAppStore((s) => s.ttsEnabled);
+  const ttsVoiceId = useAppStore((s) => s.ttsVoiceId);
+  const setTtsVoiceId = useAppStore((s) => s.setTtsVoiceId);
+  const errors = useAppStore((s) => s.errors);
+  const sessionId = useAppStore((s) => s.sessionId);
   const { totalLatency, latencyCount, stateLog, stageLatencies } = useStatsStore();
   const currentUser = useUserStore((state) => state.currentUser);
   const currentAgent = useUserStore((state) => state.currentAgent);
@@ -60,18 +68,7 @@ function DebugPanel({
     return stats;
   }, [stageLatencies]);
 
-  const getStatusColor = (s: AppStatus): string => {
-    switch (s) {
-      case 'ready': return 'bg-success';
-      case 'thinking': return 'bg-warning animate-pulse';
-      case 'speaking': return 'bg-accent animate-pulse';
-      case 'recording': return 'bg-error animate-pulse';
-      case 'processing': return 'bg-warning animate-pulse';
-      case 'initializing': return 'bg-warning animate-pulse';
-      case 'error': return 'bg-error';
-      default: return 'bg-text-secondary/60';
-    }
-  };
+  const getStatusColor = (s: AppStatus): string => STATUS_COLORS[s] ?? 'bg-text-secondary/60';
 
   const formatTime = (date: Date): string => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });

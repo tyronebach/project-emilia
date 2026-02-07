@@ -40,7 +40,7 @@ export const useRenderStore = create<RenderStore>()(
       }),
       
       setSettings: (settings) => set({
-        preset: 'custom' as QualityPreset, // Will show as custom in UI
+        preset: 'custom',
         settings,
       }),
       
@@ -57,7 +57,7 @@ export const useRenderStore = create<RenderStore>()(
         // After loading preset from storage, recalculate settings
         return (rehydratedState) => {
           if (rehydratedState?.preset && rehydratedState.preset !== 'custom') {
-            rehydratedState.settings = getPreset(rehydratedState.preset as QualityPreset);
+            rehydratedState.settings = getPreset(rehydratedState.preset);
           }
         };
       },

@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
 import { fetchWithAuth, streamChat, stripAvatarTags, stripAvatarTagsStreaming } from '../utils/api';
+import { base64ToAudioBlob } from '../utils/helpers';
 import { useAppStore } from '../store';
+import { useChatStore } from '../store/chatStore';
 import type { AvatarRenderer } from '../avatar/AvatarRenderer';
 import { useStatsStore } from '../store/statsStore';
 import { useUserStore } from '../store/userStore';
@@ -37,15 +38,13 @@ async function waitForLipSyncRenderer(timeoutMs: number = LIP_SYNC_WAIT_MS): Pro
 }
 
 export function useChat() {
-  const {
-    status,
-    setStatus,
-    addMessage,
-    updateMessage,
-    applyAvatarCommand,
-    ttsEnabled,
-    ttsVoiceId
-  } = useApp();
+  const status = useAppStore((s) => s.status);
+  const setStatus = useAppStore((s) => s.setStatus);
+  const ttsEnabled = useAppStore((s) => s.ttsEnabled);
+  const ttsVoiceId = useAppStore((s) => s.ttsVoiceId);
+  const applyAvatarCommand = useAppStore((s) => s.applyAvatarCommand);
+  const addMessage = useChatStore((s) => s.addMessage);
+  const updateMessage = useChatStore((s) => s.updateMessage);
 
   const { updateStats, addStateEntry } = useStatsStore();
   const currentAgent = useUserStore((state) => state.currentAgent);
@@ -102,12 +101,7 @@ export function useChat() {
       if (!result.audio_base64) throw new Error('No audio data');
 
       // Decode audio
-      const byteChars = atob(result.audio_base64);
-      const byteArray = new Uint8Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) {
-        byteArray[i] = byteChars.charCodeAt(i);
-      }
-      const blob = new Blob([byteArray], { type: 'audio/mpeg' });
+      const blob = base64ToAudioBlob(result.audio_base64);
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
       audioRef.current = audio;

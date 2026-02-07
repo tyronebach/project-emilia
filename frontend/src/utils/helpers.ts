@@ -103,3 +103,15 @@ export function formatNumber(num: number): string {
 export function isDefined<T>(value: T | null | undefined): value is T {
   return value !== null && value !== undefined;
 }
+
+/**
+ * Decode base64 audio to a Blob
+ */
+export function base64ToAudioBlob(base64: string, contentType = 'audio/mpeg'): Blob {
+  const byteChars = atob(base64);
+  const byteArray = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) {
+    byteArray[i] = byteChars.charCodeAt(i);
+  }
+  return new Blob([byteArray], { type: contentType });
+}

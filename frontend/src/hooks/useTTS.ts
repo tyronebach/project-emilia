@@ -1,24 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useApp } from '../context/AppContext';
+import { useAppStore } from '../store';
 import { fetchWithAuth } from '../utils/api';
-
-/**
- * Convert base64 string to Blob
- */
-function base64ToBlob(base64: string, contentType: string): Blob {
-  const byteChars = atob(base64);
-  const byteNumbers = new Array(byteChars.length);
-
-  for (let i = 0; i < byteChars.length; i++) {
-    byteNumbers[i] = byteChars.charCodeAt(i);
-  }
-
-  const byteArray = new Uint8Array(byteNumbers);
-  return new Blob([byteArray], { type: contentType });
-}
+import { base64ToAudioBlob } from '../utils/helpers';
 
 export function useTTS() {
-  const { setStatus, avatarRendererRef, ttsVoiceId } = useApp();
+  const setStatus = useAppStore((s) => s.setStatus);
+  const ttsVoiceId = useAppStore((s) => s.ttsVoiceId);
+  const avatarRenderer = useAppStore((s) => s.avatarRenderer);
 
   const [isSpeaking, setIsSpeaking] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -40,15 +28,12 @@ export function useTTS() {
   useEffect(() => {
     return () => {
       cleanupAudio();
-      avatarRendererRef.current?.lipSyncEngine?.stop();
+      avatarRenderer?.lipSyncEngine?.stop();
     };
-  }, [cleanupAudio, avatarRendererRef]);
+  }, [cleanupAudio, avatarRenderer]);
 
-  /**
-   * Speak text via TTS API
-   */
   const speak = useCallback(async (text: string): Promise<boolean> => {
-    if (!text || !text.trim()) return false;
+    if (!text?.trim()) return false;
 
     try {
       cleanupAudio();
@@ -64,63 +49,42 @@ export function useTTS() {
         })
       });
 
-      if (!response.ok) {
-        throw new Error(`TTS failed: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`TTS failed: ${response.status}`);
       const result = await response.json();
+      if (!result.audio_base64) throw new Error('No audio data in response');
 
-      if (!result.audio_base64) {
-        throw new Error('No audio data in response');
-      }
-
-      // Decode base64 audio
-      const audioBlob = base64ToBlob(result.audio_base64, 'audio/mpeg');
+      const audioBlob = base64ToAudioBlob(result.audio_base64);
       const audioUrl = URL.createObjectURL(audioBlob);
-
-      // Create audio element
       const audio = new Audio(audioUrl);
       audioRef.current = audio;
       audioUrlRef.current = audioUrl;
 
       // Set up lip sync if alignment data available
-      const renderer = avatarRendererRef.current;
+      const renderer = useAppStore.getState().avatarRenderer;
       if (renderer?.lipSyncEngine && result.alignment) {
         renderer.lipSyncEngine.setAlignment(result.alignment);
         renderer.lipSyncEngine.startSync(audio);
       }
 
-      // Play audio
       return new Promise((resolve) => {
         audio.onended = () => {
-          // Stop lip sync
-          if (renderer?.lipSyncEngine) {
-            renderer.lipSyncEngine.stop();
-          }
-
-          // Cleanup
+          renderer?.lipSyncEngine?.stop();
           cleanupAudio();
           setIsSpeaking(false);
           setStatus('ready');
           resolve(true);
         };
-
         audio.onerror = () => {
           console.error('Audio playback error');
-          if (renderer?.lipSyncEngine) {
-            renderer.lipSyncEngine.stop();
-          }
+          renderer?.lipSyncEngine?.stop();
           cleanupAudio();
           setIsSpeaking(false);
           setStatus('ready');
           resolve(false);
         };
-
         audio.play().catch(() => {
           console.error('Audio play failed');
-          if (renderer?.lipSyncEngine) {
-            renderer.lipSyncEngine.stop();
-          }
+          renderer?.lipSyncEngine?.stop();
           cleanupAudio();
           setIsSpeaking(false);
           setStatus('ready');
@@ -133,25 +97,16 @@ export function useTTS() {
       setStatus('ready');
       return false;
     }
-  }, [setStatus, avatarRendererRef, cleanupAudio, ttsVoiceId]);
+  }, [setStatus, cleanupAudio, ttsVoiceId]);
 
-  /**
-   * Stop current playback
-   */
   const stop = useCallback((): void => {
-    const renderer = avatarRendererRef.current;
-    if (renderer?.lipSyncEngine) {
-      renderer.lipSyncEngine.stop();
-    }
-
+    const renderer = useAppStore.getState().avatarRenderer;
+    renderer?.lipSyncEngine?.stop();
     cleanupAudio();
     setIsSpeaking(false);
     setStatus('ready');
-  }, [setStatus, avatarRendererRef, cleanupAudio]);
+  }, [setStatus, cleanupAudio]);
 
-  /**
-   * Replay last spoken text
-   */
   const replay = useCallback((): Promise<boolean> => {
     if (currentTextRef.current) {
       return speak(currentTextRef.current);
@@ -159,12 +114,7 @@ export function useTTS() {
     return Promise.resolve(false);
   }, [speak]);
 
-  return {
-    speak,
-    stop,
-    replay,
-    isSpeaking
-  };
+  return { speak, stop, replay, isSpeaking };
 }
 
 export default useTTS;

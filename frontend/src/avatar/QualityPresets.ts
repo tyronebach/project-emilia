@@ -3,7 +3,7 @@
  * Defines low/medium/high quality tiers with configurable settings
  */
 
-export type QualityPreset = 'low' | 'medium' | 'high';
+export type QualityPreset = 'low' | 'medium' | 'high' | 'custom';
 
 export interface QualitySettings {
   pixelRatio: number;
@@ -76,7 +76,7 @@ export const QUALITY_PRESETS: Record<QualityPreset, QualitySettings> = {
  * Get a copy of preset settings (safe to modify)
  */
 export function getPreset(name: QualityPreset): QualitySettings {
-  return { ...QUALITY_PRESETS[name] };
+  return { ...(QUALITY_PRESETS[name as keyof typeof QUALITY_PRESETS] ?? QUALITY_PRESETS.medium) };
 }
 
 /**

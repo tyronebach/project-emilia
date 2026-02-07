@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { AppProvider, useApp } from './context/AppContext';
 import { useAppStore } from './store';
 import { useUserStore } from './store/userStore';
 import { useChatStore } from './store/chatStore';
@@ -17,6 +16,7 @@ import DebugPanel from './components/DebugPanel';
 import MemoryModal from './components/MemoryModal';
 import UserSettingsModal from './components/UserSettingsModal';
 import AwakeningOverlay from './components/AwakeningOverlay';
+import { STATUS_COLORS } from './types';
 import type { AppStatus } from './types';
 
 interface AppProps {
@@ -105,18 +105,16 @@ function App({ userId, sessionId }: AppProps) {
   }, [userId, currentUser, clearMessages]);
 
   return (
-    <AppProvider>
-      <AppContent
-        drawerOpen={drawerOpen}
-        setDrawerOpen={setDrawerOpen}
-        debugOpen={debugOpen}
-        setDebugOpen={setDebugOpen}
-        memoryOpen={memoryOpen}
-        setMemoryOpen={setMemoryOpen}
-        userSettingsOpen={userSettingsOpen}
-        setUserSettingsOpen={setUserSettingsOpen}
-      />
-    </AppProvider>
+    <AppContent
+      drawerOpen={drawerOpen}
+      setDrawerOpen={setDrawerOpen}
+      debugOpen={debugOpen}
+      setDebugOpen={setDebugOpen}
+      memoryOpen={memoryOpen}
+      setMemoryOpen={setMemoryOpen}
+      userSettingsOpen={userSettingsOpen}
+      setUserSettingsOpen={setUserSettingsOpen}
+    />
   );
 }
 
@@ -143,9 +141,14 @@ function AppContent({
   userSettingsOpen: boolean;
   setUserSettingsOpen: (open: boolean) => void;
 }) {
-  const { messages, status, addMessage, addError, setTtsEnabled, ttsEnabled } = useApp();
+  const messages = useChatStore((s) => s.messages);
+  const addMessage = useChatStore((s) => s.addMessage);
+  const status = useAppStore((s) => s.status);
+  const ttsEnabled = useAppStore((s) => s.ttsEnabled);
+  const setTtsEnabled = useAppStore((s) => s.setTtsEnabled);
+  const addError = useAppStore((s) => s.addError);
   const { sendMessage } = useChat();
-  const handsFreeEnabled = useAppStore((state) => state.handsFreeEnabled);
+  const handsFreeEnabled = useAppStore((s) => s.handsFreeEnabled);
   const currentUser = useUserStore((state) => state.currentUser);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [voiceDebugEvents, setVoiceDebugEvents] = useState<VoiceDebugEntry[]>([]);
@@ -335,16 +338,6 @@ function AppContent({
 }
 
 function StatusPill({ status, immersive }: { status: AppStatus; immersive: boolean }) {
-  const statusColors: Record<AppStatus, string> = {
-    initializing: 'bg-warning animate-pulse',
-    ready: 'bg-success',
-    recording: 'bg-error animate-pulse',
-    processing: 'bg-warning animate-pulse',
-    thinking: 'bg-warning animate-pulse',
-    speaking: 'bg-accent animate-pulse',
-    error: 'bg-error',
-  };
-
   const getStatusText = () => {
     if (status === 'processing') return 'Transcribing...';
     if (status === 'thinking') return 'Thinking...';
@@ -363,7 +356,7 @@ function StatusPill({ status, immersive }: { status: AppStatus; immersive: boole
       style={{ bottom: `calc(${panelHeight}svh + 9rem + 0.5rem + env(safe-area-inset-bottom))` }}
     >
       <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-bg-secondary/35 border border-white/5 backdrop-blur-sm text-text-secondary text-sm">
-        <span className={`w-2 h-2 rounded-full ${statusColors[status]}`} />
+        <span className={`w-2 h-2 rounded-full ${STATUS_COLORS[status]}`} />
         <span>{statusText}</span>
       </div>
     </div>
