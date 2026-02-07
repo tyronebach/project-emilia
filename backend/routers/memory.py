@@ -1,10 +1,9 @@
 """Memory file routes"""
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, Depends, Query, Header
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import PlainTextResponse
-from dependencies import verify_token
+from dependencies import verify_token, get_agent_workspace
 from schemas import MemoryFilesResponse, MemoryContentResponse
-import database as db
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
 
@@ -12,23 +11,10 @@ router = APIRouter(prefix="/api/memory", tags=["memory"])
 @router.get("")
 async def get_memory(
     token: str = Depends(verify_token),
-    x_user_id: str = Header(..., alias="X-User-Id"),
-    agent_id: str = Query(..., description="Agent ID to get memory for")
+    workspace: Path = Depends(get_agent_workspace),
 ):
     """Get agent's MEMORY.md content"""
-    if not db.user_can_access_agent(x_user_id, agent_id):
-        raise HTTPException(status_code=403, detail="User cannot access this agent")
-
-    agent = db.get_agent(agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-
-    if not agent.get("workspace"):
-        raise HTTPException(status_code=404, detail="Agent workspace not configured")
-
-    workspace = Path(agent["workspace"])
     memory_path = workspace / "MEMORY.md"
-
     if not memory_path.exists():
         raise HTTPException(status_code=404, detail="Memory file not found")
 
@@ -39,29 +25,15 @@ async def get_memory(
 @router.get("/list", response_model=MemoryFilesResponse)
 async def list_memory_files(
     token: str = Depends(verify_token),
-    x_user_id: str = Header(..., alias="X-User-Id"),
-    agent_id: str = Query(..., description="Agent ID to list memory files for")
+    workspace: Path = Depends(get_agent_workspace),
 ):
-    """List available memory files (MEMORY.md + daily files) for specific agent"""
-    if not db.user_can_access_agent(x_user_id, agent_id):
-        raise HTTPException(status_code=403, detail="User cannot access this agent")
-
-    agent = db.get_agent(agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-
-    if not agent.get("workspace"):
-        raise HTTPException(status_code=404, detail="Agent workspace not configured")
-
-    workspace = Path(agent["workspace"])
+    """List available memory files (MEMORY.md + daily files)"""
     files = []
 
-    # Add MEMORY.md if exists
     memory_md = workspace / "MEMORY.md"
     if memory_md.exists():
         files.append("MEMORY.md")
 
-    # Add daily files from memory/ directory
     memory_dir = workspace / "memory"
     if memory_dir.exists() and memory_dir.is_dir():
         for f in memory_dir.iterdir():
@@ -75,22 +47,9 @@ async def list_memory_files(
 async def get_memory_file(
     filename: str,
     token: str = Depends(verify_token),
-    x_user_id: str = Header(..., alias="X-User-Id"),
-    agent_id: str = Query(..., description="Agent ID to get memory file for")
+    workspace: Path = Depends(get_agent_workspace),
 ):
-    """Get specific memory file content for specific agent"""
-    if not db.user_can_access_agent(x_user_id, agent_id):
-        raise HTTPException(status_code=403, detail="User cannot access this agent")
-
-    agent = db.get_agent(agent_id)
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-
-    if not agent.get("workspace"):
-        raise HTTPException(status_code=404, detail="Agent workspace not configured")
-
-    workspace = Path(agent["workspace"])
-
+    """Get specific memory file content"""
     # Handle MEMORY.md specially
     if filename == "MEMORY.md":
         memory_path = workspace / "MEMORY.md"
@@ -104,11 +63,8 @@ async def get_memory_file(
     file_path = (workspace / "memory" / filename).resolve()
 
     # Security check - prevent path traversal
-    try:
-        if not file_path.is_relative_to(base_dir):
-            raise HTTPException(status_code=403, detail="Access denied")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid filename")
+    if not file_path.is_relative_to(base_dir):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Memory file not found")

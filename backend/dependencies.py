@@ -1,24 +1,12 @@
-"""
-FastAPI dependencies for request validation and authentication.
-"""
-from fastapi import Header, HTTPException
-from typing import Annotated
+"""FastAPI dependencies for request validation and authentication."""
+from pathlib import Path
+from fastapi import Depends, Header, HTTPException, Query
 from config import settings
+from db.repositories import UserRepository, AgentRepository
 
 
 async def verify_token(authorization: str | None = Header(None)) -> str:
-    """
-    Verify Bearer token from Authorization header.
-
-    Args:
-        authorization: Authorization header value
-
-    Returns:
-        Valid token string
-
-    Raises:
-        HTTPException: 401 if token is missing or invalid, 500 if server not configured
-    """
+    """Verify Bearer token from Authorization header."""
     if not settings.auth_token:
         raise HTTPException(status_code=500, detail="Server auth not configured")
     if not authorization:
@@ -30,75 +18,44 @@ async def verify_token(authorization: str | None = Header(None)) -> str:
     return token
 
 
-async def get_user_id(x_user_id: str | None = Header(None, alias="X-User-Id")) -> str:
-    """
-    Extract and validate X-User-Id header.
-
-    Args:
-        x_user_id: User ID from header
-
-    Returns:
-        User ID string
-
-    Raises:
-        HTTPException: 400 if header is missing or empty
-    """
-    if not x_user_id or not x_user_id.strip():
-        raise HTTPException(status_code=400, detail="X-User-Id header required")
+async def get_user_id(x_user_id: str = Header(..., alias="X-User-Id")) -> str:
+    """Extract and validate X-User-Id header."""
     return x_user_id.strip()
 
 
-async def get_agent_id(x_agent_id: str | None = Header(None, alias="X-Agent-Id")) -> str:
-    """
-    Extract and validate X-Agent-Id header.
-
-    Args:
-        x_agent_id: Agent ID from header
-
-    Returns:
-        Agent ID string
-
-    Raises:
-        HTTPException: 400 if header is missing or empty
-    """
-    if not x_agent_id or not x_agent_id.strip():
-        raise HTTPException(status_code=400, detail="X-Agent-Id header required")
+async def get_agent_id(x_agent_id: str = Header(..., alias="X-Agent-Id")) -> str:
+    """Extract and validate X-Agent-Id header."""
     return x_agent_id.strip()
 
 
 async def get_optional_agent_id(
     x_agent_id: str | None = Header(None, alias="X-Agent-Id")
 ) -> str | None:
-    """
-    Extract optional X-Agent-Id header.
-
-    Args:
-        x_agent_id: Agent ID from header (optional)
-
-    Returns:
-        Agent ID string or None
-    """
+    """Extract optional X-Agent-Id header."""
     return x_agent_id.strip() if x_agent_id else None
 
 
 async def get_session_id(
     x_session_id: str | None = Header(None, alias="X-Session-Id")
 ) -> str | None:
-    """
-    Extract optional X-Session-Id header.
-
-    Args:
-        x_session_id: Session ID from header (optional)
-
-    Returns:
-        Session ID string or None
-    """
+    """Extract optional X-Session-Id header."""
     return x_session_id.strip() if x_session_id else None
 
 
-# Type aliases for cleaner route signatures
-AuthToken = Annotated[str, Header(None)]
-UserId = Annotated[str, Header(None, alias="X-User-Id")]
-AgentId = Annotated[str, Header(None, alias="X-Agent-Id")]
-OptionalAgentId = Annotated[str | None, Header(None, alias="X-Agent-Id")]
-SessionId = Annotated[str | None, Header(None, alias="X-Session-Id")]
+async def get_agent_workspace(
+    user_id: str = Depends(get_user_id),
+    agent_id: str = Query(..., description="Agent ID"),
+) -> Path:
+    """Validate user access to agent and return workspace path.
+
+    Used by memory routes to avoid repeating access/workspace checks.
+    """
+    agent = AgentRepository.get_by_id(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if not UserRepository.can_access_agent(user_id, agent_id):
+        raise HTTPException(status_code=403, detail="User cannot access this agent")
+    workspace = agent.get("workspace")
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Agent workspace not configured")
+    return Path(workspace)

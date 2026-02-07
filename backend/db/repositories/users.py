@@ -1,53 +1,51 @@
-"""
-User repository for database operations.
-"""
-from typing import Optional
+"""User repository for database operations."""
 from db.connection import get_db
 
 
 class UserRepository:
-    """Repository for user database operations."""
 
     @staticmethod
     def get_all() -> list[dict]:
-        """Get all users."""
         with get_db() as conn:
-            return conn.execute(
-                "SELECT * FROM users ORDER BY display_name"
-            ).fetchall()
+            return conn.execute("SELECT * FROM users ORDER BY display_name").fetchall()
 
     @staticmethod
-    def get_by_id(user_id: str) -> Optional[dict]:
-        """Get user by ID."""
+    def get_all_with_agent_count() -> list[dict]:
+        with get_db() as conn:
+            return conn.execute("""
+                SELECT u.*, COUNT(ua.agent_id) as avatar_count
+                FROM users u
+                LEFT JOIN user_agents ua ON u.id = ua.user_id
+                GROUP BY u.id
+                ORDER BY u.display_name
+            """).fetchall()
+
+    @staticmethod
+    def get_by_id(user_id: str) -> dict | None:
         with get_db() as conn:
             return conn.execute(
-                "SELECT * FROM users WHERE id = ?",
-                (user_id,)
+                "SELECT * FROM users WHERE id = ?", (user_id,)
             ).fetchone()
 
     @staticmethod
     def create(user_id: str, display_name: str, preferences: str = "{}") -> dict:
-        """Create a new user."""
         with get_db() as conn:
             conn.execute(
                 "INSERT INTO users (id, display_name, preferences) VALUES (?, ?, ?)",
                 (user_id, display_name, preferences)
             )
-        return UserRepository.get_by_id(user_id)
+            return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
 
     @staticmethod
-    def update_preferences(user_id: str, preferences: str) -> Optional[dict]:
-        """Update user preferences JSON string."""
+    def update_preferences(user_id: str, preferences: str) -> dict | None:
         with get_db() as conn:
             conn.execute(
-                "UPDATE users SET preferences = ? WHERE id = ?",
-                (preferences, user_id)
+                "UPDATE users SET preferences = ? WHERE id = ?", (preferences, user_id)
             )
-        return UserRepository.get_by_id(user_id)
+            return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
 
     @staticmethod
     def get_agents(user_id: str) -> list[dict]:
-        """Get all agents accessible to user."""
         with get_db() as conn:
             return conn.execute("""
                 SELECT a.* FROM agents a
@@ -58,7 +56,6 @@ class UserRepository:
 
     @staticmethod
     def add_agent_access(user_id: str, agent_id: str):
-        """Grant user access to an agent."""
         with get_db() as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO user_agents (user_id, agent_id) VALUES (?, ?)",
@@ -67,7 +64,6 @@ class UserRepository:
 
     @staticmethod
     def can_access_agent(user_id: str, agent_id: str) -> bool:
-        """Check if user has access to agent."""
         with get_db() as conn:
             result = conn.execute(
                 "SELECT 1 FROM user_agents WHERE user_id = ? AND agent_id = ?",

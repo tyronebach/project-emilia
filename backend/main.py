@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""
-Emilia Web App - Backend API
-SQLite database for users, agents, sessions
-Integrates with Clawdbot Brain for AI responses
-"""
+"""Emilia Web App - Backend API"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from config import settings
+from core.exceptions import ServiceException
 from schemas import HealthResponse
 from routers import (
     users_router,
@@ -18,10 +16,9 @@ from routers import (
     admin_router
 )
 
+VERSION = "5.5.3"
 
-# ============ APP SETUP ============
-
-app = FastAPI(title="Emilia API", version="2.0.0")
+app = FastAPI(title="Emilia API", version=VERSION)
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,7 +28,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
 app.include_router(users_router)
 app.include_router(agents_router)
 app.include_router(sessions_router)
@@ -40,14 +36,15 @@ app.include_router(memory_router)
 app.include_router(admin_router)
 
 
-# ============ HEALTH ============
+@app.exception_handler(ServiceException)
+async def service_exception_handler(request, exc):
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
+
 
 @app.get("/api/health", response_model=HealthResponse)
 async def health():
-    return {"status": "ok", "version": "5.5.3"}
+    return {"status": "ok", "version": VERSION}
 
-
-# ============ STARTUP ============
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,7 +1,4 @@
-"""
-Pytest configuration and shared fixtures for Emilia backend tests.
-Updated for modular architecture (v5.5.0+).
-"""
+"""Pytest configuration and shared fixtures."""
 import os
 import sys
 from pathlib import Path
@@ -9,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Ensure backend/ is on sys.path when pytest rootdir differs
+# Ensure backend/ is on sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # Set required env vars before importing main module
@@ -22,7 +19,6 @@ os.environ.setdefault("EMILIA_SEED_DATA", "0")
 
 @pytest.fixture
 async def test_client():
-    """Create an AsyncClient for the FastAPI app."""
     import httpx
     from httpx import ASGITransport
     from main import app
@@ -34,12 +30,10 @@ async def test_client():
 
 @pytest.fixture
 def auth_headers():
-    """Standard authorization headers for authenticated requests."""
     return {"Authorization": "Bearer emilia-dev-token-2026"}
 
 
 @pytest.fixture
 def mock_httpx_client():
-    """Mock httpx.AsyncClient for external service calls."""
     with patch("httpx.AsyncClient") as mock:
         yield mock

@@ -1,137 +1,116 @@
-"""
-Pydantic response models for API endpoints.
-"""
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List, Any
+"""Pydantic response models for API endpoints."""
+from pydantic import BaseModel, ConfigDict
 
 
 class UserResponse(BaseModel):
-    """User response model."""
     id: str
     display_name: str
     preferences: str = "{}"
     created_at: int
-    avatar_count: Optional[int] = None
+    avatar_count: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class AgentResponse(BaseModel):
-    """Agent response model."""
     id: str
     display_name: str
     clawdbot_agent_id: str
     vrm_model: str = "emilia.vrm"
-    voice_id: Optional[str] = None
-    workspace: Optional[str] = None
+    voice_id: str | None = None
+    workspace: str | None = None
     created_at: int
-    owners: Optional[List[str]] = None
+    owners: list[str] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class SessionResponse(BaseModel):
-    """Session response model."""
     id: str
     agent_id: str
-    name: Optional[str] = None
+    name: str | None = None
     created_at: int
     last_used: int
     message_count: int = 0
-    participants: List[str] = []
+    participants: list[str] = []
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class MessageHistoryItem(BaseModel):
-    """Single message in chat history."""
     role: str
     content: str
-    timestamp: Optional[str] = None
+    timestamp: str | None = None
 
 
 class SessionHistoryResponse(BaseModel):
-    """Session history response."""
-    messages: List[MessageHistoryItem]
+    messages: list[MessageHistoryItem]
     session_id: str
     count: int
-    error: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
-    """Chat completion response."""
     response: str
     session_id: str
     processing_ms: int
-    model: Optional[str] = None
+    model: str | None = None
     behavior: dict = {}
-    usage: Optional[dict] = None
+    usage: dict | None = None
 
 
 class TTSResponse(BaseModel):
-    """Text-to-speech response."""
     audio_base64: str
-    alignment: Optional[dict] = None
+    alignment: dict | None = None
     voice_id: str
     duration_estimate: float
 
 
 class TranscriptionResponse(BaseModel):
-    """Speech-to-text transcription response."""
     text: str
-    language: Optional[str] = None
-    duration: Optional[float] = None
+    language: str | None = None
+    duration: float | None = None
 
 
 class HealthResponse(BaseModel):
-    """Health check response."""
     status: str
     version: str
 
 
 class UsersListResponse(BaseModel):
-    """List of users response."""
-    users: List[UserResponse]
+    users: list[UserResponse]
     count: int
 
 
 class AgentsListResponse(BaseModel):
-    """List of agents response."""
-    agents: List[AgentResponse]
+    agents: list[AgentResponse]
     count: int
 
 
 class SessionsListResponse(BaseModel):
-    """List of sessions response."""
-    sessions: List[SessionResponse]
+    sessions: list[SessionResponse]
     count: int
 
 
 class MemoryFilesResponse(BaseModel):
-    """Memory files listing."""
     workspace: str
-    files: List[str]
+    files: list[str]
 
 
 class MemoryContentResponse(BaseModel):
-    """Memory file content."""
     filename: str
     content: str
 
 
 class DeleteResponse(BaseModel):
-    """Generic delete response."""
-    deleted: bool | int
+    deleted: int
 
 
 class AgentDeleteResponse(BaseModel):
-    """Agent sessions delete response."""
     deleted: int
     agent_id: str
 
 
 class StatusResponse(BaseModel):
-    """Generic status response."""
     status: str
-    agent_id: Optional[str] = None
-    message: Optional[str] = None
+    agent_id: str | None = None
+    message: str | None = None

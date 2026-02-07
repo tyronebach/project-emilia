@@ -101,6 +101,14 @@ export class AnimationController {
   private lastUserMessageTime: number = 0;
   private lastBehaviorTime: number = 0;
   private sessionStartTime: number = Date.now();
+  private lastPlannedBehavior: {
+    intent: string;
+    mood: string;
+    energy: string;
+    emotion: string;
+    intensity: number;
+    gesture: string | null;
+  } | null = null;
 
   // Emotion transition
   private targetEmotion: Emotion = 'neutral';
@@ -249,6 +257,14 @@ export class AnimationController {
     };
 
     const output = this.behaviorPlanner.plan(fullInput);
+    this.lastPlannedBehavior = {
+      intent: String(fullInput.intent ?? 'neutral'),
+      mood: String(fullInput.mood ?? 'neutral'),
+      energy: String(fullInput.energy ?? 'medium'),
+      emotion: output.facialEmotion.expression,
+      intensity: output.facialEmotion.intensity,
+      gesture: output.bodyAction?.gesture ?? null,
+    };
     this.executeBehavior(output);
     this.lastBehaviorTime = now;
     this.turnCount++;
@@ -257,6 +273,18 @@ export class AnimationController {
       emotion: output.facialEmotion.expression,
       gesture: output.bodyAction?.gesture,
     });
+  }
+
+  getLastBehaviorDebug(): {
+    intent: string;
+    mood: string;
+    energy: string;
+    emotion: string;
+    intensity: number;
+    gesture: string | null;
+  } | null {
+    if (!this.lastPlannedBehavior) return null;
+    return { ...this.lastPlannedBehavior };
   }
 
   /**
