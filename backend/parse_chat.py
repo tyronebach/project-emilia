@@ -1,3 +1,4 @@
+# Phase 1.4 COMPLETE - 2026-02-08
 import re
 from typing import Any
 
@@ -7,6 +8,9 @@ from typing import Any
 MOOD_PATTERN = re.compile(r'\[MOOD:([^:\]]+):?([\d.]*)\]', re.IGNORECASE)
 INTENT_PATTERN = re.compile(r'\[INTENT:([^\]]+)\]', re.IGNORECASE)
 ENERGY_PATTERN = re.compile(r'\[ENERGY:([^\]]+)\]', re.IGNORECASE)
+# Regex patterns for game tags
+MOVE_PATTERN = re.compile(r'\[MOVE:([^\]]+)\]', re.IGNORECASE)
+GAME_PATTERN = re.compile(r'\[GAME:([^\]]+)\]', re.IGNORECASE)
 
 
 def extract_avatar_commands(text: str) -> tuple[str, dict[str, Any]]:
@@ -24,6 +28,8 @@ def extract_avatar_commands(text: str) -> tuple[str, dict[str, Any]]:
         "mood": None,
         "mood_intensity": 1.0,
         "energy": None,
+        "move": None,
+        "game_action": None,
     }
 
     mood_match = MOOD_PATTERN.search(text)
@@ -44,9 +50,19 @@ def extract_avatar_commands(text: str) -> tuple[str, dict[str, Any]]:
     if energy_match:
         behavior["energy"] = energy_match.group(1).lower()
 
+    move_match = MOVE_PATTERN.search(text)
+    if move_match:
+        behavior["move"] = move_match.group(1).strip()
+
+    game_match = GAME_PATTERN.search(text)
+    if game_match:
+        behavior["game_action"] = game_match.group(1).lower().strip()
+
     clean_text = MOOD_PATTERN.sub('', text)
     clean_text = INTENT_PATTERN.sub('', clean_text)
     clean_text = ENERGY_PATTERN.sub('', clean_text)
+    clean_text = MOVE_PATTERN.sub('', clean_text)
+    clean_text = GAME_PATTERN.sub('', clean_text)
     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
 
     return clean_text, behavior
@@ -69,7 +85,14 @@ def parse_chat_completion(result: dict[str, Any]) -> dict[str, Any]:
             "response_text": response_text,
             "reasoning": reasoning,
             "thinking": thinking,
-            "behavior": {"intent": None, "mood": None, "mood_intensity": 1.0, "energy": None}
+            "behavior": {
+                "intent": None,
+                "mood": None,
+                "mood_intensity": 1.0,
+                "energy": None,
+                "move": None,
+                "game_action": None,
+            }
         }
 
     message = (choices[0] or {}).get("message") or {}
