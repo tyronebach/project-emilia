@@ -1,9 +1,33 @@
 #!/usr/bin/env bash
+# Development server launcher
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-./scripts/dev-backend.sh
-
-echo "Frontend: cd frontend && npm run dev -- --host"
+echo "=== Emilia Development Servers ==="
+echo ""
+echo "Run these in separate terminals:"
+echo ""
+echo "  Backend (port 8080):"
+echo "    ./scripts/dev-backend-local.sh    # Local Python"
+echo "    ./scripts/dev-backend.sh          # Docker"
+echo ""
+echo "  Game Frontend (port 3443):"
+echo "    ./scripts/dev-frontend.sh"
+echo ""
+echo "  Agent Designer (port 3002):"
+echo "    ./scripts/dev-designer.sh"
+echo ""
+echo "=== Quick Start (3 terminals) ==="
+echo ""
+echo "  Terminal 1: ./scripts/dev-backend-local.sh"
+echo "  Terminal 2: ./scripts/dev-frontend.sh"
+echo "  Terminal 3: ./scripts/dev-designer.sh"
+echo ""
+echo "=== URLs ==="
+echo ""
+echo "  Game:     https://localhost:3443"
+echo "  Designer: http://localhost:3002"
+echo "  API:      http://localhost:8080/api/health"
+echo ""
