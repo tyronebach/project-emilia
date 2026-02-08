@@ -60,9 +60,6 @@ export class HeadGlanceSystem {
   // Temp objects to avoid allocation
   private _tempEuler = new THREE.Euler();
   private _tempQuat = new THREE.Quaternion();
-  
-  // Track if LookAt is handling head (don't double-apply)
-  private lookAtActive: boolean = false;
 
   constructor(vrm: VRM, config: Partial<HeadGlanceConfig> = {}) {
     this.vrm = vrm;
@@ -104,21 +101,6 @@ export class HeadGlanceSystem {
     if (!this.paused) return;  // Already running
     this.paused = false;
     this.scheduleNextGlance();
-  }
-
-  /**
-   * Tell glance system whether LookAt is handling head rotation.
-   * If LookAt is active, we apply glance as offset to LookAt, not directly to bone.
-   */
-  setLookAtActive(active: boolean): void {
-    this.lookAtActive = active;
-  }
-
-  /**
-   * Get current glance offset (for LookAt to incorporate)
-   */
-  getGlanceOffset(): { yaw: number; pitch: number } {
-    return { yaw: this.currentYaw, pitch: this.currentPitch };
   }
 
   private scheduleNextGlance(): void {
@@ -184,20 +166,17 @@ export class HeadGlanceSystem {
     this.currentYaw += (this.targetYaw - this.currentYaw) * t;
     this.currentPitch += (this.targetPitch - this.currentPitch) * t;
 
-    // If LookAt is handling head, don't apply directly - let LookAt read our offset
-    if (this.lookAtActive) {
-      return;
-    }
-
-    // Apply rotation directly to head bone (when LookAt is disabled)
-    this.applyToHead();
+    // Always apply glance - either on top of LookAt or on top of rest pose
+    this.applyGlance();
   }
 
   /**
-   * Apply glance rotation directly to head bone
+   * Apply glance rotation additively on top of current head rotation.
+   * Works whether LookAt has set a rotation or not.
    */
-  private applyToHead(): void {
+  private applyGlance(): void {
     if (!this.headBone) return;
+    if (Math.abs(this.currentYaw) < 0.1 && Math.abs(this.currentPitch) < 0.1) return;
 
     const euler = this._tempEuler;
     euler.set(
@@ -210,8 +189,7 @@ export class HeadGlanceSystem {
     const rotationQuat = this._tempQuat;
     rotationQuat.setFromEuler(euler);
 
-    // Apply on top of rest pose
-    this.headBone.quaternion.copy(this.headRestQuaternion);
+    // Multiply on top of current rotation (additive)
     this.headBone.quaternion.multiply(rotationQuat);
   }
 
@@ -237,7 +215,6 @@ export class HeadGlanceSystem {
       state: this.state,
       currentYaw: this.currentYaw,
       currentPitch: this.currentPitch,
-      lookAtActive: this.lookAtActive,
     };
   }
 
