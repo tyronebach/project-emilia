@@ -1,0 +1,23 @@
+{
+  "name": "Neutral Chat",
+  "description": "Casual conversation with no strong emotional content",
+  "tags": ["neutral", "baseline"],
+  "messages": [
+    {"content": "Hey, what's up?", "expected_triggers": ["greeting"]},
+    {"content": "Not much, just hanging out.", "expected_triggers": []},
+    {"content": "What did you do today?", "expected_triggers": ["curiosity"]},
+    {"content": "I had some errands to run. Nothing special.", "expected_triggers": []},
+    {"content": "Cool. The weather's been nice lately.", "expected_triggers": []},
+    {"content": "Yeah, I might go for a walk later.", "expected_triggers": []},
+    {"content": "Sounds good. Anyway, I gotta go. Talk later.", "expected_triggers": ["farewell"]}
+  ],
+  "expected_trajectory": {
+    "valence": "stays near baseline, minimal movement",
+    "trust": "unchanged or very slight increase",
+    "arousal": "low throughout"
+  },
+  "test_assertions": [
+    {"after_message": 6, "field": "valence", "min": 0.1, "max": 0.35},
+    {"after_message": 6, "field": "trust", "min": 0.48, "max": 0.55}
+  ]
+}

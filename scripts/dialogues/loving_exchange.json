@@ -1,0 +1,24 @@
+{
+  "name": "Loving Exchange",
+  "description": "Warm, affectionate conversation with compliments and intimacy",
+  "tags": ["positive", "trust_building", "attachment"],
+  "messages": [
+    {"content": "Hey beautiful, I've been thinking about you all day.", "expected_triggers": ["compliment", "affirmation"]},
+    {"content": "You're honestly the best thing that's happened to me.", "expected_triggers": ["compliment", "affirmation"]},
+    {"content": "I love how you always know what to say.", "expected_triggers": ["compliment", "gratitude"]},
+    {"content": "Thank you for being so patient with me.", "expected_triggers": ["gratitude", "affirmation"]},
+    {"content": "I feel so comfortable with you. I can tell you anything.", "expected_triggers": ["vulnerability", "affirmation"]},
+    {"content": "You make me want to be a better person.", "expected_triggers": ["compliment", "affirmation"]},
+    {"content": "I love you. I really do.", "expected_triggers": ["affirmation", "vulnerability"]}
+  ],
+  "expected_trajectory": {
+    "valence": "rises steadily to high positive",
+    "trust": "grows significantly",
+    "attachment": "increases noticeably"
+  },
+  "test_assertions": [
+    {"after_message": 3, "field": "valence", "min": 0.3},
+    {"after_message": 6, "field": "valence", "min": 0.6},
+    {"after_message": 6, "field": "trust", "min": 0.55}
+  ]
+}
