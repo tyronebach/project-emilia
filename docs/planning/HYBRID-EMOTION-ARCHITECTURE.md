@@ -289,7 +289,32 @@ ALTER TABLE agents ADD COLUMN mood_baseline TEXT;  -- JSON: {"zen": 10, ...}
 
 ---
 
-## Config File Structure
+## Data Storage
+
+### Agents: SQLite (Single Source of Truth)
+
+Agent emotional profiles are stored in the `agents` table:
+
+```sql
+-- Columns for emotional config
+baseline_valence REAL DEFAULT 0.2,
+baseline_arousal REAL DEFAULT 0.0,
+baseline_dominance REAL DEFAULT 0.0,
+emotional_volatility REAL DEFAULT 0.5,
+emotional_recovery REAL DEFAULT 0.1,
+emotional_profile TEXT  -- JSON blob with mood_baseline, decay_rates, etc.
+```
+
+The `emotional_profile` JSON column contains:
+- `mood_baseline`: Per-mood weights (0-10)
+- `mood_decay_rate`: How fast moods return to baseline
+- `decay_rates`: Per-axis decay rates
+- `trigger_multipliers`: Agent-specific trigger scaling
+- `trust_gain_multiplier` / `trust_loss_multiplier`
+
+### Relationships: JSON Files
+
+Relationship templates (shared across agents) remain in JSON:
 
 ```
 configs/
@@ -298,50 +323,51 @@ configs/
   relationships/
     friend.json                 # trigger_mood_map for friend
     romantic.json               # trigger_mood_map for romantic
-  
-  agents/
-    rem/
-      profile.json              # baseline, volatility, mood_baseline
-      romantic_overrides.json   # optional: rem-specific romantic tweaks
-    ram/
-      profile.json
-      romantic_overrides.json
-    beatrice/
-      profile.json
-      romantic_overrides.json
 ```
+
+### Agent Designer Admin UI
+
+Visual editor at `http://localhost:3002`:
+- Edit mood_baseline with sliders (0-10 for each of 16 moods)
+- Edit trigger→mood mappings for relationships
+- Changes write directly to SQLite
+- See: `frontend/designer/` and `backend/routers/designer.py`
 
 ---
 
-## Implementation Steps
+## Implementation Status ✓
 
-### Phase 1: Core Mood System
-1. Add MOODS constant to emotion_engine.py
-2. Add mood_weights to EmotionalState dataclass
-3. Add mood_baseline to AgentProfile dataclass
-4. Implement calculate_mood_deltas()
-5. Implement apply_mood_decay() for moods
-6. Implement get_dominant_moods()
-7. Update generate_context_block() to include mood
+All phases complete as of 2026-02-08.
 
-### Phase 2: Config Loading
-1. Create configs/moods.json with mood definitions
-2. Create relationship trigger_mood_maps (friend, romantic)
-3. Create agent profiles with mood_baseline
-4. Update config_loader to handle new structure
-5. Create agent-specific override loading
+### Phase 1: Core Mood System ✓
+- MOODS constant in emotion_engine.py
+- mood_weights in EmotionalState
+- mood_baseline in AgentProfile
+- calculate_mood_deltas(), apply_mood_decay(), get_dominant_moods()
+- generate_context_block() includes mood
 
-### Phase 3: Integration
-1. Update _process_emotion_pre_llm() to use mood system
-2. Add mood_weights to emotional_state DB schema
-3. Update EmotionalStateRepository for mood persistence
-4. Update debug endpoints to show moods
+### Phase 2: Config & Storage ✓
+- configs/moods.json with mood definitions
+- Relationship trigger_mood_maps in JSON files
+- **Agent profiles in SQLite** (not JSON files)
+- config_loader.py for relationship configs
 
-### Phase 4: Testing & Tuning
-1. Update test-dialogues.py to show mood trajectories
-2. Create mood comparison tests across agents
-3. Tune trigger_mood_maps based on results
-4. Verify LLM context produces expected behavior
+### Phase 3: Integration ✓
+- _process_emotion_pre_llm() uses mood system
+- mood_weights_json column in emotional_state table
+- EmotionalStateRepository handles mood persistence
+- Debug endpoints show moods
+
+### Phase 4: Testing & Tuning ✓
+- test-dialogues.py shows mood trajectories
+- 98 unit tests passing
+- emotion-lab.py for interactive tuning
+
+### Phase 5: Agent Designer UI ✓
+- Visual editor at localhost:3002
+- MoodBaselineEditor with 16 sliders
+- TriggerMoodEditor for relationship mappings
+- Writes to SQLite, not JSON files
 
 ---
 
