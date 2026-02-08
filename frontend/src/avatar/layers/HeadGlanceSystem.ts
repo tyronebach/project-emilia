@@ -92,6 +92,7 @@ export class HeadGlanceSystem {
    * Pause glances (during gesture animations)
    */
   pause(): void {
+    if (this.paused) return;  // Already paused
     this.paused = true;
     this.returnToNeutral();
   }
@@ -100,6 +101,7 @@ export class HeadGlanceSystem {
    * Resume glances (back to idle)
    */
   resume(): void {
+    if (!this.paused) return;  // Already running
     this.paused = false;
     this.scheduleNextGlance();
   }
