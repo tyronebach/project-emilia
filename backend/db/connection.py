@@ -220,6 +220,11 @@ def init_db():
         _add_column(cur, "emotional_state", "inferred_user_valence", "REAL DEFAULT 0.0")
         _add_column(cur, "emotional_state", "inferred_user_arousal", "REAL DEFAULT 0.0")
 
+        # Relationship columns on emotional_state
+        _add_column(cur, "emotional_state", "relationship_type", "TEXT DEFAULT 'companion'")
+        _add_column(cur, "emotional_state", "relationship_config", "TEXT")
+        _add_column(cur, "emotional_state", "relationship_started_at", "REAL")
+
         # Agent emotional baseline columns (safe to re-run)
         _add_column(cur, "agents", "baseline_valence", "REAL DEFAULT 0.2")
         _add_column(cur, "agents", "baseline_arousal", "REAL DEFAULT 0.0")
