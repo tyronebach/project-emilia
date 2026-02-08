@@ -43,6 +43,13 @@ def get_db():
         conn.close()
 
 
+def _add_column(cur, table: str, column: str, col_type: str):
+    """Add a column if it doesn't already exist (idempotent migration)."""
+    cols = {row["name"] for row in cur.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in cols:
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+
+
 def init_db():
     """Initialize database schema."""
     with get_db() as conn:
@@ -119,6 +126,61 @@ def init_db():
             )
         """)
 
+        # Game statistics
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS game_stats (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                game_id TEXT NOT NULL,
+                result TEXT NOT NULL,
+                moves INTEGER,
+                duration_seconds INTEGER,
+                played_at REAL NOT NULL,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            )
+        """)
+
+        # Emotional state (one per user-agent pair)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS emotional_state (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                valence REAL DEFAULT 0.0,
+                arousal REAL DEFAULT 0.0,
+                dominance REAL DEFAULT 0.0,
+                trust REAL DEFAULT 0.5,
+                attachment REAL DEFAULT 0.3,
+                familiarity REAL DEFAULT 0.0,
+                last_updated REAL NOT NULL,
+                last_interaction REAL,
+                interaction_count INTEGER DEFAULT 0,
+                UNIQUE(user_id, agent_id)
+            )
+        """)
+
+        # Emotional events log (for debugging/tuning)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS emotional_events (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                session_id TEXT,
+                timestamp REAL NOT NULL,
+                trigger_type TEXT NOT NULL,
+                trigger_value TEXT,
+                delta_valence REAL,
+                delta_arousal REAL,
+                delta_dominance REAL,
+                delta_trust REAL,
+                delta_attachment REAL,
+                state_after_json TEXT,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
+            )
+        """)
+
         # Messages table (webapp-managed history)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS messages (
@@ -141,12 +203,21 @@ def init_db():
             )
         """)
 
+        # Agent emotional baseline columns (safe to re-run)
+        _add_column(cur, "agents", "baseline_valence", "REAL DEFAULT 0.2")
+        _add_column(cur, "agents", "baseline_arousal", "REAL DEFAULT 0.0")
+        _add_column(cur, "agents", "baseline_dominance", "REAL DEFAULT 0.0")
+        _add_column(cur, "agents", "emotional_volatility", "REAL DEFAULT 0.5")
+        _add_column(cur, "agents", "emotional_recovery", "REAL DEFAULT 0.1")
+
         # Indexes for common queries
         cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_used ON sessions(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_session_participants_user ON session_participants(user_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_last_used ON tts_cache(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_created_at ON tts_cache(created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_game_stats_user ON game_stats(user_id, agent_id, game_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_emotional_events_user ON emotional_events(user_id, agent_id, timestamp)")
 
         conn.commit()
 
