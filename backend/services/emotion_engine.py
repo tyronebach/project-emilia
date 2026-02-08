@@ -360,11 +360,28 @@ class EmotionEngine:
     def generate_context_block(self, state: EmotionalState) -> str:
         """Generate emotional context block for LLM prompt injection."""
         levers = self.get_behavior_levers(state)
-        return f"""[EMOTIONAL_CONTEXT]
-warmth: {levers['warmth']:.2f}
-playfulness: {levers['playfulness']:.2f}
-guardedness: {levers['guardedness']:.2f}
-[/EMOTIONAL_CONTEXT]"""
+        
+        # Describe the emotional state in natural language for the LLM
+        warmth_desc = self._lever_description(levers['warmth'], 
+            ["cold and distant", "reserved", "neutral", "warm", "very affectionate"])
+        playful_desc = self._lever_description(levers['playfulness'],
+            ["serious", "subdued", "balanced", "playful", "very teasing"])
+        guard_desc = self._lever_description(levers['guardedness'],
+            ["completely open", "relaxed", "cautious", "guarded", "defensive"])
+        
+        return f"""[EMOTIONAL_STATE]
+You're feeling {warmth_desc} toward the user (warmth: {levers['warmth']:.0%}).
+Your mood is {playful_desc} (playfulness: {levers['playfulness']:.0%}).
+You're being {guard_desc} (guardedness: {levers['guardedness']:.0%}).
+Trust level: {state.trust:.0%}
+Let this color your tone naturally — don't mention these numbers.
+[/EMOTIONAL_STATE]"""
+
+    @staticmethod
+    def _lever_description(value: float, descriptions: list[str]) -> str:
+        """Map a 0-1 value to a description from a list."""
+        idx = min(int(value * len(descriptions)), len(descriptions) - 1)
+        return descriptions[idx]
     
     @staticmethod
     def _clamp(value: float, min_val: float, max_val: float) -> float:
