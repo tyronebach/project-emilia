@@ -181,6 +181,19 @@ def init_db():
             )
         """)
 
+        # Trigger counts — novelty tracking cache
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS trigger_counts (
+                user_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                trigger_type TEXT NOT NULL,
+                window TEXT NOT NULL,
+                count INTEGER DEFAULT 0,
+                last_seen REAL,
+                PRIMARY KEY (user_id, agent_id, trigger_type, window)
+            )
+        """)
+
         # Messages table (webapp-managed history)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS messages (
@@ -202,6 +215,10 @@ def init_db():
                 audio_base64 TEXT
             )
         """)
+
+        # Inferred user state columns on emotional_state
+        _add_column(cur, "emotional_state", "inferred_user_valence", "REAL DEFAULT 0.0")
+        _add_column(cur, "emotional_state", "inferred_user_arousal", "REAL DEFAULT 0.0")
 
         # Agent emotional baseline columns (safe to re-run)
         _add_column(cur, "agents", "baseline_valence", "REAL DEFAULT 0.2")
