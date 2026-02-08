@@ -108,7 +108,9 @@ def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: str, ses
         )
         
         # Generate context block for prompt
-        return engine.generate_context_block(state)
+        context = engine.generate_context_block(state)
+        logger.info("[Emotion] Pre-LLM context for %s/%s:\n%s", user_id, agent_id, context)
+        return context
         
     except Exception:
         logger.exception("Emotion engine error (pre-LLM), continuing without emotional context")
