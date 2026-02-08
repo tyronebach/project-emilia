@@ -1,4 +1,4 @@
-"""Load agent profiles and relationship configs from JSON files."""
+"""Load agent profiles, relationship configs, and mood configs from JSON files."""
 import json
 from pathlib import Path
 from functools import lru_cache
@@ -23,7 +23,26 @@ def load_relationship_config(relationship_type: str) -> dict:
     with open(path) as f:
         return json.load(f)
 
+@lru_cache(maxsize=1)
+def load_moods_config() -> dict:
+    """Load mood definitions from configs/moods.json"""
+    path = CONFIGS_DIR / "moods.json"
+    if not path.exists():
+        return {}
+    with open(path) as f:
+        return json.load(f)
+
+def get_trigger_mood_map(relationship_type: str) -> dict:
+    """Get trigger_mood_map for a relationship type.
+
+    Returns the trigger_mood_map dict from the relationship config,
+    or an empty dict if the relationship type has no config.
+    """
+    config = load_relationship_config(relationship_type)
+    return config.get("trigger_mood_map", {})
+
 def clear_config_cache():
     """Clear cached configs (useful for hot reload during dev)."""
     load_agent_profile.cache_clear()
     load_relationship_config.cache_clear()
+    load_moods_config.cache_clear()

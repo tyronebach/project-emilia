@@ -75,7 +75,7 @@ class EmotionalStateRepository:
             ).fetchone()
 
     @staticmethod
-    def update(user_id: str, agent_id: str, **changes) -> dict:
+    def update(user_id: str, agent_id: str, mood_weights: dict | None = None, **changes) -> dict:
         """Update emotional state axes. Clamps values to valid ranges."""
         allowed = {
             "valence", "arousal", "dominance",
@@ -97,6 +97,10 @@ class EmotionalStateRepository:
                 value = max(0.0, min(1.0, float(value)))
             set_clauses.append(f"{key} = ?")
             params.append(value)
+
+        if mood_weights is not None:
+            set_clauses.append("mood_weights_json = ?")
+            params.append(json.dumps(mood_weights))
 
         params.extend([user_id, agent_id])
         sql = f"UPDATE emotional_state SET {', '.join(set_clauses)} WHERE user_id = ? AND agent_id = ?"
