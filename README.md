@@ -39,6 +39,13 @@ open https://localhost:3443
 ## Development
 
 ```bash
+# Shortcuts
+./scripts/dev-backend.sh    # docker backend + health
+./scripts/dev-frontend.sh   # vite dev server
+./scripts/check-backend.sh  # backend tests (docker)
+./scripts/check-frontend.sh # frontend tests/lint/build
+./scripts/check-all.sh
+
 # Backend
 cd backend && source .venv/bin/activate
 python main.py         # Dev server :8080

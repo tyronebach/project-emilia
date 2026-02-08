@@ -11,6 +11,16 @@ Quick reference for running the backend with Docker.
 
 ---
 
+## Shortcuts
+
+```bash
+# Start backend and wait for health
+./scripts/dev-backend.sh
+
+# Backend tests (docker)
+./scripts/check-backend.sh
+```
+
 ## Build & Run
 
 ```bash
