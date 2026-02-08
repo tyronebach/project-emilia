@@ -39,13 +39,17 @@ export class IdleAnimations {
   }
 
   /**
-   * Load idle config from state machine
+   * Load idle config from state machine.
+   * Idles are preloaded upfront; gestures lazy-load on first use.
    */
   private async loadFromStateMachine(): Promise<void> {
     // Ensure state machine is loaded
     if (!animationStateMachine.isLoaded()) {
       await animationStateMachine.load();
     }
+
+    // Preload all idles upfront (no stutter during rotation)
+    await animationStateMachine.preloadIdles();
 
     const idle = animationStateMachine.getIdle();
     if (idle) {

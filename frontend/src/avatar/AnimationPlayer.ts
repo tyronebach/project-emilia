@@ -86,7 +86,7 @@ export class AnimationPlayer {
       return false;
     }
 
-    // Load animation from library
+    // Lazy-load gesture animation (may have small delay on first use, then cached)
     console.log('[AnimationPlayer] Loading:', file);
     const animData = await animationLibrary.load(file);
     if (!animData) {
