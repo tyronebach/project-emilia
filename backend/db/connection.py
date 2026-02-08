@@ -101,9 +101,29 @@ def init_db():
             )
         """)
 
+        # TTS cache
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tts_cache (
+                key TEXT PRIMARY KEY,
+                voice_id TEXT,
+                model_id TEXT,
+                voice_settings TEXT,
+                text TEXT,
+                audio_base64 TEXT,
+                alignment_json TEXT,
+                duration_estimate REAL,
+                audio_bytes INTEGER,
+                created_at INTEGER DEFAULT (strftime('%s', 'now')),
+                last_used INTEGER DEFAULT (strftime('%s', 'now')),
+                hits INTEGER DEFAULT 0
+            )
+        """)
+
         # Indexes for common queries
         cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_used ON sessions(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_session_participants_user ON session_participants(user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_last_used ON tts_cache(last_used DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_created_at ON tts_cache(created_at DESC)")
 
         conn.commit()
 

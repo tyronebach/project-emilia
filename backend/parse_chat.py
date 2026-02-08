@@ -9,8 +9,8 @@ MOOD_PATTERN = re.compile(r'\[MOOD:([^:\]]+):?([\d.]*)\]', re.IGNORECASE)
 INTENT_PATTERN = re.compile(r'\[INTENT:([^\]]+)\]', re.IGNORECASE)
 ENERGY_PATTERN = re.compile(r'\[ENERGY:([^\]]+)\]', re.IGNORECASE)
 # Regex patterns for game tags: [move:e4] [game:resign]
-MOVE_PATTERN = re.compile(r'\[move:([^\]]+)\]', re.IGNORECASE)
-GAME_PATTERN = re.compile(r'\[game:([^\]]+)\]', re.IGNORECASE)
+MOVE_PATTERN = re.compile(r'\[MOVE:([^\]]+)\]', re.IGNORECASE)
+GAME_PATTERN = re.compile(r'\[GAME:([^\]]+)\]', re.IGNORECASE)
 
 
 def extract_avatar_commands(text: str) -> tuple[str, dict[str, Any]]:
