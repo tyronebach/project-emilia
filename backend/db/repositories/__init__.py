@@ -2,9 +2,11 @@
 from .users import UserRepository
 from .agents import AgentRepository
 from .sessions import SessionRepository
+from .tts_cache import TTSCacheRepository
 
 __all__ = [
     "UserRepository",
     "AgentRepository",
     "SessionRepository",
+    "TTSCacheRepository",
 ]
