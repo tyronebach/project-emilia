@@ -245,6 +245,34 @@ def init_db():
         _add_column(cur, "sessions", "summary_updated_at", "INTEGER")
         _add_column(cur, "sessions", "compaction_count", "INTEGER DEFAULT 0")
 
+        # Mood definitions
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS moods (
+                id TEXT PRIMARY KEY,
+                description TEXT DEFAULT '',
+                valence REAL NOT NULL,
+                arousal REAL NOT NULL,
+                emoji TEXT DEFAULT '',
+                category TEXT DEFAULT 'neutral',
+                created_at INTEGER DEFAULT (strftime('%s', 'now'))
+            )
+        """)
+
+        # Relationship type definitions
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS relationship_types (
+                id TEXT PRIMARY KEY,
+                description TEXT DEFAULT '',
+                modifiers TEXT DEFAULT '{}',
+                behaviors TEXT DEFAULT '{}',
+                response_modifiers TEXT DEFAULT '{}',
+                trigger_mood_map TEXT DEFAULT '{}',
+                example_responses TEXT DEFAULT '{}',
+                extra TEXT DEFAULT '{}',
+                created_at INTEGER DEFAULT (strftime('%s', 'now'))
+            )
+        """)
+
         # Indexes for common queries
         cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_used ON sessions(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_session_participants_user ON session_participants(user_id)")
