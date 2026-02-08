@@ -4,6 +4,8 @@ from .agents import AgentRepository
 from .sessions import SessionRepository
 from .tts_cache import TTSCacheRepository
 from .messages import MessageRepository
+from .game_stats import GameStatsRepository
+from .emotional_state import EmotionalStateRepository
 
 __all__ = [
     "UserRepository",
@@ -11,4 +13,6 @@ __all__ = [
     "SessionRepository",
     "TTSCacheRepository",
     "MessageRepository",
+    "GameStatsRepository",
+    "EmotionalStateRepository",
 ]
