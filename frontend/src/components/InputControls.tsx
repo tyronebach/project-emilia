@@ -1,12 +1,15 @@
-import { useEffect, useRef } from 'react';
+// # Phase 2.4 COMPLETE - 2026-02-07
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { AudioLines, Paperclip, ArrowUp } from 'lucide-react';
+import { AudioLines, Paperclip, ArrowUp, Gamepad2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useChatStore } from '../store/chatStore';
 import { useChat } from '../hooks/useChat';
 import { chatInputSchema, ChatInput } from '../schemas/chat';
 import type { VoiceState } from '../services/VoiceService';
+import { useGameStore } from '../store/gameStore';
+import GameSelector from './GameSelector';
 
 /**
  * ChatGPT-style floating input bar
@@ -23,7 +26,9 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
   const { sendMessage, isLoading } = useChat();
   const handsFreeEnabled = useAppStore((s) => s.handsFreeEnabled);
   const setHandsFreeEnabled = useAppStore((s) => s.setHandsFreeEnabled);
+  const activeGameId = useGameStore((s) => s.activeGameId);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [gameSelectorOpen, setGameSelectorOpen] = useState(false);
 
   const {
     register,
@@ -151,6 +156,20 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
 
               <button
                 type="button"
+                onClick={() => setGameSelectorOpen(true)}
+                aria-pressed={Boolean(activeGameId)}
+                aria-label={activeGameId ? 'Game active' : 'Play a game'}
+                className={`h-11 w-11 rounded-full flex items-center justify-center transition-colors focus:outline-none focus:ring-0 border ${
+                  activeGameId
+                    ? 'bg-accent/20 text-accent border-accent/40'
+                    : 'bg-bg-tertiary/70 text-text-secondary border-white/10'
+                }`}
+              >
+                <Gamepad2 className="h-5 w-5" />
+              </button>
+
+              <button
+                type="button"
                 onClick={handleVoiceToggle}
                 aria-pressed={handsFreeEnabled}
                 aria-label={handsFreeEnabled ? 'Disable hands-free voice' : 'Enable hands-free voice'}
@@ -197,6 +216,8 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
           <AudioLines className="relative h-9 w-9 md:h-10 md:w-10" />
         </button>
       </div>
+
+      <GameSelector open={gameSelectorOpen} onClose={() => setGameSelectorOpen(false)} />
     </>
   );
 }

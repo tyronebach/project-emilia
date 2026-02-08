@@ -4,6 +4,7 @@
  */
 
 import type { AvatarCommand } from '../types';
+import type { GameContext } from '../games/types';
 import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
 
@@ -200,14 +201,14 @@ export async function renameSession(sessionId: string, name: string): Promise<Se
 
 // ============ CHAT API ============
 
-const AVATAR_TAG_REGEX = /\[(?:mood|intent|energy):[^\]]*\]/gi;
+const AVATAR_TAG_REGEX = /\[(?:mood|intent|energy|move|game):[^\]]*\]/gi;
 
 function stripAvatarTagsRaw(text: string): string {
   return text.replace(AVATAR_TAG_REGEX, '');
 }
 
 function stripTrailingPartialTag(text: string): string {
-  return text.replace(/\[(?:mood|intent|energy):[^\]]*$/i, '');
+  return text.replace(/\[(?:mood|intent|energy|move|game):[^\]]*$/i, '');
 }
 
 export function stripAvatarTagsStreaming(text: string): string {
@@ -227,12 +228,15 @@ export async function streamChat(
   onAvatar: (data: AvatarCommand) => void,
   onDone: (data: StreamResponse) => void,
   onError: (error: Error) => void,
-  options?: { signal?: AbortSignal }
+  options?: { signal?: AbortSignal; gameContext?: GameContext }
 ): Promise<void> {
   try {
     const response = await fetchWithAuth(`${API_URL}/api/chat?stream=1`, {
       method: 'POST',
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({
+        message,
+        game_context: options?.gameContext ?? undefined,
+      }),
       signal: options?.signal,
     });
 

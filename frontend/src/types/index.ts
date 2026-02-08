@@ -41,6 +41,8 @@ export interface AvatarCommand {
   mood?: string;
   intensity?: number;
   energy?: string;
+  move?: string;
+  game_action?: string;
 }
 
 export type AvatarState = AvatarCommand;

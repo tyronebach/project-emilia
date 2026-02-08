@@ -1,6 +1,7 @@
 """
 Pydantic request models for API endpoints.
 """
+# Phase 1.5 COMPLETE - 2026-02-08
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Dict, Any
 
@@ -8,6 +9,8 @@ from typing import Optional, Dict, Any
 class ChatRequest(BaseModel):
     """Chat message request."""
     message: str = Field(..., min_length=1, max_length=10000, description="User message")
+    # Optional game context for prompt injection.
+    game_context: dict | None = None
 
     @field_validator('message')
     @classmethod
