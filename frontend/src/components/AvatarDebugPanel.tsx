@@ -17,6 +17,7 @@ import { fetchWithAuth } from '../utils/api';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
 import { useVrmOptions, type VrmOption } from '../hooks/useVrmOptions';
 import { useAppStore } from '../store';
+import { useRenderStore } from '../store/renderStore';
 import type { VRM } from '@pixiv/three-vrm';
 import * as THREE from 'three';
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
@@ -379,6 +380,8 @@ function AvatarDebugPanel() {
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const lookAtEnabled = useRenderStore.getState().lookAtEnabled;
+
     const renderer = new AvatarRenderer(containerRef.current, {
       vrmUrl: buildVrmUrl(selectedModel),
       cameraDistance: 3.0,  // Pulled back to see full body
@@ -388,6 +391,7 @@ function AvatarDebugPanel() {
         const metaName = (vrm.meta as { name?: string })?.name;
         setLastAction(`Loaded: ${metaName || selectedModel}`);
         setLoading(false);
+        renderer.setLookAtEnabled(lookAtEnabled);
         
         // Fetch animation manifest and state machine
         try {

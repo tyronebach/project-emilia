@@ -29,6 +29,7 @@ function AvatarPanel() {
 
     // Get current render settings from store
     const settings = useRenderStore.getState().settings;
+    const lookAtEnabled = useRenderStore.getState().lookAtEnabled;
 
     const renderer = new AvatarRenderer(containerRef.current, {
       vrmUrl,
@@ -37,6 +38,7 @@ function AvatarPanel() {
         const metaName = (vrm.meta as { name?: string })?.name;
         console.log('VRM loaded:', metaName || 'Unknown');
         renderer.applyQualitySettings(settings);
+        renderer.setLookAtEnabled(lookAtEnabled);
         setLoading(false);
         setError(null);
         setAvatarRenderer(renderer);

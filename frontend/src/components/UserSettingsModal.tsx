@@ -28,6 +28,10 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
   // Camera controls
   const cameraDriftEnabled = useRenderStore((state) => state.cameraDriftEnabled);
   const setCameraDriftEnabled = useRenderStore((state) => state.setCameraDriftEnabled);
+  
+  // Avatar behavior
+  const lookAtEnabled = useRenderStore((state) => state.lookAtEnabled);
+  const setLookAtEnabled = useRenderStore((state) => state.setLookAtEnabled);
 
   const [error, setError] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<'tts_enabled' | null>(null);
@@ -206,6 +210,27 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
                 <div className="text-sm text-text-primary">Auto-reset camera</div>
                 <div className="text-xs text-text-secondary">
                   Camera drifts back to home position after inactivity.
+                </div>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer mt-3">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 accent-accent"
+                checked={lookAtEnabled}
+                onChange={(e) => {
+                  setLookAtEnabled(e.target.checked);
+                  // Apply immediately to renderer
+                  if (avatarRenderer) {
+                    avatarRenderer.setLookAtEnabled(e.target.checked);
+                  }
+                }}
+              />
+              <div>
+                <div className="text-sm text-text-primary">Eye & head follow</div>
+                <div className="text-xs text-text-secondary">
+                  Avatar looks toward the camera.
                 </div>
               </div>
             </label>
