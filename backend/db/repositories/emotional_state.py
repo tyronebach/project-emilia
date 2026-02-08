@@ -196,3 +196,34 @@ class EmotionalStateRepository:
                 "trigger_type": trigger_type,
                 "trigger_value": trigger_value,
             }
+
+    @staticmethod
+    def get_recent_events(
+        user_id: str,
+        agent_id: str,
+        limit: int = 50
+    ) -> list[dict]:
+        """Get recent emotional events for debugging."""
+        with get_db() as conn:
+            rows = conn.execute(
+                """SELECT id, user_id, agent_id, session_id, timestamp,
+                          trigger_type, trigger_value,
+                          delta_valence, delta_arousal, delta_dominance,
+                          delta_trust, delta_attachment, state_after_json
+                   FROM emotional_events
+                   WHERE user_id = ? AND agent_id = ?
+                   ORDER BY timestamp DESC
+                   LIMIT ?""",
+                (user_id, agent_id, limit)
+            ).fetchall()
+            
+            events = []
+            for row in rows:
+                event = dict(row)
+                # Parse the state_after_json back to dict
+                if event.get('state_after_json'):
+                    event['state_after'] = json.loads(event['state_after_json'])
+                    del event['state_after_json']
+                events.append(event)
+            
+            return events
