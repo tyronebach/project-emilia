@@ -1,3 +1,4 @@
+// # Phase 1.8 COMPLETE - 2026-02-08
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { fetchWithAuth, streamChat, stripAvatarTags, stripAvatarTagsStreaming } from '../utils/api';
 import { base64ToAudioBlob } from '../utils/helpers';
@@ -7,6 +8,7 @@ import type { AvatarRenderer } from '../avatar/AvatarRenderer';
 import { useStatsStore } from '../store/statsStore';
 import { useUserStore } from '../store/userStore';
 import type { TokenUsage } from '../types';
+import { useGame } from './useGame';
 
 interface StreamResponse {
   response?: string;
@@ -45,6 +47,7 @@ export function useChat() {
   const applyAvatarCommand = useAppStore((s) => s.applyAvatarCommand);
   const addMessage = useChatStore((s) => s.addMessage);
   const updateMessage = useChatStore((s) => s.updateMessage);
+  const { getGameContext, handleAvatarResponse } = useGame();
 
   const { updateStats, addStateEntry } = useStatsStore();
   const currentAgent = useUserStore((state) => state.currentAgent);
@@ -188,6 +191,9 @@ export function useChat() {
       let fullContent = '';
       let finalResponse: StreamResponse = {};
       let didAbort = false;
+      let didHandleAvatarMove = false;
+
+      const gameContext = getGameContext();
 
       await streamChat(
         message,
@@ -199,6 +205,8 @@ export function useChat() {
         // onAvatar
         (avatarData) => {
           applyAvatarCommand(avatarData);
+          didHandleAvatarMove = true;
+          handleAvatarResponse(avatarData.move);
         },
         // onDone
         (data) => {
@@ -215,6 +223,10 @@ export function useChat() {
             }
           });
           updateStats({ processing_ms: data.processing_ms });
+
+          if (!didHandleAvatarMove) {
+            handleAvatarResponse(undefined);
+          }
         },
         // onError
         (error) => {
@@ -234,7 +246,7 @@ export function useChat() {
           setStatus('error');
           setTimeout(() => setStatus('ready'), 3000);
         },
-        { signal: abortController.signal }
+        { signal: abortController.signal, gameContext: gameContext ?? undefined }
       );
 
       if (didAbort) return;
@@ -265,7 +277,7 @@ export function useChat() {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
-  }, [currentAgent, isLoading, setStatus, addMessage, updateMessage, applyAvatarCommand, ttsEnabled, speakText, updateStats]);
+  }, [currentAgent, isLoading, setStatus, addMessage, updateMessage, applyAvatarCommand, handleAvatarResponse, getGameContext, ttsEnabled, speakText, updateStats]);
 
   const abort = useCallback(() => {
     abortControllerRef.current?.abort();

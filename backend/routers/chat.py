@@ -1,4 +1,5 @@
 """Chat and media routes (chat, transcribe, speak)"""
+# Phase 1.6 COMPLETE - 2026-02-08
 import time
 import json
 import logging
@@ -15,6 +16,37 @@ from db.repositories import UserRepository, AgentRepository, SessionRepository
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["chat"])
+
+
+def inject_game_context(message: str, game_context: dict | None) -> str:
+    """Append game context to the user's message for the LLM prompt."""
+    if not game_context:
+        return message
+
+    game_id = game_context.get("gameId", "unknown")
+    state = game_context.get("state") or ""
+    last_move = game_context.get("lastUserMove") or ""
+    avatar_move = game_context.get("avatarMove")
+    valid_moves = game_context.get("validMoves") or []
+    status = game_context.get("status", "in_progress")
+
+    # Build a compact context block for the LLM.
+    context_block = f"\n\n---\n[game:{game_id}]\n{state}\n"
+
+    if last_move:
+        context_block += f"The user just played: {last_move}\n"
+
+    if avatar_move:
+        context_block += f"You played: {avatar_move}\nReact to this game state naturally.\n"
+    elif valid_moves:
+        moves_str = ", ".join(str(move) for move in valid_moves[:30])
+        context_block += f"It's your turn. Legal moves: {moves_str}\n"
+        context_block += "Choose a move and include it as [move:your_move] in your response.\n"
+
+    if status == "game_over":
+        context_block += "The game is over. React to the outcome.\n"
+
+    return message + context_block
 
 
 @router.post("/chat")
@@ -63,6 +95,8 @@ async def chat(
 
     # Non-streaming
     try:
+        # Inject game context into the prompt before sending to Clawdbot.
+        augmented_message = inject_game_context(request.message, request.game_context)
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f"{settings.clawdbot_url}/v1/chat/completions",
@@ -72,7 +106,7 @@ async def chat(
                 },
                 json={
                     "model": f"agent:{clawdbot_agent_id}",
-                    "messages": [{"role": "user", "content": request.message}],
+                    "messages": [{"role": "user", "content": augmented_message}],
                     "stream": False,
                     "user": sid
                 }
@@ -107,6 +141,8 @@ async def chat(
 async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_agent_id: str, session_id: str):
     """SSE streaming chat"""
     try:
+        # Inject game context into the prompt before streaming.
+        augmented_message = inject_game_context(request.message, request.game_context)
         async with httpx.AsyncClient(timeout=120.0) as client:
             async with client.stream(
                 "POST",
@@ -117,7 +153,7 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                 },
                 json={
                     "model": f"agent:{clawdbot_agent_id}",
-                    "messages": [{"role": "user", "content": request.message}],
+                    "messages": [{"role": "user", "content": augmented_message}],
                     "stream": True,
                     "stream_options": {"include_usage": True},
                     "user": session_id

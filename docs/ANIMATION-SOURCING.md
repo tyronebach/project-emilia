@@ -33,7 +33,7 @@ mixer.clipAction(clip).play()
 ### Prebake Workflow (Recommended for Production)
 
 1. Import FBX into Blender
-2. Use [VRM Add-on for Blender](https://vrm-addon-for-blender.info/) 
+2. Use [VRM Add-on for Blender](https://vrm-addon-for-blender.info/)
 3. Retarget to VRM skeleton
 4. Export as `.vrma` (VRM Animation format)
 5. Load `.vrma` directly with `@pixiv/three-vrm-animation`
@@ -93,7 +93,7 @@ Benefits: Smaller files, no runtime retargeting cost, can tweak animations.
 
 **Kevin Iglesias packs** (all high quality):
 - Human Basic Motions
-- Human Dance Animations  
+- Human Dance Animations
 - Human Melee Animations
 - Human Spellcasting Animations
 - Human Mega Animations Pack

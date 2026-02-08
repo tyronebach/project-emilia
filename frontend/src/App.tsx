@@ -1,3 +1,4 @@
+// # Phase 2.5 COMPLETE - 2026-02-07
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useAppStore } from './store';
@@ -16,6 +17,7 @@ import DebugPanel from './components/DebugPanel';
 import MemoryModal from './components/MemoryModal';
 import UserSettingsModal from './components/UserSettingsModal';
 import AwakeningOverlay from './components/AwakeningOverlay';
+import GamePanel from './components/GamePanel';
 import { STATUS_COLORS } from './types';
 import type { AppStatus } from './types';
 
@@ -303,6 +305,9 @@ function AppContent({
 
       {/* Status pill - left side */}
       <StatusPill status={status} immersive={immersiveMode} />
+
+      {/* Game Panel */}
+      {!isAwakening && <GamePanel />}
 
       {/* Chat History Overlay - hidden during awakening */}
       {!isAwakening && <ChatPanel />}
