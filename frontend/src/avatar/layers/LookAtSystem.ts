@@ -76,12 +76,9 @@ export class LookAtSystem {
   private _lookAtType: string = 'none';
   private _isVRM0: boolean = false;
 
-  // Glance state
-  private glanceActive: boolean = false;
-  private glanceYawOffset: number = 0;
-  private glancePitchOffset: number = 0;
-  private glanceTimer: number = 0;
-  private glanceDuration: number = 0;
+  // External glance offset (from HeadGlanceSystem)
+  private externalGlanceYaw: number = 0;
+  private externalGlancePitch: number = 0;
 
   // Reusable objects (avoid GC)
   private _tempVec3: THREE.Vector3 = new THREE.Vector3();
@@ -170,25 +167,12 @@ export class LookAtSystem {
   }
 
   /**
-   * Temporarily look away from the target
+   * Set glance offset from external source (HeadGlanceSystem).
+   * These offsets are added to the camera tracking direction.
    */
-  glanceAway(duration: number = 1.0): void {
-    this.glanceActive = true;
-    this.glanceDuration = duration;
-    this.glanceTimer = 0;
-
-    // Random offset direction
-    this.glanceYawOffset = (Math.random() > 0.5 ? 1 : -1) * (15 + Math.random() * 20);
-    this.glancePitchOffset = (Math.random() - 0.5) * 10;
-  }
-
-  /**
-   * Return gaze to target
-   */
-  glanceBack(): void {
-    this.glanceActive = false;
-    this.glanceYawOffset = 0;
-    this.glancePitchOffset = 0;
+  setGlanceOffset(yaw: number, pitch: number): void {
+    this.externalGlanceYaw = yaw;
+    this.externalGlancePitch = pitch;
   }
 
   /**
@@ -198,14 +182,6 @@ export class LookAtSystem {
   update(deltaTime: number): void {
     if (!this.config.enabled) return;
     if (!this.camera) return;
-
-    // Update glance timer
-    if (this.glanceActive) {
-      this.glanceTimer += deltaTime;
-      if (this.glanceTimer >= this.glanceDuration) {
-        this.glanceBack();
-      }
-    }
 
     // Calculate direction to camera
     const headBone = this.headBone;
@@ -244,11 +220,9 @@ export class LookAtSystem {
       targetPitch = Math.atan2(-(toCamera.y - 0.1), horizontalDist) * (180 / Math.PI);
     }
 
-    // Apply glance offset
-    if (this.glanceActive) {
-      targetYaw += this.glanceYawOffset;
-      targetPitch += this.glancePitchOffset;
-    }
+    // Apply external glance offset (from HeadGlanceSystem)
+    targetYaw += this.externalGlanceYaw;
+    targetPitch += this.externalGlancePitch;
 
     // Store for debug
     this._lastAngle = Math.abs(targetYaw);
