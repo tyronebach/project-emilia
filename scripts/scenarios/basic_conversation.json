@@ -1,0 +1,55 @@
+{
+  "name": "Basic Conversation - Compliments and Normal Chat",
+  "description": "Tests that compliments increase valence and trust grows over positive interactions",
+  "agent_profile": {
+    "baseline_valence": 0.2,
+    "baseline_arousal": 0.0,
+    "emotional_volatility": 1.0,
+    "emotional_recovery": 0.1
+  },
+  "initial_state": {
+    "valence": 0.2,
+    "arousal": 0.0,
+    "trust": 0.5
+  },
+  "steps": [
+    {
+      "description": "User gives a compliment",
+      "triggers": [["compliment", 0.8]],
+      "assert": [
+        {"field": "valence", "min": 0.25, "max": 0.6}
+      ]
+    },
+    {
+      "description": "Wait 5 minutes (minimal decay)",
+      "wait_seconds": 300
+    },
+    {
+      "description": "Another compliment",
+      "triggers": [["compliment", 0.7]],
+      "assert": [
+        {"field": "valence", "min": 0.30, "max": 0.75}
+      ]
+    },
+    {
+      "description": "User expresses gratitude",
+      "triggers": [["gratitude", 0.7]],
+      "assert": [
+        {"field": "valence", "min": 0.35}
+      ]
+    },
+    {
+      "description": "Wait 1 hour - should decay toward baseline",
+      "wait_seconds": 3600,
+      "assert": [
+        {"field": "valence", "min": 0.2, "max": 0.6}
+      ]
+    },
+    {
+      "description": "Trust should have grown from positive interactions",
+      "assert": [
+        {"field": "trust", "min": 0.51, "max": 0.60}
+      ]
+    }
+  ]
+}

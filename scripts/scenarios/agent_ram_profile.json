@@ -1,0 +1,60 @@
+{
+  "name": "Agent Profile - Ram (Proud, Stoic)",
+  "description": "Tests Ram's personality: low volatility, slow trust, holds grudges",
+  "agent_profile": {
+    "baseline_valence": 0.0,
+    "baseline_arousal": -0.1,
+    "emotional_volatility": 0.6,
+    "emotional_recovery": 0.08,
+    "trust_gain_multiplier": 0.5,
+    "trust_loss_multiplier": 1.8,
+    "attachment_ceiling": 0.7,
+    "trigger_multipliers": {
+      "compliment": 0.6,
+      "rejection": 1.5
+    }
+  },
+  "initial_state": {
+    "valence": 0.0,
+    "arousal": -0.1,
+    "trust": 0.5,
+    "attachment": 0.3
+  },
+  "steps": [
+    {
+      "description": "User compliments Ram (low multiplier - stoic response)",
+      "triggers": [["compliment", 0.8]],
+      "assert": [
+        {"field": "valence", "min": 0.0, "max": 0.15}
+      ]
+    },
+    {
+      "description": "Trust grows very slowly (0.5x)",
+      "assert": [
+        {"field": "trust", "min": 0.50, "max": 0.52}
+      ]
+    },
+    {
+      "description": "Rejection hits hard (1.5x multiplier)",
+      "triggers": [["rejection", 0.7]],
+      "assert": [
+        {"field": "valence", "max": 0.0},
+        {"field": "trust", "max": 0.50}
+      ]
+    },
+    {
+      "description": "Wait 2 hours - Ram holds onto negative (slow recovery)",
+      "wait_seconds": 7200,
+      "assert": [
+        {"field": "valence", "max": 0.05}
+      ]
+    },
+    {
+      "description": "Multiple compliments barely move the needle",
+      "triggers": [["compliment", 0.8], ["compliment", 0.8]],
+      "assert": [
+        {"field": "valence", "max": 0.2}
+      ]
+    }
+  ]
+}

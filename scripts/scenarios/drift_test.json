@@ -1,0 +1,48 @@
+{
+  "name": "Drift Test - Return to Baseline",
+  "description": "Verifies that emotional state decays back toward baseline over time",
+  "agent_profile": {
+    "baseline_valence": 0.2,
+    "baseline_arousal": 0.0,
+    "emotional_volatility": 1.0,
+    "emotional_recovery": 0.15
+  },
+  "initial_state": {
+    "valence": 0.8,
+    "arousal": 0.5,
+    "trust": 0.5
+  },
+  "steps": [
+    {
+      "description": "Initial state - far from baseline",
+      "assert": [
+        {"field": "valence", "min": 0.75, "max": 0.85},
+        {"field": "arousal", "min": 0.45, "max": 0.55}
+      ]
+    },
+    {
+      "description": "Wait 30 minutes",
+      "wait_seconds": 1800,
+      "assert": [
+        {"field": "valence", "min": 0.5, "max": 0.82},
+        {"field": "arousal", "min": 0.25, "max": 0.52}
+      ]
+    },
+    {
+      "description": "Wait 1 more hour - gradual decay",
+      "wait_seconds": 3600,
+      "assert": [
+        {"field": "valence", "min": 0.3, "max": 0.82},
+        {"field": "arousal", "min": 0.1, "max": 0.52}
+      ]
+    },
+    {
+      "description": "Wait 4 more hours - continuing decay toward baseline",
+      "wait_seconds": 14400,
+      "assert": [
+        {"field": "valence", "min": 0.15, "max": 0.8},
+        {"field": "arousal", "min": -0.1, "max": 0.5}
+      ]
+    }
+  ]
+}
