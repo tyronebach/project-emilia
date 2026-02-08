@@ -3,14 +3,12 @@
   "version": 2,
   "name": "Mixamo Animation State Machine",
   "description": "Mixamo FBX animations retargeted to VRM",
-  
   "idle": {
-    "file": "mixamo_fbx/Idle(1).fbx",
+    "file": "mixamo_fbx/idles/idle_breathing.fbx",
     "loop": true,
     "fadeIn": 0.3,
     "fadeOut": 0.3
   },
-  
   "actions": {
     "wave": {
       "file": "mixamo_fbx/Waving.fbx",
@@ -127,16 +125,32 @@
       "fadeOut": 0.2
     }
   },
-  
   "idles": [
-    { "file": "mixamo_fbx/idles/idle_breathing.fbx", "weight": 2 },
-    { "file": "mixamo_fbx/idles/idle_subtle.fbx", "weight": 2 },
-    { "file": "mixamo_fbx/idles/neutral_idle.fbx", "weight": 1 },
-    { "file": "mixamo_fbx/idles/standing_idle.fbx", "weight": 1 },
-    { "file": "mixamo_fbx/idles/catwalk_twist_l.fbx", "weight": 1 },
-    { "file": "mixamo_fbx/idles/catwalk_twist_r.fbx", "weight": 1 }
+    {
+      "file": "mixamo_fbx/idles/idle_breathing.fbx",
+      "weight": 2
+    },
+    {
+      "file": "mixamo_fbx/idles/idle_subtle.fbx",
+      "weight": 2
+    },
+    {
+      "file": "mixamo_fbx/idles/neutral_idle.fbx",
+      "weight": 1
+    },
+    {
+      "file": "mixamo_fbx/idles/standing_idle.fbx",
+      "weight": 1
+    },
+    {
+      "file": "mixamo_fbx/idles/catwalk_twist_l.fbx",
+      "weight": 1
+    },
+    {
+      "file": "mixamo_fbx/idles/catwalk_twist_r.fbx",
+      "weight": 1
+    }
   ],
-
   "defaults": {
     "fadeIn": 0.25,
     "fadeOut": 0.25,
