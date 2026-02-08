@@ -226,6 +226,7 @@ def init_db():
         _add_column(cur, "agents", "baseline_dominance", "REAL DEFAULT 0.0")
         _add_column(cur, "agents", "emotional_volatility", "REAL DEFAULT 0.5")
         _add_column(cur, "agents", "emotional_recovery", "REAL DEFAULT 0.1")
+        _add_column(cur, "agents", "emotional_profile", "TEXT")
 
         # Indexes for common queries
         cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_used ON sessions(last_used DESC)")

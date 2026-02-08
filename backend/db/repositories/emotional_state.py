@@ -5,7 +5,36 @@ import time
 from db.connection import get_db
 
 
+DEFAULT_EMOTIONAL_PROFILE = {
+    "decay_rates": {"valence": 0.1, "arousal": 0.12, "trust": 0.02, "attachment": 0.01},
+    "trust_gain_multiplier": 1.0,
+    "trust_loss_multiplier": 1.0,
+    "attachment_ceiling": 1.0,
+    "trigger_multipliers": {},
+}
+
+
 class EmotionalStateRepository:
+
+    @staticmethod
+    def get_agent_profile(agent_id: str) -> dict:
+        """Load agent's emotional_profile JSON, with defaults for missing keys."""
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT emotional_profile FROM agents WHERE id = ?", (agent_id,)
+            ).fetchone()
+
+        stored = {}
+        if row and row["emotional_profile"]:
+            stored = json.loads(row["emotional_profile"])
+
+        # Merge: stored values override defaults
+        profile = {**DEFAULT_EMOTIONAL_PROFILE, **stored}
+        # Deep-merge nested dicts
+        for key in ("decay_rates", "trigger_multipliers"):
+            profile[key] = {**DEFAULT_EMOTIONAL_PROFILE.get(key, {}), **stored.get(key, {})}
+
+        return profile
 
     @staticmethod
     def get_or_create(user_id: str, agent_id: str) -> dict:
