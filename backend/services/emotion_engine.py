@@ -17,6 +17,32 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+MOODS = [
+    "bashful", "defiant", "enraged", "erratic", "euphoric", "flirty",
+    "melancholic", "sarcastic", "sassy", "seductive", "snarky",
+    "supportive", "suspicious", "vulnerable", "whimsical", "zen"
+]
+
+# Mood → (valence, arousal) mapping for backwards compatibility
+MOOD_VALENCE_AROUSAL = {
+    "euphoric":    (0.9, 0.8),
+    "flirty":      (0.6, 0.6),
+    "supportive":  (0.7, 0.3),
+    "whimsical":   (0.5, 0.5),
+    "bashful":     (0.3, 0.4),
+    "zen":         (0.4, 0.1),
+    "sassy":       (0.3, 0.6),
+    "sarcastic":   (0.1, 0.4),
+    "vulnerable":  (0.2, 0.3),
+    "snarky":      (0.0, 0.5),
+    "suspicious":  (-0.2, 0.5),
+    "melancholic": (-0.4, 0.2),
+    "defiant":     (-0.3, 0.7),
+    "erratic":     (0.0, 0.9),
+    "enraged":     (-0.8, 0.9),
+    "seductive":   (0.5, 0.7),
+}
+
 
 @dataclass
 class EmotionalState:
@@ -27,7 +53,8 @@ class EmotionalState:
     trust: float = 0.5        # 0 to 1
     attachment: float = 0.3   # 0 to 1
     familiarity: float = 0.0  # 0 to 1
-    
+    mood_weights: dict = field(default_factory=dict)
+
     def to_dict(self) -> dict:
         return {
             'valence': self.valence,
@@ -36,8 +63,9 @@ class EmotionalState:
             'trust': self.trust,
             'attachment': self.attachment,
             'familiarity': self.familiarity,
+            'mood_weights': self.mood_weights,
         }
-    
+
     @classmethod
     def from_dict(cls, d: dict) -> 'EmotionalState':
         return cls(
@@ -47,6 +75,7 @@ class EmotionalState:
             trust=d.get('trust', 0.5),
             attachment=d.get('attachment', 0.3),
             familiarity=d.get('familiarity', 0.0),
+            mood_weights=d.get('mood_weights', {}),
         )
 
 
@@ -69,6 +98,8 @@ class AgentProfile:
     attachment_ceiling: float = 1.0
     trigger_multipliers: dict = field(default_factory=dict)
     play_trust_threshold: float = 0.7
+    mood_baseline: dict = field(default_factory=dict)
+    mood_decay_rate: float = 0.3
     
     @classmethod
     def from_db(cls, agent_row: dict, profile_json: dict) -> 'AgentProfile':
@@ -87,6 +118,8 @@ class AgentProfile:
             attachment_ceiling=profile_json.get('attachment_ceiling', 1.0),
             trigger_multipliers=profile_json.get('trigger_multipliers', {}),
             play_trust_threshold=profile_json.get('play_trust_threshold', 0.7),
+            mood_baseline=profile_json.get('mood_baseline', {}),
+            mood_decay_rate=profile_json.get('mood_decay_rate', 0.3),
         )
 
 
@@ -418,6 +451,80 @@ class EmotionEngine:
             # Low trust: teasing hurts
             return -abs(intensity) * 0.5
     
+    def calculate_mood_deltas(
+        self,
+        triggers: list[tuple[str, float]],
+        trigger_mood_map: dict,
+    ) -> dict[str, float]:
+        """Calculate mood weight changes from triggers."""
+        mood_deltas = {mood: 0.0 for mood in MOODS}
+
+        for trigger, intensity in triggers:
+            if trigger in trigger_mood_map:
+                for mood, weight in trigger_mood_map[trigger].items():
+                    if mood in MOODS:
+                        mood_deltas[mood] += weight * intensity
+
+        return mood_deltas
+
+    def apply_mood_deltas(self, state: EmotionalState, mood_deltas: dict) -> None:
+        """Apply mood deltas with volatility scaling."""
+        if not state.mood_weights:
+            state.mood_weights = {mood: self.profile.mood_baseline.get(mood, 0) for mood in MOODS}
+
+        for mood, delta in mood_deltas.items():
+            effective_delta = delta * self.profile.emotional_volatility
+            current = state.mood_weights.get(mood, 0)
+            state.mood_weights[mood] = self._clamp(current + effective_delta, -10, 20)
+
+        # Update valence/arousal from moods
+        self._update_valence_arousal_from_moods(state)
+
+    def _update_valence_arousal_from_moods(self, state: EmotionalState) -> None:
+        """Derive valence/arousal from mood weights."""
+        total_weight = sum(max(0, w) for w in state.mood_weights.values()) or 1
+
+        valence = sum(
+            MOOD_VALENCE_AROUSAL.get(mood, (0, 0))[0] * max(0, weight)
+            for mood, weight in state.mood_weights.items()
+        ) / total_weight
+
+        arousal = sum(
+            MOOD_VALENCE_AROUSAL.get(mood, (0, 0))[1] * max(0, weight)
+            for mood, weight in state.mood_weights.items()
+        ) / total_weight
+
+        # Blend with existing (don't completely override)
+        state.valence = self._clamp(state.valence * 0.3 + valence * 0.7, -1, 1)
+        state.arousal = self._clamp(state.arousal * 0.3 + arousal * 0.7, -1, 1)
+
+    def apply_mood_decay(self, state: EmotionalState, elapsed_seconds: float) -> None:
+        """Decay mood weights toward baseline."""
+        if not state.mood_weights:
+            return
+
+        hours = elapsed_seconds / 3600
+        decay_rate = self.profile.mood_decay_rate
+        baseline = self.profile.mood_baseline
+
+        for mood in MOODS:
+            current = state.mood_weights.get(mood, 0)
+            target = baseline.get(mood, 0)
+            decay = (current - target) * decay_rate * hours
+            state.mood_weights[mood] = current - decay
+
+    def get_dominant_moods(self, state: EmotionalState, top_n: int = 3) -> list[tuple[str, float]]:
+        """Get top N moods by current weight."""
+        if not state.mood_weights:
+            return []
+
+        sorted_moods = sorted(
+            state.mood_weights.items(),
+            key=lambda x: x[1],
+            reverse=True,
+        )
+        return [(m, w) for m, w in sorted_moods[:top_n] if w > 0]
+
     def get_behavior_levers(self, state: EmotionalState) -> dict[str, float]:
         """
         Convert emotional state to LLM-injectable behavior levers.
@@ -445,21 +552,23 @@ class EmotionEngine:
     def generate_context_block(self, state: EmotionalState) -> str:
         """Generate emotional context block for LLM prompt injection."""
         levers = self.get_behavior_levers(state)
-        
-        # Describe the emotional state in natural language for the LLM
-        warmth_desc = self._lever_description(levers['warmth'], 
-            ["cold and distant", "reserved", "neutral", "warm", "very affectionate"])
-        playful_desc = self._lever_description(levers['playfulness'],
-            ["serious", "subdued", "balanced", "playful", "very teasing"])
-        guard_desc = self._lever_description(levers['guardedness'],
-            ["completely open", "relaxed", "cautious", "guarded", "defensive"])
-        
+
+        # Get dominant moods
+        dominant = self.get_dominant_moods(state, top_n=2)
+
+        if dominant:
+            mood_names = [m[0] for m in dominant]
+            top_weight = dominant[0][1]
+            intensity = "strongly" if top_weight > 10 else "somewhat" if top_weight > 5 else "slightly"
+            mood_desc = f"{intensity} {' and '.join(mood_names)}"
+        else:
+            mood_desc = "neutral"
+
         return f"""[EMOTIONAL_STATE]
-You're feeling {warmth_desc} toward the user (warmth: {levers['warmth']:.0%}).
-Your mood is {playful_desc} (playfulness: {levers['playfulness']:.0%}).
-You're being {guard_desc} (guardedness: {levers['guardedness']:.0%}).
+You're feeling {mood_desc} right now.
+Warmth: {levers['warmth']:.0%} | Playfulness: {levers['playfulness']:.0%} | Guardedness: {levers['guardedness']:.0%}
 Trust level: {state.trust:.0%}
-Let this color your tone naturally — don't mention these numbers.
+Let this color your tone naturally — don't mention these explicitly.
 [/EMOTIONAL_STATE]"""
 
     @staticmethod
