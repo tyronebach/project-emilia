@@ -122,6 +122,16 @@ export class AvatarRenderer {
   }
 
   /**
+   * Reset animation system to bind pose
+   * Stops all animations and resets skeleton
+   */
+  resetAnimations(): void {
+    this.animationController?.graph?.resetToBindPose();
+    animationLibrary.clear();
+    console.log('[AvatarRenderer] Reset animations and cleared cache');
+  }
+
+  /**
    * Initialize renderer and scene
    */
   init(): boolean {
@@ -562,7 +572,8 @@ export class AvatarRenderer {
             });
           }
 
-          // Set VRM for animation library FIRST (needed for VRMA animations)
+          // Clear all animation caches and set VRM for animation library
+          animationLibrary.clear();
           animationLibrary.setVRM(vrm);
           
           // Load animation state machine and manifest (don't await - can load in parallel)

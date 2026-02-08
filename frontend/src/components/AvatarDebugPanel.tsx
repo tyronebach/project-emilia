@@ -36,57 +36,37 @@ const DEFAULT_MODELS: VrmOption[] = [
 const buildVrmUrl = (modelId: string) => `${VRM_BASE_PATH}/${modelId}`;
 
 
+// Behavior scenarios mapped to state machine actions (FBX animations)
 const BEHAVIOR_SCENARIOS = [
-  {
-    id: 'happy-greeting',
-    label: 'Happy Greeting',
-    text: '[INTENT:greeting] [MOOD:happy:0.8] [ENERGY:high] Hi there!',
-  },
-  {
-    id: 'thinking-hard',
-    label: 'Thinking Hard',
-    text: '[INTENT:thinking] [MOOD:neutral:0.5] [ENERGY:low] Let me think about that...',
-  },
-  {
-    id: 'surprised',
-    label: 'Surprised',
-    text: '[INTENT:surprised] [MOOD:surprised:0.9] [ENERGY:high] Oh wow!',
-  },
-  {
-    id: 'affectionate',
-    label: 'Affectionate',
-    text: '[INTENT:affection] [MOOD:happy:0.9] [ENERGY:medium] I really appreciate you~',
-  },
-  {
-    id: 'warm-farewell',
-    label: 'Warm Farewell',
-    text: '[INTENT:farewell] [MOOD:happy:0.6] [ENERGY:medium] See you soon!',
-  },
-  {
-    id: 'agreeing',
-    label: 'Agreeing',
-    text: '[INTENT:agreement] [MOOD:happy:0.5] [ENERGY:medium] Totally agree.',
-  },
-  {
-    id: 'disagreeing',
-    label: 'Disagreeing',
-    text: '[INTENT:disagreement] [MOOD:neutral:0.4] [ENERGY:low] I see it differently.',
-  },
-  {
-    id: 'attentive-listening',
-    label: 'Attentive Listening',
-    text: '[INTENT:listening] [MOOD:neutral:0.3] [ENERGY:low] I am listening.',
-  },
-  {
-    id: 'playful',
-    label: 'Playful',
-    text: '[INTENT:playful] [MOOD:happy:0.8] [ENERGY:high] You are fun to talk to!',
-  },
-  {
-    id: 'curious',
-    label: 'Curious',
-    text: '[INTENT:curious] [MOOD:surprised:0.6] [ENERGY:medium] Tell me more about that?',
-  },
+  // Greetings & Farewells
+  { id: 'wave', label: '👋 Wave', text: '[INTENT:greeting] [MOOD:happy:0.7] [ENERGY:high] Hi there!' },
+  { id: 'bow', label: '🙇 Bow', text: '[INTENT:farewell] [MOOD:neutral:0.5] [ENERGY:medium] Thank you!' },
+  
+  // Agreement & Disagreement
+  { id: 'nod', label: '✓ Nod', text: '[INTENT:agreement] [MOOD:happy:0.5] [ENERGY:medium] Yes, I agree.' },
+  { id: 'agree', label: '👍 Agree', text: '[INTENT:agreement] [MOOD:happy:0.6] [ENERGY:medium] Absolutely!' },
+  { id: 'disagree', label: '✗ Disagree', text: '[INTENT:disagreement] [MOOD:neutral:0.4] [ENERGY:low] I don\'t think so.' },
+  
+  // Emotions
+  { id: 'happy', label: '😊 Happy', text: '[INTENT:playful] [MOOD:happy:0.8] [ENERGY:high] This is wonderful!' },
+  { id: 'excited', label: '🎉 Excited', text: '[INTENT:excited] [MOOD:happy:0.9] [ENERGY:high] Oh wow, amazing!' },
+  { id: 'surprised', label: '😮 Surprised', text: '[INTENT:surprised] [MOOD:surprised:0.9] [ENERGY:high] Wait, really?!' },
+  { id: 'shy', label: '😳 Shy', text: '[INTENT:affection] [MOOD:embarrassed:0.7] [ENERGY:low] Oh, you\'re too kind~' },
+  { id: 'thinking', label: '🤔 Thinking', text: '[INTENT:thinking] [MOOD:neutral:0.5] [ENERGY:low] Hmm, let me consider...' },
+  
+  // Negative emotions
+  { id: 'angry', label: '😠 Angry', text: '[INTENT:disagreement] [MOOD:angry:0.8] [ENERGY:high] That\'s unacceptable!' },
+  { id: 'annoyed', label: '😤 Annoyed', text: '[INTENT:dismissive] [MOOD:angry:0.5] [ENERGY:medium] Ugh, really?' },
+  { id: 'dismissive', label: '🙄 Dismissive', text: '[INTENT:dismissive] [MOOD:neutral:0.4] [ENERGY:low] Whatever...' },
+  { id: 'sarcastic', label: '😏 Sarcastic', text: '[INTENT:playful] [MOOD:smug:0.6] [ENERGY:medium] Oh sure, totally.' },
+  
+  // Other
+  { id: 'smug', label: '😼 Smug', text: '[INTENT:confident] [MOOD:smug:0.7] [ENERGY:medium] Obviously I\'m right.' },
+  { id: 'relieved', label: '😌 Relieved', text: '[INTENT:neutral] [MOOD:happy:0.5] [ENERGY:low] Phew, that\'s a relief.' },
+  { id: 'look_away', label: '👀 Look Away', text: '[INTENT:thinking] [MOOD:neutral:0.3] [ENERGY:low] Well, about that...' },
+  
+  // Fun
+  { id: 'dance', label: '💃 Dance', text: '[INTENT:playful] [MOOD:happy:0.9] [ENERGY:high] Let\'s dance!' },
 ];
 
 type ParsedBehavior = {
@@ -295,6 +275,16 @@ function AvatarDebugPanel() {
   const switchModel = useCallback(async (modelId: string) => {
     const renderer = rendererRef.current;
     if (!renderer) return;
+
+    // Stop any test animations from debug upload panel
+    if (fbxActionRef.current) {
+      fbxActionRef.current.stop();
+      fbxActionRef.current = null;
+    }
+    if (fbxMixerRef.current) {
+      fbxMixerRef.current.stopAllAction();
+      fbxMixerRef.current = null;
+    }
 
     setLoading(true);
     setLastAction(`Loading ${modelId}...`);
@@ -1765,7 +1755,7 @@ function AvatarDebugPanel() {
                     </select>
                   </div>
                   
-                  {/* Play + Refresh buttons */}
+                  {/* Play + Reset + Refresh buttons */}
                   <div className="flex gap-2">
                     <Button
                       variant="ghost"
@@ -1776,6 +1766,18 @@ function AvatarDebugPanel() {
                     >
                       <Play className="w-3 h-3 mr-1" />
                       Play
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        rendererRef.current?.resetAnimations();
+                        setLastAction('Reset to bind pose');
+                      }}
+                      className="text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/60 border border-white/10 bg-warning/10"
+                      title="Reset skeleton to bind pose and clear animation cache"
+                    >
+                      🔄 Reset
                     </Button>
                     <Button
                       variant="ghost"

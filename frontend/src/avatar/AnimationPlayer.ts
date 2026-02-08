@@ -47,6 +47,11 @@ export class AnimationPlayer {
    * First checks state machine for action config, then falls back to direct file load
    */
   async play(name: string, options: PlayOptions = {}): Promise<boolean> {
+    // Ensure state machine is loaded
+    if (!animationStateMachine.isLoaded()) {
+      await animationStateMachine.load();
+    }
+    
     // Check state machine for action config
     const actionConfig = animationStateMachine.getAction(name);
 
@@ -82,10 +87,13 @@ export class AnimationPlayer {
     }
 
     // Load animation from library
+    console.log('[AnimationPlayer] Loading:', file);
     const animData = await animationLibrary.load(file);
     if (!animData) {
+      console.warn('[AnimationPlayer] Failed to load:', file);
       return false;
     }
+    console.log('[AnimationPlayer] Loaded:', file, 'type:', animData.type, 'tracks:', animData.clip.tracks.length);
 
     return this.playClip(animData, opts);
   }
@@ -174,8 +182,9 @@ export class AnimationPlayer {
   private playClip(animData: AnimationClipData, options: Required<PlayOptions>): boolean {
     const { clip, type } = animData;
 
-    // VRMA clips are already bound to VRM, no retargeting needed
-    const finalClip = type === 'vrma' ? clip : this.retargetToVRM(clip);
+    // VRMA and FBX clips are already retargeted by AnimationLibrary
+    // Only GLB needs retargeting here (legacy BVH-style naming)
+    const finalClip = (type === 'vrma' || type === 'fbx') ? clip : this.retargetToVRM(clip);
 
     if (!this.animationGraph) return false;
 
