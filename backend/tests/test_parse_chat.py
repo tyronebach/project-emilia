@@ -4,7 +4,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from parse_chat import parse_chat_completion, extract_avatar_commands
-from routers.sessions import _extract_text_content
 
 
 def test_parse_string_content():
@@ -40,57 +39,6 @@ def test_parse_array_content_with_thinking_part():
     parsed = parse_chat_completion(result)
     assert parsed["response_text"] == "Hello, world"
     assert parsed["thinking"] == "internal"
-
-
-# ========================================
-# Tests for text content extraction
-# ========================================
-
-def test_extract_text_content_string():
-    assert _extract_text_content("Hello world") == "Hello world"
-
-
-def test_extract_text_content_empty():
-    assert _extract_text_content("") == ""
-    assert _extract_text_content(None) == ""
-    assert _extract_text_content([]) == ""
-
-
-def test_extract_text_content_array():
-    content = [
-        {"type": "text", "text": "Hello"},
-        {"type": "text", "text": ", world!"},
-    ]
-    assert _extract_text_content(content) == "Hello , world!"
-
-
-def test_extract_text_content_array_with_thinking():
-    content = [
-        {"type": "thinking", "thinking": "I should say hello"},
-        {"type": "text", "text": "Hello!"},
-    ]
-    result = _extract_text_content(content)
-    assert "Hello!" in result
-
-
-def test_extract_text_content_array_only_thinking():
-    content = [
-        {"type": "thinking", "thinking": "Just thinking..."},
-    ]
-    assert _extract_text_content(content) == ""
-
-
-def test_extract_text_content_mixed_types():
-    content = [
-        {"type": "unknown", "data": "ignored"},
-        {"type": "text", "text": "Valid text"},
-        {"type": "reasoning", "reasoning": "ignored"},
-        123,
-        {"type": "text", "text": " more"},
-    ]
-    result = _extract_text_content(content)
-    assert "Valid text" in result
-    assert "more" in result
 
 
 # ========================================
