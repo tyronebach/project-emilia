@@ -29,7 +29,17 @@ for p in backend_paths:
         sys.path.insert(0, str(p))
         break
 
-from services.emotion_engine import EmotionEngine, EmotionalState, AgentProfile
+# Direct import path to avoid pulling in all services dependencies (httpx, etc.)
+import importlib.util
+_spec = importlib.util.spec_from_file_location(
+    "emotion_engine",
+    Path(__file__).parent.parent / "backend" / "services" / "emotion_engine.py"
+)
+_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_module)
+EmotionEngine = _module.EmotionEngine
+EmotionalState = _module.EmotionalState
+AgentProfile = _module.AgentProfile
 
 
 def run_scenario(scenario_path: Path) -> dict:
