@@ -9,7 +9,7 @@ import type { VRM, VRMExpressionManager } from '@pixiv/three-vrm';
 import { ExpressionMixer, CHANNEL_PRIORITY } from './expression/ExpressionMixer';
 import { BlinkController } from './layers/BlinkController';
 import { LookAtSystem } from './layers/LookAtSystem';
-import { HeadGlanceSystem } from './layers/HeadGlanceSystem';
+import { IdleMicroBehaviors } from './layers/IdleMicroBehaviors';
 import { LipSyncEngine } from './LipSyncEngine';
 import { AnimationGraph } from './AnimationGraph';
 import type { AlignmentData } from './types';
@@ -83,7 +83,7 @@ export class AnimationController {
   private expressionMixer: ExpressionMixer;
   private blinkController: BlinkController | null = null;
   private lookAtSystem: LookAtSystem | null = null;
-  private headGlanceSystem: HeadGlanceSystem | null = null;
+  private idleMicroBehaviors: IdleMicroBehaviors | null = null;
   private lipSyncEngine: LipSyncEngine | null = null;
   private animationGraph: AnimationGraph | null = null;
   private idleAnimations: IdleAnimations | null = null;
@@ -147,8 +147,11 @@ export class AnimationController {
     const blinkExpressions = this.detectBlinkExpressions(vrm.expressionManager ?? null);
     this.blinkController = new BlinkController(this.expressionMixer, { expressions: blinkExpressions });
     this.lookAtSystem = new LookAtSystem(vrm);
-    this.headGlanceSystem = new HeadGlanceSystem(vrm);
+    this.idleMicroBehaviors = new IdleMicroBehaviors(vrm, this.expressionMixer);
     this.lipSyncEngine = new LipSyncEngine(this.expressionMixer, vrm);
+    
+    // Create twitch channel for micro-behaviors
+    this.expressionMixer.createChannel('twitch', 50);  // between blink(60) and gesture(40)
     this.idleAnimations = new IdleAnimations(vrm, this.animationGraph);
     this.animationPlayer = new AnimationPlayer(vrm, this.animationGraph);
 
@@ -223,18 +226,18 @@ export class AnimationController {
     // LookAt first (sets head rotation toward camera)
     this.lookAtSystem?.update(deltaTime);
     
-    // HeadGlanceSystem after (adds variety on top of LookAt)
-    if (this.headGlanceSystem) {
-      // Pause glances during gestures
+    // Idle micro-behaviors after (adds variety on top of LookAt)
+    if (this.idleMicroBehaviors) {
+      // Pause during gestures
       const isGesturePlaying = this.animationGraph?.isGesturePlaying() ?? false;
       if (isGesturePlaying) {
-        this.headGlanceSystem.pause();
+        this.idleMicroBehaviors.pause();
       } else {
-        this.headGlanceSystem.resume();
+        this.idleMicroBehaviors.resume();
       }
       
-      // Update glance system (applies additively on top of current head rotation)
-      this.headGlanceSystem.update(deltaTime);
+      // Update micro behaviors (applies additively)
+      this.idleMicroBehaviors.update(deltaTime);
     }
 
     // Update ambient behavior and micro-behaviors
@@ -372,6 +375,9 @@ export class AnimationController {
     if (normalizedEmotion !== this.currentEmotion && this.blinkController) {
       await this.blinkController.setEnabled(false);
     }
+
+    // Sync idle micro-behaviors to emotional state
+    this.idleMicroBehaviors?.setState(normalizedEmotion);
 
     this.targetEmotion = normalizedEmotion;
     this.targetIntensity = intensity;
@@ -526,7 +532,7 @@ export class AnimationController {
   dispose(): void {
     this.blinkController?.dispose();
     this.lookAtSystem?.dispose();
-    this.headGlanceSystem?.dispose();
+    this.idleMicroBehaviors?.dispose();
     this.lipSyncEngine?.stop();
     this.animationGraph?.dispose();
     this.expressionMixer.dispose();
