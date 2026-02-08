@@ -19,28 +19,28 @@ from services.emotion_engine import EmotionEngine, EmotionalState, AgentProfile
 logger = logging.getLogger(__name__)
 
 
-def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: str, session_id: str | None = None) -> str | None:
+async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: str, session_id: str | None = None) -> str | None:
     """
     Process emotional state BEFORE LLM call.
-    
+
     1. Load/create emotional state
     2. Apply time-based decay
-    3. Detect triggers from user message
+    3. Detect triggers from user message (LLM or regex)
     4. Apply trigger deltas
     5. Return emotional context block for prompt injection
-    
+
     Returns context block string or None if emotion engine disabled/error.
     """
     try:
         # Load state and profile
         state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
         profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
-        
+
         # Get agent baseline from DB
         agent = AgentRepository.get_by_id(agent_id)
         if not agent:
             return None
-        
+
         # Build profile
         profile = AgentProfile(
             baseline_valence=agent.get('baseline_valence') or 0.2,
@@ -55,9 +55,9 @@ def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: str, ses
             trigger_multipliers=profile_data.get('trigger_multipliers', {}),
             play_trust_threshold=profile_data.get('play_trust_threshold', 0.7),
         )
-        
+
         engine = EmotionEngine(profile)
-        
+
         # Convert DB row to EmotionalState
         state = EmotionalState(
             valence=state_row['valence'] or 0.0,
@@ -67,16 +67,22 @@ def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: str, ses
             attachment=state_row['attachment'] or 0.3,
             familiarity=state_row['familiarity'] or 0.0,
         )
-        
+
         # Apply decay since last interaction
         last_updated = state_row.get('last_updated') or 0
         if last_updated:
             import time as time_module
             elapsed = time_module.time() - last_updated
             state = engine.apply_decay(state, elapsed)
-        
-        # Detect and apply triggers from user message
-        triggers = engine.detect_triggers(user_message)
+
+        # Detect triggers: LLM-based (async) or regex fallback
+        if settings.llm_trigger_detection:
+            triggers = await engine.detect_triggers_llm(user_message)
+            if not triggers:
+                triggers = engine.detect_triggers(user_message)
+        else:
+            triggers = engine.detect_triggers(user_message)
+
         for trigger, intensity in triggers:
             deltas = engine.apply_trigger(state, trigger, intensity)
             
@@ -371,7 +377,7 @@ async def chat(
     # Non-streaming
     try:
         # Process emotional state before LLM (detect triggers, apply decay)
-        emotional_context = _process_emotion_pre_llm(user_id, agent_id, request.message, sid)
+        emotional_context = await _process_emotion_pre_llm(user_id, agent_id, request.message, sid)
         
         # Build messages array: raw history + current message with contexts
         messages = _build_llm_messages(sid, request.message, request.game_context, emotional_context)
@@ -453,7 +459,7 @@ async def _stream_chat_sse(
     """SSE streaming chat"""
     try:
         # Process emotional state before LLM (detect triggers, apply decay)
-        emotional_context = _process_emotion_pre_llm(user_id, agent_id, request.message, session_id)
+        emotional_context = await _process_emotion_pre_llm(user_id, agent_id, request.message, session_id)
         
         # Build messages array: raw history + current message with contexts
         messages = _build_llm_messages(session_id, request.message, request.game_context, emotional_context)

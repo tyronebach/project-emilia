@@ -5,7 +5,17 @@ Processes triggers, applies decay, and computes behavior levers for LLM injectio
 """
 from dataclasses import dataclass, field
 from typing import Optional
+import json
+import logging
 import re
+
+# Lazy import httpx - only needed for LLM trigger detection
+try:
+    import httpx
+except ImportError:
+    httpx = None  # type: ignore
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -254,7 +264,82 @@ class EmotionEngine:
                     break  # One match per trigger type
         
         return triggers
-    
+
+    async def detect_triggers_llm(self, text: str) -> list[tuple[str, float]]:
+        """
+        Detect emotional triggers using LLM classification.
+
+        Sends the user message to the LLM with a structured prompt asking it
+        to identify emotional triggers and their intensities. Falls back to
+        regex-based detection on any failure.
+
+        Returns list of (trigger_name, intensity) tuples.
+        """
+        if not text or not text.strip():
+            return []
+
+        from config import settings
+
+        valid_triggers = list(self.DEFAULT_TRIGGER_DELTAS.keys())
+
+        prompt = (
+            "Classify the emotional triggers in this user message. "
+            f"Valid triggers: {', '.join(valid_triggers)}. "
+            "Return a JSON array of objects with 'trigger' (string) and "
+            "'intensity' (float 0.0-1.0). Return [] if no triggers found. "
+            "Only return the JSON array, nothing else."
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"{settings.clawdbot_url}/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.clawdbot_token}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": settings.compact_model,
+                        "messages": [
+                            {"role": "system", "content": prompt},
+                            {"role": "user", "content": text},
+                        ],
+                        "temperature": 0.0,
+                        "max_tokens": 256,
+                    },
+                )
+                response.raise_for_status()
+
+            result = response.json()
+            content = result["choices"][0]["message"]["content"].strip()
+
+            # Strip markdown code fences if present
+            if content.startswith("```"):
+                content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+            parsed = json.loads(content)
+
+            if not isinstance(parsed, list):
+                logger.warning("[EmotionLLM] Expected list, got %s", type(parsed).__name__)
+                return self.detect_triggers(text)
+
+            triggers = []
+            for item in parsed:
+                trigger = item.get("trigger", "")
+                intensity = float(item.get("intensity", 0.7))
+                if trigger in self.DEFAULT_TRIGGER_DELTAS:
+                    intensity = max(0.0, min(1.0, intensity))
+                    triggers.append((trigger, intensity))
+                else:
+                    logger.debug("[EmotionLLM] Ignoring unknown trigger: %s", trigger)
+
+            logger.info("[EmotionLLM] Detected triggers: %s", triggers)
+            return triggers
+
+        except Exception:
+            logger.exception("[EmotionLLM] LLM trigger detection failed, falling back to regex")
+            return self.detect_triggers(text)
+
     def apply_trigger(self, state: EmotionalState, trigger: str, intensity: float = 0.7) -> dict[str, float]:
         """
         Apply a trigger's emotional deltas to state.

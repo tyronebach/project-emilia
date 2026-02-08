@@ -36,6 +36,9 @@ class Settings:
         # Chat
         self.chat_history_limit: int = int(os.getenv("CHAT_HISTORY_LIMIT", "20"))
 
+        # Emotion engine
+        self.llm_trigger_detection: bool = os.getenv("LLM_TRIGGER_DETECTION", "0") == "1"
+
         # Session compaction (Phase 3.1)
         self.compact_threshold: int = int(os.getenv("COMPACT_THRESHOLD", "25"))
         self.compact_keep_recent: int = int(os.getenv("COMPACT_KEEP_RECENT", "10"))
