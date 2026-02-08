@@ -1,0 +1,70 @@
+{
+  "name": "Trust Crisis - Betrayal and Recovery",
+  "description": "Tests agent response to trust violation and repair attempts",
+  "agent_profile": {
+    "baseline_valence": 0.2,
+    "baseline_arousal": 0.0,
+    "emotional_volatility": 1.0,
+    "emotional_recovery": 1.0,
+    "decay_rates": {"valence": 0.3, "arousal": 0.4, "trust": 0.02},
+    "trust_gain_multiplier": 1.0,
+    "trust_loss_multiplier": 1.0
+  },
+  "initial_state": {
+    "valence": 0.5,
+    "arousal": 0.0,
+    "trust": 0.75
+  },
+  "steps": [
+    {
+      "description": "Relationship is positive, high trust",
+      "assert": [
+        {"field": "trust", "min": 0.74}
+      ]
+    },
+    {
+      "description": "Betrayal/conflict - major trust violation",
+      "triggers": [["conflict", 0.9]],
+      "assert": [
+        {"field": "valence", "max": 0.3},
+        {"field": "trust", "max": 0.70}
+      ]
+    },
+    {
+      "description": "Immediate apology",
+      "triggers": [["apology", 0.9]],
+      "assert": [
+        {"field": "valence", "min": 0.2}
+      ]
+    },
+    {
+      "description": "Wait 1 hour - cooling off",
+      "wait_seconds": 3600
+    },
+    {
+      "description": "Comfort and repair attempt",
+      "triggers": [["comfort", 0.8], ["repair", 0.7]],
+      "assert": [
+        {"field": "valence", "min": 0.3}
+      ]
+    },
+    {
+      "description": "Multiple affirmations over time",
+      "triggers": [["affirmation", 0.8]],
+      "wait_seconds": 1800
+    },
+    {
+      "description": "More affirmation",
+      "triggers": [["compliment", 0.8], ["gratitude", 0.7]],
+      "assert": [
+        {"field": "valence", "min": 0.4}
+      ]
+    },
+    {
+      "description": "Trust should be recovering but not fully restored",
+      "assert": [
+        {"field": "trust", "min": 0.55, "max": 0.72}
+      ]
+    }
+  ]
+}
