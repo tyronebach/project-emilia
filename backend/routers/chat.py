@@ -15,6 +15,7 @@ from core.exceptions import TTSError
 from parse_chat import parse_chat_completion, extract_avatar_commands
 from db.repositories import UserRepository, AgentRepository, SessionRepository, MessageRepository, EmotionalStateRepository
 from services.emotion_engine import EmotionEngine, EmotionalState, AgentProfile
+from services.config_loader import get_trigger_mood_map
 
 logger = logging.getLogger(__name__)
 
@@ -41,24 +42,17 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
         if not agent:
             return None
 
-        # Build profile
-        profile = AgentProfile(
-            baseline_valence=agent.get('baseline_valence') or 0.2,
-            baseline_arousal=agent.get('baseline_arousal') or 0.0,
-            baseline_dominance=agent.get('baseline_dominance') or 0.0,
-            emotional_volatility=agent.get('emotional_volatility') or 0.5,
-            emotional_recovery=agent.get('emotional_recovery') or 0.1,
-            decay_rates=profile_data.get('decay_rates', {}),
-            trust_gain_multiplier=profile_data.get('trust_gain_multiplier', 1.0),
-            trust_loss_multiplier=profile_data.get('trust_loss_multiplier', 1.0),
-            attachment_ceiling=profile_data.get('attachment_ceiling', 1.0),
-            trigger_multipliers=profile_data.get('trigger_multipliers', {}),
-            play_trust_threshold=profile_data.get('play_trust_threshold', 0.7),
-        )
+        # Build profile (from_db handles all fields including mood_baseline/mood_decay_rate)
+        profile = AgentProfile.from_db(agent, profile_data)
 
         engine = EmotionEngine(profile)
 
         # Convert DB row to EmotionalState
+        # Load persisted mood_weights from DB
+        mood_weights = {}
+        if state_row.get('mood_weights_json'):
+            mood_weights = json.loads(state_row['mood_weights_json'])
+
         state = EmotionalState(
             valence=state_row['valence'] or 0.0,
             arousal=state_row['arousal'] or 0.0,
@@ -66,6 +60,7 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
             trust=state_row['trust'] or 0.5,
             attachment=state_row['attachment'] or 0.3,
             familiarity=state_row['familiarity'] or 0.0,
+            mood_weights=mood_weights,
         )
 
         # Apply decay since last interaction
@@ -74,6 +69,7 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
             import time as time_module
             elapsed = time_module.time() - last_updated
             state = engine.apply_decay(state, elapsed)
+            engine.apply_mood_decay(state, elapsed)
 
         # Detect triggers: LLM-based (async) or regex fallback
         if settings.llm_trigger_detection:
@@ -85,7 +81,7 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
 
         for trigger, intensity in triggers:
             deltas = engine.apply_trigger(state, trigger, intensity)
-            
+
             # Log event
             if deltas:
                 EmotionalStateRepository.log_event(
@@ -101,10 +97,20 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
                     delta_attachment=deltas.get('attachment'),
                     state_after=state.to_dict(),
                 )
-        
-        # Save updated state
+
+        # Apply mood system: trigger_mood_map from relationship config
+        if triggers:
+            relationship_type = state_row.get('relationship_type') or 'friend'
+            trigger_mood_map = get_trigger_mood_map(relationship_type)
+            if trigger_mood_map:
+                mood_deltas = engine.calculate_mood_deltas(triggers, trigger_mood_map)
+                engine.apply_mood_deltas(state, mood_deltas)
+                logger.debug("[Emotion] Mood deltas applied: %s", {k: v for k, v in mood_deltas.items() if v != 0})
+
+        # Save updated state (including mood_weights)
         EmotionalStateRepository.update(
             user_id, agent_id,
+            mood_weights=state.mood_weights or None,
             valence=state.valence,
             arousal=state.arousal,
             dominance=state.dominance,
