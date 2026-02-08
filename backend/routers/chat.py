@@ -20,6 +20,27 @@ from services.config_loader import get_trigger_mood_map
 logger = logging.getLogger(__name__)
 
 
+async def _run_llm_trigger_batch(
+    user_id: str, 
+    agent_id: str, 
+    messages: list[str],
+    engine: EmotionEngine
+) -> None:
+    """
+    Background task: Run LLM trigger classification on batched messages.
+    
+    Results are stored in pending_triggers for the next turn.
+    This runs async and doesn't block the chat response.
+    """
+    try:
+        triggers = await engine.detect_triggers_llm_batch(messages)
+        if triggers:
+            EmotionalStateRepository.set_pending_triggers(user_id, agent_id, triggers)
+            logger.info("[EmotionBatch] Stored %d pending triggers for next turn", len(triggers))
+    except Exception:
+        logger.exception("[EmotionBatch] Background trigger detection failed")
+
+
 async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: str, session_id: str | None = None) -> str | None:
     """
     Process emotional state BEFORE LLM call.
@@ -71,13 +92,33 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
             state = engine.apply_decay(state, elapsed)
             engine.apply_mood_decay(state, elapsed)
 
-        # Detect triggers: LLM-based (async) or regex fallback
+        # Async trigger detection with batching (no blocking on LLM)
+        # 1. Pop pending LLM triggers from previous batch
+        # 2. Run instant regex detection on current message
+        # 3. Combine and apply
+        # 4. Buffer message for next LLM batch (every 4 messages)
+        
+        pending_triggers = EmotionalStateRepository.pop_pending_triggers(user_id, agent_id)
+        regex_triggers = engine.detect_triggers(user_message)
+        
+        # Combine pending (from LLM batch) + regex (instant)
+        # Deduplicate by trigger name, taking max intensity
+        trigger_map = {}
+        for trigger, intensity in pending_triggers + regex_triggers:
+            if trigger not in trigger_map or intensity > trigger_map[trigger]:
+                trigger_map[trigger] = intensity
+        triggers = list(trigger_map.items())
+        
+        # Buffer message for async LLM batch classification
         if settings.llm_trigger_detection:
-            triggers = await engine.detect_triggers_llm(user_message)
-            if not triggers:
-                triggers = engine.detect_triggers(user_message)
-        else:
-            triggers = engine.detect_triggers(user_message)
+            buffer = EmotionalStateRepository.append_to_buffer(user_id, agent_id, user_message, max_size=4)
+            
+            # Fire background LLM batch when buffer is full
+            if len(buffer) >= 4:
+                asyncio.create_task(_run_llm_trigger_batch(
+                    user_id, agent_id, buffer.copy(), engine
+                ))
+                EmotionalStateRepository.clear_buffer(user_id, agent_id)
 
         for trigger, intensity in triggers:
             deltas = engine.apply_trigger(state, trigger, intensity)
