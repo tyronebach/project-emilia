@@ -315,7 +315,7 @@ The `AvatarDebugPanel` provides:
 
 ### Ready to implement
 
-1. **InteractionSensor** — Touch/click on avatar canvas triggers BehaviorPlanner reactions (tap face → surprised, hold → affection, etc.). See `BEHAVIOR-SYSTEM-SPEC.md` in archive for full design. Requires raycasting against VRM mesh + bone zone detection.
+1. **InteractionSensor** — Touch/click on avatar canvas triggers BehaviorPlanner reactions (tap face → surprised, hold → affection, etc.). See `../archive/BEHAVIOR-SYSTEM-SPEC.md` for full design. Requires raycasting against VRM mesh + bone zone detection.
 
 2. **Agent prompt update** — Update Emilia's Clawdbot SOUL.md to emit `[intent:X] [mood:X] [energy:X]` tags instead of old format. The intent vocabulary is defined in `frontend/src/avatar/types/behavior.ts`. The backend and frontend already fully support the new tags.
 

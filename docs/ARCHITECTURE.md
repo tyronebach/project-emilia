@@ -158,7 +158,7 @@ curl http://localhost:8080/api/health | jq .
 
 **Schema:** New `messages` table with columns: `id`, `session_id`, `role`, `content`, `timestamp`, plus optional metadata (model, usage, behavior tags).
 
-**See:** `/docs/planning/game-modules/MESSAGE-HISTORY-REDESIGN.md`
+**See:** `planning/game-modules/MESSAGE-HISTORY-REDESIGN.md`
 
 ---
 
