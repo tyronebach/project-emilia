@@ -6,6 +6,8 @@ from .tts_cache import TTSCacheRepository
 from .messages import MessageRepository
 from .game_stats import GameStatsRepository
 from .emotional_state import EmotionalStateRepository
+from .moods import MoodRepository
+from .relationship_types import RelationshipTypeRepository
 
 __all__ = [
     "UserRepository",
@@ -15,4 +17,6 @@ __all__ = [
     "MessageRepository",
     "GameStatsRepository",
     "EmotionalStateRepository",
+    "MoodRepository",
+    "RelationshipTypeRepository",
 ]

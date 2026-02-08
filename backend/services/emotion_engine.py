@@ -17,31 +17,71 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-MOODS = [
-    "bashful", "defiant", "enraged", "erratic", "euphoric", "flirty",
-    "melancholic", "sarcastic", "sassy", "seductive", "snarky",
-    "supportive", "suspicious", "vulnerable", "whimsical", "zen"
-]
+def _load_moods_from_db() -> tuple[list[str], dict[str, tuple[float, float]]]:
+    """Load mood list and valence/arousal map from the moods DB table."""
+    from db.repositories import MoodRepository
+    rows = MoodRepository.get_all()
+    moods = []
+    va_map = {}
+    for row in rows:
+        mood_id = row["id"]
+        moods.append(mood_id)
+        va_map[mood_id] = (row["valence"], row["arousal"])
+    return moods, va_map
 
-# Mood → (valence, arousal) mapping for backwards compatibility
-MOOD_VALENCE_AROUSAL = {
-    "euphoric":    (0.9, 0.8),
-    "flirty":      (0.6, 0.6),
-    "supportive":  (0.7, 0.3),
-    "whimsical":   (0.5, 0.5),
-    "bashful":     (0.3, 0.4),
-    "zen":         (0.4, 0.1),
-    "sassy":       (0.3, 0.6),
-    "sarcastic":   (0.1, 0.4),
-    "vulnerable":  (0.2, 0.3),
-    "snarky":      (0.0, 0.5),
-    "suspicious":  (-0.2, 0.5),
-    "melancholic": (-0.4, 0.2),
-    "defiant":     (-0.3, 0.7),
-    "erratic":     (0.0, 0.9),
-    "enraged":     (-0.8, 0.9),
-    "seductive":   (0.5, 0.7),
-}
+
+# Populated on first access (lazy) so DB is ready before we query
+_moods_cache: tuple[list[str], dict[str, tuple[float, float]]] | None = None
+
+
+def _get_moods() -> tuple[list[str], dict[str, tuple[float, float]]]:
+    global _moods_cache
+    if _moods_cache is None:
+        _moods_cache = _load_moods_from_db()
+    return _moods_cache
+
+
+def get_mood_list() -> list[str]:
+    """Get the list of all mood IDs."""
+    return _get_moods()[0]
+
+
+def get_mood_valence_arousal() -> dict[str, tuple[float, float]]:
+    """Get mood -> (valence, arousal) mapping."""
+    return _get_moods()[1]
+
+
+# Backwards-compatible module-level aliases (read via property-like access)
+# Code that does `for mood in MOODS` or `MOOD_VALENCE_AROUSAL[x]` still works.
+# These are loaded lazily on first use.
+class _LazyList(list):
+    _loaded = False
+    def _ensure(self):
+        if not self._loaded:
+            self.extend(get_mood_list())
+            self._loaded = True
+    def __iter__(self): self._ensure(); return super().__iter__()
+    def __len__(self): self._ensure(); return super().__len__()
+    def __contains__(self, item): self._ensure(); return super().__contains__(item)
+    def __getitem__(self, idx): self._ensure(); return super().__getitem__(idx)
+
+class _LazyDict(dict):
+    _loaded = False
+    def _ensure(self):
+        if not self._loaded:
+            self.update(get_mood_valence_arousal())
+            self._loaded = True
+    def __iter__(self): self._ensure(); return super().__iter__()
+    def __len__(self): self._ensure(); return super().__len__()
+    def __contains__(self, item): self._ensure(); return super().__contains__(item)
+    def __getitem__(self, key): self._ensure(); return super().__getitem__(key)
+    def get(self, key, default=None): self._ensure(); return super().get(key, default)
+    def items(self): self._ensure(); return super().items()
+    def values(self): self._ensure(); return super().values()
+    def keys(self): self._ensure(); return super().keys()
+
+MOODS = _LazyList()
+MOOD_VALENCE_AROUSAL = _LazyDict()
 
 
 @dataclass

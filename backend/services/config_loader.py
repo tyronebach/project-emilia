@@ -1,36 +1,38 @@
-"""Load agent profiles, relationship configs, and mood configs from JSON files."""
-import json
-from pathlib import Path
+"""Load relationship configs and mood configs from SQLite."""
 from functools import lru_cache
+from db.repositories import MoodRepository, RelationshipTypeRepository
 
-CONFIGS_DIR = Path(__file__).parent.parent.parent / "configs"
-
-@lru_cache(maxsize=10)
-def load_agent_profile(name: str) -> dict:
-    """Load agent profile from configs/agents/{name}.json"""
-    path = CONFIGS_DIR / "agents" / f"{name}.json"
-    if not path.exists():
-        return {}
-    with open(path) as f:
-        return json.load(f)
 
 @lru_cache(maxsize=5)
 def load_relationship_config(relationship_type: str) -> dict:
-    """Load relationship config from configs/relationships/{type}.json"""
-    path = CONFIGS_DIR / "relationships" / f"{relationship_type}.json"
-    if not path.exists():
+    """Load relationship config from DB."""
+    row = RelationshipTypeRepository.get_by_id(relationship_type)
+    if not row:
         return {}
-    with open(path) as f:
-        return json.load(f)
+    # Return same shape as the old JSON files
+    result = dict(row)
+    result["type"] = result.pop("id")
+    result.pop("created_at", None)
+    extra = result.pop("extra", {})
+    if extra:
+        result.update(extra)
+    return result
+
 
 @lru_cache(maxsize=1)
 def load_moods_config() -> dict:
-    """Load mood definitions from configs/moods.json"""
-    path = CONFIGS_DIR / "moods.json"
-    if not path.exists():
-        return {}
-    with open(path) as f:
-        return json.load(f)
+    """Load mood definitions from DB. Returns same shape as old moods.json."""
+    rows = MoodRepository.get_all()
+    moods = {}
+    for row in rows:
+        mood_id = row["id"]
+        moods[mood_id] = {
+            "valence": row["valence"],
+            "arousal": row["arousal"],
+            "description": row.get("description", ""),
+        }
+    return {"moods": moods}
+
 
 def get_trigger_mood_map(relationship_type: str) -> dict:
     """Get trigger_mood_map for a relationship type.
@@ -41,8 +43,8 @@ def get_trigger_mood_map(relationship_type: str) -> dict:
     config = load_relationship_config(relationship_type)
     return config.get("trigger_mood_map", {})
 
+
 def clear_config_cache():
     """Clear cached configs (useful for hot reload during dev)."""
-    load_agent_profile.cache_clear()
     load_relationship_config.cache_clear()
     load_moods_config.cache_clear()
