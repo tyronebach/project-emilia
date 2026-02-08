@@ -1,293 +1,485 @@
-# Claude CLI Task — Emotion Engine Phase 2
+# Claude CLI Task — Hybrid Emotion Architecture Implementation
 
 ## Read First
-1. `docs/planning/EMOTION-TUNING-PHASE2.md` — full spec
+1. `docs/planning/HYBRID-EMOTION-ARCHITECTURE.md` — full spec
 2. `backend/services/emotion_engine.py` — current implementation
-3. `backend/config.py` — settings pattern
-4. `configs/agents/*.json` — agent profiles (already created)
-5. `configs/relationships/*.json` — relationship configs (already created)
-6. `scripts/dialogues/*.json` — test scenarios (already created)
+3. `backend/services/config_loader.py` — config loading
+4. `configs/` — existing config files
 
-## Tasks
+---
 
-### Task 1: Config Loader Service
+## Phase 1: Core Mood System
 
-Create `backend/services/config_loader.py`:
-
-```python
-"""Load agent profiles and relationship configs from JSON files."""
-import json
-from pathlib import Path
-from functools import lru_cache
-
-CONFIGS_DIR = Path(__file__).parent.parent.parent / "configs"
-
-@lru_cache(maxsize=10)
-def load_agent_profile(name: str) -> dict:
-    """Load agent profile from configs/agents/{name}.json"""
-    path = CONFIGS_DIR / "agents" / f"{name}.json"
-    if not path.exists():
-        return {}
-    with open(path) as f:
-        return json.load(f)
-
-@lru_cache(maxsize=5)  
-def load_relationship_config(relationship_type: str) -> dict:
-    """Load relationship config from configs/relationships/{type}.json"""
-    path = CONFIGS_DIR / "relationships" / f"{relationship_type}.json"
-    if not path.exists():
-        return {}
-    with open(path) as f:
-        return json.load(f)
-
-def clear_config_cache():
-    """Clear cached configs (useful for hot reload during dev)."""
-    load_agent_profile.cache_clear()
-    load_relationship_config.cache_clear()
-```
-
-### Task 2: LLM Trigger Detection
+### Task 1.1: Add MOODS constant and mood utilities
 
 Add to `backend/services/emotion_engine.py`:
 
 ```python
-import httpx
-from config import settings
+# After existing imports
+MOODS = [
+    "bashful", "defiant", "enraged", "erratic", "euphoric", "flirty",
+    "melancholic", "sarcastic", "sassy", "seductive", "snarky",
+    "supportive", "suspicious", "vulnerable", "whimsical", "zen"
+]
 
-async def detect_triggers_llm(message: str, context: str = "") -> list[tuple[str, float]]:
-    """
-    Use LLM to detect emotional triggers with nuanced intensity.
-    Falls back to regex on failure.
-    """
-    if not settings.llm_trigger_detection:
-        return []  # Use regex fallback
-    
-    prompt = f'''Analyze this message for emotional triggers.
-
-Message: "{message}"
-
-Detect which triggers are present and their intensity (0.0-1.0):
-compliment, criticism, gratitude, rejection, teasing, comfort, conflict, 
-apology, repair, dismissal, affirmation, vulnerability, greeting, farewell
-
-Return ONLY a JSON array: [{{"trigger": "name", "intensity": 0.0-1.0}}]
-Only include triggers actually present. Be nuanced about intensity.
-If no triggers detected, return: []'''
-
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{settings.clawdbot_url}/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.clawdbot_token}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": "gpt-4o-mini",  # Fast, cheap model for trigger detection
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.3,
-                    "max_tokens": 200,
-                }
-            )
-            
-            if response.status_code != 200:
-                return []
-            
-            result = response.json()
-            content = result["choices"][0]["message"]["content"]
-            
-            # Parse JSON from response
-            import re
-            json_match = re.search(r'\[.*\]', content, re.DOTALL)
-            if json_match:
-                triggers = json.loads(json_match.group())
-                return [(t["trigger"], t["intensity"]) for t in triggers]
-            
-            return []
-            
-    except Exception:
-        return []  # Fallback to regex
+# Mood → (valence, arousal) mapping for backwards compatibility
+MOOD_VALENCE_AROUSAL = {
+    "euphoric":    (0.9, 0.8),
+    "flirty":      (0.6, 0.6),
+    "supportive":  (0.7, 0.3),
+    "whimsical":   (0.5, 0.5),
+    "bashful":     (0.3, 0.4),
+    "zen":         (0.4, 0.1),
+    "sassy":       (0.3, 0.6),
+    "sarcastic":   (0.1, 0.4),
+    "vulnerable":  (0.2, 0.3),
+    "snarky":      (0.0, 0.5),
+    "suspicious":  (-0.2, 0.5),
+    "melancholic": (-0.4, 0.2),
+    "defiant":     (-0.3, 0.7),
+    "erratic":     (0.0, 0.9),
+    "enraged":     (-0.8, 0.9),
+    "seductive":   (0.5, 0.7),
+}
 ```
 
-### Task 3: Settings Update
+### Task 1.2: Update EmotionalState dataclass
 
-Add to `backend/config.py` in Settings class:
-
-```python
-# Emotional Engine
-self.llm_trigger_detection: bool = os.getenv("LLM_TRIGGER_DETECTION", "0") == "1"
-```
-
-### Task 4: Update Emotion Pre-LLM Processing
-
-In `backend/routers/chat.py`, update `_process_emotion_pre_llm()`:
+Add `mood_weights` field:
 
 ```python
-# Replace the regex trigger detection with:
-if settings.llm_trigger_detection:
-    import asyncio
-    from services.emotion_engine import detect_triggers_llm
+@dataclass
+class EmotionalState:
+    valence: float = 0.0
+    arousal: float = 0.0
+    dominance: float = 0.0
+    trust: float = 0.5
+    attachment: float = 0.3
+    familiarity: float = 0.0
+    mood_weights: dict = field(default_factory=dict)  # NEW
     
-    # Run async LLM detection
-    triggers = asyncio.get_event_loop().run_until_complete(
-        detect_triggers_llm(user_message)
-    )
-    
-    # Fallback to regex if LLM returns nothing
-    if not triggers:
-        triggers = engine.detect_triggers(user_message)
-else:
-    triggers = engine.detect_triggers(user_message)
-```
-
-### Task 5: Dialogue Test Runner
-
-Create `scripts/test-dialogues.py`:
-
-```python
-#!/usr/bin/env python3
-"""Run dialogue scenarios through emotion engine and log trajectories."""
-
-import json
-import sys
-from pathlib import Path
-
-# Import emotion engine (same pattern as emotion-lab.py)
-import importlib.util
-_spec = importlib.util.spec_from_file_location(
-    "emotion_engine",
-    Path(__file__).parent.parent / "backend" / "services" / "emotion_engine.py"
-)
-_module = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_module)
-EmotionEngine = _module.EmotionEngine
-EmotionalState = _module.EmotionalState
-AgentProfile = _module.AgentProfile
-
-DIALOGUES_DIR = Path(__file__).parent / "dialogues"
-CONFIGS_DIR = Path(__file__).parent.parent / "configs"
-
-def load_agent_profile(name: str) -> AgentProfile:
-    """Load profile from config file."""
-    path = CONFIGS_DIR / "agents" / f"{name}.json"
-    if not path.exists():
-        return AgentProfile()
-    
-    with open(path) as f:
-        data = json.load(f)
-    
-    return AgentProfile(
-        baseline_valence=data.get("baseline", {}).get("valence", 0.2),
-        baseline_arousal=data.get("baseline", {}).get("arousal", 0.0),
-        baseline_dominance=data.get("baseline", {}).get("dominance", 0.0),
-        emotional_volatility=data.get("volatility", 0.5),
-        emotional_recovery=data.get("recovery", 0.1),
-        decay_rates=data.get("decay_rates", {}),
-        trust_gain_multiplier=data.get("trust", {}).get("gain_multiplier", 1.0),
-        trust_loss_multiplier=data.get("trust", {}).get("loss_multiplier", 1.0),
-        attachment_ceiling=data.get("attachment_ceiling", 1.0),
-        trigger_multipliers=data.get("trigger_multipliers", {}),
-        play_trust_threshold=data.get("play_trust_threshold", 0.7),
-    )
-
-def run_dialogue(dialogue_path: Path, agent_name: str = "rem") -> dict:
-    """Run a dialogue through the emotion engine."""
-    with open(dialogue_path) as f:
-        dialogue = json.load(f)
-    
-    profile = load_agent_profile(agent_name)
-    engine = EmotionEngine(profile)
-    
-    state = EmotionalState(
-        valence=profile.baseline_valence,
-        arousal=profile.baseline_arousal,
-        trust=0.5,
-        attachment=0.3,
-    )
-    
-    trajectory = []
-    
-    for i, msg in enumerate(dialogue["messages"]):
-        step = {
-            "index": i,
-            "content": msg["content"][:50],
-            "state_before": state.to_dict(),
+    def to_dict(self) -> dict:
+        return {
+            'valence': self.valence,
+            'arousal': self.arousal,
+            'dominance': self.dominance,
+            'trust': self.trust,
+            'attachment': self.attachment,
+            'familiarity': self.familiarity,
+            'mood_weights': self.mood_weights,  # NEW
         }
-        
-        # Apply wait time if specified
-        if "wait_seconds" in msg:
-            state = engine.apply_decay(state, msg["wait_seconds"])
-            step["waited"] = msg["wait_seconds"]
-        
-        # Detect and apply triggers (regex for now)
-        triggers = engine.detect_triggers(msg["content"])
-        
-        for trigger, intensity in triggers:
-            engine.apply_trigger(state, trigger, intensity)
-        
-        step["detected_triggers"] = triggers
-        step["state_after"] = state.to_dict()
-        trajectory.append(step)
-    
-    return {
-        "dialogue": dialogue["name"],
-        "agent": agent_name,
-        "trajectory": trajectory,
-        "final_state": state.to_dict(),
-    }
-
-def main():
-    agent = sys.argv[1] if len(sys.argv) > 1 else "rem"
-    dialogue_filter = sys.argv[2] if len(sys.argv) > 2 else None
-    
-    dialogues = list(DIALOGUES_DIR.glob("*.json"))
-    if dialogue_filter:
-        dialogues = [d for d in dialogues if dialogue_filter in d.name]
-    
-    print(f"Running {len(dialogues)} dialogue(s) with agent: {agent}\n")
-    
-    for path in dialogues:
-        result = run_dialogue(path, agent)
-        
-        print(f"=== {result['dialogue']} ===")
-        final = result['final_state']
-        print(f"Final: valence={final['valence']:.2f} trust={final['trust']:.2f}")
-        
-        # Show trajectory summary
-        for step in result['trajectory']:
-            v = step['state_after']['valence']
-            t = step['state_after']['trust']
-            triggers = [f"{tr[0]}:{tr[1]:.1f}" for tr in step.get('detected_triggers', [])]
-            print(f"  {step['index']}: v={v:+.2f} t={t:.2f} | {' '.join(triggers) if triggers else '-'}")
-        print()
-
-if __name__ == "__main__":
-    main()
 ```
 
-### Task 6: Tests
+### Task 1.3: Update AgentProfile dataclass
 
-Run all tests after implementation:
+Add `mood_baseline` field:
+
+```python
+@dataclass
+class AgentProfile:
+    # ... existing fields ...
+    mood_baseline: dict = field(default_factory=dict)  # NEW: {"zen": 5, "supportive": 8, ...}
+    mood_decay_rate: float = 0.3  # NEW
+```
+
+### Task 1.4: Add mood calculation methods to EmotionEngine
+
+```python
+def calculate_mood_deltas(
+    self, 
+    triggers: list[tuple[str, float]], 
+    trigger_mood_map: dict
+) -> dict[str, float]:
+    """Calculate mood weight changes from triggers."""
+    mood_deltas = {mood: 0.0 for mood in MOODS}
+    
+    for trigger, intensity in triggers:
+        if trigger in trigger_mood_map:
+            for mood, weight in trigger_mood_map[trigger].items():
+                if mood in MOODS:
+                    mood_deltas[mood] += weight * intensity
+    
+    return mood_deltas
+
+def apply_mood_deltas(self, state: EmotionalState, mood_deltas: dict) -> None:
+    """Apply mood deltas with volatility scaling."""
+    if not state.mood_weights:
+        state.mood_weights = {mood: self.profile.mood_baseline.get(mood, 0) for mood in MOODS}
+    
+    for mood, delta in mood_deltas.items():
+        effective_delta = delta * self.profile.emotional_volatility
+        current = state.mood_weights.get(mood, 0)
+        state.mood_weights[mood] = self._clamp(current + effective_delta, -10, 20)
+    
+    # Update valence/arousal from moods
+    self._update_valence_arousal_from_moods(state)
+
+def _update_valence_arousal_from_moods(self, state: EmotionalState) -> None:
+    """Derive valence/arousal from mood weights."""
+    total_weight = sum(max(0, w) for w in state.mood_weights.values()) or 1
+    
+    valence = sum(
+        MOOD_VALENCE_AROUSAL.get(mood, (0, 0))[0] * max(0, weight)
+        for mood, weight in state.mood_weights.items()
+    ) / total_weight
+    
+    arousal = sum(
+        MOOD_VALENCE_AROUSAL.get(mood, (0, 0))[1] * max(0, weight)
+        for mood, weight in state.mood_weights.items()
+    ) / total_weight
+    
+    # Blend with existing (don't completely override)
+    state.valence = self._clamp(state.valence * 0.3 + valence * 0.7, -1, 1)
+    state.arousal = self._clamp(state.arousal * 0.3 + arousal * 0.7, -1, 1)
+
+def apply_mood_decay(self, state: EmotionalState, elapsed_seconds: float) -> None:
+    """Decay mood weights toward baseline."""
+    if not state.mood_weights:
+        return
+    
+    hours = elapsed_seconds / 3600
+    decay_rate = self.profile.mood_decay_rate
+    baseline = self.profile.mood_baseline
+    
+    for mood in MOODS:
+        current = state.mood_weights.get(mood, 0)
+        target = baseline.get(mood, 0)
+        decay = (current - target) * decay_rate * hours
+        state.mood_weights[mood] = current - decay
+
+def get_dominant_moods(self, state: EmotionalState, top_n: int = 3) -> list[tuple[str, float]]:
+    """Get top N moods by current weight."""
+    if not state.mood_weights:
+        return []
+    
+    sorted_moods = sorted(
+        state.mood_weights.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )
+    return [(m, w) for m, w in sorted_moods[:top_n] if w > 0]
+```
+
+### Task 1.5: Update generate_context_block
+
+```python
+def generate_context_block(self, state: EmotionalState) -> str:
+    """Generate emotional context block for LLM prompt injection."""
+    levers = self.get_behavior_levers(state)
+    
+    # Get dominant moods
+    dominant = self.get_dominant_moods(state, top_n=2)
+    
+    if dominant:
+        mood_names = [m[0] for m in dominant]
+        top_weight = dominant[0][1]
+        intensity = "strongly" if top_weight > 10 else "somewhat" if top_weight > 5 else "slightly"
+        mood_desc = f"{intensity} {' and '.join(mood_names)}"
+    else:
+        mood_desc = "neutral"
+    
+    return f"""[EMOTIONAL_STATE]
+You're feeling {mood_desc} right now.
+Warmth: {levers['warmth']:.0%} | Playfulness: {levers['playfulness']:.0%} | Guardedness: {levers['guardedness']:.0%}
+Trust level: {state.trust:.0%}
+Let this color your tone naturally — don't mention these explicitly.
+[/EMOTIONAL_STATE]"""
+```
+
+---
+
+## Phase 2: Config Files
+
+### Task 2.1: Create configs/moods.json
+
+```json
+{
+  "moods": [
+    "bashful", "defiant", "enraged", "erratic", "euphoric", "flirty",
+    "melancholic", "sarcastic", "sassy", "seductive", "snarky",
+    "supportive", "suspicious", "vulnerable", "whimsical", "zen"
+  ],
+  "mood_valence_arousal": {
+    "euphoric": [0.9, 0.8],
+    "flirty": [0.6, 0.6],
+    "supportive": [0.7, 0.3],
+    "whimsical": [0.5, 0.5],
+    "bashful": [0.3, 0.4],
+    "zen": [0.4, 0.1],
+    "sassy": [0.3, 0.6],
+    "sarcastic": [0.1, 0.4],
+    "vulnerable": [0.2, 0.3],
+    "snarky": [0.0, 0.5],
+    "suspicious": [-0.2, 0.5],
+    "melancholic": [-0.4, 0.2],
+    "defiant": [-0.3, 0.7],
+    "erratic": [0.0, 0.9],
+    "enraged": [-0.8, 0.9],
+    "seductive": [0.5, 0.7]
+  }
+}
+```
+
+### Task 2.2: Update configs/relationships/romantic.json
+
+Add `trigger_mood_map`:
+
+```json
+{
+  "type": "romantic",
+  "modifiers": {
+    "attachment_ceiling": 0.95,
+    "trust_baseline": 0.5,
+    "jealousy_enabled": true
+  },
+  "trigger_mood_map": {
+    "compliment": {"euphoric": 3, "vulnerable": 2, "bashful": 1},
+    "rejection": {"melancholic": 3, "vulnerable": 2, "defiant": 1},
+    "teasing": {"flirty": 2, "bashful": 2, "sassy": 1},
+    "conflict": {"defiant": 2, "suspicious": 2, "enraged": 1, "supportive": -2},
+    "comfort": {"supportive": 3, "vulnerable": 1, "zen": 2},
+    "affirmation": {"euphoric": 2, "supportive": 2, "vulnerable": 1},
+    "dismissal": {"melancholic": 2, "suspicious": 1, "defiant": 1},
+    "apology": {"supportive": 2, "vulnerable": 1, "zen": 1},
+    "vulnerability": {"vulnerable": 3, "supportive": 2, "bashful": 1},
+    "gratitude": {"euphoric": 2, "supportive": 2, "bashful": 1},
+    "criticism": {"defiant": 2, "suspicious": 1, "melancholic": 1},
+    "repair": {"supportive": 2, "zen": 1, "vulnerable": 1}
+  }
+}
+```
+
+### Task 2.3: Update configs/relationships/friend.json
+
+```json
+{
+  "type": "friend",
+  "modifiers": {
+    "attachment_ceiling": 0.7,
+    "trust_baseline": 0.4
+  },
+  "trigger_mood_map": {
+    "compliment": {"supportive": 2, "whimsical": 1},
+    "rejection": {"melancholic": 2, "suspicious": 1},
+    "teasing": {"sassy": 2, "whimsical": 2, "snarky": 1},
+    "conflict": {"defiant": 1, "suspicious": 1},
+    "comfort": {"supportive": 2, "zen": 1},
+    "affirmation": {"supportive": 2, "whimsical": 1},
+    "dismissal": {"suspicious": 1, "snarky": 1},
+    "apology": {"supportive": 1, "zen": 1},
+    "vulnerability": {"supportive": 2, "vulnerable": 1},
+    "gratitude": {"supportive": 2, "whimsical": 1},
+    "criticism": {"snarky": 1, "defiant": 1},
+    "repair": {"supportive": 1, "zen": 1}
+  }
+}
+```
+
+### Task 2.4: Update agent profiles with mood_baseline
+
+Update `configs/agents/rem.json`:
+```json
+{
+  "name": "Rem",
+  "mood_baseline": {
+    "supportive": 8,
+    "vulnerable": 6,
+    "euphoric": 5,
+    "bashful": 4,
+    "flirty": 3,
+    "zen": 2
+  },
+  "mood_decay_rate": 0.3,
+  ... existing fields ...
+}
+```
+
+Update `configs/agents/ram.json`:
+```json
+{
+  "name": "Ram",
+  "mood_baseline": {
+    "zen": 8,
+    "snarky": 5,
+    "defiant": 4,
+    "suspicious": 3,
+    "sassy": 2
+  },
+  "mood_decay_rate": 0.15,
+  ... existing fields ...
+}
+```
+
+Update `configs/agents/beatrice.json`:
+```json
+{
+  "name": "Beatrice",
+  "mood_baseline": {
+    "snarky": 6,
+    "defiant": 5,
+    "vulnerable": 4,
+    "bashful": 3,
+    "zen": 3,
+    "supportive": 2
+  },
+  "mood_decay_rate": 0.25,
+  ... existing fields ...
+}
+```
+
+---
+
+## Phase 3: Config Loader Updates
+
+### Task 3.1: Update config_loader.py
+
+```python
+def load_relationship_config(relationship_type: str) -> dict:
+    """Load relationship config including trigger_mood_map."""
+    path = CONFIGS_DIR / "relationships" / f"{relationship_type}.json"
+    if not path.exists():
+        return {"trigger_mood_map": {}}
+    with open(path) as f:
+        return json.load(f)
+
+def load_agent_mood_baseline(agent_name: str) -> dict:
+    """Load agent's mood baseline."""
+    profile = load_agent_profile(agent_name)
+    return profile.get("mood_baseline", {})
+
+def get_trigger_mood_map(relationship_type: str, agent_name: str = None) -> dict:
+    """Get trigger→mood map, with optional agent overrides."""
+    rel_config = load_relationship_config(relationship_type)
+    base_map = rel_config.get("trigger_mood_map", {})
+    
+    if agent_name:
+        # Check for agent-specific overrides
+        override_path = CONFIGS_DIR / "agents" / agent_name / f"{relationship_type}_overrides.json"
+        if override_path.exists():
+            with open(override_path) as f:
+                overrides = json.load(f)
+                # Merge overrides into base map
+                for trigger, moods in overrides.get("trigger_mood_map", {}).items():
+                    if trigger in base_map:
+                        base_map[trigger].update(moods)
+                    else:
+                        base_map[trigger] = moods
+    
+    return base_map
+```
+
+---
+
+## Phase 4: Integration
+
+### Task 4.1: Update _process_emotion_pre_llm in chat.py
+
+After trigger detection, add mood processing:
+
+```python
+# After getting triggers...
+
+# Get relationship type (default to companion)
+relationship_type = state_row.get('relationship_type') or 'companion'
+if relationship_type == 'companion':
+    relationship_type = 'friend'  # Map companion to friend for now
+
+# Load trigger→mood map
+from services.config_loader import get_trigger_mood_map
+trigger_mood_map = get_trigger_mood_map(relationship_type, agent.get('name', '').lower())
+
+# Calculate and apply mood deltas
+mood_deltas = engine.calculate_mood_deltas(triggers, trigger_mood_map)
+if any(d != 0 for d in mood_deltas.values()):
+    engine.apply_mood_deltas(state, mood_deltas)
+
+# Apply mood decay
+engine.apply_mood_decay(state, elapsed)
+```
+
+### Task 4.2: Update schema
+
+Add migration to `backend/db/connection.py`:
+
+```python
+# In init_db() or as migration
+cursor.execute("""
+    ALTER TABLE emotional_state ADD COLUMN mood_weights TEXT
+""")
+```
+
+### Task 4.3: Update EmotionalStateRepository
+
+Handle mood_weights serialization:
+
+```python
+# In get_or_create:
+mood_weights = json.loads(row.get('mood_weights') or '{}')
+
+# In update:
+mood_weights_json = json.dumps(mood_weights) if mood_weights else None
+```
+
+---
+
+## Phase 5: Testing
+
+### Task 5.1: Update test-dialogues.py
+
+Show mood trajectories:
+
+```python
+def run_dialogue(dialogue_path, agent_name, relationship_type="romantic"):
+    # ... existing code ...
+    
+    # Load trigger_mood_map
+    trigger_mood_map = get_trigger_mood_map(relationship_type, agent_name)
+    
+    for msg in messages:
+        # ... trigger detection ...
+        
+        # Calculate mood deltas
+        mood_deltas = engine.calculate_mood_deltas(triggers, trigger_mood_map)
+        engine.apply_mood_deltas(state, mood_deltas)
+        
+        # Get dominant moods for display
+        dominant = engine.get_dominant_moods(state, top_n=2)
+        step["dominant_moods"] = dominant
+```
+
+### Task 5.2: Run comparison tests
+
 ```bash
-./scripts/check-backend.sh
-python scripts/test-emotion-scenarios.py
-python scripts/test-dialogues.py rem
-python scripts/test-dialogues.py ram
-python scripts/test-dialogues.py beatrice
+# Test all agents with romantic relationship
+python3 scripts/test-dialogues.py rem romantic
+python3 scripts/test-dialogues.py ram romantic  
+python3 scripts/test-dialogues.py beatrice romantic
+
+# Test same agent with different relationships
+python3 scripts/test-dialogues.py rem friend
+python3 scripts/test-dialogues.py rem romantic
 ```
 
-### Task 7: Commit
+---
 
-Commit in logical chunks:
-1. "feat: add config loader for agent profiles and relationships"
-2. "feat: add LLM trigger detection (optional)"
-3. "feat: add dialogue test runner"
-4. Final: "test: verify all agents with dialogue scenarios"
+## Commit Strategy
 
-## Notes
+1. "feat: add mood constants and EmotionalState mood_weights"
+2. "feat: add mood calculation methods to EmotionEngine"
+3. "feat: update config files with trigger_mood_map and mood_baseline"
+4. "feat: update config_loader for mood system"
+5. "feat: integrate mood system into chat processing"
+6. "test: update dialogue runner for mood trajectories"
 
-- LLM trigger detection is OPTIONAL (env flag) - defaults to regex
-- Profile configs are already created in `configs/`
-- Dialogue scenarios already created in `scripts/dialogues/`
-- Keep changes backwards compatible
-- Don't break existing tests
+Run `./scripts/check-backend.sh` after each phase.
+
+---
+
+## Success Criteria
+
+1. ✅ All 96+ backend tests pass
+2. ✅ Dialogue runner shows mood trajectories
+3. ✅ Different agents have different dominant moods for same input
+4. ✅ Same agent reacts differently in friend vs romantic mode
+5. ✅ LLM context includes "feeling [mood] right now"
+6. ✅ Moods decay toward baseline over time
