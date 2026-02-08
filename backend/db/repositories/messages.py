@@ -1,4 +1,5 @@
 """Message repository for webapp-managed chat history."""
+# Phase 3.1 COMPLETE - 2026-02-08
 import uuid
 import time
 from db.connection import get_db
@@ -72,3 +73,36 @@ class MessageRepository:
                 "content": content,
                 "timestamp": now,
             }
+
+    # --- Session compaction (Phase 3.1) ---
+
+    @staticmethod
+    def get_all_for_session(session_id: str) -> list[dict]:
+        """Get all messages for a session, ordered by timestamp ascending."""
+        with get_db() as conn:
+            return conn.execute(
+                """SELECT role, content FROM messages
+                   WHERE session_id = ?
+                   ORDER BY timestamp ASC""",
+                (session_id,)
+            ).fetchall()
+
+    @staticmethod
+    def delete_oldest(session_id: str, keep_recent: int) -> int:
+        """Delete all messages except the most recent `keep_recent` ones.
+
+        Returns the number of deleted rows.
+        """
+        with get_db() as conn:
+            result = conn.execute(
+                """DELETE FROM messages WHERE id IN (
+                       SELECT id FROM messages
+                       WHERE session_id = ?
+                       ORDER BY timestamp ASC
+                       LIMIT (
+                           SELECT MAX(0, COUNT(*) - ?) FROM messages WHERE session_id = ?
+                       )
+                   )""",
+                (session_id, keep_recent, session_id)
+            )
+            return result.rowcount

@@ -222,13 +222,42 @@ export function stripAvatarTags(text: string): string {
   return stripAvatarTagsStreaming(text).trim();
 }
 
+interface CompactionInfo {
+  compacted: boolean;
+  messages_before?: number;
+  messages_deleted?: number;
+  messages_kept?: number;
+  summary_chars?: number;
+  error?: string;
+}
+
+interface StreamResponse {
+  response?: string;
+  session_id?: string;
+  processing_ms?: number;
+  model?: string;
+  behavior?: {
+    intent?: string | null;
+    mood?: string | null;
+    mood_intensity?: number;
+    energy?: string | null;
+  };
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+}
+
+export type { CompactionInfo, StreamResponse };
+
 export async function streamChat(
   message: string,
   onChunk: (chunk: string) => void,
   onAvatar: (data: AvatarCommand) => void,
   onDone: (data: StreamResponse) => void,
   onError: (error: Error) => void,
-  options?: { signal?: AbortSignal; gameContext?: GameContext }
+  options?: { signal?: AbortSignal; gameContext?: GameContext; onCompaction?: (data: CompactionInfo) => void }
 ): Promise<void> {
   try {
     const response = await fetchWithAuth(`${API_URL}/api/chat?stream=1`, {
@@ -279,6 +308,12 @@ export async function streamChat(
 
             if (currentEventType === 'avatar') {
               onAvatar(data);
+              currentEventType = null;
+              continue;
+            }
+
+            if (currentEventType === 'compaction') {
+              options?.onCompaction?.(data);
               currentEventType = null;
               continue;
             }

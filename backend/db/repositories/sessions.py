@@ -1,4 +1,5 @@
 """Session repository for database operations."""
+# Phase 3.1 COMPLETE - 2026-02-08
 import uuid
 import time
 from datetime import datetime
@@ -167,3 +168,37 @@ class SessionRepository:
                 (session_id, user_id)
             ).fetchone()
             return result is not None
+
+    # --- Session compaction (Phase 3.1) ---
+
+    @staticmethod
+    def get_summary(session_id: str) -> str | None:
+        """Get the compacted summary for a session."""
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT summary FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+            return row["summary"] if row else None
+
+    @staticmethod
+    def update_summary(session_id: str, summary: str):
+        """Update the session summary and increment compaction count."""
+        with get_db() as conn:
+            conn.execute(
+                """UPDATE sessions
+                   SET summary = ?, summary_updated_at = ?, compaction_count = COALESCE(compaction_count, 0) + 1
+                   WHERE id = ?""",
+                (summary, int(time.time()), session_id)
+            )
+
+    @staticmethod
+    def get_message_count(session_id: str) -> int:
+        """Get the actual message count from the messages table (not the cached counter).
+
+        Uses COUNT(*) so the result stays accurate after compaction deletes old messages.
+        """
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?", (session_id,)
+            ).fetchone()
+            return row["cnt"] if row else 0

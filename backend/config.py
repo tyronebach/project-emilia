@@ -36,6 +36,11 @@ class Settings:
         # Chat
         self.chat_history_limit: int = int(os.getenv("CHAT_HISTORY_LIMIT", "20"))
 
+        # Session compaction (Phase 3.1)
+        self.compact_threshold: int = int(os.getenv("COMPACT_THRESHOLD", "25"))
+        self.compact_keep_recent: int = int(os.getenv("COMPACT_KEEP_RECENT", "10"))
+        self.compact_model: str = os.getenv("COMPACT_MODEL", "openai-codex/gpt-5.1-codex-mini")
+
         # Paths
         agents_dir_str = os.getenv("CLAWDBOT_AGENTS_DIR", "/home/tbach/.openclaw/agents")
         self.clawdbot_agents_dir: Path = Path(agents_dir_str)

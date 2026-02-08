@@ -1,5 +1,7 @@
 """Chat and media routes (chat, transcribe, speak)"""
 # Phase 1.6 COMPLETE - 2026-02-08
+# Phase 3.1 COMPLETE - 2026-02-08
+import asyncio
 import time
 import json
 import logging
@@ -16,6 +18,18 @@ from db.repositories import UserRepository, AgentRepository, SessionRepository, 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["chat"])
+
+# Strong references to background tasks so they don't get GC'd mid-execution.
+# See: https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_background(coro) -> asyncio.Task:
+    """Schedule a coroutine as a background task with a prevented GC reference."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
 
 
 def inject_game_context(message: str, game_context: dict | None) -> str:
@@ -58,15 +72,76 @@ def inject_game_context(message: str, game_context: dict | None) -> str:
 
 
 def _build_llm_messages(session_id: str, current_msg: str, game_context: dict | None) -> list[dict]:
-    """Build the messages array for the LLM: raw history + current message with game context."""
-    history = MessageRepository.get_last_n(session_id, settings.chat_history_limit)
+    """Build the messages array for the LLM: [summary] + recent history + current message."""
+    messages: list[dict] = []
 
-    messages = [{"role": m["role"], "content": m["content"]} for m in history]
+    # Prepend compacted summary as system context if available
+    summary = SessionRepository.get_summary(session_id)
+    if summary:
+        messages.append({
+            "role": "system",
+            "content": f"Previous conversation summary:\n{summary}",
+        })
+
+    history = MessageRepository.get_last_n(session_id, settings.chat_history_limit)
+    messages.extend({"role": m["role"], "content": m["content"]} for m in history)
 
     current_content = inject_game_context(current_msg, game_context)
     messages.append({"role": "user", "content": current_content})
 
     return messages
+
+
+async def _maybe_compact_session(session_id: str) -> dict | None:
+    """Run session compaction if message count exceeds threshold.
+
+    On failure, logs the error and continues — compaction is best-effort.
+    Returns compaction metadata if compaction occurred, None otherwise.
+    """
+    msg_count = SessionRepository.get_message_count(session_id)
+    if msg_count <= settings.compact_threshold:
+        return None
+
+    logger.info("Session %s has %d messages (threshold=%d), compacting",
+                session_id, msg_count, settings.compact_threshold)
+
+    try:
+        from services.compaction import CompactionService
+
+        all_msgs = MessageRepository.get_all_for_session(session_id)
+        split_at = len(all_msgs) - settings.compact_keep_recent
+        if split_at <= 0:
+            return None
+
+        old_msgs = all_msgs[:split_at]
+
+        # Merge with existing summary if present
+        existing_summary = SessionRepository.get_summary(session_id)
+        to_summarize: list[dict] = []
+        if existing_summary:
+            to_summarize.append({"role": "system", "content": f"Prior summary: {existing_summary}"})
+        to_summarize.extend({"role": m["role"], "content": m["content"]} for m in old_msgs)
+
+        summary = await CompactionService.summarize_messages(to_summarize)
+
+        # Persist summary and prune old messages
+        SessionRepository.update_summary(session_id, summary)
+        deleted = MessageRepository.delete_oldest(session_id, settings.compact_keep_recent)
+        logger.info("[Compaction] Session %s: deleted %d msgs, kept %d, summary %d chars",
+                     session_id, deleted, settings.compact_keep_recent, len(summary))
+        logger.info("[Compaction] Summary: %s", summary[:500] + "..." if len(summary) > 500 else summary)
+
+        return {
+            "compacted": True,
+            "messages_before": msg_count,
+            "messages_deleted": deleted,
+            "messages_kept": settings.compact_keep_recent,
+            "summary_chars": len(summary),
+        }
+
+    except Exception:
+        logger.exception("Compaction failed for session %s, continuing with full history", session_id)
+        return {"compacted": False, "error": "Compaction failed"}
 
 
 @router.post("/chat")
@@ -162,6 +237,9 @@ async def chat(
 
         SessionRepository.update_last_used(sid)
         SessionRepository.increment_message_count(sid)
+
+        # Fire-and-forget: compact in background so response returns immediately
+        _spawn_background(_maybe_compact_session(sid))
 
         return {
             "response": parsed["response_text"],
@@ -278,6 +356,8 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                 SessionRepository.update_last_used(session_id)
                 SessionRepository.increment_message_count(session_id)
 
+                # Send done event FIRST so UI unblocks immediately
+                logger.info("[SSE] Yielding done event at %dms", processing_ms)
                 final = {
                     "done": True,
                     "response": clean_full,
@@ -289,6 +369,10 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                     final["usage"] = usage
 
                 yield f"data: {json.dumps(final)}\n\n"
+                logger.info("[SSE] Done event yielded, spawning background compaction")
+
+                # Fire-and-forget: compact in background so stream closes immediately
+                _spawn_background(_maybe_compact_session(session_id))
 
     except Exception:
         logger.exception("Streaming error")

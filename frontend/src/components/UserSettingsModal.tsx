@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Sliders, Sparkles } from 'lucide-react';
+import { X, Sliders, Sparkles, Video } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
 import { useRenderStore, QUALITY_LABELS } from '../store/renderStore';
@@ -24,6 +24,10 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
   const renderPreset = useRenderStore((state) => state.preset);
   const renderSettings = useRenderStore((state) => state.settings);
   const setRenderPreset = useRenderStore((state) => state.setPreset);
+  
+  // Camera controls
+  const cameraDriftEnabled = useRenderStore((state) => state.cameraDriftEnabled);
+  const setCameraDriftEnabled = useRenderStore((state) => state.setCameraDriftEnabled);
 
   const [error, setError] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<'tts_enabled' | null>(null);
@@ -179,6 +183,32 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
                 );
               })}
             </div>
+          </div>
+
+          {/* Camera Controls Section */}
+          <div className="pt-4 border-t border-white/10 mt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Video className="w-4 h-4 text-accent" />
+              <div className="text-xs font-semibold text-text-primary">Camera Controls</div>
+            </div>
+            <div className="text-[11px] text-text-secondary mb-3">
+              Adjust camera behavior.
+            </div>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4 accent-accent"
+                checked={cameraDriftEnabled}
+                onChange={(e) => setCameraDriftEnabled(e.target.checked)}
+              />
+              <div>
+                <div className="text-sm text-text-primary">Auto-reset camera</div>
+                <div className="text-xs text-text-secondary">
+                  Camera drifts back to home position after inactivity.
+                </div>
+              </div>
+            </label>
           </div>
         </div>
       </DialogContent>

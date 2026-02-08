@@ -230,6 +230,62 @@ function AvatarDebugPanel() {
     isVRM0: boolean;
   } | null>(null);
 
+  // Session compaction debug state
+  const sessionId = useAppStore((s) => s.sessionId);
+  const [compactionDebug, setCompactionDebug] = useState<{
+    session_id: string;
+    session_name: string | null;
+    message_count_cached: number;
+    message_count_actual: number;
+    summary: string | null;
+    summary_length: number;
+    summary_updated_at: number | null;
+    compaction_count: number;
+    config: { threshold: number; keep_recent: number; model: string };
+    should_compact: boolean;
+  } | null>(null);
+  const [compactionLoading, setCompactionLoading] = useState(false);
+  const [compactionError, setCompactionError] = useState<string | null>(null);
+
+  const fetchCompactionDebug = useCallback(async () => {
+    if (!sessionId) {
+      setCompactionError('No active session');
+      return;
+    }
+    setCompactionLoading(true);
+    setCompactionError(null);
+    try {
+      const response = await fetchWithAuth(`/api/manage/debug/compaction/${sessionId}`);
+      if (!response.ok) throw new Error(`Failed: ${response.status}`);
+      const data = await response.json();
+      setCompactionDebug(data);
+    } catch (e) {
+      setCompactionError(e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setCompactionLoading(false);
+    }
+  }, [sessionId]);
+
+  const triggerCompaction = useCallback(async () => {
+    if (!sessionId) return;
+    setCompactionLoading(true);
+    setCompactionError(null);
+    try {
+      const response = await fetchWithAuth(`/api/manage/debug/compaction/${sessionId}/trigger`, {
+        method: 'POST',
+      });
+      if (!response.ok) throw new Error(`Failed: ${response.status}`);
+      const result = await response.json();
+      setLastAction(`Compaction: ${result.status} - ${result.messages_deleted ?? 0} deleted`);
+      // Refresh debug info
+      await fetchCompactionDebug();
+    } catch (e) {
+      setCompactionError(e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setCompactionLoading(false);
+    }
+  }, [sessionId, fetchCompactionDebug]);
+
   const MAX_VOICE_DEBUG_EVENTS = 80;
 
   const addVoiceDebugEvent = useCallback((event: VoiceDebugEntry['event']) => {
@@ -1908,6 +1964,96 @@ function AvatarDebugPanel() {
                       </div>
                     )}
                   </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Session Compaction Debug */}
+            <AccordionItem value="compaction" className="border-white/10">
+              <AccordionTrigger className="text-sm font-semibold text-text-secondary uppercase tracking-wide hover:no-underline">
+                Session Compaction
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={fetchCompactionDebug}
+                      disabled={compactionLoading || !sessionId}
+                    >
+                      {compactionLoading ? 'Loading...' : 'Fetch Info'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={triggerCompaction}
+                      disabled={compactionLoading || !sessionId}
+                    >
+                      Trigger Compaction
+                    </Button>
+                  </div>
+
+                  {!sessionId && (
+                    <div className="text-xs text-text-secondary">No active session</div>
+                  )}
+
+                  {compactionError && (
+                    <div className="text-xs text-error">{compactionError}</div>
+                  )}
+
+                  {compactionDebug && (
+                    <div className="space-y-2 text-xs">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-text-secondary">Session: </span>
+                          <span className="text-text-primary font-mono">{compactionDebug.session_name || compactionDebug.session_id.slice(0, 8)}</span>
+                        </div>
+                        <div>
+                          <span className="text-text-secondary">Compactions: </span>
+                          <span className="text-accent">{compactionDebug.compaction_count}</span>
+                        </div>
+                        <div>
+                          <span className="text-text-secondary">Cached Count: </span>
+                          <span className="text-text-primary">{compactionDebug.message_count_cached}</span>
+                        </div>
+                        <div>
+                          <span className="text-text-secondary">Actual Count: </span>
+                          <span className={compactionDebug.message_count_cached !== compactionDebug.message_count_actual ? 'text-warning' : 'text-text-primary'}>
+                            {compactionDebug.message_count_actual}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-text-secondary">Threshold: </span>
+                          <span className="text-text-primary">{compactionDebug.config.threshold}</span>
+                        </div>
+                        <div>
+                          <span className="text-text-secondary">Keep Recent: </span>
+                          <span className="text-text-primary">{compactionDebug.config.keep_recent}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-text-secondary">Should Compact: </span>
+                        <span className={compactionDebug.should_compact ? 'text-warning' : 'text-success'}>
+                          {compactionDebug.should_compact ? 'Yes' : 'No'}
+                        </span>
+                      </div>
+
+                      {compactionDebug.summary && (
+                        <div className="mt-2">
+                          <div className="text-text-secondary mb-1">Summary ({compactionDebug.summary_length} chars):</div>
+                          <div className="bg-bg-tertiary rounded p-2 text-text-primary max-h-32 overflow-y-auto whitespace-pre-wrap">
+                            {compactionDebug.summary}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="text-text-secondary/70 text-[10px]">
+                        Model: {compactionDebug.config.model}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </AccordionContent>
             </AccordionItem>

@@ -476,6 +476,13 @@ export class AvatarRenderer {
   private updateCameraDrift(): void {
     if (!this.controls || !this.camera) return;
     
+    // Check if drift is enabled in settings
+    const { cameraDriftEnabled } = useRenderStore.getState();
+    if (!cameraDriftEnabled) {
+      this.isDriftingHome = false;
+      return;
+    }
+    
     const timeSinceInteraction = performance.now() - this.lastInteractionTime;
     
     // Start drifting after delay
