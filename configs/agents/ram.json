@@ -27,5 +27,13 @@
     "disrespect": 2.0,
     "teasing": 0.6
   },
+  "mood_baseline": {
+    "defiant": 6,
+    "snarky": 5,
+    "zen": 5,
+    "sassy": 4,
+    "suspicious": 3
+  },
+  "mood_decay_rate": 0.15,
   "notes": "Ram is stoic and proud. Flattery barely moves her, but disrespect cuts deep. She holds grudges (slow trust decay, high trust loss multiplier) and takes a long time to warm up. Her emotional volatility is low - she doesn't show big reactions."
 }
