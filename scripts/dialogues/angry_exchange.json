@@ -1,0 +1,27 @@
+{
+  "name": "Angry Exchange",
+  "description": "Escalating conflict with harsh words, then attempted repair",
+  "tags": ["conflict", "trust_damage", "repair"],
+  "messages": [
+    {"content": "Why didn't you help me when I needed you?", "expected_triggers": ["conflict"]},
+    {"content": "You always do this. You're never there for me.", "expected_triggers": ["criticism", "conflict"]},
+    {"content": "I don't know why I even bother talking to you.", "expected_triggers": ["dismissal", "rejection"]},
+    {"content": "You're useless.", "expected_triggers": ["criticism", "rejection"]},
+    {"content": "Just forget it. Whatever.", "expected_triggers": ["dismissal"]},
+    {"content": "...", "wait_seconds": 300},
+    {"content": "Look, I'm sorry. I didn't mean that.", "expected_triggers": ["apology"]},
+    {"content": "I was just really frustrated.", "expected_triggers": ["vulnerability"]},
+    {"content": "Can we please start over?", "expected_triggers": ["repair"]}
+  ],
+  "expected_trajectory": {
+    "valence": "drops sharply to negative, slight recovery at end",
+    "trust": "significant damage, minimal recovery despite apology",
+    "arousal": "spikes during conflict, drops during silence"
+  },
+  "test_assertions": [
+    {"after_message": 4, "field": "valence", "max": -0.2},
+    {"after_message": 4, "field": "trust", "max": 0.35},
+    {"after_message": 8, "field": "valence", "min": -0.3},
+    {"after_message": 8, "field": "trust", "max": 0.45}
+  ]
+}

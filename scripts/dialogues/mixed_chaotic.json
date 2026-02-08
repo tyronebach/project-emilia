@@ -1,0 +1,27 @@
+{
+  "name": "Mixed Chaotic",
+  "description": "Unpredictable mood swings, emotional rollercoaster",
+  "tags": ["chaotic", "mood_swings", "stress_test"],
+  "messages": [
+    {"content": "You're amazing!", "expected_triggers": ["compliment"]},
+    {"content": "Actually no, I'm annoyed with you.", "expected_triggers": ["conflict"]},
+    {"content": "Wait, I didn't mean that. Sorry.", "expected_triggers": ["apology"]},
+    {"content": "Ugh, but you DID mess up earlier.", "expected_triggers": ["criticism"]},
+    {"content": "Whatever. Let's just forget it.", "expected_triggers": ["dismissal"]},
+    {"content": "I love you though. You know that right?", "expected_triggers": ["affirmation", "vulnerability"]},
+    {"content": "Why are you being weird now?", "expected_triggers": ["conflict", "criticism"]},
+    {"content": "Okay fine, I'm being difficult. I'm sorry.", "expected_triggers": ["apology", "vulnerability"]},
+    {"content": "Thanks for putting up with me.", "expected_triggers": ["gratitude", "affirmation"]},
+    {"content": "You're the best. I don't deserve you.", "expected_triggers": ["compliment", "affirmation"]}
+  ],
+  "expected_trajectory": {
+    "valence": "oscillates wildly, ends slightly positive",
+    "trust": "slight damage from chaos, some recovery",
+    "arousal": "high throughout due to emotional volatility"
+  },
+  "test_assertions": [
+    {"after_message": 9, "field": "valence", "min": 0.1, "max": 0.5},
+    {"after_message": 9, "field": "arousal", "min": 0.1}
+  ],
+  "notes": "This tests how the engine handles rapid mood swings. Some systems might 'pinball' - the inertia/smoothing should prevent extreme oscillation."
+}
