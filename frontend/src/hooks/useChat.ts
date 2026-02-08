@@ -1,28 +1,14 @@
 // # Phase 1.8 COMPLETE - 2026-02-08
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import { fetchWithAuth, streamChat, stripAvatarTags, stripAvatarTagsStreaming } from '../utils/api';
+import type { StreamResponse, CompactionInfo } from '../utils/api';
 import { base64ToAudioBlob } from '../utils/helpers';
 import { useAppStore } from '../store';
 import { useChatStore } from '../store/chatStore';
 import type { AvatarRenderer } from '../avatar/AvatarRenderer';
 import { useStatsStore } from '../store/statsStore';
 import { useUserStore } from '../store/userStore';
-import type { TokenUsage } from '../types';
 import { useGame } from './useGame';
-
-interface StreamResponse {
-  response?: string;
-  session_id?: string;
-  processing_ms?: number;
-  model?: string;
-  behavior?: {
-    intent?: string | null;
-    mood?: string | null;
-    mood_intensity?: number;
-    energy?: string | null;
-  };
-  usage?: TokenUsage;
-}
 
 const LIP_SYNC_WAIT_MS = 4000;
 const LIP_SYNC_POLL_MS = 50;
@@ -52,7 +38,8 @@ export function useChat() {
   const { updateStats, addStateEntry } = useStatsStore();
   const currentAgent = useUserStore((state) => state.currentAgent);
 
-  const [isLoading, setIsLoading] = useState(false);
+  // Use global isLoading to prevent concurrent sends from multiple useChat instances
+  const isLoading = useAppStore((s) => s.status === 'thinking' || s.status === 'speaking');
   const abortControllerRef = useRef<AbortController | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
@@ -181,7 +168,6 @@ export function useChat() {
   const sendMessage = useCallback(async (message: string): Promise<void> => {
     if (isLoading || !currentAgent) return;
 
-    setIsLoading(true);
     setStatus('thinking');
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
@@ -195,21 +181,30 @@ export function useChat() {
 
       const gameContext = getGameContext();
 
+      let chunkCount = 0;
+      addStateEntry('sse', 'SSE stream started');
+
       await streamChat(
         message,
         // onChunk
         (chunk) => {
+          chunkCount++;
           fullContent += chunk;
           updateMessage(messageId, { content: stripAvatarTagsStreaming(fullContent) });
+          if (chunkCount === 1) {
+            addStateEntry('sse', `First chunk received (${chunk.length} chars)`);
+          }
         },
         // onAvatar
         (avatarData) => {
+          addStateEntry('sse', `Avatar event: mood=${avatarData.mood}, move=${avatarData.move}`);
           applyAvatarCommand(avatarData);
           didHandleAvatarMove = true;
           handleAvatarResponse(avatarData.move);
         },
         // onDone
         (data) => {
+          addStateEntry('sse', `Done event: ${chunkCount} chunks, ${data.processing_ms}ms`);
           const cleanedResponse = stripAvatarTags(data.response || fullContent);
           finalResponse = { ...data, response: cleanedResponse };
           updateMessage(messageId, {
@@ -230,6 +225,7 @@ export function useChat() {
         },
         // onError
         (error) => {
+          addStateEntry('sse', `Error: ${error.name} - ${error.message}`);
           if (error.name === 'AbortError') {
             didAbort = true;
             updateMessage(messageId, {
@@ -246,14 +242,27 @@ export function useChat() {
           setStatus('error');
           setTimeout(() => setStatus('ready'), 3000);
         },
-        { signal: abortController.signal, gameContext: gameContext ?? undefined }
+        {
+          signal: abortController.signal,
+          gameContext: gameContext ?? undefined,
+          onCompaction: (c: CompactionInfo) => {
+            if (c.compacted) {
+              addStateEntry('compact', `Compacted: ${c.messages_deleted} msgs deleted, kept ${c.messages_kept}, summary ${c.summary_chars} chars`);
+            } else if (c.error) {
+              addStateEntry('compact', `Compaction failed: ${c.error}`);
+            }
+          },
+        }
       );
+      addStateEntry('sse', 'SSE stream ended');
 
       if (didAbort) return;
 
       // TTS if enabled - store audio in message meta for replay
       if (ttsEnabled && finalResponse?.response) {
-        const audio_base64 = await speakText(finalResponse.response);
+        // Timeout TTS to prevent hanging forever
+        const ttsTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 30000));
+        const audio_base64 = await Promise.race([speakText(finalResponse.response), ttsTimeout]);
         if (audio_base64) {
           updateMessage(messageId, {
             meta: {
@@ -266,6 +275,8 @@ export function useChat() {
             }
           });
         }
+        // Ensure ready status after TTS (speakText's finally should do this, but be safe)
+        setStatus('ready');
       } else {
         setStatus('ready');
       }
@@ -274,8 +285,12 @@ export function useChat() {
       setStatus('error');
       setTimeout(() => setStatus('ready'), 3000);
     } finally {
-      setIsLoading(false);
       abortControllerRef.current = null;
+      // Ensure status is ready even if something went wrong
+      const currentStatus = useAppStore.getState().status;
+      if (currentStatus === 'thinking' || currentStatus === 'speaking') {
+        setStatus('ready');
+      }
     }
   }, [currentAgent, isLoading, setStatus, addMessage, updateMessage, applyAvatarCommand, handleAvatarResponse, getGameContext, ttsEnabled, speakText, updateStats]);
 

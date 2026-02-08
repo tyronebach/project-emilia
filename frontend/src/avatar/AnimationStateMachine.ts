@@ -14,15 +14,22 @@ export interface AnimationStateConfig {
   fadeOut?: number;
 }
 
+export interface IdleEntry {
+  file: string;
+  weight: number;
+}
+
 export interface AnimationStateMachineConfig {
   version: number;
   name: string;
   description?: string;
-  
+
   idle: AnimationStateConfig;
-  
+
+  idles?: IdleEntry[];
+
   actions: Record<string, AnimationStateConfig>;
-  
+
   defaults?: {
     fadeIn?: number;
     fadeOut?: number;
@@ -103,6 +110,13 @@ export class AnimationStateMachine {
   }
 
   /**
+   * Get the idle rotation pool (weighted entries)
+   */
+  getIdles(): IdleEntry[] {
+    return this.config?.idles ?? [];
+  }
+
+  /**
    * Get config for a named action (wave, bow, etc.)
    */
   getAction(name: string): ResolvedAction | null {
@@ -156,7 +170,14 @@ export class AnimationStateMachine {
     
     // Add idle
     files.add(this.config.idle.file);
-    
+
+    // Add idle rotation pool
+    if (this.config.idles) {
+      for (const entry of this.config.idles) {
+        files.add(entry.file);
+      }
+    }
+
     // Add all actions
     for (const action of Object.values(this.config.actions)) {
       files.add(action.file);

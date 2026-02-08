@@ -119,9 +119,24 @@
       "loop": false,
       "fadeIn": 0.2,
       "fadeOut": 0.2
+    },
+    "posture_shift": {
+      "file": "mixamo_fbx/weight_shift.fbx",
+      "loop": false,
+      "fadeIn": 0.2,
+      "fadeOut": 0.2
     }
   },
   
+  "idles": [
+    { "file": "mixamo_fbx/idles/idle_breathing.fbx", "weight": 2 },
+    { "file": "mixamo_fbx/idles/idle_subtle.fbx", "weight": 2 },
+    { "file": "mixamo_fbx/idles/neutral_idle.fbx", "weight": 1 },
+    { "file": "mixamo_fbx/idles/standing_idle.fbx", "weight": 1 },
+    { "file": "mixamo_fbx/idles/catwalk_twist_l.fbx", "weight": 1 },
+    { "file": "mixamo_fbx/idles/catwalk_twist_r.fbx", "weight": 1 }
+  ],
+
   "defaults": {
     "fadeIn": 0.25,
     "fadeOut": 0.25,

@@ -17,12 +17,10 @@ interface AmbientState {
 export class AmbientBehavior {
   // Timers for different ambient behaviors (seconds)
   private glanceTimer: number = 0;
-  private postureTimer: number = 0;
   private nodTimer: number = 0;
 
   // Intervals (randomized)
   private nextGlanceInterval: number = this.randomInterval(4, 8);
-  private nextPostureInterval: number = this.randomInterval(10, 20);
   private nextNodInterval: number = this.randomInterval(3, 6);
 
   // Track if currently glancing away (to schedule glance back)
@@ -51,7 +49,6 @@ export class AmbientBehavior {
     const micros: MicroBehavior[] = [];
 
     this.glanceTimer += deltaTime;
-    this.postureTimer += deltaTime;
     this.nodTimer += deltaTime;
 
     // Glance away (when not speaking, 40% chance per interval)
@@ -73,20 +70,6 @@ export class AmbientBehavior {
         this.isGlancingAway = true;
         this.glanceResetTimer = 0;
         this.glanceResetDuration = glanceDuration + 0.2;
-      }
-    }
-
-    // Posture shift (every 10-20s, subtle)
-    if (this.postureTimer >= this.nextPostureInterval) {
-      this.postureTimer = 0;
-      this.nextPostureInterval = this.randomInterval(10, 20);
-
-      if (Math.random() < 0.5) {
-        micros.push({
-          type: 'posture_shift',
-          delay: 0,
-          intensity: 0.2 + Math.random() * 0.2,
-        });
       }
     }
 
@@ -119,7 +102,6 @@ export class AmbientBehavior {
    */
   reset(): void {
     this.glanceTimer = 0;
-    this.postureTimer = 0;
     this.nodTimer = 0;
     this.isGlancingAway = false;
     this.glanceResetTimer = 0;

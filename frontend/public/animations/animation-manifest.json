@@ -618,5 +618,40 @@
     "id": "mixamo_fbx/weight_shift.fbx",
     "name": "Weight shift",
     "type": "fbx"
+  },
+   {
+    "id": "mixamo_fbx/weight_shift_2.fbx",
+    "name": "Weight shift 2",
+    "type": "fbx"
+  },
+  {
+    "id": "mixamo_fbx/idles/catwalk_twist_l.fbx",
+    "name": "Catwalk Twist L",
+    "type": "fbx"
+  },
+  {
+    "id": "mixamo_fbx/idles/catwalk_twist_r.fbx",
+    "name": "Catwalk Twist R",
+    "type": "fbx"
+  },
+  {
+    "id": "mixamo_fbx/idles/idle_breathing.fbx",
+    "name": "Idle Breathing",
+    "type": "fbx"
+  },
+  {
+    "id": "mixamo_fbx/idles/idle_subtle.fbx",
+    "name": "Idle Subtle",
+    "type": "fbx"
+  },
+  {
+    "id": "mixamo_fbx/idles/neutral_idle.fbx",
+    "name": "Neutral Idle",
+    "type": "fbx"
+  },
+  {
+    "id": "mixamo_fbx/idles/standing_idle.fbx",
+    "name": "Standing Idle",
+    "type": "fbx"
   }
 ]

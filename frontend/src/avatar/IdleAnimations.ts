@@ -3,12 +3,16 @@
  * Plays a looping animation as the base idle state.
  * Uses AnimationStateMachine config to determine which file to play.
  * Delegates to AnimationGraph's base layer - idle never pauses.
+ *
+ * If the config defines an idle rotation pool (idles[]),
+ * IdleRotator takes over after the initial idle loads.
  */
 
 import type { VRM } from '@pixiv/three-vrm';
 import { animationLibrary } from './AnimationLibrary';
 import { animationStateMachine } from './AnimationStateMachine';
 import type { AnimationGraph } from './AnimationGraph';
+import { IdleRotator } from './IdleRotator';
 
 export class IdleAnimations {
   private vrm: VRM;
@@ -17,6 +21,7 @@ export class IdleAnimations {
   private currentIdleFile: string = '';
   private fadeIn: number = 0.3;
   private fadeOut: number = 0.3;
+  private idleRotator: IdleRotator | null = null;
 
   constructor(vrm: VRM, animationGraph?: AnimationGraph) {
     this.vrm = vrm;
@@ -50,6 +55,13 @@ export class IdleAnimations {
     } else {
       console.warn('[IdleAnimations] No idle config found in state machine');
     }
+
+    // Start idle rotator if pool is available
+    const idles = animationStateMachine.getIdles();
+    if (idles.length > 0 && this.animationGraph) {
+      this.idleRotator = new IdleRotator(this.animationGraph);
+      await this.idleRotator.start();
+    }
   }
 
   /**
@@ -76,17 +88,17 @@ export class IdleAnimations {
   }
 
   /**
-   * Update - no-op since AnimationGraph owns the mixer now
+   * Update - drives IdleRotator timer
    */
-  update(_deltaTime: number): void {
-    // AnimationGraph.update() handles mixer updates
+  update(deltaTime: number): void {
+    this.idleRotator?.update(deltaTime);
   }
 
   /**
    * Get current idle animation filename
    */
   getCurrentIdle(): string {
-    return this.currentIdleFile;
+    return this.idleRotator?.getCurrentFile() || this.currentIdleFile;
   }
 
   /**
@@ -97,10 +109,24 @@ export class IdleAnimations {
   }
 
   /**
+   * Pause idle rotation (e.g. during gesture)
+   */
+  pauseRotation(): void {
+    this.idleRotator?.pause();
+  }
+
+  /**
+   * Resume idle rotation
+   */
+  resumeRotation(): void {
+    this.idleRotator?.resume();
+  }
+
+  /**
    * Dispose
    */
   dispose(): void {
-    // AnimationGraph handles cleanup
+    this.idleRotator?.stop();
   }
 }
 

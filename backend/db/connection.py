@@ -233,6 +233,11 @@ def init_db():
         _add_column(cur, "agents", "emotional_recovery", "REAL DEFAULT 0.1")
         _add_column(cur, "agents", "emotional_profile", "TEXT")
 
+        # Session compaction columns (Phase 3.1)
+        _add_column(cur, "sessions", "summary", "TEXT")
+        _add_column(cur, "sessions", "summary_updated_at", "INTEGER")
+        _add_column(cur, "sessions", "compaction_count", "INTEGER DEFAULT 0")
+
         # Indexes for common queries
         cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_used ON sessions(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_session_participants_user ON session_participants(user_id)")

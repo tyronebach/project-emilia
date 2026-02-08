@@ -214,6 +214,7 @@ export class AnimationController {
     // Update subsystems
     this.blinkController?.update(deltaTime);
     this.lipSyncEngine?.update(deltaTime);
+    this.idleAnimations?.update(deltaTime);
     this.animationGraph?.update(deltaTime);
     this.lookAtSystem?.update(deltaTime);
 
@@ -328,10 +329,17 @@ export class AnimationController {
         this.triggerGesture('nod', { fadeIn: 0.15, fadeOut: 0.15 });
         break;
       case 'head_tilt':
-        this.triggerGesture('head_tilt', { fadeIn: 0.2, fadeOut: 0.2 });
+        // Optional ambient gesture - skip if not in state machine
+        if (this.stateMachine?.hasAction('head_tilt')) {
+          this.triggerGesture('head_tilt', { fadeIn: 0.2, fadeOut: 0.2 });
+        }
         break;
       case 'posture_shift':
-        this.triggerGesture('posture_shift', { fadeIn: 0.3, fadeOut: 0.3 });
+        // Optional ambient gesture - idle animation has natural movement built-in
+        // Only trigger if explicitly defined in state machine
+        if (this.stateMachine?.hasAction('posture_shift')) {
+          this.triggerGesture('posture_shift', { fadeIn: 0.3, fadeOut: 0.3 });
+        }
         break;
     }
   }
