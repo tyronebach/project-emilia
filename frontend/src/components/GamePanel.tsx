@@ -1,13 +1,28 @@
 // # Phase 2.2 COMPLETE - 2026-02-07
 // # Phase 2.5 FIX - 2026-02-07: Auto-trigger chat for LLM avatar turn
+// # Upgrade: Game event avatar emotion fallbacks - 2026-02-07
 import { useMemo, useEffect, useRef } from 'react';
 import { X, RotateCcw } from 'lucide-react';
 import { useGameStore } from '../store/gameStore';
+import { useAppStore } from '../store';
 import { getGame } from '../games/registry';
 import { useGame } from '../hooks/useGame';
 import { useChat } from '../hooks/useChat';
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
+import type { AvatarCommand } from '../types';
+
+/**
+ * Fallback avatar behaviors for game events.
+ * Applied when the LLM doesn't provide mood/intent tags.
+ * See LLM-INTEGRATION.md "Avatar Emotional Reactions to Game Events".
+ */
+const GAME_EVENT_BEHAVIORS: Record<string, AvatarCommand> = {
+  game_start:   { intent: 'playful',     mood: 'happy',   energy: 'medium', intensity: 0.7 },
+  avatar_wins:  { intent: 'playful',     mood: 'happy',   energy: 'high',   intensity: 0.9 },
+  avatar_loses: { intent: 'embarrassed', mood: 'sad',     energy: 'low',    intensity: 0.4 },
+  draw:         { intent: 'agreement',   mood: 'neutral', energy: 'medium', intensity: 0.5 },
+};
 
 function GamePanel() {
   const activeGameId = useGameStore((state) => state.activeGameId);
@@ -18,8 +33,18 @@ function GamePanel() {
   const gameConfig = useGameStore((state) => state.gameConfig);
   const { makeUserMove, isAvatarThinking, startGame } = useGame();
   const { sendMessage } = useChat();
+  const applyAvatarCommand = useAppStore((s) => s.applyAvatarCommand);
   const wasThinking = useRef(false);
   const wasGameOver = useRef(false);
+  const wasActive = useRef(false);
+
+  // Fallback avatar emotion when a game starts
+  useEffect(() => {
+    if (activeGameId && !wasActive.current) {
+      applyAvatarCommand(GAME_EVENT_BEHAVIORS.game_start);
+    }
+    wasActive.current = Boolean(activeGameId);
+  }, [activeGameId, applyAvatarCommand]);
 
   // Auto-trigger chat when avatar needs to make a move (LLM mode)
   useEffect(() => {
@@ -29,18 +54,26 @@ function GamePanel() {
     wasThinking.current = isAvatarThinking;
   }, [isAvatarThinking, sendMessage]);
 
-  // Auto-trigger chat when game ends so avatar can react
+  // Auto-trigger chat when game ends so avatar can react + fallback emotion
   useEffect(() => {
     if (gameStatus.isOver && !wasGameOver.current && activeGameId) {
-      const outcome = gameStatus.winner === 'user' 
-        ? 'I won!' 
-        : gameStatus.winner === 'avatar' 
-          ? 'You won!' 
+      const outcome = gameStatus.winner === 'user'
+        ? 'I won!'
+        : gameStatus.winner === 'avatar'
+          ? 'You won!'
           : "It's a draw!";
       sendMessage(outcome);
+
+      // Apply fallback avatar emotion for game outcome
+      const eventKey = gameStatus.winner === 'avatar'
+        ? 'avatar_wins'
+        : gameStatus.winner === 'user'
+          ? 'avatar_loses'
+          : 'draw';
+      applyAvatarCommand(GAME_EVENT_BEHAVIORS[eventKey]);
     }
     wasGameOver.current = gameStatus.isOver;
-  }, [gameStatus.isOver, gameStatus.winner, activeGameId, sendMessage]);
+  }, [gameStatus.isOver, gameStatus.winner, activeGameId, sendMessage, applyAvatarCommand]);
 
   const module = useMemo(() => {
     if (!activeGameId) return null;

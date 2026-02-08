@@ -182,6 +182,16 @@ export const ticTacToeModule: GameModule<TicTacToeState, number> = {
   minPlayers: 2,
   maxPlayers: 2,
   defaultMoveProvider: 'llm',
+  promptInstructions: [
+    '## Tic-Tac-Toe — How You Play',
+    '- Think out loud about your strategy: "If I go here, you might..."',
+    '- When blocking: notice the threat and comment on it',
+    '- When setting up a fork: be sneaky about it',
+    '- When winning: build up excitement before revealing your move',
+    '- Keep it light — it\'s a quick, casual game',
+    '- Positions are numbered 1-9 (top-left to bottom-right)',
+    '- Include your move as [move:N] where N is the position number',
+  ].join('\n'),
 
   createGame(config?: GameConfig): TicTacToeState {
     const firstPlayer = config?.firstPlayer ?? 'user';

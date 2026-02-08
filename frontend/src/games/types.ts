@@ -98,6 +98,8 @@ export interface GameContext {
   status: 'in_progress' | 'game_over';
   /** Total moves played */
   moveCount: number;
+  /** Game-specific LLM prompt instructions (narration style, strategy personality) */
+  promptInstructions: string;
 }
 
 // ============================================================
@@ -146,6 +148,14 @@ export interface GameModule<TState = unknown, TMove = unknown> {
 
   /** Default move provider for this game */
   readonly defaultMoveProvider: MoveProviderType;
+
+  /**
+   * Game-specific LLM prompt instructions.
+   * Injected into the message context when this game is active.
+   * Contains narration style, strategy personality, tag format reminders.
+   * Should be concise (~80-150 tokens).
+   */
+  readonly promptInstructions: string;
 
   // ========== LIFECYCLE ==========
 

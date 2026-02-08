@@ -49,12 +49,21 @@ class SessionHistoryResponse(BaseModel):
     count: int
 
 
+class AvatarBehavior(BaseModel):
+    intent: str | None = None
+    mood: str | None = None
+    mood_intensity: float = 1.0
+    energy: str | None = None
+    move: str | None = None
+    game_action: str | None = None
+
+
 class ChatResponse(BaseModel):
     response: str
     session_id: str
     processing_ms: int
     model: str | None = None
-    behavior: dict = {}
+    behavior: AvatarBehavior = AvatarBehavior()
     usage: dict | None = None
 
 
