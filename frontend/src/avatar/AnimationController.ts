@@ -9,6 +9,7 @@ import type { VRM, VRMExpressionManager } from '@pixiv/three-vrm';
 import { ExpressionMixer, CHANNEL_PRIORITY } from './expression/ExpressionMixer';
 import { BlinkController } from './layers/BlinkController';
 import { LookAtSystem } from './layers/LookAtSystem';
+import { HeadGlanceSystem } from './layers/HeadGlanceSystem';
 import { LipSyncEngine } from './LipSyncEngine';
 import { AnimationGraph } from './AnimationGraph';
 import type { AlignmentData } from './types';
@@ -82,6 +83,7 @@ export class AnimationController {
   private expressionMixer: ExpressionMixer;
   private blinkController: BlinkController | null = null;
   private lookAtSystem: LookAtSystem | null = null;
+  private headGlanceSystem: HeadGlanceSystem | null = null;
   private lipSyncEngine: LipSyncEngine | null = null;
   private animationGraph: AnimationGraph | null = null;
   private idleAnimations: IdleAnimations | null = null;
@@ -145,6 +147,7 @@ export class AnimationController {
     const blinkExpressions = this.detectBlinkExpressions(vrm.expressionManager ?? null);
     this.blinkController = new BlinkController(this.expressionMixer, { expressions: blinkExpressions });
     this.lookAtSystem = new LookAtSystem(vrm);
+    this.headGlanceSystem = new HeadGlanceSystem(vrm);
     this.lipSyncEngine = new LipSyncEngine(this.expressionMixer, vrm);
     this.idleAnimations = new IdleAnimations(vrm, this.animationGraph);
     this.animationPlayer = new AnimationPlayer(vrm, this.animationGraph);
@@ -216,6 +219,32 @@ export class AnimationController {
     this.lipSyncEngine?.update(deltaTime);
     this.idleAnimations?.update(deltaTime);
     this.animationGraph?.update(deltaTime);
+    
+    // Update head glance system and wire to LookAt
+    if (this.headGlanceSystem) {
+      // Pause glances during gestures
+      const isGesturePlaying = this.animationGraph?.isGesturePlaying() ?? false;
+      if (isGesturePlaying) {
+        this.headGlanceSystem.pause();
+      } else {
+        this.headGlanceSystem.resume();
+      }
+      
+      // Tell glance system whether LookAt is handling head
+      const lookAtState = this.lookAtSystem?.getState();
+      const lookAtHandlingHead = lookAtState?.enabled && lookAtState?.headTrackingEnabled;
+      this.headGlanceSystem.setLookAtActive(lookAtHandlingHead ?? false);
+      
+      // Update glance system
+      this.headGlanceSystem.update(deltaTime);
+      
+      // Pass glance offsets to LookAt (if LookAt is active)
+      if (lookAtHandlingHead && this.lookAtSystem) {
+        const glance = this.headGlanceSystem.getGlanceOffset();
+        this.lookAtSystem.setGlanceOffset(glance.yaw, glance.pitch);
+      }
+    }
+    
     this.lookAtSystem?.update(deltaTime);
 
     // Update ambient behavior and micro-behaviors
@@ -318,10 +347,8 @@ export class AnimationController {
   private executeMicroBehavior(micro: MicroBehavior): void {
     switch (micro.type) {
       case 'glance_away':
-        this.lookAtSystem?.glanceAway(micro.duration ?? 1.0);
-        break;
       case 'glance_back':
-        this.lookAtSystem?.glanceBack();
+        // Glances now handled by HeadGlanceSystem autonomously
         break;
       case 'nod_small':
         // Small nod via a brief head movement - could use a procedural animation
@@ -509,6 +536,7 @@ export class AnimationController {
   dispose(): void {
     this.blinkController?.dispose();
     this.lookAtSystem?.dispose();
+    this.headGlanceSystem?.dispose();
     this.lipSyncEngine?.stop();
     this.animationGraph?.dispose();
     this.expressionMixer.dispose();
