@@ -319,10 +319,12 @@ class TestBehaviorLevers:
         state = EmotionalState(valence=0.3, arousal=0.2, trust=0.7)
         block = engine.generate_context_block(state)
         
-        assert '[EMOTIONAL_CONTEXT]' in block
+        assert '[EMOTIONAL_STATE]' in block
         assert 'warmth:' in block
         assert 'playfulness:' in block
         assert 'guardedness:' in block
+        assert 'Trust level:' in block
+        assert "don't mention these numbers" in block
 
 
 class TestStateBounds:
