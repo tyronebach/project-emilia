@@ -1,6 +1,6 @@
 """Database module."""
 from .connection import get_db, init_db
-from .repositories import UserRepository, AgentRepository, SessionRepository
+from .repositories import UserRepository, AgentRepository, SessionRepository, TTSCacheRepository
 
 __all__ = [
     "get_db",
@@ -8,4 +8,5 @@ __all__ = [
     "UserRepository",
     "AgentRepository",
     "SessionRepository",
+    "TTSCacheRepository",
 ]

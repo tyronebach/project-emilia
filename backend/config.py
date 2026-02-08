@@ -29,6 +29,9 @@ class Settings:
         self.elevenlabs_api_key: str | None = os.getenv("ELEVENLABS_API_KEY")
         self.elevenlabs_voice_id: str = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
         self.elevenlabs_model: str = os.getenv("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
+        self.tts_cache_enabled: bool = os.getenv("TTS_CACHE_ENABLED", "1").lower() not in {"0", "false", "no"}
+        self.tts_cache_ttl_seconds: int = int(os.getenv("TTS_CACHE_TTL_SECONDS", "604800"))
+        self.tts_cache_max_entries: int = int(os.getenv("TTS_CACHE_MAX_ENTRIES", "200"))
 
         # Paths
         agents_dir_str = os.getenv("CLAWDBOT_AGENTS_DIR", "/home/tbach/.openclaw/agents")
