@@ -11,7 +11,7 @@ from schemas import ChatRequest, SpeakRequest
 from config import settings
 from core.exceptions import TTSError
 from parse_chat import parse_chat_completion, extract_avatar_commands
-from db.repositories import UserRepository, AgentRepository, SessionRepository
+from db.repositories import UserRepository, AgentRepository, SessionRepository, MessageRepository
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,18 @@ def inject_game_context(message: str, game_context: dict | None) -> str:
     context_block += "---"
 
     return message + context_block
+
+
+def _build_llm_messages(session_id: str, current_msg: str, game_context: dict | None) -> list[dict]:
+    """Build the messages array for the LLM: raw history + current message with game context."""
+    history = MessageRepository.get_last_n(session_id, settings.chat_history_limit)
+
+    messages = [{"role": m["role"], "content": m["content"]} for m in history]
+
+    current_content = inject_game_context(current_msg, game_context)
+    messages.append({"role": "user", "content": current_content})
+
+    return messages
 
 
 @router.post("/chat")
@@ -103,8 +115,12 @@ async def chat(
 
     # Non-streaming
     try:
-        # Inject game context into the prompt before sending to Clawdbot.
-        augmented_message = inject_game_context(request.message, request.game_context)
+        # Build messages array: raw history + current message with game context
+        messages = _build_llm_messages(sid, request.message, request.game_context)
+
+        # Store raw user message BEFORE calling LLM
+        MessageRepository.add(sid, "user", request.message)
+
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f"{settings.clawdbot_url}/v1/chat/completions",
@@ -114,9 +130,8 @@ async def chat(
                 },
                 json={
                     "model": f"agent:{clawdbot_agent_id}",
-                    "messages": [{"role": "user", "content": augmented_message}],
+                    "messages": messages,
                     "stream": False,
-                    "user": sid
                 }
             )
 
@@ -128,6 +143,23 @@ async def chat(
         parsed = parse_chat_completion(result)
         processing_ms = int((time.time() - start_time) * 1000)
 
+        # Store assistant response with metadata
+        behavior = parsed.get("behavior", {})
+        usage = result.get("usage") or {}
+        MessageRepository.add(
+            sid, "assistant", parsed["response_text"],
+            model=result.get("model"),
+            processing_ms=processing_ms,
+            usage_prompt_tokens=usage.get("prompt_tokens"),
+            usage_completion_tokens=usage.get("completion_tokens"),
+            behavior_intent=behavior.get("intent"),
+            behavior_mood=behavior.get("mood"),
+            behavior_mood_intensity=behavior.get("mood_intensity"),
+            behavior_energy=behavior.get("energy"),
+            behavior_move=behavior.get("move"),
+            behavior_game_action=behavior.get("game_action"),
+        )
+
         SessionRepository.update_last_used(sid)
         SessionRepository.increment_message_count(sid)
 
@@ -136,7 +168,7 @@ async def chat(
             "session_id": sid,
             "processing_ms": processing_ms,
             "model": result.get("model"),
-            "behavior": parsed.get("behavior", {}),
+            "behavior": behavior,
             "usage": result.get("usage")
         }
 
@@ -149,8 +181,12 @@ async def chat(
 async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_agent_id: str, session_id: str):
     """SSE streaming chat"""
     try:
-        # Inject game context into the prompt before streaming.
-        augmented_message = inject_game_context(request.message, request.game_context)
+        # Build messages array: raw history + current message with game context
+        messages = _build_llm_messages(session_id, request.message, request.game_context)
+
+        # Store raw user message BEFORE calling LLM
+        MessageRepository.add(session_id, "user", request.message)
+
         async with httpx.AsyncClient(timeout=120.0) as client:
             async with client.stream(
                 "POST",
@@ -161,10 +197,9 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                 },
                 json={
                     "model": f"agent:{clawdbot_agent_id}",
-                    "messages": [{"role": "user", "content": augmented_message}],
+                    "messages": messages,
                     "stream": True,
                     "stream_options": {"include_usage": True},
-                    "user": session_id
                 }
             ) as response:
                 if response.status_code != 200:
@@ -208,6 +243,22 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                 # Final response - extract behavior tags from full content
                 clean_full, behavior = extract_avatar_commands(full_content)
                 processing_ms = int((time.time() - start_time) * 1000)
+
+                # Store assistant response with metadata
+                usage_data = usage or {}
+                MessageRepository.add(
+                    session_id, "assistant", clean_full,
+                    model=None,
+                    processing_ms=processing_ms,
+                    usage_prompt_tokens=usage_data.get("prompt_tokens"),
+                    usage_completion_tokens=usage_data.get("completion_tokens"),
+                    behavior_intent=behavior.get("intent"),
+                    behavior_mood=behavior.get("mood"),
+                    behavior_mood_intensity=behavior.get("mood_intensity"),
+                    behavior_energy=behavior.get("energy"),
+                    behavior_move=behavior.get("move"),
+                    behavior_game_action=behavior.get("game_action"),
+                )
 
                 avatar_data = {}
                 if behavior.get("intent"):

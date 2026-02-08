@@ -119,11 +119,34 @@ def init_db():
             )
         """)
 
+        # Messages table (webapp-managed history)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp REAL NOT NULL,
+                model TEXT,
+                processing_ms INTEGER,
+                usage_prompt_tokens INTEGER,
+                usage_completion_tokens INTEGER,
+                behavior_intent TEXT,
+                behavior_mood TEXT,
+                behavior_mood_intensity REAL,
+                behavior_energy TEXT,
+                behavior_move TEXT,
+                behavior_game_action TEXT,
+                audio_base64 TEXT
+            )
+        """)
+
         # Indexes for common queries
         cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_used ON sessions(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_session_participants_user ON session_participants(user_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_last_used ON tts_cache(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_created_at ON tts_cache(created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp)")
 
         conn.commit()
 

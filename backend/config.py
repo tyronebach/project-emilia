@@ -33,6 +33,9 @@ class Settings:
         self.tts_cache_ttl_seconds: int = int(os.getenv("TTS_CACHE_TTL_SECONDS", "604800"))
         self.tts_cache_max_entries: int = int(os.getenv("TTS_CACHE_MAX_ENTRIES", "200"))
 
+        # Chat
+        self.chat_history_limit: int = int(os.getenv("CHAT_HISTORY_LIMIT", "20"))
+
         # Paths
         agents_dir_str = os.getenv("CLAWDBOT_AGENTS_DIR", "/home/tbach/.openclaw/agents")
         self.clawdbot_agents_dir: Path = Path(agents_dir_str)

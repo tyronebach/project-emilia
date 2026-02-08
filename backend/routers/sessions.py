@@ -1,16 +1,12 @@
 """Session routes"""
-import json
 import logging
-from typing import Any
 from fastapi import APIRouter, HTTPException, Depends, Query
 from dependencies import verify_token, get_user_id, get_optional_agent_id
 from schemas import (
     CreateSessionRequest, UpdateSessionRequest,
     SessionsListResponse, SessionHistoryResponse, DeleteResponse
 )
-from config import settings
-from parse_chat import extract_avatar_commands
-from db.repositories import UserRepository, AgentRepository, SessionRepository
+from db.repositories import UserRepository, SessionRepository, MessageRepository
 
 logger = logging.getLogger(__name__)
 
@@ -94,94 +90,18 @@ async def get_session_history(
     user_id: str = Depends(get_user_id),
     limit: int = Query(50, ge=1, le=200)
 ):
-    """Get chat history for a session from Clawdbot's JSONL files"""
+    """Get chat history for a session from SQLite."""
     empty = {"messages": [], "session_id": session_id, "count": 0}
 
     if not SessionRepository.user_can_access(user_id, session_id):
         return empty
 
-    session = SessionRepository.get_by_id(session_id)
-    if not session:
-        return empty
-
-    agent = AgentRepository.get_by_id(session["agent_id"])
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-
-    clawdbot_agent_id = agent["clawdbot_agent_id"]
-
-    sessions_file = settings.clawdbot_agents_dir / clawdbot_agent_id / "sessions" / "sessions.json"
-    if not sessions_file.exists():
-        return empty
-
-    try:
-        with open(sessions_file) as f:
-            sessions_data = json.load(f)
-
-        jsonl_uuid = None
-        for key, info in sessions_data.items():
-            display_id = key.split("openai-user:")[-1] if "openai-user:" in key else key
-            if display_id == session_id:
-                jsonl_uuid = info.get("sessionId")
-                break
-
-        if not jsonl_uuid:
-            return empty
-
-        jsonl_file = settings.clawdbot_agents_dir / clawdbot_agent_id / "sessions" / f"{jsonl_uuid}.jsonl"
-        if not jsonl_file.exists():
-            return empty
-
-        messages = []
-        with open(jsonl_file) as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                entry = json.loads(line)
-
-                if entry.get("type") != "message":
-                    continue
-
-                msg = entry.get("message", {})
-                role = msg.get("role")
-                if role not in ("user", "assistant"):
-                    continue
-
-                raw_content = msg.get("content", "")
-                text_content = _extract_text_content(raw_content)
-
-                if role == "assistant":
-                    text_content, _ = extract_avatar_commands(text_content)
-
-                if not text_content.strip():
-                    continue
-
-                messages.append({
-                    "role": role,
-                    "content": text_content,
-                    "timestamp": entry.get("timestamp")
-                })
-
-        return {
-            "messages": messages[-limit:],
-            "session_id": session_id,
-            "count": len(messages)
-        }
-
-    except Exception:
-        logger.exception("Error reading session history for %s", session_id)
-        return empty
-
-
-def _extract_text_content(content: Any) -> str:
-    """Extract text from message content"""
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return " ".join(
-            part.get("text", "") if isinstance(part, dict) else str(part)
-            for part in content
-        )
-    return str(content)
+    messages = MessageRepository.get_by_session(session_id, limit=limit)
+    return {
+        "messages": [
+            {"role": m["role"], "content": m["content"], "timestamp": m["timestamp"]}
+            for m in messages
+        ],
+        "session_id": session_id,
+        "count": len(messages),
+    }
