@@ -23,10 +23,12 @@ interface RenderStore {
   settings: QualitySettings;
   cameraPosition: CameraPosition | null;
   cameraDriftEnabled: boolean;
+  lookAtEnabled: boolean;
   setPreset: (preset: QualityPreset) => void;
   setSettings: (settings: QualitySettings) => void;
   setCameraPosition: (position: CameraPosition | null) => void;
   setCameraDriftEnabled: (enabled: boolean) => void;
+  setLookAtEnabled: (enabled: boolean) => void;
 }
 
 export const useRenderStore = create<RenderStore>()(
@@ -36,6 +38,7 @@ export const useRenderStore = create<RenderStore>()(
       settings: getPreset('medium'),
       cameraPosition: null,
       cameraDriftEnabled: true,
+      lookAtEnabled: true,
       
       setPreset: (preset) => set({
         preset,
@@ -49,14 +52,16 @@ export const useRenderStore = create<RenderStore>()(
       
       setCameraPosition: (cameraPosition) => set({ cameraPosition }),
       setCameraDriftEnabled: (cameraDriftEnabled) => set({ cameraDriftEnabled }),
+      setLookAtEnabled: (lookAtEnabled) => set({ lookAtEnabled }),
     }),
     {
       name: STORAGE_KEY,
-      // Persist preset, camera position, and drift setting
+      // Persist preset, camera position, drift setting, and lookAt setting
       partialize: (state) => ({ 
         preset: state.preset,
         cameraPosition: state.cameraPosition,
         cameraDriftEnabled: state.cameraDriftEnabled,
+        lookAtEnabled: state.lookAtEnabled,
       }),
       onRehydrate: () => {
         // After loading preset from storage, recalculate settings
