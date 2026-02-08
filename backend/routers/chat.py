@@ -42,7 +42,7 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
         if not agent:
             return None
 
-        # Build profile (from_db handles all fields including mood_baseline/mood_decay_rate)
+        # Build profile from DB (emotional_profile column has all settings)
         profile = AgentProfile.from_db(agent, profile_data)
 
         engine = EmotionEngine(profile)
