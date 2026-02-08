@@ -228,6 +228,10 @@ def init_db():
         # Mood weights (JSON dict of mood->weight)
         _add_column(cur, "emotional_state", "mood_weights_json", "TEXT")
 
+        # Async trigger batching (LLM classification runs every N messages)
+        _add_column(cur, "emotional_state", "trigger_buffer", "TEXT")  # JSON array of recent messages
+        _add_column(cur, "emotional_state", "pending_triggers", "TEXT")  # JSON array of LLM-detected triggers
+
         # Agent emotional baseline columns (safe to re-run)
         _add_column(cur, "agents", "baseline_valence", "REAL DEFAULT 0.2")
         _add_column(cur, "agents", "baseline_arousal", "REAL DEFAULT 0.0")

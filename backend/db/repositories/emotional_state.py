@@ -231,3 +231,79 @@ class EmotionalStateRepository:
                 events.append(event)
             
             return events
+
+    # ========== Async Trigger Batching ==========
+
+    @staticmethod
+    def get_trigger_buffer(user_id: str, agent_id: str) -> list[str]:
+        """Get buffered messages waiting for LLM classification."""
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT trigger_buffer FROM emotional_state WHERE user_id = ? AND agent_id = ?",
+                (user_id, agent_id)
+            ).fetchone()
+
+        if row and row["trigger_buffer"]:
+            return json.loads(row["trigger_buffer"])
+        return []
+
+    @staticmethod
+    def append_to_buffer(user_id: str, agent_id: str, message: str, max_size: int = 4) -> list[str]:
+        """Append message to buffer, return current buffer. Trims to max_size."""
+        buffer = EmotionalStateRepository.get_trigger_buffer(user_id, agent_id)
+        buffer.append(message)
+        
+        # Keep only last N messages
+        if len(buffer) > max_size:
+            buffer = buffer[-max_size:]
+
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE emotional_state SET trigger_buffer = ? WHERE user_id = ? AND agent_id = ?",
+                (json.dumps(buffer), user_id, agent_id)
+            )
+        
+        return buffer
+
+    @staticmethod
+    def clear_buffer(user_id: str, agent_id: str) -> None:
+        """Clear the trigger buffer after LLM classification."""
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE emotional_state SET trigger_buffer = NULL WHERE user_id = ? AND agent_id = ?",
+                (user_id, agent_id)
+            )
+
+    @staticmethod
+    def get_pending_triggers(user_id: str, agent_id: str) -> list[tuple[str, float]]:
+        """Get pending LLM-detected triggers to apply."""
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT pending_triggers FROM emotional_state WHERE user_id = ? AND agent_id = ?",
+                (user_id, agent_id)
+            ).fetchone()
+
+        if row and row["pending_triggers"]:
+            return [tuple(t) for t in json.loads(row["pending_triggers"])]
+        return []
+
+    @staticmethod
+    def set_pending_triggers(user_id: str, agent_id: str, triggers: list[tuple[str, float]]) -> None:
+        """Store LLM-detected triggers for next turn."""
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE emotional_state SET pending_triggers = ? WHERE user_id = ? AND agent_id = ?",
+                (json.dumps(triggers), user_id, agent_id)
+            )
+
+    @staticmethod
+    def pop_pending_triggers(user_id: str, agent_id: str) -> list[tuple[str, float]]:
+        """Get and clear pending triggers (atomic)."""
+        triggers = EmotionalStateRepository.get_pending_triggers(user_id, agent_id)
+        if triggers:
+            with get_db() as conn:
+                conn.execute(
+                    "UPDATE emotional_state SET pending_triggers = NULL WHERE user_id = ? AND agent_id = ?",
+                    (user_id, agent_id)
+                )
+        return triggers

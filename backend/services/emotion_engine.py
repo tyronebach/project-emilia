@@ -373,6 +373,86 @@ class EmotionEngine:
             logger.exception("[EmotionLLM] LLM trigger detection failed, falling back to regex")
             return self.detect_triggers(text)
 
+    async def detect_triggers_llm_batch(self, messages: list[str]) -> list[tuple[str, float]]:
+        """
+        Detect emotional triggers from multiple messages in a single LLM call.
+        
+        More efficient than calling detect_triggers_llm for each message.
+        Returns combined list of (trigger_name, intensity) tuples.
+        """
+        if not messages:
+            return []
+
+        # Filter empty messages
+        messages = [m for m in messages if m and m.strip()]
+        if not messages:
+            return []
+
+        from config import settings
+
+        valid_triggers = list(self.DEFAULT_TRIGGER_DELTAS.keys())
+        
+        # Format messages with numbers for clarity
+        numbered_messages = "\n".join(f"{i+1}. {m}" for i, m in enumerate(messages))
+
+        prompt = (
+            "Classify the emotional triggers in these user messages. "
+            f"Valid triggers: {', '.join(valid_triggers)}. "
+            "Return a JSON array of objects with 'trigger' (string) and "
+            "'intensity' (float 0.0-1.0). Combine triggers across all messages. "
+            "If the same trigger appears multiple times, average the intensities. "
+            "Return [] if no triggers found. Only return the JSON array."
+        )
+
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{settings.clawdbot_url}/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.clawdbot_token}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": settings.compact_model,
+                        "messages": [
+                            {"role": "system", "content": prompt},
+                            {"role": "user", "content": numbered_messages},
+                        ],
+                        "temperature": 0.0,
+                        "max_tokens": 512,
+                    },
+                )
+                response.raise_for_status()
+
+            result = response.json()
+            content = result["choices"][0]["message"]["content"].strip()
+
+            # Strip markdown code fences if present
+            if content.startswith("```"):
+                content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+
+            parsed = json.loads(content)
+
+            if not isinstance(parsed, list):
+                logger.warning("[EmotionLLM-Batch] Expected list, got %s", type(parsed).__name__)
+                return []
+
+            triggers = []
+            for item in parsed:
+                trigger = item.get("trigger", "")
+                intensity = float(item.get("intensity", 0.7))
+                if trigger in self.DEFAULT_TRIGGER_DELTAS:
+                    intensity = max(0.0, min(1.0, intensity))
+                    triggers.append((trigger, intensity))
+
+            logger.info("[EmotionLLM-Batch] Detected triggers from %d messages: %s", 
+                       len(messages), triggers)
+            return triggers
+
+        except Exception:
+            logger.exception("[EmotionLLM-Batch] Batch trigger detection failed")
+            return []
+
     def apply_trigger(self, state: EmotionalState, trigger: str, intensity: float = 0.7) -> dict[str, float]:
         """
         Apply a trigger's emotional deltas to state.
