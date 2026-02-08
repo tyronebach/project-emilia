@@ -394,6 +394,11 @@ export class AnimationController {
     if (expr && this.emotionIntensity > 0.01) {
       this.expressionMixer.setExpression('emotion', expr, this.emotionIntensity);
     }
+
+    // Update blink base from emotion (additive blink respects eye state)
+    if (this.blinkController) {
+      this.blinkController.setBaseFromEmotion(this.currentEmotion, this.emotionIntensity);
+    }
   }
 
   /**
