@@ -161,14 +161,15 @@ export class AnimationStateMachine {
   }
 
   /**
-   * Preload all animation files referenced in config
+   * Preload idle animations (called at startup).
+   * Gestures are lazy-loaded on first use - small delay on first trigger is acceptable.
    */
-  async preloadAll(): Promise<void> {
+  async preloadIdles(): Promise<void> {
     if (!this.config) return;
 
     const files = new Set<string>();
     
-    // Add idle
+    // Add default idle
     files.add(this.config.idle.file);
 
     // Add idle rotation pool
@@ -178,12 +179,37 @@ export class AnimationStateMachine {
       }
     }
 
-    // Add all actions
+    const loadPromises = Array.from(files).map(file => 
+      animationLibrary.load(file).catch(err => {
+        console.warn(`[AnimationStateMachine] Failed to preload idle ${file}:`, err);
+      })
+    );
+
+    await Promise.all(loadPromises);
+    console.log(`[AnimationStateMachine] Preloaded ${files.size} idle animations`);
+  }
+
+  /**
+   * Optional: Preload ALL animations (idles + gestures) if you want zero delay on first gesture.
+   * Currently unused - gestures lazy-load on demand.
+   */
+  async preloadAll(): Promise<void> {
+    if (!this.config) return;
+
+    const files = new Set<string>();
+    
+    files.add(this.config.idle.file);
+
+    if (this.config.idles) {
+      for (const entry of this.config.idles) {
+        files.add(entry.file);
+      }
+    }
+
     for (const action of Object.values(this.config.actions)) {
       files.add(action.file);
     }
 
-    // Load all through animation library
     const loadPromises = Array.from(files).map(file => 
       animationLibrary.load(file).catch(err => {
         console.warn(`[AnimationStateMachine] Failed to preload ${file}:`, err);

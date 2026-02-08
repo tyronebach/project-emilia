@@ -619,7 +619,7 @@
     "name": "Weight shift",
     "type": "fbx"
   },
-   {
+  {
     "id": "mixamo_fbx/weight_shift_2.fbx",
     "name": "Weight shift 2",
     "type": "fbx"
@@ -652,6 +652,11 @@
   {
     "id": "mixamo_fbx/idles/standing_idle.fbx",
     "name": "Standing Idle",
+    "type": "fbx"
+  },
+  {
+    "id": "mixamo_fbx/idles/idle.fbx",
+    "name": "Idle",
     "type": "fbx"
   }
 ]

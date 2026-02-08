@@ -127,12 +127,16 @@
   },
   "idles": [
     {
+      "file": "mixamo_fbx/idles/idle.fbx",
+      "weight": 1
+    },
+    {
       "file": "mixamo_fbx/idles/idle_breathing.fbx",
-      "weight": 2
+      "weight": 1
     },
     {
       "file": "mixamo_fbx/idles/idle_subtle.fbx",
-      "weight": 2
+      "weight": 1
     },
     {
       "file": "mixamo_fbx/idles/neutral_idle.fbx",
