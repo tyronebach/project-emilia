@@ -1,7 +1,44 @@
 // # Phase 1.2 COMPLETE - 2026-02-08
+// # Upgrade: sessionStorage persistence - 2026-02-07
 import { create } from 'zustand';
 import type { GameConfig, GameStatus, MoveRecord, PlayerRole, Turn } from '../games/types';
 import { getGame } from '../games/registry';
+
+const STORAGE_KEY = 'emilia-game-state';
+
+interface PersistedGameState {
+  activeGameId: string | null;
+  gameState: unknown;
+  currentTurn: Turn;
+  gameStatus: GameStatus;
+  moveHistory: MoveRecord[];
+  gameConfig: GameConfig;
+}
+
+function saveToSession(state: PersistedGameState): void {
+  try {
+    if (!state.activeGameId) {
+      sessionStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // sessionStorage full or unavailable — ignore silently
+  }
+}
+
+function loadFromSession(): PersistedGameState | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedGameState;
+    // Validate the game module still exists
+    if (parsed.activeGameId && !getGame(parsed.activeGameId)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
 
 interface GameStoreState {
   // State
@@ -56,6 +93,12 @@ function resolveConfig(config?: GameConfig): GameConfig {
 }
 
 export const useGameStore = create<GameStoreState>((set, get) => {
+  // Persist game state to sessionStorage on relevant changes
+  const persistState = () => {
+    const { activeGameId, gameState, currentTurn, gameStatus, moveHistory, gameConfig } = get();
+    saveToSession({ activeGameId, gameState, currentTurn, gameStatus, moveHistory, gameConfig });
+  };
+
   const applyMove = (player: PlayerRole, move: unknown): boolean => {
     const { activeGameId, gameState, currentTurn, gameStatus } = get();
 
@@ -108,17 +151,20 @@ export const useGameStore = create<GameStoreState>((set, get) => {
       moveHistory: [...state.moveHistory, record],
     }));
 
+    persistState();
     return true;
   };
 
+  const restored = loadFromSession();
+
   return {
-    // State
-    activeGameId: null,
-    gameState: null,
-    currentTurn: null,
-    gameStatus: { ...defaultStatus },
-    moveHistory: [],
-    gameConfig: { ...defaultConfig },
+    // State (restore from sessionStorage if available)
+    activeGameId: restored?.activeGameId ?? null,
+    gameState: restored?.gameState ?? null,
+    currentTurn: restored?.currentTurn ?? null,
+    gameStatus: restored?.gameStatus ?? { ...defaultStatus },
+    moveHistory: restored?.moveHistory ?? [],
+    gameConfig: restored?.gameConfig ?? { ...defaultConfig },
     isAvatarThinking: false,
 
     // Actions
@@ -142,6 +188,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
         moveHistory: [],
         gameConfig: resolvedConfig,
       });
+      persistState();
     },
     applyUserMove: (move) => applyMove('user', move),
     applyAvatarMove: (move) => applyMove('avatar', move),
@@ -154,16 +201,20 @@ export const useGameStore = create<GameStoreState>((set, get) => {
         gameStatus: { ...endedStatus },
         currentTurn: null,
       });
+      persistState();
     },
-    resetGame: () => set({
-      activeGameId: null,
-      gameState: null,
-      currentTurn: null,
-      gameStatus: { ...defaultStatus },
-      moveHistory: [],
-      gameConfig: { ...defaultConfig },
-      isAvatarThinking: false,
-    }),
+    resetGame: () => {
+      set({
+        activeGameId: null,
+        gameState: null,
+        currentTurn: null,
+        gameStatus: { ...defaultStatus },
+        moveHistory: [],
+        gameConfig: { ...defaultConfig },
+        isAvatarThinking: false,
+      });
+      saveToSession({ activeGameId: null, gameState: null, currentTurn: null, gameStatus: defaultStatus, moveHistory: [], gameConfig: defaultConfig });
+    },
     setIsAvatarThinking: (thinking) => set({ isAvatarThinking: thinking }),
 
     // Internal

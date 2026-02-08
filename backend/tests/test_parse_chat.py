@@ -220,3 +220,118 @@ def test_parse_chat_completion_no_tags():
     assert parsed["response_text"] == "Just a plain response."
     assert parsed["behavior"]["intent"] is None
     assert parsed["behavior"]["mood"] is None
+
+
+# ========================================
+# Tests for game tag extraction ([move:x], [game:x])
+# ========================================
+
+def test_extract_move_tag():
+    text = "[move:5] I'll take the center!"
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "I'll take the center!"
+    assert behavior["move"] == "5"
+
+
+def test_extract_move_tag_case_insensitive():
+    text = "[MOVE:e4] A classic opening."
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "A classic opening."
+    assert behavior["move"] == "e4"
+
+
+def test_extract_move_tag_with_spaces():
+    text = "[move: top-left ] Going for the corner."
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "Going for the corner."
+    assert behavior["move"] == "top-left"
+
+
+def test_extract_game_action_tag():
+    text = "[game:resign] I give up!"
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "I give up!"
+    assert behavior["game_action"] == "resign"
+
+
+def test_extract_game_action_new_game():
+    text = "[game:new_game] Let's play again!"
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "Let's play again!"
+    assert behavior["game_action"] == "new_game"
+
+
+def test_extract_game_action_case_insensitive():
+    text = "[GAME:Resign] No more."
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "No more."
+    assert behavior["game_action"] == "resign"
+
+
+def test_extract_all_tags_with_move():
+    text = "[intent:playful] [mood:thinking:0.7] [energy:medium] [move:7] Let me block that diagonal!"
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "Let me block that diagonal!"
+    assert behavior["intent"] == "playful"
+    assert behavior["mood"] == "thinking"
+    assert behavior["mood_intensity"] == 0.7
+    assert behavior["energy"] == "medium"
+    assert behavior["move"] == "7"
+    assert behavior["game_action"] is None
+
+
+def test_extract_move_and_game_action():
+    text = "[move:e4] [game:offer_draw] How about a draw?"
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "How about a draw?"
+    assert behavior["move"] == "e4"
+    assert behavior["game_action"] == "offer_draw"
+
+
+def test_no_move_tag_present():
+    text = "Just a regular message with no game tags."
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "Just a regular message with no game tags."
+    assert behavior["move"] is None
+    assert behavior["game_action"] is None
+
+
+def test_move_tag_chess_notation():
+    text = "[move:Nf3] Developing my knight."
+    clean, behavior = extract_avatar_commands(text)
+    assert clean == "Developing my knight."
+    assert behavior["move"] == "Nf3"
+
+
+def test_parse_chat_completion_with_move():
+    result = {
+        "choices": [
+            {
+                "message": {
+                    "content": "[intent:playful] [mood:confident:0.8] [move:5] I'll take the center!"
+                }
+            }
+        ]
+    }
+    parsed = parse_chat_completion(result)
+    assert parsed["response_text"] == "I'll take the center!"
+    assert parsed["behavior"]["intent"] == "playful"
+    assert parsed["behavior"]["mood"] == "confident"
+    assert parsed["behavior"]["move"] == "5"
+    assert parsed["behavior"]["game_action"] is None
+
+
+def test_parse_chat_completion_with_game_action():
+    result = {
+        "choices": [
+            {
+                "message": {
+                    "content": "[mood:sad] [game:resign] I can't win this one."
+                }
+            }
+        ]
+    }
+    parsed = parse_chat_completion(result)
+    assert parsed["response_text"] == "I can't win this one."
+    assert parsed["behavior"]["mood"] == "sad"
+    assert parsed["behavior"]["game_action"] == "resign"

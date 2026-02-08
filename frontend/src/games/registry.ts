@@ -18,4 +18,4 @@ export function listGames(): GameModule[] {
   return Array.from(registry.values());
 }
 
-registerGame(ticTacToeModule);
+registerGame(ticTacToeModule as GameModule);

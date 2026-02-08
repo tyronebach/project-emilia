@@ -24,14 +24,20 @@ def inject_game_context(message: str, game_context: dict | None) -> str:
         return message
 
     game_id = game_context.get("gameId", "unknown")
+    prompt_instructions = game_context.get("promptInstructions") or ""
     state = game_context.get("state") or ""
     last_move = game_context.get("lastUserMove") or ""
     avatar_move = game_context.get("avatarMove")
     valid_moves = game_context.get("validMoves") or []
     status = game_context.get("status", "in_progress")
 
-    # Build a compact context block for the LLM.
-    context_block = f"\n\n---\n[game:{game_id}]\n{state}\n"
+    # Build context block: Layer 2 (prompt instructions) + Layer 3 (game state)
+    context_block = f"\n\n---\n[game: {game_id}]\n"
+
+    if prompt_instructions:
+        context_block += f"\n{prompt_instructions}\n"
+
+    context_block += f"\n{state}\n"
 
     if last_move:
         context_block += f"The user just played: {last_move}\n"
@@ -45,6 +51,8 @@ def inject_game_context(message: str, game_context: dict | None) -> str:
 
     if status == "game_over":
         context_block += "The game is over. React to the outcome.\n"
+
+    context_block += "---"
 
     return message + context_block
 
@@ -209,6 +217,10 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
                     avatar_data["intensity"] = behavior["mood_intensity"]
                 if behavior.get("energy"):
                     avatar_data["energy"] = behavior["energy"]
+                if behavior.get("move"):
+                    avatar_data["move"] = behavior["move"]
+                if behavior.get("game_action"):
+                    avatar_data["game_action"] = behavior["game_action"]
                 if avatar_data:
                     yield f"event: avatar\ndata: {json.dumps(avatar_data)}\n\n"
 

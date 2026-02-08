@@ -128,6 +128,7 @@ export function useGame() {
       validMoves,
       status: gameStatus.isOver ? 'game_over' : 'in_progress',
       moveCount: moveHistory.length,
+      promptInstructions: module.promptInstructions,
     };
   }, [activeGameId, gameState, currentTurn, gameStatus.isOver, moveHistory, gameConfig]);
 

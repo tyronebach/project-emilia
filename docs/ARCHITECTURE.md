@@ -140,5 +140,27 @@ curl http://localhost:8080/api/health | jq .
 
 ---
 
+---
+
+## Message History (Planned Redesign)
+
+**Current:** Clawdbot manages session history via JSONL files. Backend reads history from Clawdbot.
+
+**Problem:** Game context injected into user messages gets stored and replayed every turn, causing token multiplication.
+
+**Planned:** Webapp manages message history in SQLite. Clawdbot becomes stateless LLM proxy.
+
+| Aspect | Current | Planned |
+|--------|---------|---------|
+| History storage | Clawdbot JSONL | Webapp SQLite |
+| Clawdbot role | Session manager + LLM | Stateless LLM proxy |
+| Game context | Stored per message | Injected at request time only |
+
+**Schema:** New `messages` table with columns: `id`, `session_id`, `role`, `content`, `timestamp`, plus optional metadata (model, usage, behavior tags).
+
+**See:** `/docs/planning/game-modules/MESSAGE-HISTORY-REDESIGN.md`
+
+---
+
 **Verified:** 2026-02-04  
 **Engineer:** Ram 🩷
