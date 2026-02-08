@@ -220,7 +220,10 @@ export class AnimationController {
     this.idleAnimations?.update(deltaTime);
     this.animationGraph?.update(deltaTime);
     
-    // Update head glance system and wire to LookAt
+    // LookAt first (sets head rotation toward camera)
+    this.lookAtSystem?.update(deltaTime);
+    
+    // HeadGlanceSystem after (adds variety on top of LookAt)
     if (this.headGlanceSystem) {
       // Pause glances during gestures
       const isGesturePlaying = this.animationGraph?.isGesturePlaying() ?? false;
@@ -230,22 +233,9 @@ export class AnimationController {
         this.headGlanceSystem.resume();
       }
       
-      // Tell glance system whether LookAt is handling head
-      const lookAtState = this.lookAtSystem?.getState();
-      const lookAtHandlingHead = lookAtState?.enabled && lookAtState?.headTrackingEnabled;
-      this.headGlanceSystem.setLookAtActive(lookAtHandlingHead ?? false);
-      
-      // Update glance system
+      // Update glance system (applies additively on top of current head rotation)
       this.headGlanceSystem.update(deltaTime);
-      
-      // Pass glance offsets to LookAt (if LookAt is active)
-      if (lookAtHandlingHead && this.lookAtSystem) {
-        const glance = this.headGlanceSystem.getGlanceOffset();
-        this.lookAtSystem.setGlanceOffset(glance.yaw, glance.pitch);
-      }
     }
-    
-    this.lookAtSystem?.update(deltaTime);
 
     // Update ambient behavior and micro-behaviors
     const ambientMicros = this.ambientBehavior.update(deltaTime, {

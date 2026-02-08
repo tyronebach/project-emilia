@@ -76,10 +76,6 @@ export class LookAtSystem {
   private _lookAtType: string = 'none';
   private _isVRM0: boolean = false;
 
-  // External glance offset (from HeadGlanceSystem)
-  private externalGlanceYaw: number = 0;
-  private externalGlancePitch: number = 0;
-
   // Reusable objects (avoid GC)
   private _tempVec3: THREE.Vector3 = new THREE.Vector3();
   private _tempVec3B: THREE.Vector3 = new THREE.Vector3();
@@ -167,15 +163,6 @@ export class LookAtSystem {
   }
 
   /**
-   * Set glance offset from external source (HeadGlanceSystem).
-   * These offsets are added to the camera tracking direction.
-   */
-  setGlanceOffset(yaw: number, pitch: number): void {
-    this.externalGlanceYaw = yaw;
-    this.externalGlancePitch = pitch;
-  }
-
-  /**
    * Update head tracking
    * Eyes are handled by VRM automatically via vrm.update()
    */
@@ -219,10 +206,6 @@ export class LookAtSystem {
       targetYaw = Math.atan2(toCamera.x, toCamera.z) * (180 / Math.PI);
       targetPitch = Math.atan2(-(toCamera.y - 0.1), horizontalDist) * (180 / Math.PI);
     }
-
-    // Apply external glance offset (from HeadGlanceSystem)
-    targetYaw += this.externalGlanceYaw;
-    targetPitch += this.externalGlancePitch;
 
     // Store for debug
     this._lastAngle = Math.abs(targetYaw);
