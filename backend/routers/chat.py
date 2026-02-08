@@ -13,9 +13,173 @@ from schemas import ChatRequest, SpeakRequest
 from config import settings
 from core.exceptions import TTSError
 from parse_chat import parse_chat_completion, extract_avatar_commands
-from db.repositories import UserRepository, AgentRepository, SessionRepository, MessageRepository
+from db.repositories import UserRepository, AgentRepository, SessionRepository, MessageRepository, EmotionalStateRepository
+from services.emotion_engine import EmotionEngine, EmotionalState, AgentProfile
 
 logger = logging.getLogger(__name__)
+
+
+def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: str, session_id: str | None = None) -> str | None:
+    """
+    Process emotional state BEFORE LLM call.
+    
+    1. Load/create emotional state
+    2. Apply time-based decay
+    3. Detect triggers from user message
+    4. Apply trigger deltas
+    5. Return emotional context block for prompt injection
+    
+    Returns context block string or None if emotion engine disabled/error.
+    """
+    try:
+        # Load state and profile
+        state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
+        profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
+        
+        # Get agent baseline from DB
+        agent = AgentRepository.get_by_id(agent_id)
+        if not agent:
+            return None
+        
+        # Build profile
+        profile = AgentProfile(
+            baseline_valence=agent.get('baseline_valence') or 0.2,
+            baseline_arousal=agent.get('baseline_arousal') or 0.0,
+            baseline_dominance=agent.get('baseline_dominance') or 0.0,
+            emotional_volatility=agent.get('emotional_volatility') or 0.5,
+            emotional_recovery=agent.get('emotional_recovery') or 0.1,
+            decay_rates=profile_data.get('decay_rates', {}),
+            trust_gain_multiplier=profile_data.get('trust_gain_multiplier', 1.0),
+            trust_loss_multiplier=profile_data.get('trust_loss_multiplier', 1.0),
+            attachment_ceiling=profile_data.get('attachment_ceiling', 1.0),
+            trigger_multipliers=profile_data.get('trigger_multipliers', {}),
+            play_trust_threshold=profile_data.get('play_trust_threshold', 0.7),
+        )
+        
+        engine = EmotionEngine(profile)
+        
+        # Convert DB row to EmotionalState
+        state = EmotionalState(
+            valence=state_row['valence'] or 0.0,
+            arousal=state_row['arousal'] or 0.0,
+            dominance=state_row['dominance'] or 0.0,
+            trust=state_row['trust'] or 0.5,
+            attachment=state_row['attachment'] or 0.3,
+            familiarity=state_row['familiarity'] or 0.0,
+        )
+        
+        # Apply decay since last interaction
+        last_updated = state_row.get('last_updated') or 0
+        if last_updated:
+            import time as time_module
+            elapsed = time_module.time() - last_updated
+            state = engine.apply_decay(state, elapsed)
+        
+        # Detect and apply triggers from user message
+        triggers = engine.detect_triggers(user_message)
+        for trigger, intensity in triggers:
+            deltas = engine.apply_trigger(state, trigger, intensity)
+            
+            # Log event
+            if deltas:
+                EmotionalStateRepository.log_event(
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    trigger_type='user_message',
+                    trigger_value=trigger,
+                    session_id=session_id,
+                    delta_valence=deltas.get('valence'),
+                    delta_arousal=deltas.get('arousal'),
+                    delta_dominance=deltas.get('dominance'),
+                    delta_trust=deltas.get('trust'),
+                    delta_attachment=deltas.get('attachment'),
+                    state_after=state.to_dict(),
+                )
+        
+        # Save updated state
+        EmotionalStateRepository.update(
+            user_id, agent_id,
+            valence=state.valence,
+            arousal=state.arousal,
+            dominance=state.dominance,
+            trust=state.trust,
+            attachment=state.attachment,
+            familiarity=state.familiarity,
+        )
+        
+        # Generate context block for prompt
+        return engine.generate_context_block(state)
+        
+    except Exception:
+        logger.exception("Emotion engine error (pre-LLM), continuing without emotional context")
+        return None
+
+
+def _process_emotion_post_llm(user_id: str, agent_id: str, behavior: dict, session_id: str | None = None) -> None:
+    """
+    Process emotional state AFTER LLM response.
+    
+    Apply any mood shifts from the agent's own behavior tags.
+    """
+    try:
+        if not behavior:
+            return
+        
+        mood = behavior.get('mood')
+        if not mood:
+            return
+        
+        # Map LLM mood to emotional trigger (agent self-reported state)
+        mood_to_trigger = {
+            'happy': ('shared_joy', 0.3),
+            'sad': ('empathy_needed', 0.3),
+            'angry': ('conflict', 0.2),
+            'embarrassed': ('vulnerability', 0.2),
+            'excited': ('shared_joy', 0.4),
+        }
+        
+        if mood in mood_to_trigger:
+            trigger, intensity = mood_to_trigger[mood]
+            intensity *= behavior.get('mood_intensity', 1.0)
+            
+            state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
+            profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
+            agent = AgentRepository.get_by_id(agent_id)
+            
+            if agent:
+                profile = AgentProfile(
+                    baseline_valence=agent.get('baseline_valence') or 0.2,
+                    emotional_volatility=agent.get('emotional_volatility') or 0.5,
+                    trigger_multipliers=profile_data.get('trigger_multipliers', {}),
+                )
+                engine = EmotionEngine(profile)
+                
+                state = EmotionalState(
+                    valence=state_row['valence'] or 0.0,
+                    arousal=state_row['arousal'] or 0.0,
+                    trust=state_row['trust'] or 0.5,
+                )
+                
+                deltas = engine.apply_trigger(state, trigger, intensity)
+                
+                if deltas:
+                    EmotionalStateRepository.update(
+                        user_id, agent_id,
+                        valence=state.valence,
+                        arousal=state.arousal,
+                    )
+                    EmotionalStateRepository.log_event(
+                        user_id=user_id,
+                        agent_id=agent_id,
+                        trigger_type='self_mood',
+                        trigger_value=mood,
+                        session_id=session_id,
+                        delta_valence=deltas.get('valence'),
+                        delta_arousal=deltas.get('arousal'),
+                        state_after=state.to_dict(),
+                    )
+    except Exception:
+        logger.exception("Emotion engine error (post-LLM), ignoring")
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -71,7 +235,12 @@ def inject_game_context(message: str, game_context: dict | None) -> str:
     return message + context_block
 
 
-def _build_llm_messages(session_id: str, current_msg: str, game_context: dict | None) -> list[dict]:
+def _build_llm_messages(
+    session_id: str,
+    current_msg: str,
+    game_context: dict | None,
+    emotional_context: str | None = None
+) -> list[dict]:
     """Build the messages array for the LLM: [summary] + recent history + current message."""
     messages: list[dict] = []
 
@@ -86,7 +255,16 @@ def _build_llm_messages(session_id: str, current_msg: str, game_context: dict | 
     history = MessageRepository.get_last_n(session_id, settings.chat_history_limit)
     messages.extend({"role": m["role"], "content": m["content"]} for m in history)
 
-    current_content = inject_game_context(current_msg, game_context)
+    # Build current message with contexts
+    current_content = current_msg
+    
+    # Inject emotional context first (affects tone)
+    if emotional_context:
+        current_content = emotional_context + "\n\n" + current_content
+    
+    # Then game context (specific to game state)
+    current_content = inject_game_context(current_content, game_context)
+    
     messages.append({"role": "user", "content": current_content})
 
     return messages
@@ -179,7 +357,7 @@ async def chat(
 
     if stream == 1:
         return StreamingResponse(
-            _stream_chat_sse(request, start_time, clawdbot_agent_id, sid),
+            _stream_chat_sse(request, start_time, clawdbot_agent_id, sid, user_id, agent_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -190,8 +368,11 @@ async def chat(
 
     # Non-streaming
     try:
-        # Build messages array: raw history + current message with game context
-        messages = _build_llm_messages(sid, request.message, request.game_context)
+        # Process emotional state before LLM (detect triggers, apply decay)
+        emotional_context = _process_emotion_pre_llm(user_id, agent_id, request.message, sid)
+        
+        # Build messages array: raw history + current message with contexts
+        messages = _build_llm_messages(sid, request.message, request.game_context, emotional_context)
 
         # Store raw user message BEFORE calling LLM
         MessageRepository.add(sid, "user", request.message)
@@ -238,6 +419,9 @@ async def chat(
         SessionRepository.update_last_used(sid)
         SessionRepository.increment_message_count(sid)
 
+        # Process emotional state after LLM (apply self-reported mood shifts)
+        _process_emotion_post_llm(user_id, agent_id, behavior, sid)
+
         # Fire-and-forget: compact in background so response returns immediately
         _spawn_background(_maybe_compact_session(sid))
 
@@ -256,11 +440,21 @@ async def chat(
         raise HTTPException(status_code=503, detail="Service unavailable")
 
 
-async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_agent_id: str, session_id: str):
+async def _stream_chat_sse(
+    request: ChatRequest,
+    start_time: float,
+    clawdbot_agent_id: str,
+    session_id: str,
+    user_id: str,
+    agent_id: str
+):
     """SSE streaming chat"""
     try:
-        # Build messages array: raw history + current message with game context
-        messages = _build_llm_messages(session_id, request.message, request.game_context)
+        # Process emotional state before LLM (detect triggers, apply decay)
+        emotional_context = _process_emotion_pre_llm(user_id, agent_id, request.message, session_id)
+        
+        # Build messages array: raw history + current message with contexts
+        messages = _build_llm_messages(session_id, request.message, request.game_context, emotional_context)
 
         # Store raw user message BEFORE calling LLM
         MessageRepository.add(session_id, "user", request.message)
@@ -355,6 +549,9 @@ async def _stream_chat_sse(request: ChatRequest, start_time: float, clawdbot_age
 
                 SessionRepository.update_last_used(session_id)
                 SessionRepository.increment_message_count(session_id)
+
+                # Process emotional state after LLM (apply self-reported mood shifts)
+                _process_emotion_post_llm(user_id, agent_id, behavior, session_id)
 
                 # Send done event FIRST so UI unblocks immediately
                 logger.info("[SSE] Yielding done event at %dms", processing_ms)

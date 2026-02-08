@@ -1,0 +1,60 @@
+{
+  "name": "Conflict and Repair",
+  "description": "Tests conflict causing trust drop and repair requiring multiple positive interactions",
+  "agent_profile": {
+    "baseline_valence": 0.2,
+    "baseline_arousal": 0.0,
+    "emotional_volatility": 1.0,
+    "emotional_recovery": 0.1,
+    "trust_gain_multiplier": 1.0,
+    "trust_loss_multiplier": 1.5
+  },
+  "initial_state": {
+    "valence": 0.3,
+    "arousal": 0.0,
+    "trust": 0.7
+  },
+  "steps": [
+    {
+      "description": "Conflict occurs",
+      "triggers": [["conflict", 0.9]],
+      "assert": [
+        {"field": "valence", "min": -0.2, "max": 0.2},
+        {"field": "arousal", "min": 0.1, "max": 0.5},
+        {"field": "trust", "min": 0.45, "max": 0.68}
+      ]
+    },
+    {
+      "description": "User apologizes",
+      "triggers": [["apology", 0.8]],
+      "assert": [
+        {"field": "valence", "min": -0.15, "max": 0.3}
+      ]
+    },
+    {
+      "description": "User offers comfort",
+      "triggers": [["comfort", 0.8]],
+      "assert": [
+        {"field": "valence", "min": -0.05, "max": 0.4},
+        {"field": "arousal", "max": 0.3}
+      ]
+    },
+    {
+      "description": "Wait 30 minutes for things to settle",
+      "wait_seconds": 1800
+    },
+    {
+      "description": "User gives sincere compliment",
+      "triggers": [["compliment", 0.9]],
+      "assert": [
+        {"field": "valence", "min": 0.1}
+      ]
+    },
+    {
+      "description": "Trust should be recovering but not fully restored",
+      "assert": [
+        {"field": "trust", "min": 0.52, "max": 0.68}
+      ]
+    }
+  ]
+}
