@@ -4,6 +4,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useAppStore } from './store';
 import { useUserStore } from './store/userStore';
 import { useChatStore } from './store/chatStore';
+import { useRenderStore } from './store/renderStore';
 import { fetchWithAuth } from './utils/api';
 import { useVoiceChat } from './hooks/useVoiceChat';
 import { useChat } from './hooks/useChat';
@@ -49,6 +50,13 @@ function App({ userId, sessionId }: AppProps) {
   const setSessionId = useAppStore((state) => state.setSessionId);
   const currentUser = useUserStore((state) => state.currentUser);
   const clearMessages = useChatStore((state) => state.clearMessages);
+
+  // Sync render settings with current user on mount (handles page refresh with persisted user)
+  useEffect(() => {
+    if (currentUser?.id) {
+      useRenderStore.getState().setCurrentUser(currentUser.id);
+    }
+  }, [currentUser?.id]);
 
   // Sync sessionId from route to store
   useEffect(() => {

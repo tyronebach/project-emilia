@@ -1,13 +1,14 @@
 /**
  * Render Quality Store
- * Persists graphics settings and camera position to localStorage
+ * Persists graphics settings per-user to localStorage
  */
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { getPreset, type QualityPreset, type QualitySettings } from '../avatar/QualityPresets';
 
-const STORAGE_KEY = 'emilia-render-settings';
+const STORAGE_KEY = 'emilia-render-settings-v2';
+const DEFAULT_USER = '_default';
 
 interface CameraPosition {
   x: number;
@@ -18,12 +19,34 @@ interface CameraPosition {
   targetZ: number;
 }
 
+interface UserRenderSettings {
+  preset: QualityPreset;
+  cameraPosition: CameraPosition | null;
+  cameraDriftEnabled: boolean;
+  lookAtEnabled: boolean;
+}
+
+const DEFAULT_USER_SETTINGS: UserRenderSettings = {
+  preset: 'medium',
+  cameraPosition: null,
+  cameraDriftEnabled: true,
+  lookAtEnabled: true,
+};
+
 interface RenderStore {
+  // Current active settings (derived from current user)
   preset: QualityPreset;
   settings: QualitySettings;
   cameraPosition: CameraPosition | null;
   cameraDriftEnabled: boolean;
   lookAtEnabled: boolean;
+  
+  // Per-user storage
+  currentUserId: string;
+  userSettings: Record<string, UserRenderSettings>;
+  
+  // Actions
+  setCurrentUser: (userId: string | number | null) => void;
   setPreset: (preset: QualityPreset) => void;
   setSettings: (settings: QualitySettings) => void;
   setCameraPosition: (position: CameraPosition | null) => void;
@@ -31,44 +54,118 @@ interface RenderStore {
   setLookAtEnabled: (enabled: boolean) => void;
 }
 
+function getUserKey(userId: string | number | null): string {
+  return userId ? String(userId) : DEFAULT_USER;
+}
+
 export const useRenderStore = create<RenderStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
+      // Default active settings
       preset: 'medium',
       settings: getPreset('medium'),
       cameraPosition: null,
       cameraDriftEnabled: true,
       lookAtEnabled: true,
       
-      setPreset: (preset) => set({
-        preset,
-        settings: getPreset(preset),
-      }),
+      // Per-user storage
+      currentUserId: DEFAULT_USER,
+      userSettings: {},
+      
+      // Switch user and load their settings
+      setCurrentUser: (userId) => {
+        const key = getUserKey(userId);
+        const { userSettings } = get();
+        const settings = userSettings[key] || DEFAULT_USER_SETTINGS;
+        
+        set({
+          currentUserId: key,
+          preset: settings.preset,
+          settings: getPreset(settings.preset),
+          cameraPosition: settings.cameraPosition,
+          cameraDriftEnabled: settings.cameraDriftEnabled,
+          lookAtEnabled: settings.lookAtEnabled,
+        });
+      },
+      
+      setPreset: (preset) => {
+        const { currentUserId, userSettings } = get();
+        const current = userSettings[currentUserId] || DEFAULT_USER_SETTINGS;
+        
+        set({
+          preset,
+          settings: getPreset(preset),
+          userSettings: {
+            ...userSettings,
+            [currentUserId]: { ...current, preset },
+          },
+        });
+      },
       
       setSettings: (settings) => set({
-        preset: 'custom',
+        preset: 'custom' as QualityPreset,
         settings,
       }),
       
-      setCameraPosition: (cameraPosition) => set({ cameraPosition }),
-      setCameraDriftEnabled: (cameraDriftEnabled) => set({ cameraDriftEnabled }),
-      setLookAtEnabled: (lookAtEnabled) => set({ lookAtEnabled }),
+      setCameraPosition: (cameraPosition) => {
+        const { currentUserId, userSettings } = get();
+        const current = userSettings[currentUserId] || DEFAULT_USER_SETTINGS;
+        
+        set({
+          cameraPosition,
+          userSettings: {
+            ...userSettings,
+            [currentUserId]: { ...current, cameraPosition },
+          },
+        });
+      },
+      
+      setCameraDriftEnabled: (cameraDriftEnabled) => {
+        const { currentUserId, userSettings } = get();
+        const current = userSettings[currentUserId] || DEFAULT_USER_SETTINGS;
+        
+        set({
+          cameraDriftEnabled,
+          userSettings: {
+            ...userSettings,
+            [currentUserId]: { ...current, cameraDriftEnabled },
+          },
+        });
+      },
+      
+      setLookAtEnabled: (lookAtEnabled) => {
+        const { currentUserId, userSettings } = get();
+        const current = userSettings[currentUserId] || DEFAULT_USER_SETTINGS;
+        
+        set({
+          lookAtEnabled,
+          userSettings: {
+            ...userSettings,
+            [currentUserId]: { ...current, lookAtEnabled },
+          },
+        });
+      },
     }),
     {
       name: STORAGE_KEY,
-      // Persist preset, camera position, drift setting, and lookAt setting
+      // Only persist the per-user settings map
       partialize: (state) => ({ 
-        preset: state.preset,
-        cameraPosition: state.cameraPosition,
-        cameraDriftEnabled: state.cameraDriftEnabled,
-        lookAtEnabled: state.lookAtEnabled,
+        userSettings: state.userSettings,
+        currentUserId: state.currentUserId,
       }),
       onRehydrate: () => {
-        // After loading preset from storage, recalculate settings
         return (rehydratedState) => {
-          if (rehydratedState?.preset && rehydratedState.preset !== 'custom') {
-            rehydratedState.settings = getPreset(rehydratedState.preset);
-          }
+          if (!rehydratedState) return;
+          
+          // Load current user's settings after rehydration
+          const key = rehydratedState.currentUserId || DEFAULT_USER;
+          const settings = rehydratedState.userSettings?.[key] || DEFAULT_USER_SETTINGS;
+          
+          rehydratedState.preset = settings.preset;
+          rehydratedState.settings = getPreset(settings.preset);
+          rehydratedState.cameraPosition = settings.cameraPosition;
+          rehydratedState.cameraDriftEnabled = settings.cameraDriftEnabled;
+          rehydratedState.lookAtEnabled = settings.lookAtEnabled;
         };
       },
     }

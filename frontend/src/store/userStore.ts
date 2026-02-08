@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Agent, User } from '../utils/api';
 import { useAppStore } from './index';
 import { useChatStore } from './chatStore';
+import { useRenderStore } from './renderStore';
 
 interface UserState {
   currentUser: User | null;
@@ -22,6 +23,8 @@ export const useUserStore = create<UserState>()(
         // Clear sessionId and messages when user changes
         useAppStore.getState().clearSessionId();
         useChatStore.getState().clearMessages();
+        // Load user's render settings
+        useRenderStore.getState().setCurrentUser(user?.id ?? null);
         set({ currentUser: user });
       },
       setAgent: (agent) => {
@@ -41,6 +44,8 @@ export const useUserStore = create<UserState>()(
         // Clear sessionId and messages on logout
         useAppStore.getState().clearSessionId();
         useChatStore.getState().clearMessages();
+        // Reset to default render settings
+        useRenderStore.getState().setCurrentUser(null);
         set({ currentUser: null, currentAgent: null });
       },
     }),
