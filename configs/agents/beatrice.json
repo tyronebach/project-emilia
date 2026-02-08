@@ -28,5 +28,14 @@
     "rejection": 1.4,
     "comfort": 1.0
   },
+  "mood_baseline": {
+    "sassy": 7,
+    "defiant": 5,
+    "snarky": 4,
+    "vulnerable": 3,
+    "bashful": 3,
+    "supportive": 2
+  },
+  "mood_decay_rate": 0.25,
   "notes": "Beatrice is a tsundere - she deflects praise on the surface but secretly appreciates it. She reacts strongly to teasing (pretends to be annoyed but engages). Her deepest fear is abandonment, which triggers strong negative responses. She takes time to warm up (low trust gain) but once attached, she's loyal."
 }

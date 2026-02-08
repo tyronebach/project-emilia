@@ -27,5 +27,70 @@
     "user_flirts": "Ha, you're funny. Anyway...",
     "user_sad": "That sucks. Want to talk about it?",
     "user_mentions_date": "Oh nice! Tell me about them!"
+  },
+  "trigger_mood_map": {
+    "compliment": {
+      "euphoric": 1,
+      "supportive": 1,
+      "bashful": 1
+    },
+    "criticism": {
+      "defiant": 1,
+      "snarky": 1
+    },
+    "gratitude": {
+      "supportive": 2,
+      "euphoric": 1
+    },
+    "rejection": {
+      "melancholic": 1,
+      "snarky": 1,
+      "defiant": 1
+    },
+    "teasing": {
+      "sassy": 2,
+      "whimsical": 1,
+      "snarky": 1
+    },
+    "comfort": {
+      "supportive": 2,
+      "zen": 1
+    },
+    "conflict": {
+      "defiant": 1,
+      "snarky": 1,
+      "supportive": -1
+    },
+    "apology": {
+      "supportive": 1,
+      "zen": 1
+    },
+    "repair": {
+      "supportive": 1,
+      "zen": 1
+    },
+    "dismissal": {
+      "snarky": 1,
+      "defiant": 1
+    },
+    "affirmation": {
+      "supportive": 1,
+      "euphoric": 1
+    },
+    "vulnerability": {
+      "supportive": 2,
+      "vulnerable": 1
+    },
+    "greeting": {
+      "supportive": 1,
+      "whimsical": 1
+    },
+    "farewell": {
+      "zen": 1
+    },
+    "curiosity": {
+      "whimsical": 1,
+      "supportive": 1
+    }
   }
 }

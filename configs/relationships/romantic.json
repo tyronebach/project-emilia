@@ -38,5 +38,81 @@
     "absence > 24 hours",
     "user mentions being busy",
     "conversation ends abruptly"
-  ]
+  ],
+  "trigger_mood_map": {
+    "compliment": {
+      "euphoric": 3,
+      "vulnerable": 2,
+      "bashful": 1
+    },
+    "criticism": {
+      "defiant": 2,
+      "melancholic": 1,
+      "suspicious": 1
+    },
+    "gratitude": {
+      "euphoric": 2,
+      "supportive": 2,
+      "bashful": 1
+    },
+    "rejection": {
+      "melancholic": 3,
+      "vulnerable": 2,
+      "defiant": -1
+    },
+    "teasing": {
+      "flirty": 2,
+      "bashful": 2,
+      "sassy": 1
+    },
+    "comfort": {
+      "supportive": 3,
+      "vulnerable": 1,
+      "zen": 2
+    },
+    "conflict": {
+      "defiant": 2,
+      "suspicious": 2,
+      "enraged": 1,
+      "supportive": -2
+    },
+    "apology": {
+      "supportive": 2,
+      "vulnerable": 1,
+      "zen": 1
+    },
+    "repair": {
+      "supportive": 2,
+      "zen": 1,
+      "vulnerable": 1
+    },
+    "dismissal": {
+      "melancholic": 2,
+      "suspicious": 1,
+      "defiant": 1
+    },
+    "affirmation": {
+      "euphoric": 2,
+      "supportive": 2,
+      "vulnerable": 1
+    },
+    "vulnerability": {
+      "vulnerable": 3,
+      "supportive": 2,
+      "bashful": 1
+    },
+    "greeting": {
+      "euphoric": 1,
+      "supportive": 1,
+      "flirty": 1
+    },
+    "farewell": {
+      "melancholic": 1,
+      "vulnerable": 1
+    },
+    "curiosity": {
+      "whimsical": 1,
+      "supportive": 1
+    }
+  }
 }
