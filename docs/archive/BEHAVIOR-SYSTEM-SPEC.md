@@ -1073,7 +1073,7 @@ interface ChatResponse {
 ## References
 
 - Original critique: Thai's Telegram message (2026-02-06)
-- Current architecture: `docs/ANIMATION_ARCHITECTURE.md`
+- Current architecture: `../animation/ARCHITECTURE.md`
 - VRM specs: https://vrm.dev/en/
 
 ---

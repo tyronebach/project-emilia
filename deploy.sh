@@ -14,7 +14,7 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-if ! command -v docker-compose &> /dev/null; then
+if ! command -v docker compose &> /dev/null; then
     echo "❌ Docker Compose not found. Please install Docker Compose first."
     exit 1
 fi
@@ -36,11 +36,11 @@ fi
 # Build and start
 echo ""
 echo "🏗️  Building containers..."
-docker-compose build
+docker compose build
 
 echo ""
 echo "🚀 Starting services..."
-docker-compose up -d
+docker compose up -d
 
 # Wait for services
 echo ""
@@ -54,20 +54,20 @@ if curl -f -s http://localhost:8080/api/health > /dev/null 2>&1; then
     echo "✅ Backend API is healthy"
 else
     echo "❌ Backend API health check failed"
-    echo "   Check logs: docker-compose logs backend"
+    echo "   Check logs: docker compose logs backend"
 fi
 
 if curl -f -s http://localhost:3000 > /dev/null 2>&1; then
     echo "✅ Frontend is serving"
 else
     echo "❌ Frontend is not responding"
-    echo "   Check logs: docker-compose logs frontend"
+    echo "   Check logs: docker compose logs frontend"
 fi
 
 # Show status
 echo ""
 echo "📊 Service status:"
-docker-compose ps
+docker compose ps
 
 echo ""
 echo "✅ Deployment complete!"
@@ -78,8 +78,8 @@ echo "   Backend:   http://localhost:8080"
 echo "   Health:    http://localhost:8080/api/health"
 echo ""
 echo "📝 View logs:"
-echo "   docker-compose logs -f"
+echo "   docker compose logs -f"
 echo ""
 echo "🛑 Stop services:"
-echo "   docker-compose down"
+echo "   docker compose down"
 echo ""
