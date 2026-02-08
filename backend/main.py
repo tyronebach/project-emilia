@@ -13,8 +13,9 @@ from routers import (
     sessions_router,
     chat_router,
     memory_router,
-    admin_router
+    admin_router,
 )
+from routers.emotional import router as emotional_router
 
 VERSION = "5.5.3"
 
@@ -34,6 +35,7 @@ app.include_router(sessions_router)
 app.include_router(chat_router)
 app.include_router(memory_router)
 app.include_router(admin_router)
+app.include_router(emotional_router)
 
 
 @app.exception_handler(ServiceException)
