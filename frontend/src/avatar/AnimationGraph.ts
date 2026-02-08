@@ -18,7 +18,6 @@ export class AnimationGraph {
   // Gesture layer (crossfade on top)
   private gestureAction: THREE.AnimationAction | null = null;
   private gestureClip: THREE.AnimationClip | null = null;
-  private gestureRestoreWeight: number = 1.0;
 
   constructor(vrm: VRM) {
     this.vrm = vrm;
@@ -56,62 +55,70 @@ export class AnimationGraph {
   }
 
   /**
-   * Play a gesture animation with crossfade blending.
-   * Reduces idle weight during gesture, restores after.
+   * Play a gesture animation.
+   * Simple approach: stop idle, play gesture, return to idle when done.
    */
   playCrossfade(clip: THREE.AnimationClip, options: {
     fadeIn?: number;
     fadeOut?: number;
     loop?: boolean;
     timeScale?: number;
-    idleWeight?: number;
   } = {}): void {
     const {
-      fadeIn = 0.25,
-      fadeOut = 0.25,
+      fadeIn = 0.3,
+      fadeOut = 0.3,
       loop = false,
       timeScale = 1.0,
-      idleWeight = 0.3,
     } = options;
+
+    console.log('[AnimationGraph] playCrossfade:', clip.name, 'tracks:', clip.tracks.length, 'duration:', clip.duration);
+    
+    // Debug: Log first few track names
+    clip.tracks.slice(0, 3).forEach((t, i) => {
+      console.log(`[AnimationGraph] Track ${i}: ${t.name}`);
+    });
 
     // Stop previous gesture if any
     if (this.gestureAction && this.gestureClip) {
-      this.gestureAction.fadeOut(fadeIn);
-      const oldClip = this.gestureClip;
-      const oldAction = this.gestureAction;
-      setTimeout(() => {
-        oldAction.stop();
-        this.mixer.uncacheAction(oldClip);
-        this.mixer.uncacheClip(oldClip);
-      }, fadeIn * 1000);
-    }
-
-    // Reduce idle weight during gesture
-    this.gestureRestoreWeight = 1.0;
-    if (this.baseAction) {
-      this.baseAction.weight = idleWeight;
+      this.gestureAction.stop();
+      this.mixer.uncacheAction(this.gestureClip);
+      this.mixer.uncacheClip(this.gestureClip);
     }
 
     this.gestureClip = clip;
     this.gestureAction = this.mixer.clipAction(clip);
+    
+    const root = this.mixer.getRoot();
+    console.log('[AnimationGraph] Created action, mixer root:', (root as THREE.Object3D).name || 'unnamed');
+    
     this.gestureAction.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
     this.gestureAction.clampWhenFinished = !loop;
     this.gestureAction.timeScale = timeScale;
-
-    // Store fadeOut for use in onFinished
     (this.gestureAction as THREE.AnimationAction & { _fadeOutDuration?: number })._fadeOutDuration = fadeOut;
 
+    // Simple crossfade using THREE.js built-in
     this.gestureAction.reset();
-    this.gestureAction.fadeIn(fadeIn);
     this.gestureAction.play();
+    
+    if (this.baseAction) {
+      this.gestureAction.crossFadeFrom(this.baseAction, fadeIn, false);
+      console.log('[AnimationGraph] crossFadeFrom base, fadeIn:', fadeIn);
+    } else {
+      this.gestureAction.fadeIn(fadeIn);
+    }
   }
 
   /**
    * Stop gesture animation and restore idle weight
    */
-  stopGesture(fadeOut: number = 0.25): void {
+  stopGesture(fadeOut: number = 0.3): void {
     if (this.gestureAction) {
-      this.gestureAction.fadeOut(fadeOut);
+      // Crossfade back to idle
+      if (this.baseAction) {
+        this.baseAction.reset();
+        this.baseAction.play();
+        this.baseAction.crossFadeFrom(this.gestureAction, fadeOut, false);
+      }
 
       const clip = this.gestureClip;
       const action = this.gestureAction;
@@ -126,11 +133,6 @@ export class AnimationGraph {
       this.gestureAction = null;
       this.gestureClip = null;
     }
-
-    // Restore idle weight
-    if (this.baseAction) {
-      this.baseAction.weight = 1.0;
-    }
   }
 
   /**
@@ -141,9 +143,17 @@ export class AnimationGraph {
 
     // Only handle gesture finish, not base
     if (action === this.gestureAction) {
-      const fadeOut = (action as THREE.AnimationAction & { _fadeOutDuration?: number })._fadeOutDuration ?? 0.25;
+      console.log('[AnimationGraph] Gesture finished, returning to idle');
+      
+      const fadeOut = (action as THREE.AnimationAction & { _fadeOutDuration?: number })._fadeOutDuration ?? 0.3;
 
-      action.fadeOut(fadeOut);
+      // Crossfade back to idle
+      if (this.baseAction) {
+        this.baseAction.reset();
+        this.baseAction.play();
+        this.baseAction.crossFadeFrom(action, fadeOut, false);
+      }
+
       const clip = this.gestureClip;
       setTimeout(() => {
         action.stop();
@@ -155,11 +165,6 @@ export class AnimationGraph {
 
       this.gestureAction = null;
       this.gestureClip = null;
-
-      // Restore idle weight
-      if (this.baseAction) {
-        this.baseAction.weight = this.gestureRestoreWeight;
-      }
     }
   }
 
@@ -189,6 +194,57 @@ export class AnimationGraph {
    */
   isBasePlaying(): boolean {
     return this.baseAction !== null && this.baseAction.isRunning();
+  }
+
+  /**
+   * Reset VRM skeleton to bind pose
+   * Stops all animations and resets bone transforms
+   */
+  resetToBindPose(): void {
+    // Stop all animations
+    if (this.gestureAction) {
+      this.gestureAction.stop();
+      this.gestureAction = null;
+    }
+    if (this.baseAction) {
+      this.baseAction.stop();
+      this.baseAction = null;
+    }
+    this.mixer.stopAllAction();
+
+    // Uncache all clips
+    if (this.baseClip) {
+      this.mixer.uncacheClip(this.baseClip);
+      this.baseClip = null;
+    }
+    if (this.gestureClip) {
+      this.mixer.uncacheClip(this.gestureClip);
+      this.gestureClip = null;
+    }
+
+    // Reset all humanoid bones to identity rotation
+    if (this.vrm.humanoid) {
+      const boneNames = [
+        'hips', 'spine', 'chest', 'upperChest', 'neck', 'head',
+        'leftShoulder', 'leftUpperArm', 'leftLowerArm', 'leftHand',
+        'rightShoulder', 'rightUpperArm', 'rightLowerArm', 'rightHand',
+        'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'leftToes',
+        'rightUpperLeg', 'rightLowerLeg', 'rightFoot', 'rightToes',
+      ];
+
+      for (const boneName of boneNames) {
+        const node = this.vrm.humanoid.getNormalizedBoneNode(boneName as any);
+        if (node) {
+          node.quaternion.identity();
+          node.position.set(0, 0, 0);
+        }
+      }
+    }
+
+    // Force VRM update to apply bone resets
+    this.vrm.update(0);
+
+    console.log('[AnimationGraph] Reset to bind pose');
   }
 
   /**

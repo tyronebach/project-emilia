@@ -1,11 +1,11 @@
 {
   "$schema": "./state-machine.schema.json",
-  "version": 1,
-  "name": "Default Animation State Machine",
-  "description": "Default animation config - can be overridden per agent",
+  "version": 2,
+  "name": "Mixamo Animation State Machine",
+  "description": "Mixamo FBX animations retargeted to VRM",
   
   "idle": {
-    "file": "fm_vrma_motion_pack_01_03.vrma",
+    "file": "mixamo_fbx/Idle(1).fbx",
     "loop": true,
     "fadeIn": 0.3,
     "fadeOut": 0.3
@@ -13,52 +13,112 @@
   
   "actions": {
     "wave": {
-      "file": "vrmaMotionPack_01.vrma",
+      "file": "mixamo_fbx/Waving.fbx",
       "loop": false,
       "fadeIn": 0.25,
       "fadeOut": 0.25
     },
     "bow": {
-      "file": "fm_vrma_motion_pack_01_01.vrma",
+      "file": "mixamo_fbx/Quick_Informal_Bow.fbx",
       "loop": false,
       "fadeIn": 0.25,
       "fadeOut": 0.25
     },
     "nod": {
-      "file": "fm_vrma_motion_pack_01_02.vrma",
+      "file": "mixamo_fbx/Hard_Head_Nod.fbx",
       "loop": false,
       "fadeIn": 0.2,
       "fadeOut": 0.2
     },
-    "dance": {
-      "file": "blingBangBangBorn.vrma",
-      "loop": false,
-      "fadeIn": 0.3,
-      "fadeOut": 0.5
-    },
     "thinking": {
-      "file": "fm_vrma_motion_pack_01_04.vrma",
+      "file": "mixamo_fbx/Thinking.fbx",
       "loop": true,
       "fadeIn": 0.3,
       "fadeOut": 0.3
     },
-    "excited": {
-      "file": "maitakeDance.vrma",
-      "loop": false,
-      "fadeIn": 0.25,
-      "fadeOut": 0.3
-    },
     "shy": {
-      "file": "fm_vrma_motion_pack_01_05.vrma",
+      "file": "mixamo_fbx/Bashful.fbx",
       "loop": false,
       "fadeIn": 0.25,
       "fadeOut": 0.25
     },
     "surprised": {
-      "file": "fm_vrma_motion_pack_01_06.vrma",
+      "file": "mixamo_fbx/Surprised.fbx",
+      "loop": false,
+      "fadeIn": 0.15,
+      "fadeOut": 0.25
+    },
+    "excited": {
+      "file": "mixamo_fbx/Excited.fbx",
+      "loop": false,
+      "fadeIn": 0.25,
+      "fadeOut": 0.3
+    },
+    "dance": {
+      "file": "mixamo_fbx/Snake_Hip_Hop_Dance.fbx",
+      "loop": true,
+      "fadeIn": 0.3,
+      "fadeOut": 0.5
+    },
+    "agree": {
+      "file": "mixamo_fbx/acknowledging.fbx",
+      "loop": false,
+      "fadeIn": 0.2,
+      "fadeOut": 0.2
+    },
+    "disagree": {
+      "file": "mixamo_fbx/shaking_head_no.fbx",
+      "loop": false,
+      "fadeIn": 0.2,
+      "fadeOut": 0.2
+    },
+    "angry": {
+      "file": "mixamo_fbx/angry_gesture.fbx",
       "loop": false,
       "fadeIn": 0.2,
       "fadeOut": 0.25
+    },
+    "annoyed": {
+      "file": "mixamo_fbx/annoyed_head_shake.fbx",
+      "loop": false,
+      "fadeIn": 0.2,
+      "fadeOut": 0.2
+    },
+    "dismissive": {
+      "file": "mixamo_fbx/dismissing_gesture.fbx",
+      "loop": false,
+      "fadeIn": 0.2,
+      "fadeOut": 0.25
+    },
+    "happy": {
+      "file": "mixamo_fbx/happy_hand_gesture.fbx",
+      "loop": false,
+      "fadeIn": 0.25,
+      "fadeOut": 0.25
+    },
+    "smug": {
+      "file": "mixamo_fbx/being_cocky.fbx",
+      "loop": false,
+      "fadeIn": 0.25,
+      "fadeOut": 0.25
+    },
+    "relieved": {
+      "file": "mixamo_fbx/relieved_sigh.fbx",
+      "loop": false,
+      "fadeIn": 0.25,
+      "fadeOut": 0.3
+    },
+    "look_away": {
+      "file": "mixamo_fbx/look_away_gesture.fbx",
+      "loop": false,
+      "fadeIn": 0.2,
+      "fadeOut": 0.25
+    },
+    "sarcastic": {
+      "file": "mixamo_fbx/sarcastic_head_nod.fbx",
+      "loop": false,
+      "fadeIn": 0.2,
+      "fadeOut": 0.2
     }
   },
   

@@ -17,6 +17,9 @@ export type Intent =
   | 'surprised'
   | 'pleased'
   | 'annoyed'
+  | 'dismissive'
+  | 'confident'
+  | 'excited'
   | 'attention-seeking'
   | 'neutral';
 

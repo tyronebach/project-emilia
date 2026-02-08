@@ -6,27 +6,31 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 import { VRMAnimationLoaderPlugin, VRMAnimation, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
+import { retargetAnimation } from 'vrm-mixamo-retarget';
 import type { VRM } from '@pixiv/three-vrm';
 
 export interface AnimationClipData {
   name: string;
   clip: THREE.AnimationClip;
   duration: number;
-  type: 'glb' | 'vrma';
+  type: 'glb' | 'vrma' | 'fbx';
 }
 
 export interface ManifestEntry {
   id: string;
   name: string;
-  type: 'glb' | 'vrma';
+  type: 'glb' | 'vrma' | 'fbx';
 }
 
 export class AnimationLibrary {
   private glbLoader: GLTFLoader;
   private vrmaLoader: GLTFLoader;
+  private fbxLoader: FBXLoader;
   private cache: Map<string, AnimationClipData> = new Map();
   private vrmaCache: Map<string, VRMAnimation> = new Map(); // Raw VRMA for re-binding to different VRMs
+  private fbxCache: Map<string, THREE.Group> = new Map(); // Raw FBX for re-retargeting to different VRMs
   private loadingPromises: Map<string, Promise<AnimationClipData | null>> = new Map();
   private manifest: ManifestEntry[] = [];
   private manifestLoaded: boolean = false;
@@ -36,19 +40,19 @@ export class AnimationLibrary {
     this.glbLoader = new GLTFLoader();
     this.vrmaLoader = new GLTFLoader();
     this.vrmaLoader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+    this.fbxLoader = new FBXLoader();
   }
 
   /**
-   * Set the current VRM model (needed for VRMA clip creation)
+   * Set the current VRM model (needed for VRMA/FBX clip creation)
    */
   setVRM(vrm: VRM): void {
-    // If VRM changed, clear VRMA clip cache (need to rebind)
+    // If VRM changed, clear ALL caches (clips need to be rebound/retargeted for new skeleton)
     if (this.currentVRM !== vrm) {
-      for (const [name, data] of this.cache.entries()) {
-        if (data.type === 'vrma') {
-          this.cache.delete(name);
-        }
-      }
+      console.log('[AnimationLibrary] VRM changed, clearing all caches');
+      this.cache.clear();
+      this.vrmaCache.clear();
+      // Note: fbxCache (raw FBX assets) is kept - they don't reference VRM
     }
     this.currentVRM = vrm;
   }
@@ -118,9 +122,17 @@ export class AnimationLibrary {
     }
 
     // Start loading based on type
-    const loadPromise = entry.type === 'vrma' 
-      ? this.loadVRMA(entry)
-      : this.loadGLB(entry);
+    let loadPromise: Promise<AnimationClipData | null>;
+    switch (entry.type) {
+      case 'vrma':
+        loadPromise = this.loadVRMA(entry);
+        break;
+      case 'fbx':
+        loadPromise = this.loadFBX(entry);
+        break;
+      default:
+        loadPromise = this.loadGLB(entry);
+    }
     
     this.loadingPromises.set(id, loadPromise);
     const result = await loadPromise;
@@ -185,14 +197,14 @@ export class AnimationLibrary {
     if (!vrmAnimation) {
       // Load the VRMA file
       try {
-        vrmAnimation = await new Promise<VRMAnimation | null>((resolve) => {
+        vrmAnimation = await new Promise<VRMAnimation | undefined>((resolve) => {
           this.vrmaLoader.load(
             path,
             (gltf) => {
               const vrmAnimations: VRMAnimation[] = gltf.userData.vrmAnimations;
               if (!vrmAnimations || vrmAnimations.length === 0) {
                 console.warn(`[AnimationLibrary] No VRM animations in '${path}'`);
-                resolve(null);
+                resolve(undefined);
                 return;
               }
               resolve(vrmAnimations[0]);
@@ -200,7 +212,7 @@ export class AnimationLibrary {
             undefined,
             () => {
               console.warn(`[AnimationLibrary] Failed to load '${path}'`);
-              resolve(null);
+              resolve(undefined);
             }
           );
         });
@@ -230,11 +242,100 @@ export class AnimationLibrary {
   }
 
   /**
+   * Load FBX animation file (Mixamo format)
+   * Uses vrm-mixamo-retarget to map Mixamo bones to VRM humanoid
+   */
+  private async loadFBX(entry: ManifestEntry): Promise<AnimationClipData | null> {
+    if (!this.currentVRM) {
+      console.warn('[AnimationLibrary] No VRM set for FBX loading');
+      return null;
+    }
+
+    const path = `/animations/${entry.id}`;
+
+    // Check if we have cached FBX asset
+    let fbxAsset = this.fbxCache.get(entry.id);
+
+    if (!fbxAsset) {
+      // Load the FBX file
+      try {
+        fbxAsset = await new Promise<THREE.Group | undefined>((resolve) => {
+          this.fbxLoader.load(
+            path,
+            (group) => {
+              if (!group.animations || group.animations.length === 0) {
+                console.warn(`[AnimationLibrary] No animations in FBX '${path}'`);
+                resolve(undefined);
+                return;
+              }
+              resolve(group);
+            },
+            undefined,
+            (err) => {
+              console.warn(`[AnimationLibrary] Failed to load FBX '${path}':`, err);
+              resolve(undefined);
+            }
+          );
+        });
+
+        if (!fbxAsset) return null;
+        this.fbxCache.set(entry.id, fbxAsset);
+      } catch (err) {
+        console.warn(`[AnimationLibrary] Error loading FBX '${path}':`, err);
+        return null;
+      }
+    }
+
+    // Retarget Mixamo animation to VRM
+    let clip: THREE.AnimationClip | null = null;
+    
+    if (fbxAsset.animations.length > 0) {
+      const srcClip = fbxAsset.animations[0];
+      console.log(`[AnimationLibrary] FBX '${entry.name}' source clip:`, srcClip.name, 'tracks:', srcClip.tracks.length);
+      
+      // Log source track names to debug
+      srcClip.tracks.slice(0, 3).forEach((t, i) => {
+        console.log(`[AnimationLibrary] Source track ${i}: ${t.name}`);
+      });
+      
+      clip = retargetAnimation(fbxAsset, this.currentVRM, {
+        logWarnings: true
+      });
+      
+      if (clip) {
+        console.log(`[AnimationLibrary] Retargeted clip tracks: ${clip.tracks.length}`);
+        clip.tracks.slice(0, 3).forEach((t, i) => {
+          console.log(`[AnimationLibrary] Retargeted track ${i}: ${t.name}`);
+        });
+      }
+    }
+
+    if (!clip || clip.tracks.length === 0) {
+      console.warn(`[AnimationLibrary] Failed to retarget FBX '${entry.name}' - no tracks!`);
+      return null;
+    }
+
+    clip.name = entry.id;
+
+    const data: AnimationClipData = {
+      name: entry.name,
+      clip,
+      duration: clip.duration,
+      type: 'fbx'
+    };
+
+    this.cache.set(entry.id, data);
+    console.log(`[AnimationLibrary] Loaded FBX '${entry.name}' (${clip.duration.toFixed(2)}s, ${clip.tracks.length} tracks)`);
+    return data;
+  }
+
+  /**
    * Clear all caches
    */
   clear(): void {
     this.cache.clear();
     this.vrmaCache.clear();
+    this.fbxCache.clear();
   }
 
   /**
