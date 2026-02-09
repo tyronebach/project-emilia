@@ -60,7 +60,7 @@ export function useSession() {
           setMessages([]);
           return [];
         }
-      } catch (e) {
+      } catch {
         console.warn('[useSession] Session not found:', sid);
         setMessages([]);
         return [];

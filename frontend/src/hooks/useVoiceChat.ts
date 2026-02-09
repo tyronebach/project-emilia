@@ -137,6 +137,7 @@ export function useVoiceChat(config: UseVoiceChatConfig): UseVoiceChatReturn {
 
   // Check STT support
   const hasAudioContext = typeof window !== 'undefined' &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- webkitAudioContext is non-standard
     ((window as any).AudioContext || (window as any).webkitAudioContext);
   const isSupported = typeof window !== 'undefined' &&
     !!navigator.mediaDevices?.getUserMedia &&

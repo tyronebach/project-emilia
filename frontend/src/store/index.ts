@@ -89,11 +89,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     // Route all commands through BehaviorPlanner
     console.log('[Store] handleIntent:', command.intent, command.mood, command.energy);
+    /* eslint-disable @typescript-eslint/no-explicit-any -- runtime strings from backend */
     renderer.expressionController.handleIntent({
       intent: (command.intent ?? 'neutral') as any,
       mood: command.mood as any,
       energy: command.energy as any,
-    });
+    } as any);
+    /* eslint-enable @typescript-eslint/no-explicit-any */
   },
 }));
 

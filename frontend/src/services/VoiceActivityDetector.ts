@@ -22,6 +22,7 @@ declare global {
   interface Window {
     vad?: {
       MicVAD: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party VAD config
         new: (config: any) => Promise<MicVADInstance>;
       };
     };
@@ -57,6 +58,7 @@ export class VoiceActivityDetector {
       (async () => {
         try {
           // onnxruntime-web must be loaded globally as `ort` before VAD bundle
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- onnxruntime global
           if (!(window as any).ort) {
             await load('/ort.min.js', 'onnxruntime');
           }

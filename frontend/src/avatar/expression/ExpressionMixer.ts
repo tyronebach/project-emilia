@@ -142,7 +142,7 @@ export class ExpressionMixer {
     for (const [expr, weight] of this.finalValues) {
       try {
         this.expressionManager.setValue(expr, weight);
-      } catch (_e) {
+      } catch {
         // Expression may not exist on this model
       }
     }
@@ -153,7 +153,7 @@ export class ExpressionMixer {
       if (!this.finalValues.has(expr)) {
         try {
           this.expressionManager.setValue(expr, 0);
-        } catch (_e) {
+        } catch {
           // Expression may not exist on this model
         }
       }

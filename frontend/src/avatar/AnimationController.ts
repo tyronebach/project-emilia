@@ -187,12 +187,12 @@ export class AnimationController {
         const value = expressionManager.getValue(name as never);
         if (value !== undefined) return true;
       }
-    } catch (_e) { /* ignore */ }
+    } catch { /* ignore */ }
 
     try {
       const expr = (expressionManager as { getExpression?: (name: string) => unknown }).getExpression?.(name);
       if (expr) return true;
-    } catch (_e) { /* ignore */ }
+    } catch { /* ignore */ }
 
     const emAny = expressionManager as VRMExpressionManager & {
       expressionMap?: Map<string, unknown> | Record<string, unknown>;

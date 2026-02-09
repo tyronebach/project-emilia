@@ -147,7 +147,7 @@ export class LipSyncEngine {
         if (expr) {
           this.availableMouthShapes.add(shape);
         }
-      } catch (_e) { /* ignore */ }
+      } catch { /* ignore */ }
     }
 
     // Also check uppercase variants (some VRM models use 'A', 'I', 'U', 'E', 'O')
@@ -158,7 +158,7 @@ export class LipSyncEngine {
         if (expr && !this.availableMouthShapes.has(lower)) {
           this.availableMouthShapes.add(upper);
         }
-      } catch (_e) { /* ignore */ }
+      } catch { /* ignore */ }
     }
 
     console.log('[LipSync] Available mouth shapes:', Array.from(this.availableMouthShapes));
@@ -180,7 +180,8 @@ export class LipSyncEngine {
 
     if (!alignment) return;
 
-    let { chars, charStartTimesMs, charDurationsMs } = alignment;
+    const { chars } = alignment;
+    let { charStartTimesMs, charDurationsMs } = alignment;
 
     if (!chars || !charStartTimesMs || !charDurationsMs) {
       console.warn('[LipSync] Incomplete alignment data');
@@ -432,10 +433,10 @@ export class LipSyncEngine {
 
     // Disconnect analyser graph (sourceNode stays in WeakMap for reuse)
     if (this.analyser) {
-      try { this.analyser.disconnect(); } catch (_e) { /* ignore */ }
+      try { this.analyser.disconnect(); } catch { /* ignore */ }
     }
     if (this.sourceNode) {
-      try { this.sourceNode.disconnect(); } catch (_e) { /* ignore */ }
+      try { this.sourceNode.disconnect(); } catch { /* ignore */ }
     }
     this.analyser = null;
     this.sourceNode = null;

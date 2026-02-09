@@ -38,7 +38,9 @@ describe('api utilities', () => {
     });
 
     it('should handle null/undefined gracefully', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing edge cases
       expect(stripAvatarTags(null as any)).toBe('');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- testing edge cases
       expect(stripAvatarTags(undefined as any)).toBe('');
     });
 
