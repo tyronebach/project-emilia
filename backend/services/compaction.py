@@ -41,6 +41,7 @@ class CompactionService:
                     "model": settings.compact_model,
                     "messages": llm_messages,
                     "stream": False,
+                    "user": "emilia:compaction",
                 },
             )
             response.raise_for_status()

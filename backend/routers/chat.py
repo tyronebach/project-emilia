@@ -520,6 +520,7 @@ async def chat(
                         "model": f"agent:{clawdbot_agent_id}",
                         "messages": messages,
                         "stream": False,
+                        "user": f"emilia:{sid}",
                     }
                 )
 
@@ -623,6 +624,7 @@ async def _stream_chat_sse(
                         "messages": messages,
                         "stream": True,
                         "stream_options": {"include_usage": True},
+                        "user": f"emilia:{sid}",
                     }
                 ) as response:
                     if response.status_code != 200:
