@@ -96,17 +96,17 @@ def _bond_from_row(state_row: dict, agent_name: str) -> dict:
         "user_id": state_row["user_id"],
         "agent_id": state_row["agent_id"],
         "agent_name": agent_name,
-        "valence": state_row.get("valence") or 0.0,
-        "arousal": state_row.get("arousal") or 0.0,
-        "dominance": state_row.get("dominance") or 0.0,
+        "valence": state_row.get("valence") if state_row.get("valence") is not None else 0.0,
+        "arousal": state_row.get("arousal") if state_row.get("arousal") is not None else 0.0,
+        "dominance": state_row.get("dominance") if state_row.get("dominance") is not None else 0.0,
         "mood_weights": mood_weights,
         "dominant_moods": dominant_moods,
-        "trust": state_row.get("trust") or 0.5,
-        "intimacy": state_row.get("intimacy") or 0.2,
-        "playfulness_safety": state_row.get("playfulness_safety") or 0.5,
-        "conflict_tolerance": state_row.get("conflict_tolerance") or 0.7,
-        "familiarity": state_row.get("familiarity") or 0.0,
-        "attachment": state_row.get("attachment") or 0.3,
+        "trust": state_row.get("trust") if state_row.get("trust") is not None else 0.5,
+        "intimacy": state_row.get("intimacy") if state_row.get("intimacy") is not None else 0.2,
+        "playfulness_safety": state_row.get("playfulness_safety") if state_row.get("playfulness_safety") is not None else 0.5,
+        "conflict_tolerance": state_row.get("conflict_tolerance") if state_row.get("conflict_tolerance") is not None else 0.7,
+        "familiarity": state_row.get("familiarity") if state_row.get("familiarity") is not None else 0.0,
+        "attachment": state_row.get("attachment") if state_row.get("attachment") is not None else 0.3,
         "last_interaction": last_int,
         "interaction_count": state_row.get("interaction_count") or 0,
         "has_calibration": has_cal,
@@ -447,19 +447,8 @@ async def simulate(body: dict[str, Any]) -> dict:
         except (json.JSONDecodeError, TypeError):
             pass
 
-    state = EmotionalState(
-        valence=state_row.get("valence") or 0.0,
-        arousal=state_row.get("arousal") or 0.0,
-        dominance=state_row.get("dominance") or 0.0,
-        trust=state_row.get("trust") or 0.5,
-        attachment=state_row.get("attachment") or 0.3,
-        familiarity=state_row.get("familiarity") or 0.0,
-        intimacy=state_row.get("intimacy") or 0.2,
-        playfulness_safety=state_row.get("playfulness_safety") or 0.5,
-        conflict_tolerance=state_row.get("conflict_tolerance") or 0.7,
-        trigger_calibration=calibrations,
-        mood_weights=json.loads(state_row["mood_weights_json"]) if state_row.get("mood_weights_json") else {},
-    )
+    mood_weights = json.loads(state_row["mood_weights_json"]) if state_row.get("mood_weights_json") else {}
+    state = EmotionalState.from_db_row(state_row, calibrations=calibrations, mood_weights=mood_weights)
 
     state_before = state.to_dict()
     triggers = engine.detect_triggers(message)

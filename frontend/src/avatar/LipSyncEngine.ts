@@ -63,6 +63,9 @@ const DEFAULT_CONFIG: LipSyncConfig = {
   minHoldMs: 50,
 };
 
+// Track MediaElementAudioSourceNode per element (each element can only have one)
+const elementSourceMap = new WeakMap<HTMLAudioElement, MediaElementAudioSourceNode>();
+
 export class LipSyncEngine {
   private vrm: VRM;
   private expressionMixer: ExpressionMixer | null = null;
@@ -253,11 +256,14 @@ export class LipSyncEngine {
       this.analyser.fftSize = 256;
       this.analyser.smoothingTimeConstant = 0.3; // Lower = more responsive
 
-      // Connect audio element to analyser
-      // Note: Each audio element can only have one source node, so we track it
-      if (!this.sourceNode) {
-        this.sourceNode = this.audioContext.createMediaElementSource(audioElement);
+      // Reuse existing MediaElementAudioSourceNode for this element
+      // (each element can only have one, creating a second throws DOMException)
+      let source = elementSourceMap.get(audioElement);
+      if (!source) {
+        source = this.audioContext.createMediaElementSource(audioElement);
+        elementSourceMap.set(audioElement, source);
       }
+      this.sourceNode = source;
       this.sourceNode.connect(this.analyser);
       this.analyser.connect(this.audioContext.destination);
 
@@ -424,12 +430,12 @@ export class LipSyncEngine {
     this.timingData = [];
     this.timingCursor = 0;
 
-    // Disconnect audio analyser (but keep context for reuse)
-    if (this.sourceNode && this.analyser) {
-      try {
-        this.sourceNode.disconnect();
-        this.analyser.disconnect();
-      } catch (_e) { /* ignore */ }
+    // Disconnect analyser graph (sourceNode stays in WeakMap for reuse)
+    if (this.analyser) {
+      try { this.analyser.disconnect(); } catch (_e) { /* ignore */ }
+    }
+    if (this.sourceNode) {
+      try { this.sourceNode.disconnect(); } catch (_e) { /* ignore */ }
     }
     this.analyser = null;
     this.sourceNode = null;
@@ -445,6 +451,18 @@ export class LipSyncEngine {
     this.currentWeight = 0;
 
     console.log('[LipSync] Stopped');
+  }
+
+  /**
+   * Full cleanup — stop audio + close AudioContext
+   */
+  dispose(): void {
+    this.stop();
+    if (this.audioContext && this.audioContext.state !== 'closed') {
+      this.audioContext.close().catch(() => {});
+    }
+    this.audioContext = null;
+    this.expressionMixer = null;
   }
 
   get active(): boolean {

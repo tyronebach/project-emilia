@@ -98,19 +98,7 @@ async def _process_emotion_pre_llm(
             if isinstance(v, dict):
                 calibrations[k] = ContextualTriggerCalibration.from_dict(v)
 
-        state = EmotionalState(
-            valence=state_row['valence'] or 0.0,
-            arousal=state_row['arousal'] or 0.0,
-            dominance=state_row['dominance'] or 0.0,
-            trust=state_row['trust'] or 0.5,
-            attachment=state_row['attachment'] or 0.3,
-            familiarity=state_row['familiarity'] or 0.0,
-            mood_weights=mood_weights,
-            intimacy=state_row.get('intimacy') or 0.2,
-            playfulness_safety=state_row.get('playfulness_safety') or 0.5,
-            conflict_tolerance=state_row.get('conflict_tolerance') or 0.7,
-            trigger_calibration=calibrations,
-        )
+        state = EmotionalState.from_db_row(state_row, calibrations=calibrations, mood_weights=mood_weights)
 
         # Apply decay since last interaction
         last_updated = state_row.get('last_updated') or 0
@@ -143,7 +131,7 @@ async def _process_emotion_pre_llm(
             
             # Fire background LLM batch when buffer is full
             if len(buffer) >= 4:
-                asyncio.create_task(_run_llm_trigger_batch(
+                _spawn_background(_run_llm_trigger_batch(
                     user_id, agent_id, buffer.copy(), engine
                 ))
                 EmotionalStateRepository.clear_buffer(user_id, agent_id)
@@ -235,18 +223,7 @@ def _process_emotion_post_llm(
             if isinstance(v, dict):
                 calibrations[k] = ContextualTriggerCalibration.from_dict(v)
 
-        state = EmotionalState(
-            valence=state_row['valence'] or 0.0,
-            arousal=state_row['arousal'] or 0.0,
-            dominance=state_row.get('dominance') or 0.0,
-            trust=state_row['trust'] or 0.5,
-            attachment=state_row.get('attachment') or 0.3,
-            familiarity=state_row.get('familiarity') or 0.0,
-            intimacy=state_row.get('intimacy') or 0.2,
-            playfulness_safety=state_row.get('playfulness_safety') or 0.5,
-            conflict_tolerance=state_row.get('conflict_tolerance') or 0.7,
-            trigger_calibration=calibrations,
-        )
+        state = EmotionalState.from_db_row(state_row, calibrations=calibrations)
 
         state_before_dict = state.to_dict()
 

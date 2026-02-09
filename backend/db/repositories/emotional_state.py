@@ -303,15 +303,20 @@ class EmotionalStateRepository:
 
     @staticmethod
     def pop_pending_triggers(user_id: str, agent_id: str) -> list[tuple[str, float]]:
-        """Get and clear pending triggers (atomic)."""
-        triggers = EmotionalStateRepository.get_pending_triggers(user_id, agent_id)
-        if triggers:
-            with get_db() as conn:
+        """Get and clear pending triggers atomically in a single connection."""
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT pending_triggers FROM emotional_state WHERE user_id = ? AND agent_id = ?",
+                (user_id, agent_id)
+            ).fetchone()
+
+            if row and row["pending_triggers"]:
                 conn.execute(
                     "UPDATE emotional_state SET pending_triggers = NULL WHERE user_id = ? AND agent_id = ?",
                     (user_id, agent_id)
                 )
-        return triggers
+                return [tuple(t) for t in json.loads(row["pending_triggers"])]
+        return []
 
     @staticmethod
     def get_recent_events_v2(

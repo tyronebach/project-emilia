@@ -10,6 +10,7 @@ import type { VRM } from '@pixiv/three-vrm';
 export class AnimationGraph {
   private mixer: THREE.AnimationMixer;
   private vrm: VRM;
+  private disposed = false;
 
   // Base layer (idle)
   private baseAction: THREE.AnimationAction | null = null;
@@ -19,13 +20,18 @@ export class AnimationGraph {
   private gestureAction: THREE.AnimationAction | null = null;
   private gestureClip: THREE.AnimationClip | null = null;
 
+  // Track pending timeouts for cleanup
+  private pendingTimeouts: ReturnType<typeof setTimeout>[] = [];
+  private boundOnFinished: (event: { action: THREE.AnimationAction }) => void;
+
   constructor(vrm: VRM) {
     this.vrm = vrm;
     const mixerRoot = vrm.humanoid?.normalizedHumanBonesRoot || vrm.scene;
     this.mixer = new THREE.AnimationMixer(mixerRoot);
 
     // Listen for gesture end to restore idle weight
-    this.mixer.addEventListener('finished', this.onFinished.bind(this));
+    this.boundOnFinished = this.onFinished.bind(this);
+    this.mixer.addEventListener('finished', this.boundOnFinished);
   }
 
   /**
@@ -38,7 +44,7 @@ export class AnimationGraph {
       this.baseAction.fadeOut(fadeIn);
       const oldClip = this.baseClip;
       const oldAction = this.baseAction;
-      setTimeout(() => {
+      this.safeTimeout(() => {
         oldAction.stop();
         this.mixer.uncacheAction(oldClip);
         this.mixer.uncacheClip(oldClip);
@@ -122,7 +128,7 @@ export class AnimationGraph {
 
       const clip = this.gestureClip;
       const action = this.gestureAction;
-      setTimeout(() => {
+      this.safeTimeout(() => {
         action.stop();
         if (clip) {
           this.mixer.uncacheAction(clip);
@@ -139,12 +145,13 @@ export class AnimationGraph {
    * Handle animation finished (gesture complete)
    */
   private onFinished(event: { action: THREE.AnimationAction }): void {
+    if (this.disposed) return;
     const action = event.action;
 
     // Only handle gesture finish, not base
     if (action === this.gestureAction) {
       console.log('[AnimationGraph] Gesture finished, returning to idle');
-      
+
       const fadeOut = (action as THREE.AnimationAction & { _fadeOutDuration?: number })._fadeOutDuration ?? 0.3;
 
       // Crossfade back to idle
@@ -155,7 +162,7 @@ export class AnimationGraph {
       }
 
       const clip = this.gestureClip;
-      setTimeout(() => {
+      this.safeTimeout(() => {
         action.stop();
         if (clip) {
           this.mixer.uncacheAction(clip);
@@ -166,6 +173,17 @@ export class AnimationGraph {
       this.gestureAction = null;
       this.gestureClip = null;
     }
+  }
+
+  /**
+   * Schedule a timeout that is automatically cancelled on dispose
+   */
+  private safeTimeout(fn: () => void, ms: number): void {
+    const id = setTimeout(() => {
+      if (!this.disposed) fn();
+      this.pendingTimeouts = this.pendingTimeouts.filter(t => t !== id);
+    }, ms);
+    this.pendingTimeouts.push(id);
   }
 
   /**
@@ -251,6 +269,15 @@ export class AnimationGraph {
    * Dispose all resources
    */
   dispose(): void {
+    this.disposed = true;
+
+    // Cancel all pending timeouts
+    for (const id of this.pendingTimeouts) clearTimeout(id);
+    this.pendingTimeouts = [];
+
+    // Remove event listener
+    this.mixer.removeEventListener('finished', this.boundOnFinished);
+
     if (this.gestureAction) {
       this.gestureAction.stop();
     }
