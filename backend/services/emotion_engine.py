@@ -154,6 +154,7 @@ class AgentProfile:
     trust_loss_multiplier: float = 1.0
     attachment_ceiling: float = 1.0
     trigger_multipliers: dict = field(default_factory=dict)
+    trigger_responses: dict = field(default_factory=dict)
     play_trust_threshold: float = 0.7
     mood_baseline: dict = field(default_factory=dict)
     mood_decay_rate: float = 0.3
@@ -174,10 +175,29 @@ class AgentProfile:
             trust_loss_multiplier=profile_json.get('trust_loss_multiplier', 1.0),
             attachment_ceiling=profile_json.get('attachment_ceiling', 1.0),
             trigger_multipliers=profile_json.get('trigger_multipliers', {}),
+            trigger_responses=profile_json.get('trigger_responses', {}),
             play_trust_threshold=profile_json.get('play_trust_threshold', 0.7),
             mood_baseline=profile_json.get('mood_baseline', {}),
             mood_decay_rate=profile_json.get('mood_decay_rate', 0.3),
         )
+
+    def get_trigger_deltas(self, trigger: str) -> dict[str, float]:
+        """Get effective per-axis deltas for a trigger.
+
+        Fallback chain:
+        1. trigger_responses[trigger] → use per-axis overrides directly
+        2. trigger_multipliers[trigger] → scale DEFAULT_TRIGGER_DELTAS
+        3. DEFAULT_TRIGGER_DELTAS as-is (multiplier = 1.0)
+        """
+        from services.emotion_engine import EmotionEngine
+
+        if trigger in self.trigger_responses:
+            return {k: v for k, v in self.trigger_responses[trigger].items()
+                    if k != 'preset'}
+
+        mult = self.trigger_multipliers.get(trigger, 1.0)
+        base = EmotionEngine.DEFAULT_TRIGGER_DELTAS.get(trigger, {})
+        return {axis: delta * mult for axis, delta in base.items()}
 
 
 # ============================================================
@@ -193,6 +213,40 @@ TRIGGER_TAXONOMY = {
 }
 
 ALL_TRIGGERS = [t for triggers in TRIGGER_TAXONOMY.values() for t in triggers]
+
+# ============================================================
+# Mood groups for UI organization + dot product projection
+# ============================================================
+
+MOOD_GROUPS = {
+    "warm":    {"moods": ["supportive", "euphoric", "vulnerable", "zen"], "color": "#4ade80", "label": "Warm & Caring"},
+    "playful": {"moods": ["sassy", "whimsical", "flirty", "bashful"], "color": "#facc15", "label": "Playful & Light"},
+    "sharp":   {"moods": ["snarky", "sarcastic", "defiant"], "color": "#f97316", "label": "Sharp & Edgy"},
+    "dark":    {"moods": ["melancholic", "suspicious", "enraged"], "color": "#ef4444", "label": "Dark & Intense"},
+    "wild":    {"moods": ["seductive", "erratic"], "color": "#a855f7", "label": "Wild & Unpredictable"},
+}
+
+
+_normalized_mood_vectors: dict[str, tuple[float, float]] | None = None
+
+
+def _get_normalized_mood_vectors() -> dict[str, tuple[float, float]]:
+    """Get unit vectors for each mood's (V,A) position. Cached after first call."""
+    global _normalized_mood_vectors
+    if _normalized_mood_vectors is not None:
+        return _normalized_mood_vectors
+
+    import math
+    va_map = get_mood_valence_arousal()
+    result = {}
+    for mood, (v, a) in va_map.items():
+        magnitude = math.sqrt(v * v + a * a)
+        if magnitude > 0.001:
+            result[mood] = (v / magnitude, a / magnitude)
+        else:
+            result[mood] = (0.0, 0.0)
+    _normalized_mood_vectors = result
+    return result
 
 TRIGGER_ALIASES = {
     "compliment": "praise",
@@ -539,6 +593,15 @@ class EmotionEngine:
         'vulnerability': {'valence': 0.05, 'arousal': 0.05, 'trust': 0.05, 'attachment': 0.03},
         'greeting': {'valence': 0.08, 'arousal': 0.05, 'trust': 0.01},
         'farewell': {'valence': 0.02, 'arousal': -0.05, 'attachment': 0.01},
+        # V2 taxonomy triggers (complete coverage)
+        'banter': {'valence': 0.08, 'arousal': 0.12, 'trust': 0.02},
+        'flirting': {'valence': 0.12, 'arousal': 0.15, 'trust': 0.02, 'intimacy': 0.03},
+        'praise': {'valence': 0.15, 'arousal': 0.05, 'trust': 0.02},
+        'boundary': {'valence': -0.10, 'arousal': 0.15, 'trust': -0.04},
+        'accountability': {'valence': 0.05, 'arousal': -0.03, 'trust': 0.04},
+        'reconnection': {'valence': 0.10, 'arousal': -0.05, 'trust': 0.02},
+        'trust_signal': {'valence': 0.08, 'arousal': -0.05, 'trust': 0.06, 'intimacy': 0.02},
+        'disclosure': {'valence': 0.05, 'arousal': 0.05, 'trust': 0.05, 'attachment': 0.03},
     }
     
     # Pattern-based trigger detection
@@ -847,27 +910,23 @@ class EmotionEngine:
     def apply_trigger(self, state: EmotionalState, trigger: str, intensity: float = 0.7) -> dict[str, float]:
         """
         Apply a trigger's emotional deltas to state.
-        
+
         Returns dict of deltas that were applied.
         """
-        # Get base deltas for this trigger
-        base_deltas = self.DEFAULT_TRIGGER_DELTAS.get(trigger, {})
+        # Get base deltas (respects trigger_responses > trigger_multipliers > defaults)
+        base_deltas = self.profile.get_trigger_deltas(trigger)
         if not base_deltas:
             return {}
-        
-        # Get trigger-specific multiplier from profile
-        trigger_mult = self.profile.trigger_multipliers.get(trigger, 1.0)
-        
-        # Check play context (teasing at high trust is positive)
-        if trigger == 'teasing':
-            intensity = self._check_play_context(trigger, state.trust, intensity)
-        
+
+        # Check play/vulnerability context modulation
+        intensity = self._check_category_context(trigger, state, intensity)
+
         # Calculate effective deltas
         volatility = self.profile.emotional_volatility
         applied_deltas = {}
-        
+
         for axis, raw_delta in base_deltas.items():
-            effective_delta = raw_delta * intensity * volatility * trigger_mult
+            effective_delta = raw_delta * intensity * volatility
             
             # Special handling for trust (asymmetric)
             if axis == 'trust':
@@ -911,10 +970,14 @@ class EmotionEngine:
         delta = raw x DNA_sensitivity x bond_mod x user_multiplier
         """
         # Layer 1: DNA sensitivity (personality)
-        dna_sensitivity = self.profile.trigger_multipliers.get(trigger, 1.0)
+        # When trigger_responses exist, the direction is baked in so sensitivity is 1.0
+        if trigger in self.profile.trigger_responses:
+            dna_sensitivity = 1.0
+        else:
+            dna_sensitivity = self.profile.trigger_multipliers.get(trigger, 1.0)
 
         # Layer 2: Bond modifier (relationship state)
-        base_deltas = self.DEFAULT_TRIGGER_DELTAS.get(trigger, {})
+        base_deltas = self.profile.get_trigger_deltas(trigger)
         is_positive_trigger = base_deltas.get("valence", 0) > 0
 
         if is_positive_trigger:
@@ -1045,31 +1108,63 @@ class EmotionEngine:
             # Negative trust change: faster, amplified
             return delta * 1.5 * self.profile.trust_loss_multiplier
     
-    def _check_play_context(self, trigger: str, trust: float, intensity: float) -> float:
+    def _check_category_context(self, trigger: str, state: EmotionalState, intensity: float) -> float:
+        """Adjust trigger intensity based on relationship context.
+
+        Play triggers: trust-gated modulation.
+        Vulnerability triggers: intimacy-gated modulation.
         """
-        Adjust trigger intensity based on play context.
-        
-        Teasing at high trust becomes positive bonding.
-        """
-        if trigger not in ('teasing',):
-            return intensity
-        
-        if trust >= self.profile.play_trust_threshold:
-            # High trust: teasing is bonding, flip to positive
-            return abs(intensity) * 0.8
-        elif trust >= 0.4:
-            # Medium trust: neutral
-            return abs(intensity) * 0.2
-        else:
-            # Low trust: teasing hurts
-            return -abs(intensity) * 0.5
+        # Play triggers: trust-gated
+        if trigger in ('teasing', 'banter', 'flirting'):
+            if state.trust >= self.profile.play_trust_threshold:
+                return abs(intensity) * 0.8   # safe: bonding
+            elif state.trust >= 0.4:
+                return abs(intensity) * 0.2   # cautious
+            else:
+                return -abs(intensity) * 0.5  # risky: hurts
+
+        # Vulnerability triggers: intimacy-gated
+        if trigger in ('disclosure', 'trust_signal'):
+            intimacy = getattr(state, 'intimacy', 0.2)
+            if intimacy > 0.6:
+                return abs(intensity) * 1.2   # safe to be vulnerable
+            elif intimacy > 0.3:
+                return abs(intensity) * 0.6   # cautious opening
+            else:
+                return abs(intensity) * 0.3   # too early, dampened
+
+        return intensity
     
+    def calculate_mood_deltas_from_va(self, va_delta: dict[str, float]) -> dict[str, float]:
+        """Derive mood weight shifts from V/A deltas using dot product projection.
+
+        For each mood, computes dot(delta_vector, mood_unit_vector).
+        Positive dot = mood aligns with the delta direction → weight increases.
+        Negative dot = mood opposes → weight decreases.
+        """
+        dv = va_delta.get('valence', 0.0)
+        da = va_delta.get('arousal', 0.0)
+        if abs(dv) < 0.001 and abs(da) < 0.001:
+            return {}
+
+        vectors = _get_normalized_mood_vectors()
+        mood_deltas: dict[str, float] = {}
+        for mood, (uv, ua) in vectors.items():
+            dot = dv * uv + da * ua
+            if abs(dot) > 0.001:
+                mood_deltas[mood] = dot
+        return mood_deltas
+
     def calculate_mood_deltas(
         self,
         triggers: list[tuple[str, float]],
         trigger_mood_map: dict,
     ) -> dict[str, float]:
-        """Calculate mood weight changes from triggers."""
+        """Calculate mood weight changes from triggers.
+
+        DEPRECATED: Use calculate_mood_deltas_from_va() instead.
+        This method used the old trigger_mood_map config surface which is no longer needed.
+        """
         mood_deltas = {mood: 0.0 for mood in MOODS}
 
         for trigger, intensity in triggers:
@@ -1081,7 +1176,10 @@ class EmotionEngine:
         return mood_deltas
 
     def apply_mood_deltas(self, state: EmotionalState, mood_deltas: dict) -> None:
-        """Apply mood deltas with volatility scaling."""
+        """Apply mood deltas with volatility scaling.
+
+        V/A is now driven by triggers directly, not back-derived from moods.
+        """
         if not state.mood_weights:
             state.mood_weights = {mood: self.profile.mood_baseline.get(mood, 0) for mood in MOODS}
 
@@ -1089,9 +1187,6 @@ class EmotionEngine:
             effective_delta = delta * self.profile.emotional_volatility
             current = state.mood_weights.get(mood, 0)
             state.mood_weights[mood] = self._clamp(current + effective_delta, -10, 20)
-
-        # Update valence/arousal from moods
-        self._update_valence_arousal_from_moods(state)
 
     def _update_valence_arousal_from_moods(self, state: EmotionalState) -> None:
         """Derive valence/arousal from mood weights."""
@@ -1205,16 +1300,56 @@ class EmotionEngine:
         else:
             play_desc = "be careful with teasing"
 
-        return f"""[EMOTIONAL_STATE]
+        trigger_hints = self._get_trigger_personality_hints()
+
+        block = f"""[EMOTIONAL_STATE]
 You're feeling {mood_desc}.
 
 Valence: {state.valence:+.0%} | Energy: {abs(state.arousal):.0%} {"high" if state.arousal > 0.3 else "calm"}
 Trust: {state.trust:.0%} — {trust_desc}
 Intimacy: {intimacy:.0%} — {intimacy_desc}
-Dynamic: {play_desc}
+Dynamic: {play_desc}"""
 
-Let this color your tone naturally — don't mention these explicitly.
-[/EMOTIONAL_STATE]"""
+        if trigger_hints:
+            block += f"\nTrigger personality: {trigger_hints}"
+
+        block += "\n\nLet this color your tone naturally — don't mention these explicitly.\n[/EMOTIONAL_STATE]"
+        return block
+
+    def _get_trigger_personality_hints(self) -> str:
+        """Generate natural-language hints about non-default trigger responses."""
+        if not self.profile.trigger_responses:
+            return ""
+
+        PRESET_FEELINGS = {
+            'threatening': 'feels threatening',
+            'uncomfortable': 'feels uncomfortable',
+            'neutral': 'has no effect',
+            'muted': 'barely registers',
+            'normal': None,  # default, skip
+            'amplified': 'feels strongly',
+            'intense': 'feels very intensely',
+        }
+
+        hints = []
+        for trigger, resp in self.profile.trigger_responses.items():
+            preset = resp.get('preset', '')
+            label = trigger.replace('_', ' ')
+            if preset and preset in PRESET_FEELINGS:
+                feeling = PRESET_FEELINGS[preset]
+                if feeling:
+                    hints.append(f"{label} {feeling}")
+            else:
+                # Custom: describe by valence direction
+                valence = resp.get('valence', 0)
+                if valence > 0.1:
+                    hints.append(f"{label} feels exciting and welcome")
+                elif valence < -0.1:
+                    hints.append(f"{label} feels threatening or hurtful")
+                elif abs(valence) < 0.02:
+                    hints.append(f"{label} barely registers")
+
+        return ', '.join(hints) if hints else ""
 
     @staticmethod
     def _lever_description(value: float, descriptions: list[str]) -> str:

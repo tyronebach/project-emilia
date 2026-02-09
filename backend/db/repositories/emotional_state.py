@@ -11,6 +11,7 @@ DEFAULT_EMOTIONAL_PROFILE = {
     "trust_loss_multiplier": 1.0,
     "attachment_ceiling": 1.0,
     "trigger_multipliers": {},
+    "trigger_responses": {},
 }
 
 
@@ -31,7 +32,7 @@ class EmotionalStateRepository:
         # Merge: stored values override defaults
         profile = {**DEFAULT_EMOTIONAL_PROFILE, **stored}
         # Deep-merge nested dicts
-        for key in ("decay_rates", "trigger_multipliers"):
+        for key in ("decay_rates", "trigger_multipliers", "trigger_responses"):
             profile[key] = {**DEFAULT_EMOTIONAL_PROFILE.get(key, {}), **stored.get(key, {})}
 
         return profile
@@ -166,80 +167,6 @@ class EmotionalStateRepository:
                 "SELECT * FROM emotional_state WHERE user_id = ? AND agent_id = ?",
                 (user_id, agent_id)
             ).fetchone()
-
-    @staticmethod
-    def log_event(
-        user_id: str,
-        agent_id: str,
-        trigger_type: str,
-        trigger_value: str | None = None,
-        session_id: str | None = None,
-        delta_valence: float | None = None,
-        delta_arousal: float | None = None,
-        delta_dominance: float | None = None,
-        delta_trust: float | None = None,
-        delta_attachment: float | None = None,
-        state_after: dict | None = None,
-    ) -> dict:
-        """Log an emotional event for debugging/tuning."""
-        event_id = str(uuid.uuid4())
-        now = time.time()
-
-        state_json = json.dumps(state_after) if state_after else None
-
-        with get_db() as conn:
-            conn.execute(
-                """INSERT INTO emotional_events
-                   (id, user_id, agent_id, session_id, timestamp,
-                    trigger_type, trigger_value,
-                    delta_valence, delta_arousal, delta_dominance,
-                    delta_trust, delta_attachment, state_after_json)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (event_id, user_id, agent_id, session_id, now,
-                 trigger_type, trigger_value,
-                 delta_valence, delta_arousal, delta_dominance,
-                 delta_trust, delta_attachment, state_json)
-            )
-            return {
-                "id": event_id,
-                "user_id": user_id,
-                "agent_id": agent_id,
-                "session_id": session_id,
-                "timestamp": now,
-                "trigger_type": trigger_type,
-                "trigger_value": trigger_value,
-            }
-
-    @staticmethod
-    def get_recent_events(
-        user_id: str,
-        agent_id: str,
-        limit: int = 50
-    ) -> list[dict]:
-        """Get recent emotional events for debugging."""
-        with get_db() as conn:
-            rows = conn.execute(
-                """SELECT id, user_id, agent_id, session_id, timestamp,
-                          trigger_type, trigger_value,
-                          delta_valence, delta_arousal, delta_dominance,
-                          delta_trust, delta_attachment, state_after_json
-                   FROM emotional_events
-                   WHERE user_id = ? AND agent_id = ?
-                   ORDER BY timestamp DESC
-                   LIMIT ?""",
-                (user_id, agent_id, limit)
-            ).fetchall()
-            
-            events = []
-            for row in rows:
-                event = dict(row)
-                # Parse the state_after_json back to dict
-                if event.get('state_after_json'):
-                    event['state_after'] = json.loads(event['state_after_json'])
-                    del event['state_after_json']
-                events.append(event)
-            
-            return events
 
     # ========== V2: Calibration & Event Logging ==========
 
@@ -385,3 +312,36 @@ class EmotionalStateRepository:
                     (user_id, agent_id)
                 )
         return triggers
+
+    @staticmethod
+    def get_recent_events_v2(
+        user_id: str,
+        agent_id: str,
+        limit: int = 30,
+    ) -> list[dict]:
+        """Get recent V2 emotional events for timeline visualization."""
+        with get_db() as conn:
+            rows = conn.execute(
+                """SELECT timestamp, valence_before, valence_after,
+                          arousal_before, arousal_after,
+                          trust_delta, intimacy_delta,
+                          dominant_mood_after, triggers_json, inferred_outcome
+                   FROM emotional_events_v2
+                   WHERE user_id = ? AND agent_id = ?
+                   ORDER BY timestamp ASC
+                   LIMIT ?""",
+                (user_id, agent_id, limit)
+            ).fetchall()
+
+            events = []
+            for row in rows:
+                event = dict(row)
+                if event.get("triggers_json"):
+                    event["triggers"] = json.loads(event["triggers_json"])
+                    del event["triggers_json"]
+                else:
+                    event["triggers"] = []
+                    event.pop("triggers_json", None)
+                events.append(event)
+
+            return events

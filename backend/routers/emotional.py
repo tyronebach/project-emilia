@@ -49,21 +49,6 @@ async def get_emotional_state(
     }
 
 
-@router.get("/emotional-events/{user_id}/{agent_id}")
-async def get_emotional_events(
-    user_id: str,
-    agent_id: str,
-    limit: int = Query(50, le=200),
-    token: str = Depends(verify_token)
-):
-    """Get recent emotional events for debugging."""
-    events = EmotionalStateRepository.get_recent_events(user_id, agent_id, limit)
-    return {
-        "count": len(events),
-        "events": events,
-    }
-
-
 @router.post("/emotional-trigger")
 async def apply_trigger(
     user_id: str,
@@ -127,18 +112,17 @@ async def apply_trigger(
         conflict_tolerance=state.conflict_tolerance,
     )
     
-    # Log the event
-    EmotionalStateRepository.log_event(
+    # Log V2 event
+    EmotionalStateRepository.log_event_v2(
         user_id=user_id,
         agent_id=agent_id,
-        trigger_type='debug_trigger',
-        trigger_value=trigger,
-        delta_valence=deltas.get('valence') if deltas else None,
-        delta_arousal=deltas.get('arousal') if deltas else None,
-        delta_dominance=deltas.get('dominance') if deltas else None,
-        delta_trust=deltas.get('trust') if deltas else None,
-        delta_attachment=deltas.get('attachment') if deltas else None,
+        session_id=None,
+        message_snippet=f"[debug] {trigger}",
+        triggers=[(trigger, intensity)],
+        state_before=state_before,
         state_after=state.to_dict(),
+        agent_behavior={},
+        outcome="neutral",
     )
     
     return {
@@ -195,6 +179,21 @@ async def reset_emotional_state(
             "playfulness_safety": 0.5,
             "conflict_tolerance": 0.7,
         }
+    }
+
+
+@router.get("/emotional-timeline/{user_id}/{agent_id}")
+async def get_emotional_timeline(
+    user_id: str,
+    agent_id: str,
+    limit: int = Query(30, ge=1, le=100),
+    token: str = Depends(verify_token)
+):
+    """Get recent V2 emotional events for timeline/sparkline visualization."""
+    events = EmotionalStateRepository.get_recent_events_v2(user_id, agent_id, limit)
+    return {
+        "count": len(events),
+        "events": events,
     }
 
 

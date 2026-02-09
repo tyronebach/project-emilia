@@ -1,8 +1,8 @@
 # Emotion Engine V2: Unified Companion Architecture
 
-**Author:** Beatrice 💗  
-**Date:** 2026-02-08  
-**Status:** Design Proposal  
+**Author:** Beatrice 💗
+**Date:** 2026-02-08 (updated 2026-02-09)
+**Status:** Implemented (Phase 1-4 complete, Mood Simplification applied)
 **Philosophy:** *"My Rem is different from your Rem"*
 
 ---
@@ -72,11 +72,12 @@ No dropdown to select "romantic partner." Intimacy, trust, and connection emerge
 │                                                                              │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐         │
 │  │ LAYER 1: VAD    │───▶│ LAYER 2: MOOD   │───▶│ LAYER 3: STATE  │         │
-│  │ Direct deltas   │    │ Weight shifts   │    │ Final snapshot  │         │
-│  │ (foundation)    │    │ (texture)       │    │ (for LLM)       │         │
+│  │ Direct deltas   │    │ Dot product     │    │ Final snapshot  │         │
+│  │ (foundation)    │    │ projection      │    │ (for LLM)       │         │
 │  └─────────────────┘    └─────────────────┘    └─────────────────┘         │
 │                                                                              │
-│  VAD changes → mood weights adjust → dominant moods computed                │
+│  Triggers → V/A deltas → dot(delta, mood_unit_vector) → mood weights       │
+│  (No separate trigger_mood_map — moods auto-derived from V/A movement)     │
 └─────────────────────────────────────────────────────────────────────────────┘
                                      │
                                      ▼
@@ -315,66 +316,61 @@ Same Rem personality, completely different learned behavior.
 
 Moods determine HOW emotions are expressed, not WHAT is felt.
 
-### Mood Categories
+### Mood Groups (for UI + projection)
 
-| Category | Moods | When Active |
-|----------|-------|-------------|
-| **Warm** | supportive, nurturing, caring | High valence + high trust |
-| **Vulnerable** | bashful, vulnerable, tender | High intimacy + uncertain |
-| **Playful** | sassy, flirty, whimsical | High valence + safe relationship |
-| **Defensive** | snarky, sarcastic, defiant | Low valence + threatened |
-| **Intense** | euphoric, seductive, passionate | High valence + high arousal |
-| **Dark** | melancholic, suspicious, enraged | Low valence + high arousal |
-| **Calm** | zen, composed, serene | Neutral valence + low arousal |
+Moods are organized into 5 groups for Designer UI organization and visual coherence:
 
-### Mood Derivation
+| Group | Moods | Color | Character |
+|-------|-------|-------|-----------|
+| **Warm & Caring** | supportive, euphoric, vulnerable, zen | `#4ade80` (green) | Nurturing, safe |
+| **Playful & Light** | sassy, whimsical, flirty, bashful | `#facc15` (yellow) | Fun, lighthearted |
+| **Sharp & Edgy** | snarky, sarcastic, defiant | `#f97316` (orange) | Biting, resistant |
+| **Dark & Intense** | melancholic, suspicious, enraged | `#ef4444` (red) | Heavy, volatile |
+| **Wild & Unpredictable** | seductive, erratic | `#a855f7` (purple) | Chaotic, alluring |
+
+### Mood Derivation: Dot Product Projection
+
+**Previous approach (removed):** A `trigger_mood_map` per relationship type mapped triggers → mood weights. This caused **double-dipping** — triggers affected V/A directly through `trigger_responses`, then again through a mood-mediated V/A override at 70/30 blend.
+
+**Current approach:** Moods are **auto-derived from V/A deltas** using dot product projection onto each mood's normalized (V,A) unit vector. No separate config surface needed.
 
 ```python
-def update_mood_weights(state: RelationshipState, 
-                        personality: AgentPersonality,
-                        trigger_effects: dict):
+# Each mood has a (valence, arousal) position in the mood palette.
+# Normalize each to a unit vector:
+#   supportive: (0.7, 0.3) → normalized (0.919, 0.394)
+#   defiant:    (-0.3, 0.7) → normalized (-0.394, 0.919)
+
+def calculate_mood_deltas_from_va(va_delta: dict) -> dict[str, float]:
     """
-    Moods shift based on:
-    1. Agent's baseline disposition
-    2. Current VAD state
-    3. Trigger-specific mood mappings
-    4. Relationship context (intimacy unlocks vulnerable moods)
+    For each mood: dot(delta_vector, mood_unit_vector)
+
+    Positive dot = mood aligns with V/A movement → weight increases
+    Negative dot = mood opposes → weight decreases
     """
-    
-    # Start from agent's baseline mood weights
-    weights = personality.mood_baseline.copy()
-    
-    # VAD influences mood availability
-    if state.valence > 0.5:
-        weights["euphoric"] += state.valence * 2
-        weights["supportive"] += state.valence
-    if state.valence < -0.3:
-        weights["melancholic"] += abs(state.valence)
-        weights["defiant"] += abs(state.valence) * 0.5
-    
-    # Arousal influences intensity moods
-    if state.arousal > 0.5:
-        weights["passionate"] += state.arousal
-        if state.valence < 0:
-            weights["enraged"] += state.arousal
-    
-    # Intimacy unlocks vulnerable moods
-    if state.intimacy > 0.6:
-        weights["vulnerable"] += state.intimacy * 2
-        weights["tender"] += state.intimacy
-    
-    # Trust unlocks playful moods
-    if state.trust > personality.playfulness_threshold:
-        weights["flirty"] += state.trust
-        weights["sassy"] += state.trust * 0.7
-    
-    # Apply trigger-specific mood shifts
-    for mood, delta in trigger_effects.items():
-        weights[mood] = weights.get(mood, 0) + delta
-    
-    # Normalize to prevent runaway weights
-    state.mood_weights = normalize_weights(weights, floor=-5, ceiling=15)
+    dv, da = va_delta['valence'], va_delta['arousal']
+    mood_deltas = {}
+    for mood, (uv, ua) in normalized_mood_vectors.items():
+        dot = dv * uv + da * ua
+        if abs(dot) > 0.001:
+            mood_deltas[mood] = dot
+    return mood_deltas
+
+# Example: User compliments → triggers push valence +0.15, arousal +0.05
+#   supportive: dot((0.15, 0.05), (0.919, 0.394)) = +0.157  → weight UP
+#   defiant:    dot((0.15, 0.05), (-0.394, 0.919)) = -0.013  → weight DOWN
+#   enraged:    dot((0.15, 0.05), (-0.664, 0.747)) = -0.062  → weight DOWN
+#
+# Example: User criticizes → triggers push valence -0.12, arousal +0.08
+#   defiant:    dot((-0.12, 0.08), (-0.394, 0.919)) = +0.121  → weight UP
+#   snarky:     dot((-0.12, 0.08), (0, 1.0))        = +0.080  → weight UP
+#   supportive: dot((-0.12, 0.08), (0.919, 0.394)) = -0.079  → weight DOWN
 ```
+
+**Why this is better:**
+1. **No double-dipping**: Triggers → V/A (once), V/A → moods (projection)
+2. **No extra config surface**: `trigger_mood_map` per relationship type is eliminated
+3. **Automatic coherence**: Mood shifts always match the V/A direction the trigger pushed
+4. **Designer-visible**: TriggerResponseEditor shows "mood drift" badges computed client-side
 
 ---
 
@@ -1063,29 +1059,39 @@ CREATE INDEX idx_emotional_events_v2_user_agent
 
 ## Migration Path
 
-### Phase 1: Foundation (Week 1)
-- [ ] Add new columns to emotional_state
-- [ ] Create emotional_events_v2 table
-- [ ] Implement trigger_calibration loading/saving
-- [ ] Update _process_emotion_pre_llm to use calibration
+### Phase 1: Foundation ✅ (2026-02-08)
+- [x] Add new columns to emotional_state (intimacy, playfulness_safety, conflict_tolerance, trigger_calibration_json)
+- [x] Create emotional_events_v2 table
+- [x] Implement trigger_calibration loading/saving
+- [x] Update _process_emotion_pre_llm to use calibration
 
-### Phase 2: Learning Loop (Week 2)
-- [ ] Implement outcome inference from behavior tags
-- [ ] Add learn_from_interaction to post-LLM processing
-- [ ] Create calibration update logic
-- [ ] Add intimacy/playfulness_safety/conflict_tolerance updates
+### Phase 2: Learning Loop ✅ (2026-02-08)
+- [x] Implement outcome inference from behavior tags (multi-signal)
+- [x] Add learn_from_interaction to post-LLM processing
+- [x] Create calibration update logic (Bayesian smoothing + context buckets)
+- [x] Add intimacy/playfulness_safety/conflict_tolerance updates
 
-### Phase 3: Context Enhancement (Week 3)
-- [ ] Rich context block generation
-- [ ] Relationship dimension descriptions
-- [ ] Recent trajectory injection (optional)
-- [ ] Testing with real conversations
+### Phase 3: Context Enhancement ✅ (2026-02-08)
+- [x] Rich context block generation with mood + relationship + trigger personality hints
+- [x] Relationship dimension descriptions
+- [x] Testing with real conversations
 
-### Phase 4: Designer UI (Week 4)
-- [ ] Visualize user-agent relationship state
-- [ ] Show trigger calibration per user
-- [ ] Simulate interactions in designer
-- [ ] Compare "same agent, different users"
+### Phase 4: Designer UI ✅ (2026-02-08)
+- [x] Visualize user-agent relationship state (Bonds tab)
+- [x] Show trigger calibration per user (Calibration tab)
+- [x] Simulate interactions in designer (Simulator tab)
+- [x] Compare "same agent, different users" (Bond Compare)
+
+### Phase 5: Mood System Simplification ✅ (2026-02-09)
+- [x] Remove double-dipping: `trigger_mood_map` deleted, `_update_valence_arousal_from_moods()` disabled
+- [x] Add `MOOD_GROUPS` constant for UI organization (5 groups × 2-4 moods)
+- [x] Add `calculate_mood_deltas_from_va()` — dot product projection of V/A deltas onto mood unit vectors
+- [x] Wire new flow in `chat.py`: accumulate V/A deltas → project onto moods
+- [x] Add `/api/designer/v2/mood-groups` endpoint
+- [x] Update simulator to compute mood_shifts via V/A projection
+- [x] Remove `get_trigger_mood_map()` from `config_loader.py`
+- [x] Add `MoodBaselineEditor` component (grouped sliders by mood group)
+- [x] Add mood drift preview badges in `TriggerResponseEditor`
 
 ---
 
@@ -1165,24 +1171,39 @@ TRIGGER_ALIASES = {
 
 ## Appendix: Mood Palette (16 Core)
 
-| Mood | V | A | Category | Expression |
-|------|---|---|----------|------------|
-| supportive | +0.7 | 0.3 | warm | nurturing, helpful |
-| bashful | +0.3 | 0.4 | vulnerable | shy, flustered |
-| vulnerable | +0.2 | 0.3 | vulnerable | open, tender |
-| euphoric | +0.9 | 0.8 | intense | ecstatic, overjoyed |
-| flirty | +0.6 | 0.6 | playful | teasing, romantic |
-| sassy | +0.3 | 0.6 | playful | cheeky, spirited |
-| whimsical | +0.5 | 0.5 | playful | lighthearted, spontaneous |
-| zen | +0.4 | 0.1 | calm | peaceful, centered |
-| snarky | 0.0 | 0.5 | defensive | biting humor |
-| sarcastic | +0.1 | 0.4 | defensive | dry, ironic |
-| defiant | -0.3 | 0.7 | defensive | stubborn, resistant |
-| suspicious | -0.2 | 0.5 | defensive | wary, guarded |
-| melancholic | -0.4 | 0.2 | dark | sad, wistful |
-| enraged | -0.8 | 0.9 | dark | furious, explosive |
-| seductive | +0.5 | 0.7 | intense | alluring, intimate |
-| erratic | 0.0 | 0.9 | intense | unpredictable |
+Moods are stored in the `moods` DB table and grouped via the `MOOD_GROUPS` constant in `emotion_engine.py`.
+
+| Mood | V | A | Group | Expression |
+|------|---|---|-------|------------|
+| supportive | +0.7 | 0.3 | **warm** | nurturing, helpful |
+| euphoric | +0.9 | 0.8 | **warm** | ecstatic, overjoyed |
+| vulnerable | +0.2 | 0.3 | **warm** | open, tender |
+| zen | +0.4 | 0.1 | **warm** | peaceful, centered |
+| sassy | +0.3 | 0.6 | **playful** | cheeky, spirited |
+| whimsical | +0.5 | 0.5 | **playful** | lighthearted, spontaneous |
+| flirty | +0.6 | 0.6 | **playful** | teasing, romantic |
+| bashful | +0.3 | 0.4 | **playful** | shy, flustered |
+| snarky | 0.0 | 0.5 | **sharp** | biting humor |
+| sarcastic | +0.1 | 0.4 | **sharp** | dry, ironic |
+| defiant | -0.3 | 0.7 | **sharp** | stubborn, resistant |
+| melancholic | -0.4 | 0.2 | **dark** | sad, wistful |
+| suspicious | -0.2 | 0.5 | **dark** | wary, guarded |
+| enraged | -0.8 | 0.9 | **dark** | furious, explosive |
+| seductive | +0.5 | 0.7 | **wild** | alluring, intimate |
+| erratic | 0.0 | 0.9 | **wild** | unpredictable |
+
+### V/A Dot Product Projection
+
+Each mood's (V,A) is normalized to a unit vector. When triggers push V/A in a direction, the dot product with each mood vector determines how much that mood's weight shifts:
+
+```
+Trigger pushes V/A → delta = (dV, dA)
+For each mood: shift = dot(delta, unit_vector(mood_V, mood_A))
+  positive shift → mood weight increases (aligned with V/A movement)
+  negative shift → mood weight decreases (opposes V/A movement)
+```
+
+This replaces the old `trigger_mood_map` configuration, eliminating the double-dipping problem where triggers affected V/A twice (directly + via mood → V/A override).
 
 ---
 

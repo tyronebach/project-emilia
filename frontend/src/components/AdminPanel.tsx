@@ -181,7 +181,7 @@ function AdminPanel() {
         rightSlot={(
           <>
             <button
-              onClick={() => navigate({ to: '/designer' })}
+              onClick={() => navigate({ to: '/designer-v2' })}
               className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
               title="Agent Designer"
             >

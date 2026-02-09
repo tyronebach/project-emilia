@@ -42,7 +42,7 @@ class Settings:
         # Session compaction (Phase 3.1)
         self.compact_threshold: int = int(os.getenv("COMPACT_THRESHOLD", "25"))
         self.compact_keep_recent: int = int(os.getenv("COMPACT_KEEP_RECENT", "10"))
-        self.compact_model: str = os.getenv("COMPACT_MODEL", "anthropic/claude-3-5-haiku-20241022")
+        self.compact_model: str = os.getenv("COMPACT_MODEL", "openai/gpt-4o-mini")
 
         # Paths
         agents_dir_str = os.getenv("CLAWDBOT_AGENTS_DIR", "/home/tbach/.openclaw/agents")
