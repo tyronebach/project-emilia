@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Save, RotateCcw, ChevronDown } from 'lucide-react';
+import { Save, RotateCcw, ChevronDown, Zap } from 'lucide-react';
 import { Button } from '../ui/button';
-import { updatePersonality } from '../../utils/designerApiV2';
+import { updatePersonality, resetMoodState } from '../../utils/designerApiV2';
 import SliderField from './SliderField';
 import KeyValueEditor from './KeyValueEditor';
 import TriggerResponseEditor from './TriggerResponseEditor';
@@ -25,6 +25,13 @@ function PersonalityCard({ personality }: PersonalityCardProps) {
     mutationFn: (updates: Partial<AgentPersonality>) => updatePersonality(personality.id, updates),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['designer-v2', 'personalities'] });
+    },
+  });
+
+  const resetMoodMut = useMutation({
+    mutationFn: () => resetMoodState(personality.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['designer-v2', 'bonds'] });
     },
   });
 
@@ -149,10 +156,26 @@ function PersonalityCard({ personality }: PersonalityCardProps) {
             </button>
             <p className="text-[11px] text-text-secondary/70 mb-3">Starting mood disposition — which moods the agent naturally gravitates toward.</p>
             {moodOpen && (
-              <MoodBaselineEditor
-                moodBaseline={draft.mood_baseline}
-                onChange={(mood_baseline) => patch({ mood_baseline })}
-              />
+              <>
+                <MoodBaselineEditor
+                  moodBaseline={draft.mood_baseline}
+                  onChange={(mood_baseline) => patch({ mood_baseline })}
+                />
+                <div className="mt-3 flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="text-xs gap-1 bg-warning/20 text-warning hover:bg-warning/30 border border-warning/30"
+                    onClick={() => resetMoodMut.mutate()}
+                    disabled={resetMoodMut.isPending}
+                  >
+                    <Zap className="w-3 h-3" />
+                    {resetMoodMut.isPending ? 'Resetting...' : 'Apply Baseline Now'}
+                  </Button>
+                  <span className={`text-[10px] ${resetMoodMut.isSuccess ? 'text-success' : resetMoodMut.isError ? 'text-error' : 'text-text-secondary'}`}>
+                    {resetMoodMut.isSuccess ? 'Done — mood state reset to baseline' : resetMoodMut.isError ? 'Failed to reset' : 'Resets your live mood weights + VAD to this baseline'}
+                  </span>
+                </div>
+              </>
             )}
           </div>
 

@@ -39,6 +39,17 @@ export async function updatePersonality(
   return res.json();
 }
 
+export async function resetMoodState(agentId: string): Promise<void> {
+  const res = await fetchWithAuth(
+    `/api/designer/v2/personalities/${encodeURIComponent(agentId)}/reset-mood-state`,
+    { method: 'POST', body: '{}' }
+  );
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(detail || `Failed to reset mood state: ${res.status}`);
+  }
+}
+
 // ============ TRIGGER DEFAULTS ============
 
 export async function getTriggerDefaults(): Promise<Record<string, TriggerResponseProfile>> {

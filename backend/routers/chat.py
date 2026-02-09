@@ -570,14 +570,22 @@ async def chat(
         # Fire-and-forget: compact in background so response returns immediately
         _spawn_background(_maybe_compact_session(sid))
 
-        return {
+        resp = {
             "response": parsed["response_text"],
             "session_id": sid,
             "processing_ms": processing_ms,
             "model": result.get("model"),
             "behavior": behavior,
-            "usage": result.get("usage")
+            "usage": result.get("usage"),
         }
+
+        if emotional_context or pre_llm_triggers:
+            resp["emotion_debug"] = {
+                "triggers": [[t, round(i, 3)] for t, i in pre_llm_triggers],
+                "context_block": emotional_context,
+            }
+
+        return resp
 
     except httpx.TimeoutException:
         raise HTTPException(status_code=504, detail="Timeout")
@@ -691,6 +699,14 @@ async def _stream_chat_sse(
                     avatar_data["game_action"] = behavior["game_action"]
                 if avatar_data:
                     yield f"event: avatar\ndata: {json.dumps(avatar_data)}\n\n"
+
+                # Emit emotion debug info (triggers + context block)
+                if emotional_context or pre_llm_triggers:
+                    emotion_debug = {
+                        "triggers": [[t, round(i, 3)] for t, i in pre_llm_triggers],
+                        "context_block": emotional_context,
+                    }
+                    yield f"event: emotion\ndata: {json.dumps(emotion_debug)}\n\n"
 
                 SessionRepository.update_last_used(session_id)
                 SessionRepository.increment_message_count(session_id)

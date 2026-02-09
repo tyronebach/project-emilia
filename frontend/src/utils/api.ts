@@ -249,6 +249,11 @@ interface StreamResponse {
   };
 }
 
+export interface EmotionDebug {
+  triggers: [string, number][];
+  context_block: string | null;
+}
+
 export type { CompactionInfo, StreamResponse };
 
 export async function streamChat(
@@ -257,7 +262,7 @@ export async function streamChat(
   onAvatar: (data: AvatarCommand) => void,
   onDone: (data: StreamResponse) => void,
   onError: (error: Error) => void,
-  options?: { signal?: AbortSignal; gameContext?: GameContext; onCompaction?: (data: CompactionInfo) => void }
+  options?: { signal?: AbortSignal; gameContext?: GameContext; onCompaction?: (data: CompactionInfo) => void; onEmotion?: (data: EmotionDebug) => void }
 ): Promise<void> {
   try {
     const response = await fetchWithAuth(`${API_URL}/api/chat?stream=1`, {
@@ -314,6 +319,12 @@ export async function streamChat(
 
             if (currentEventType === 'compaction') {
               options?.onCompaction?.(data);
+              currentEventType = null;
+              continue;
+            }
+
+            if (currentEventType === 'emotion') {
+              options?.onEmotion?.(data);
               currentEventType = null;
               continue;
             }

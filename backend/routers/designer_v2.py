@@ -10,11 +10,11 @@ import json
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from db.connection import get_db
 from db.repositories import EmotionalStateRepository, AgentRepository
-from dependencies import verify_token
+from dependencies import verify_token, get_user_id
 from services.emotion_engine import (
     EmotionEngine, EmotionalState, AgentProfile,
     ContextualTriggerCalibration, TriggerCalibration,
@@ -289,14 +289,53 @@ async def reset_bond(user_id: str, agent_id: str) -> dict:
     baseline_a = agent.get("baseline_arousal") or 0.0
     baseline_d = agent.get("baseline_dominance") or 0.0
 
+    # Load mood_baseline from agent profile so mood_weights resets to it
+    profile = _parse_profile(agent.get("emotional_profile"))
+    mood_baseline = profile.get("mood_baseline") or {}
+
     EmotionalStateRepository.update(
         user_id, agent_id,
+        mood_weights=mood_baseline if mood_baseline else None,
         valence=baseline_v, arousal=baseline_a, dominance=baseline_d,
         trust=0.5, attachment=0.3, familiarity=0.0,
         intimacy=0.2, playfulness_safety=0.5, conflict_tolerance=0.7,
     )
     EmotionalStateRepository.update_calibration_json(user_id, agent_id, {})
     return {"reset": True}
+
+
+@router.post("/personalities/{agent_id}/reset-mood-state")
+async def reset_mood_state(
+    agent_id: str,
+    x_user_id: str | None = Header(None, alias="X-User-Id"),
+) -> dict:
+    """Reset a user's mood_weights back to the agent's mood_baseline.
+
+    Does NOT touch relationship dimensions (trust, intimacy, etc.).
+    Reads user from X-User-Id header (sent automatically by fetchWithAuth).
+    """
+    if not x_user_id:
+        raise HTTPException(status_code=400, detail="X-User-Id header required — select a user first")
+    user_id = x_user_id.strip()
+
+    agent = AgentRepository.get_by_id(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    profile = _parse_profile(agent.get("emotional_profile"))
+    mood_baseline = profile.get("mood_baseline") or {}
+
+    # Also reset VAD to agent baseline so mood state is fully fresh
+    baseline_v = agent.get("baseline_valence") or 0.0
+    baseline_a = agent.get("baseline_arousal") or 0.0
+    baseline_d = agent.get("baseline_dominance") or 0.0
+
+    EmotionalStateRepository.update(
+        user_id, agent_id,
+        mood_weights=mood_baseline if mood_baseline else None,
+        valence=baseline_v, arousal=baseline_a, dominance=baseline_d,
+    )
+    return {"reset": True, "mood_weights": mood_baseline}
 
 
 # ============ CALIBRATION ============
