@@ -3,11 +3,14 @@ Emotional Engine — Core logic for persistent emotional state.
 
 Processes triggers, applies decay, and computes behavior levers for LLM injection.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import ClassVar, Optional
 import json
 import logging
 import re
+import time as _time
 
 # Lazy import httpx - only needed for LLM trigger detection
 try:
@@ -95,6 +98,14 @@ class EmotionalState:
     familiarity: float = 0.0  # 0 to 1
     mood_weights: dict = field(default_factory=dict)
 
+    # V2: Relationship dimensions
+    intimacy: float = 0.2
+    playfulness_safety: float = 0.5
+    conflict_tolerance: float = 0.7
+
+    # V2: Per-trigger calibration (trigger_type -> ContextualTriggerCalibration or dict)
+    trigger_calibration: dict = field(default_factory=dict)
+
     def to_dict(self) -> dict:
         return {
             'valence': self.valence,
@@ -104,6 +115,9 @@ class EmotionalState:
             'attachment': self.attachment,
             'familiarity': self.familiarity,
             'mood_weights': self.mood_weights,
+            'intimacy': self.intimacy,
+            'playfulness_safety': self.playfulness_safety,
+            'conflict_tolerance': self.conflict_tolerance,
         }
 
     @classmethod
@@ -116,6 +130,9 @@ class EmotionalState:
             attachment=d.get('attachment', 0.3),
             familiarity=d.get('familiarity', 0.0),
             mood_weights=d.get('mood_weights', {}),
+            intimacy=d.get('intimacy', 0.2),
+            playfulness_safety=d.get('playfulness_safety', 0.5),
+            conflict_tolerance=d.get('conflict_tolerance', 0.7),
         )
 
 
@@ -163,10 +180,344 @@ class AgentProfile:
         )
 
 
+# ============================================================
+# V2: Consolidated trigger taxonomy (15 triggers in 5 categories)
+# ============================================================
+
+TRIGGER_TAXONOMY = {
+    "play": ["teasing", "banter", "flirting"],
+    "care": ["comfort", "praise", "affirmation"],
+    "friction": ["criticism", "rejection", "boundary", "dismissal"],
+    "repair": ["apology", "accountability", "reconnection"],
+    "vulnerability": ["disclosure", "trust_signal"],
+}
+
+ALL_TRIGGERS = [t for triggers in TRIGGER_TAXONOMY.values() for t in triggers]
+
+TRIGGER_ALIASES = {
+    "compliment": "praise",
+    "gratitude": "praise",
+    "insult": "criticism",
+    "conflict": "boundary",
+    "betrayal": "rejection",
+    "abandonment": "rejection",
+    "argument": "boundary",
+    "accusation": "criticism",
+    "explanation": "accountability",
+    "repair": "reconnection",
+    "vulnerability": "disclosure",
+    "confession": "disclosure",
+    "secret": "disclosure",
+    "shared_joy": "affirmation",
+    "greeting": None,
+    "farewell": None,
+    "question": None,
+    "curiosity": None,
+    "empathy_needed": None,
+}
+
+
+def normalize_trigger(trigger: str) -> str | None:
+    """Convert legacy trigger to consolidated taxonomy."""
+    if trigger in ALL_TRIGGERS:
+        return trigger
+    return TRIGGER_ALIASES.get(trigger, trigger)
+
+
+# ============================================================
+# V2: Trigger calibration with Bayesian smoothing
+# ============================================================
+
+@dataclass
+class TriggerCalibration:
+    """Per-trigger learned response profile with Bayesian smoothing."""
+
+    trigger_type: str
+
+    positive_weight: float = 0.0
+    negative_weight: float = 0.0
+    neutral_weight: float = 0.0
+    occurrence_count: int = 0
+
+    PRIOR_POSITIVE: ClassVar[float] = 10.0
+    PRIOR_NEGATIVE: ClassVar[float] = 10.0
+    PRIOR_TOTAL: ClassVar[float] = 20.0
+    MIN_SAMPLES: ClassVar[int] = 30
+
+    learned_multiplier: float = 1.0
+    last_occurrence: float = 0.0
+
+    def to_dict(self) -> dict:
+        return {
+            "trigger_type": self.trigger_type,
+            "positive_weight": self.positive_weight,
+            "negative_weight": self.negative_weight,
+            "neutral_weight": self.neutral_weight,
+            "occurrence_count": self.occurrence_count,
+            "learned_multiplier": self.learned_multiplier,
+            "last_occurrence": self.last_occurrence,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> TriggerCalibration:
+        cal = cls(trigger_type=d.get("trigger_type", "unknown"))
+        cal.positive_weight = d.get("positive_weight", 0.0)
+        cal.negative_weight = d.get("negative_weight", 0.0)
+        cal.neutral_weight = d.get("neutral_weight", 0.0)
+        cal.occurrence_count = d.get("occurrence_count", 0)
+        cal.learned_multiplier = d.get("learned_multiplier", 1.0)
+        cal.last_occurrence = d.get("last_occurrence", 0.0)
+        return cal
+
+    def update(self, outcome: str, confidence: float) -> None:
+        """Update calibration with new observation, weighted by confidence."""
+        self.occurrence_count += 1
+        self.last_occurrence = _time.time()
+
+        if outcome == "positive":
+            self.positive_weight += confidence
+        elif outcome == "negative":
+            self.negative_weight += confidence
+        else:
+            self.neutral_weight += confidence * 0.5
+
+        self.recompute_multiplier()
+
+    def recompute_multiplier(self) -> None:
+        """Compute multiplier using Bayesian estimate with priors."""
+        pos = self.positive_weight + self.PRIOR_POSITIVE
+        neg = self.negative_weight + self.PRIOR_NEGATIVE
+        total = pos + neg
+
+        rate = pos / total  # 0 (all negative) to 1 (all positive)
+
+        # Map to multiplier: rate=0 -> 0.75, rate=0.5 -> 1.0, rate=1 -> 1.25
+        raw_multiplier = 0.75 + 0.5 * rate
+
+        # Confidence scaling: blend toward 1.0 until enough samples
+        if self.occurrence_count < self.MIN_SAMPLES:
+            blend = self.occurrence_count / self.MIN_SAMPLES
+            self.learned_multiplier = 1.0 + (raw_multiplier - 1.0) * blend
+        else:
+            self.learned_multiplier = raw_multiplier
+
+        self.learned_multiplier = max(0.5, min(1.5, self.learned_multiplier))
+
+
+# ============================================================
+# V2: Context-bucketed calibration
+# ============================================================
+
+@dataclass
+class ContextBucket:
+    """Context state for bucketed calibration."""
+    trust_level: str      # "low" | "mid" | "high"
+    arousal_level: str    # "calm" | "activated"
+    recent_conflict: bool
+
+    @classmethod
+    def from_state(cls, state: EmotionalState) -> ContextBucket:
+        return cls(
+            trust_level="low" if state.trust < 0.4 else "high" if state.trust > 0.7 else "mid",
+            arousal_level="calm" if state.arousal < 0.3 else "activated",
+            recent_conflict=getattr(state, 'conflict_tolerance', 0.7) < 0.5,
+        )
+
+    def key(self) -> str:
+        return f"{self.trust_level}_{self.arousal_level}_{'conflict' if self.recent_conflict else 'ok'}"
+
+
+class ContextualTriggerCalibration:
+    """Calibration that varies by relationship context."""
+
+    def __init__(self, trigger_type: str):
+        self.trigger_type = trigger_type
+        self.buckets: dict[str, TriggerCalibration] = {}
+        self.global_cal = TriggerCalibration(trigger_type=trigger_type)
+
+    def get_multiplier(self, context: ContextBucket) -> float:
+        """Get multiplier for current context, with fallback to global."""
+        key = context.key()
+        if key in self.buckets and self.buckets[key].occurrence_count >= 10:
+            return self.buckets[key].learned_multiplier
+        return self.global_cal.learned_multiplier
+
+    def update(self, context: ContextBucket, outcome: str, confidence: float) -> None:
+        """Update both global and context-specific calibration."""
+        key = context.key()
+        self.global_cal.update(outcome, confidence)
+        if key not in self.buckets:
+            self.buckets[key] = TriggerCalibration(trigger_type=self.trigger_type)
+        self.buckets[key].update(outcome, confidence)
+
+    def to_dict(self) -> dict:
+        return {
+            "trigger_type": self.trigger_type,
+            "global": self.global_cal.to_dict(),
+            "buckets": {k: v.to_dict() for k, v in self.buckets.items()},
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> ContextualTriggerCalibration:
+        cal = cls(trigger_type=d.get("trigger_type", "unknown"))
+        if "global" in d:
+            cal.global_cal = TriggerCalibration.from_dict(d["global"])
+        if "buckets" in d:
+            cal.buckets = {k: TriggerCalibration.from_dict(v) for k, v in d["buckets"].items()}
+        return cal
+
+
+# ============================================================
+# V2: Outcome inference (multi-signal)
+# ============================================================
+
+@dataclass
+class OutcomeSignal:
+    """A single signal contributing to outcome inference."""
+    source: str
+    direction: str   # "positive", "negative", "neutral"
+    weight: float
+    confidence: float
+
+
+POSITIVE_EXPLICIT = {"lol", "\U0001f602", "haha", "hehe", "love that", "perfect", "yes!",
+                     "\u2764\ufe0f", "\U0001f970", "\U0001f60d", "amazing", "thank you", "thanks"}
+NEGATIVE_EXPLICIT = {"stop", "don't", "that hurt", "not funny", "rude", "wtf",
+                     "\U0001f622", "\U0001f620", "ugh", "annoying", "shut up", "go away"}
+
+CONFIDENCE_THRESHOLD = 0.5
+
+
+def infer_outcome_multisignal(
+    next_user_message: str | None,
+    agent_behavior: dict,
+    response_latency_ms: int | None = None,
+) -> tuple[str, float]:
+    """
+    Infer outcome from multiple signals.
+
+    Returns (outcome, confidence). Only update calibration if confidence >= CONFIDENCE_THRESHOLD.
+    """
+    signals: list[OutcomeSignal] = []
+
+    if next_user_message:
+        msg_lower = next_user_message.lower()
+        for phrase in POSITIVE_EXPLICIT:
+            if phrase in msg_lower:
+                signals.append(OutcomeSignal("user_explicit", "positive", 0.9, 0.85))
+                break
+        for phrase in NEGATIVE_EXPLICIT:
+            if phrase in msg_lower:
+                signals.append(OutcomeSignal("user_explicit", "negative", 0.9, 0.85))
+                break
+
+    if response_latency_ms is not None:
+        if response_latency_ms < 5000:
+            signals.append(OutcomeSignal("user_behavior", "positive", 0.3, 0.6))
+        elif response_latency_ms > 120000:
+            signals.append(OutcomeSignal("user_behavior", "negative", 0.3, 0.5))
+
+    mood = agent_behavior.get("mood", "").lower()
+    positive_moods = {"happy", "playful", "loving", "excited", "grateful", "bashful", "flirty"}
+    negative_moods = {"sad", "hurt", "angry", "frustrated", "disappointed", "defensive"}
+
+    if mood in positive_moods:
+        signals.append(OutcomeSignal("agent_tag", "positive", 0.4, 0.5))
+    elif mood in negative_moods:
+        signals.append(OutcomeSignal("agent_tag", "negative", 0.4, 0.5))
+
+    if not signals:
+        return ("neutral", 0.3)
+
+    pos_score = sum(s.weight * s.confidence for s in signals if s.direction == "positive")
+    neg_score = sum(s.weight * s.confidence for s in signals if s.direction == "negative")
+
+    if pos_score > neg_score * 1.2:
+        confidence = min(0.95, pos_score / (pos_score + neg_score + 0.1))
+        return ("positive", confidence)
+    elif neg_score > pos_score * 1.2:
+        confidence = min(0.95, neg_score / (pos_score + neg_score + 0.1))
+        return ("negative", confidence)
+
+    return ("neutral", 0.4)
+
+
+# ============================================================
+# V2: Calibration recovery (reversibility hooks)
+# ============================================================
+
+class CalibrationRecovery:
+    """Mechanisms to prevent irreversible calibration drift."""
+
+    REPAIR_WINDOW_HOURS: float = 24.0
+    REPAIR_BOOST: float = 1.5
+    DECAY_RATE_PER_WEEK: float = 0.05
+
+    @staticmethod
+    def apply_repair_boost(confidence: float, state: EmotionalState, outcome: str) -> float:
+        """Boost positive outcomes during repair window (after conflict)."""
+        if outcome != "positive":
+            return confidence
+        if getattr(state, 'conflict_tolerance', 0.7) < 0.5:
+            return confidence * CalibrationRecovery.REPAIR_BOOST
+        return confidence
+
+    @staticmethod
+    def apply_decay_to_neutral(calibration: TriggerCalibration, hours_since_last: float) -> None:
+        """Decay calibration toward 1.0 if unused for weeks."""
+        if hours_since_last < 24 * 7:
+            return
+        weeks_inactive = hours_since_last / (24 * 7)
+        decay = min(0.3, CalibrationRecovery.DECAY_RATE_PER_WEEK * weeks_inactive)
+        calibration.learned_multiplier = (
+            calibration.learned_multiplier * (1 - decay) + 1.0 * decay
+        )
+
+
+# ============================================================
+# V2: Relationship dimension update rules
+# ============================================================
+
+DIMENSION_UPDATES: dict[str, dict[tuple[str, str], float]] = {
+    "trust": {
+        ("praise", "positive"):       +0.02,
+        ("affirmation", "positive"):  +0.02,
+        ("accountability", "positive"): +0.04,
+        ("disclosure", "positive"):   +0.03,
+        ("rejection", "any"):         -0.08,
+        ("dismissal", "any"):         -0.05,
+        ("boundary", "negative"):     -0.06,
+    },
+    "intimacy": {
+        ("disclosure", "positive"):   +0.05,
+        ("comfort", "positive"):      +0.02,
+        ("trust_signal", "positive"): +0.03,
+        ("disclosure", "negative"):   -0.04,
+        ("rejection", "any"):         -0.03,
+    },
+    "playfulness_safety": {
+        ("teasing", "positive"):      +0.04,
+        ("banter", "positive"):       +0.03,
+        ("flirting", "positive"):     +0.02,
+        ("teasing", "negative"):      -0.06,
+        ("banter", "negative"):       -0.04,
+        ("flirting", "negative"):     -0.03,
+    },
+    "conflict_tolerance": {
+        ("apology", "positive"):      +0.03,
+        ("accountability", "positive"): +0.04,
+        ("reconnection", "positive"): +0.05,
+        ("criticism", "any"):         -0.03,
+        ("boundary", "any"):          -0.04,
+        ("rejection", "any"):         -0.05,
+    },
+}
+
+
 class EmotionEngine:
     """
     Core emotional processing engine.
-    
+
     Handles trigger detection, delta application, decay, and behavior lever computation.
     """
     
@@ -543,6 +894,148 @@ class EmotionEngine:
         
         return applied_deltas
     
+    # ============================================================
+    # V2 Methods
+    # ============================================================
+
+    def compute_effective_delta(
+        self,
+        trigger: str,
+        raw_intensity: float,
+        state: EmotionalState,
+        calibration: ContextualTriggerCalibration | None,
+    ) -> float:
+        """
+        Compute final intensity with all three layers.
+
+        delta = raw x DNA_sensitivity x bond_mod x user_multiplier
+        """
+        # Layer 1: DNA sensitivity (personality)
+        dna_sensitivity = self.profile.trigger_multipliers.get(trigger, 1.0)
+
+        # Layer 2: Bond modifier (relationship state)
+        base_deltas = self.DEFAULT_TRIGGER_DELTAS.get(trigger, {})
+        is_positive_trigger = base_deltas.get("valence", 0) > 0
+
+        if is_positive_trigger:
+            bond_mod = 0.7 + (state.trust * 0.6)  # 0.7 to 1.3
+        else:
+            bond_mod = 1.3 - (state.trust * 0.6)  # 1.3 to 0.7
+
+        # Intimacy amplifies vulnerability triggers
+        if trigger in ("disclosure", "comfort", "trust_signal"):
+            intimacy = getattr(state, 'intimacy', 0.2)
+            bond_mod *= 0.8 + (intimacy * 0.4)
+
+        # Layer 3: User calibration (context-aware)
+        if calibration:
+            context = ContextBucket.from_state(state)
+            user_multiplier = calibration.get_multiplier(context)
+        else:
+            user_multiplier = 1.0
+
+        effective = raw_intensity * dna_sensitivity * bond_mod * user_multiplier
+        return max(0.1, min(3.0, effective))
+
+    def apply_trigger_calibrated(
+        self,
+        state: EmotionalState,
+        trigger: str,
+        raw_intensity: float,
+        calibration: ContextualTriggerCalibration | None = None,
+    ) -> dict[str, float]:
+        """Apply trigger with full three-layer scaling."""
+        effective_intensity = self.compute_effective_delta(
+            trigger, raw_intensity, state, calibration
+        )
+        return self.apply_trigger(state, trigger, effective_intensity)
+
+    def learn_from_outcome(
+        self,
+        state: EmotionalState,
+        triggers: list[tuple[str, float]],
+        outcome: str,
+        confidence: float,
+    ) -> dict[str, ContextualTriggerCalibration]:
+        """
+        Update trigger calibrations based on interaction outcome.
+
+        Only updates if confidence >= CONFIDENCE_THRESHOLD.
+        Returns updated calibrations for persistence.
+        """
+        updated: dict[str, ContextualTriggerCalibration] = {}
+
+        if confidence < CONFIDENCE_THRESHOLD:
+            logger.debug("[Learn] Skipping update, confidence %.2f < %.2f",
+                         confidence, CONFIDENCE_THRESHOLD)
+            return updated
+
+        # Apply repair boost
+        confidence = CalibrationRecovery.apply_repair_boost(confidence, state, outcome)
+
+        context = ContextBucket.from_state(state)
+
+        for trigger_type, _intensity in triggers:
+            # Normalize to V2 taxonomy
+            canonical = normalize_trigger(trigger_type)
+            if not canonical:
+                continue
+
+            # Get or create calibration
+            if canonical not in state.trigger_calibration:
+                state.trigger_calibration[canonical] = ContextualTriggerCalibration(canonical)
+
+            cal = state.trigger_calibration[canonical]
+            if isinstance(cal, dict):
+                cal = ContextualTriggerCalibration.from_dict(cal)
+                state.trigger_calibration[canonical] = cal
+
+            cal.update(context, outcome, confidence)
+            updated[canonical] = cal
+
+            logger.info("[Learn] %s: %s (conf=%.2f) -> multiplier=%.2f",
+                        canonical, outcome, confidence, cal.global_cal.learned_multiplier)
+
+        return updated
+
+    def update_relationship_dimensions(
+        self,
+        state: EmotionalState,
+        triggers: list[tuple[str, float]],
+        outcome: str,
+    ) -> dict[str, float]:
+        """Update relationship dimensions with crisp trigger-based rules."""
+        deltas: dict[str, float] = {}
+
+        for trigger, intensity in triggers:
+            canonical = normalize_trigger(trigger)
+            if not canonical:
+                continue
+
+            for dimension, rules in DIMENSION_UPDATES.items():
+                key = (canonical, outcome)
+                if key in rules:
+                    delta = rules[key] * intensity
+                elif (canonical, "any") in rules:
+                    delta = rules[(canonical, "any")] * intensity
+                else:
+                    continue
+
+                # Apply personality modifiers for trust
+                if dimension == "trust":
+                    if delta > 0:
+                        delta *= self.profile.trust_gain_multiplier
+                    else:
+                        delta *= self.profile.trust_loss_multiplier
+
+                current = getattr(state, dimension, 0.5)
+                new_value = max(0.0, min(1.0, current + delta))
+                setattr(state, dimension, new_value)
+
+                deltas[dimension] = deltas.get(dimension, 0) + delta
+
+        return deltas
+
     def _apply_trust_delta_modifier(self, delta: float) -> float:
         """Apply asymmetric trust change (negative changes are larger)."""
         if delta > 0:
@@ -670,24 +1163,56 @@ class EmotionEngine:
         }
     
     def generate_context_block(self, state: EmotionalState) -> str:
-        """Generate emotional context block for LLM prompt injection."""
-        levers = self.get_behavior_levers(state)
-
-        # Get dominant moods
+        """Generate rich emotional context block for LLM prompt injection."""
+        # Dominant moods
         dominant = self.get_dominant_moods(state, top_n=2)
-
         if dominant:
-            mood_names = [m[0] for m in dominant]
-            top_weight = dominant[0][1]
-            intensity = "strongly" if top_weight > 10 else "somewhat" if top_weight > 5 else "slightly"
-            mood_desc = f"{intensity} {' and '.join(mood_names)}"
+            primary, weight = dominant[0]
+            intensity = "strongly" if weight > 10 else "somewhat" if weight > 5 else "slightly"
+            mood_desc = f"{intensity} {primary}"
+            if len(dominant) > 1:
+                mood_desc += f", with hints of {dominant[1][0]}"
         else:
-            mood_desc = "neutral"
+            mood_desc = "emotionally neutral"
+
+        # Trust description
+        if state.trust > 0.8:
+            trust_desc = "deeply bonded, would share anything"
+        elif state.trust > 0.6:
+            trust_desc = "comfortable and safe"
+        elif state.trust > 0.4:
+            trust_desc = "warming up, cautiously open"
+        elif state.trust > 0.2:
+            trust_desc = "guarded, testing the waters"
+        else:
+            trust_desc = "wary, walls up"
+
+        # Intimacy description
+        intimacy = getattr(state, 'intimacy', 0.2)
+        if intimacy > 0.7:
+            intimacy_desc = "emotionally close"
+        elif intimacy > 0.4:
+            intimacy_desc = "growing closer"
+        else:
+            intimacy_desc = "still surface-level"
+
+        # Playfulness
+        play = getattr(state, 'playfulness_safety', 0.5)
+        if play > 0.7:
+            play_desc = "teasing is safe and bonding"
+        elif play > 0.4:
+            play_desc = "light teasing is okay"
+        else:
+            play_desc = "be careful with teasing"
 
         return f"""[EMOTIONAL_STATE]
-You're feeling {mood_desc} right now.
-Warmth: {levers['warmth']:.0%} | Playfulness: {levers['playfulness']:.0%} | Guardedness: {levers['guardedness']:.0%}
-Trust level: {state.trust:.0%}
+You're feeling {mood_desc}.
+
+Valence: {state.valence:+.0%} | Energy: {abs(state.arousal):.0%} {"high" if state.arousal > 0.3 else "calm"}
+Trust: {state.trust:.0%} — {trust_desc}
+Intimacy: {intimacy:.0%} — {intimacy_desc}
+Dynamic: {play_desc}
+
 Let this color your tone naturally — don't mention these explicitly.
 [/EMOTIONAL_STATE]"""
 

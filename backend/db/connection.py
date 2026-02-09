@@ -181,6 +181,31 @@ def init_db():
             )
         """)
 
+        # Emotional events V2 (for learning + relationship tracking)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS emotional_events_v2 (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                session_id TEXT,
+                timestamp REAL NOT NULL,
+                message_snippet TEXT,
+                triggers_json TEXT,
+                valence_before REAL,
+                valence_after REAL,
+                arousal_before REAL,
+                arousal_after REAL,
+                dominant_mood_before TEXT,
+                dominant_mood_after TEXT,
+                agent_mood_tag TEXT,
+                agent_intent_tag TEXT,
+                inferred_outcome TEXT CHECK(inferred_outcome IN ('positive', 'negative', 'neutral')),
+                trust_delta REAL,
+                intimacy_delta REAL,
+                calibration_updates_json TEXT
+            )
+        """)
+
         # Trigger counts — novelty tracking cache
         cur.execute("""
             CREATE TABLE IF NOT EXISTS trigger_counts (
@@ -232,6 +257,12 @@ def init_db():
         _add_column(cur, "emotional_state", "trigger_buffer", "TEXT")  # JSON array of recent messages
         _add_column(cur, "emotional_state", "pending_triggers", "TEXT")  # JSON array of LLM-detected triggers
 
+        # Emotion Engine V2: relationship dimensions + trigger calibration
+        _add_column(cur, "emotional_state", "intimacy", "REAL DEFAULT 0.2")
+        _add_column(cur, "emotional_state", "playfulness_safety", "REAL DEFAULT 0.5")
+        _add_column(cur, "emotional_state", "conflict_tolerance", "REAL DEFAULT 0.7")
+        _add_column(cur, "emotional_state", "trigger_calibration_json", "TEXT DEFAULT '{}'")
+
         # Agent emotional baseline columns (safe to re-run)
         _add_column(cur, "agents", "baseline_valence", "REAL DEFAULT 0.2")
         _add_column(cur, "agents", "baseline_arousal", "REAL DEFAULT 0.0")
@@ -281,6 +312,7 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_game_stats_user ON game_stats(user_id, agent_id, game_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_emotional_events_user ON emotional_events(user_id, agent_id, timestamp)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_events_v2_user_agent ON emotional_events_v2(user_id, agent_id, timestamp DESC)")
 
         conn.commit()
 

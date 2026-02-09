@@ -80,6 +80,7 @@ class EmotionalStateRepository:
         allowed = {
             "valence", "arousal", "dominance",
             "trust", "attachment", "familiarity",
+            "intimacy", "playfulness_safety", "conflict_tolerance",
         }
 
         set_clauses = ["last_updated = ?", "interaction_count = interaction_count + 1",
@@ -97,6 +98,14 @@ class EmotionalStateRepository:
                 value = max(0.0, min(1.0, float(value)))
             set_clauses.append(f"{key} = ?")
             params.append(value)
+
+        # Handle trigger_calibration_json separately (not clamped)
+        if "trigger_calibration_json" in changes:
+            cal_json = changes["trigger_calibration_json"]
+            if isinstance(cal_json, dict):
+                cal_json = json.dumps(cal_json)
+            set_clauses.append("trigger_calibration_json = ?")
+            params.append(cal_json)
 
         if mood_weights is not None:
             set_clauses.append("mood_weights_json = ?")
@@ -231,6 +240,75 @@ class EmotionalStateRepository:
                 events.append(event)
             
             return events
+
+    # ========== V2: Calibration & Event Logging ==========
+
+    @staticmethod
+    def get_calibration_json(user_id: str, agent_id: str) -> dict:
+        """Load trigger calibration JSON for a user-agent pair."""
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT trigger_calibration_json FROM emotional_state WHERE user_id = ? AND agent_id = ?",
+                (user_id, agent_id)
+            ).fetchone()
+        if row and row.get("trigger_calibration_json"):
+            return json.loads(row["trigger_calibration_json"])
+        return {}
+
+    @staticmethod
+    def update_calibration_json(user_id: str, agent_id: str, calibration: dict) -> None:
+        """Save trigger calibration JSON for a user-agent pair."""
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE emotional_state SET trigger_calibration_json = ? WHERE user_id = ? AND agent_id = ?",
+                (json.dumps(calibration), user_id, agent_id)
+            )
+
+    @staticmethod
+    def log_event_v2(
+        user_id: str,
+        agent_id: str,
+        session_id: str | None,
+        message_snippet: str | None,
+        triggers: list[tuple[str, float]],
+        state_before: dict,
+        state_after: dict,
+        agent_behavior: dict,
+        outcome: str,
+        calibration_updates: dict | None = None,
+    ) -> str:
+        """Log a complete emotional event for debugging and analysis."""
+        event_id = str(uuid.uuid4())
+        now = time.time()
+
+        dominant_before = max(state_before.get("mood_weights", {}).items(), key=lambda x: x[1], default=("neutral", 0))[0] if state_before.get("mood_weights") else "neutral"
+        dominant_after = max(state_after.get("mood_weights", {}).items(), key=lambda x: x[1], default=("neutral", 0))[0] if state_after.get("mood_weights") else "neutral"
+
+        with get_db() as conn:
+            conn.execute("""
+                INSERT INTO emotional_events_v2 (
+                    id, user_id, agent_id, session_id, timestamp,
+                    message_snippet, triggers_json,
+                    valence_before, valence_after,
+                    arousal_before, arousal_after,
+                    dominant_mood_before, dominant_mood_after,
+                    agent_mood_tag, agent_intent_tag, inferred_outcome,
+                    trust_delta, intimacy_delta, calibration_updates_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                event_id, user_id, agent_id, session_id, now,
+                message_snippet[:100] if message_snippet else None,
+                json.dumps(triggers),
+                state_before.get("valence", 0), state_after.get("valence", 0),
+                state_before.get("arousal", 0), state_after.get("arousal", 0),
+                dominant_before, dominant_after,
+                agent_behavior.get("mood"), agent_behavior.get("intent"), outcome,
+                state_after.get("trust", 0.5) - state_before.get("trust", 0.5),
+                state_after.get("intimacy", 0.2) - state_before.get("intimacy", 0.2),
+                json.dumps(calibration_updates) if calibration_updates else None,
+            ))
+
+        return event_id
 
     # ========== Async Trigger Batching ==========
 

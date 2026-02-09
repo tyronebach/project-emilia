@@ -14,7 +14,11 @@ from config import settings
 from core.exceptions import TTSError
 from parse_chat import parse_chat_completion, extract_avatar_commands
 from db.repositories import UserRepository, AgentRepository, SessionRepository, MessageRepository, EmotionalStateRepository
-from services.emotion_engine import EmotionEngine, EmotionalState, AgentProfile
+from services.emotion_engine import (
+    EmotionEngine, EmotionalState, AgentProfile,
+    normalize_trigger, ContextualTriggerCalibration,
+    infer_outcome_multisignal, CalibrationRecovery, CONFIDENCE_THRESHOLD,
+)
 from services.config_loader import get_trigger_mood_map
 
 logger = logging.getLogger(__name__)
@@ -41,7 +45,9 @@ async def _run_llm_trigger_batch(
         logger.exception("[EmotionBatch] Background trigger detection failed")
 
 
-async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: str, session_id: str | None = None) -> str | None:
+async def _process_emotion_pre_llm(
+    user_id: str, agent_id: str, user_message: str, session_id: str | None = None
+) -> tuple[str | None, list[tuple[str, float]]]:
     """
     Process emotional state BEFORE LLM call.
 
@@ -51,7 +57,7 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
     4. Apply trigger deltas
     5. Return emotional context block for prompt injection
 
-    Returns context block string or None if emotion engine disabled/error.
+    Returns (context_block, detected_triggers).
     """
     try:
         # Load state and profile
@@ -61,7 +67,7 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
         # Get agent baseline from DB
         agent = AgentRepository.get_by_id(agent_id)
         if not agent:
-            return None
+            return None, []
 
         # Build profile from DB (emotional_profile column has all settings)
         profile = AgentProfile.from_db(agent, profile_data)
@@ -80,6 +86,19 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
             mood_weights = {mood: profile.mood_baseline.get(mood, 0) for mood in get_mood_list()}
             logger.info("[Emotion] Initialized mood_weights from mood_baseline for %s/%s", user_id, agent_id)
 
+        # Load V2 trigger calibration
+        cal_json = {}
+        raw_cal = state_row.get('trigger_calibration_json')
+        if raw_cal:
+            try:
+                cal_json = json.loads(raw_cal) if isinstance(raw_cal, str) else raw_cal
+            except (json.JSONDecodeError, TypeError):
+                cal_json = {}
+        calibrations: dict[str, ContextualTriggerCalibration] = {}
+        for k, v in cal_json.items():
+            if isinstance(v, dict):
+                calibrations[k] = ContextualTriggerCalibration.from_dict(v)
+
         state = EmotionalState(
             valence=state_row['valence'] or 0.0,
             arousal=state_row['arousal'] or 0.0,
@@ -88,6 +107,10 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
             attachment=state_row['attachment'] or 0.3,
             familiarity=state_row['familiarity'] or 0.0,
             mood_weights=mood_weights,
+            intimacy=state_row.get('intimacy') or 0.2,
+            playfulness_safety=state_row.get('playfulness_safety') or 0.5,
+            conflict_tolerance=state_row.get('conflict_tolerance') or 0.7,
+            trigger_calibration=calibrations,
         )
 
         # Apply decay since last interaction
@@ -126,8 +149,14 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
                 ))
                 EmotionalStateRepository.clear_buffer(user_id, agent_id)
 
+        # Snapshot state before triggers for V2 event logging
+        state_before_dict = state.to_dict()
+
         for trigger, intensity in triggers:
-            deltas = engine.apply_trigger(state, trigger, intensity)
+            # V2: Use calibrated trigger application
+            canonical = normalize_trigger(trigger)
+            cal = state.trigger_calibration.get(canonical) if canonical else None
+            deltas = engine.apply_trigger_calibrated(state, trigger, intensity, cal)
 
             # Log event
             if deltas:
@@ -154,7 +183,7 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
                 engine.apply_mood_deltas(state, mood_deltas)
                 logger.debug("[Emotion] Mood deltas applied: %s", {k: v for k, v in mood_deltas.items() if v != 0})
 
-        # Save updated state (including mood_weights)
+        # Save updated state (including mood_weights + V2 dimensions)
         # FIX: Don't use `or None` - empty dict {} is falsy but valid (Bug #2)
         EmotionalStateRepository.update(
             user_id, agent_id,
@@ -165,33 +194,81 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
             trust=state.trust,
             attachment=state.attachment,
             familiarity=state.familiarity,
+            intimacy=state.intimacy,
+            playfulness_safety=state.playfulness_safety,
+            conflict_tolerance=state.conflict_tolerance,
         )
         
         # Generate context block for prompt
         context = engine.generate_context_block(state)
         logger.info("[Emotion] Pre-LLM context for %s/%s:\n%s", user_id, agent_id, context)
-        return context
-        
+        return context, triggers
+
     except Exception:
         logger.exception("Emotion engine error (pre-LLM), continuing without emotional context")
-        return None
+        return None, []
 
 
-def _process_emotion_post_llm(user_id: str, agent_id: str, behavior: dict, session_id: str | None = None) -> None:
+def _process_emotion_post_llm(
+    user_id: str,
+    agent_id: str,
+    behavior: dict,
+    session_id: str | None = None,
+    pre_llm_triggers: list[tuple[str, float]] | None = None,
+    user_message: str | None = None,
+) -> None:
     """
     Process emotional state AFTER LLM response.
-    
-    Apply any mood shifts from the agent's own behavior tags.
+
+    1. Apply mood shifts from agent's behavior tags.
+    2. V2: Infer outcome from multiple signals.
+    3. V2: Learn from outcome (update trigger calibrations).
+    4. V2: Update relationship dimensions.
     """
     try:
         if not behavior:
             return
-        
-        mood = behavior.get('mood')
-        if not mood:
+
+        state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
+        profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
+        agent = AgentRepository.get_by_id(agent_id)
+
+        if not agent:
             return
-        
-        # Map LLM mood to emotional trigger (agent self-reported state)
+
+        profile = AgentProfile.from_db(agent, profile_data)
+        engine = EmotionEngine(profile)
+
+        # Load state with V2 fields
+        cal_json = {}
+        raw_cal = state_row.get('trigger_calibration_json')
+        if raw_cal:
+            try:
+                cal_json = json.loads(raw_cal) if isinstance(raw_cal, str) else raw_cal
+            except (json.JSONDecodeError, TypeError):
+                cal_json = {}
+        calibrations: dict[str, ContextualTriggerCalibration] = {}
+        for k, v in cal_json.items():
+            if isinstance(v, dict):
+                calibrations[k] = ContextualTriggerCalibration.from_dict(v)
+
+        state = EmotionalState(
+            valence=state_row['valence'] or 0.0,
+            arousal=state_row['arousal'] or 0.0,
+            dominance=state_row.get('dominance') or 0.0,
+            trust=state_row['trust'] or 0.5,
+            attachment=state_row.get('attachment') or 0.3,
+            familiarity=state_row.get('familiarity') or 0.0,
+            intimacy=state_row.get('intimacy') or 0.2,
+            playfulness_safety=state_row.get('playfulness_safety') or 0.5,
+            conflict_tolerance=state_row.get('conflict_tolerance') or 0.7,
+            trigger_calibration=calibrations,
+        )
+
+        state_before_dict = state.to_dict()
+
+        # 1. Apply mood self-report trigger (existing behavior)
+        mood = behavior.get('mood')
         mood_to_trigger = {
             'happy': ('shared_joy', 0.3),
             'sad': ('empathy_needed', 0.3),
@@ -199,47 +276,79 @@ def _process_emotion_post_llm(user_id: str, agent_id: str, behavior: dict, sessi
             'embarrassed': ('vulnerability', 0.2),
             'excited': ('shared_joy', 0.4),
         }
-        
-        if mood in mood_to_trigger:
+
+        if mood and mood in mood_to_trigger:
             trigger, intensity = mood_to_trigger[mood]
             intensity *= behavior.get('mood_intensity', 1.0)
-            
-            state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
-            profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
-            agent = AgentRepository.get_by_id(agent_id)
-            
-            if agent:
-                profile = AgentProfile(
-                    baseline_valence=agent.get('baseline_valence') or 0.2,
-                    emotional_volatility=agent.get('emotional_volatility') or 0.5,
-                    trigger_multipliers=profile_data.get('trigger_multipliers', {}),
+            deltas = engine.apply_trigger(state, trigger, intensity)
+
+            if deltas:
+                EmotionalStateRepository.log_event(
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    trigger_type='self_mood',
+                    trigger_value=mood,
+                    session_id=session_id,
+                    delta_valence=deltas.get('valence'),
+                    delta_arousal=deltas.get('arousal'),
+                    state_after=state.to_dict(),
                 )
-                engine = EmotionEngine(profile)
-                
-                state = EmotionalState(
-                    valence=state_row['valence'] or 0.0,
-                    arousal=state_row['arousal'] or 0.0,
-                    trust=state_row['trust'] or 0.5,
-                )
-                
-                deltas = engine.apply_trigger(state, trigger, intensity)
-                
-                if deltas:
-                    EmotionalStateRepository.update(
-                        user_id, agent_id,
-                        valence=state.valence,
-                        arousal=state.arousal,
-                    )
-                    EmotionalStateRepository.log_event(
-                        user_id=user_id,
-                        agent_id=agent_id,
-                        trigger_type='self_mood',
-                        trigger_value=mood,
-                        session_id=session_id,
-                        delta_valence=deltas.get('valence'),
-                        delta_arousal=deltas.get('arousal'),
-                        state_after=state.to_dict(),
-                    )
+
+        # 2. V2: Infer outcome from multiple signals
+        outcome, confidence = infer_outcome_multisignal(
+            next_user_message=user_message,
+            agent_behavior=behavior,
+        )
+
+        # 3. V2: Learn from outcome (update trigger calibrations)
+        calibration_updates: dict[str, dict] = {}
+        if pre_llm_triggers and outcome != "neutral":
+            updated = engine.learn_from_outcome(state, pre_llm_triggers, outcome, confidence)
+            calibration_updates = {k: v.to_dict() for k, v in updated.items()}
+
+            if calibration_updates:
+                # Persist calibrations
+                all_cals = {
+                    k: (v.to_dict() if hasattr(v, 'to_dict') else v)
+                    for k, v in state.trigger_calibration.items()
+                }
+                EmotionalStateRepository.update_calibration_json(user_id, agent_id, all_cals)
+                logger.info("[Emotion] Learned from %s outcome (conf=%.2f): %s",
+                            outcome, confidence, list(calibration_updates.keys()))
+
+        # 4. V2: Update relationship dimensions
+        dimension_deltas: dict[str, float] = {}
+        if pre_llm_triggers:
+            dimension_deltas = engine.update_relationship_dimensions(state, pre_llm_triggers, outcome)
+            if dimension_deltas:
+                logger.info("[Emotion] Dimension updates: %s", dimension_deltas)
+
+        # Save all updated state
+        EmotionalStateRepository.update(
+            user_id, agent_id,
+            valence=state.valence,
+            arousal=state.arousal,
+            intimacy=state.intimacy,
+            playfulness_safety=state.playfulness_safety,
+            conflict_tolerance=state.conflict_tolerance,
+            trust=state.trust,
+        )
+
+        # 5. V2: Log event
+        if pre_llm_triggers:
+            EmotionalStateRepository.log_event_v2(
+                user_id=user_id,
+                agent_id=agent_id,
+                session_id=session_id,
+                message_snippet=user_message,
+                triggers=pre_llm_triggers,
+                state_before=state_before_dict,
+                state_after=state.to_dict(),
+                agent_behavior=behavior,
+                outcome=outcome,
+                calibration_updates=calibration_updates or None,
+            )
+
     except Exception:
         logger.exception("Emotion engine error (post-LLM), ignoring")
 
@@ -431,8 +540,8 @@ async def chat(
     # Non-streaming
     try:
         # Process emotional state before LLM (detect triggers, apply decay)
-        emotional_context = await _process_emotion_pre_llm(user_id, agent_id, request.message, sid)
-        
+        emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(user_id, agent_id, request.message, sid)
+
         # Build messages array: raw history + current message with contexts
         messages = _build_llm_messages(sid, request.message, request.game_context, emotional_context)
 
@@ -481,8 +590,12 @@ async def chat(
         SessionRepository.update_last_used(sid)
         SessionRepository.increment_message_count(sid)
 
-        # Process emotional state after LLM (apply self-reported mood shifts)
-        _process_emotion_post_llm(user_id, agent_id, behavior, sid)
+        # Process emotional state after LLM (V2: learning + relationship dimensions)
+        _process_emotion_post_llm(
+            user_id, agent_id, behavior, sid,
+            pre_llm_triggers=pre_llm_triggers,
+            user_message=request.message,
+        )
 
         # Fire-and-forget: compact in background so response returns immediately
         _spawn_background(_maybe_compact_session(sid))
@@ -513,8 +626,8 @@ async def _stream_chat_sse(
     """SSE streaming chat"""
     try:
         # Process emotional state before LLM (detect triggers, apply decay)
-        emotional_context = await _process_emotion_pre_llm(user_id, agent_id, request.message, session_id)
-        
+        emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(user_id, agent_id, request.message, session_id)
+
         # Build messages array: raw history + current message with contexts
         messages = _build_llm_messages(session_id, request.message, request.game_context, emotional_context)
 
@@ -612,8 +725,12 @@ async def _stream_chat_sse(
                 SessionRepository.update_last_used(session_id)
                 SessionRepository.increment_message_count(session_id)
 
-                # Process emotional state after LLM (apply self-reported mood shifts)
-                _process_emotion_post_llm(user_id, agent_id, behavior, session_id)
+                # Process emotional state after LLM (V2: learning + relationship dimensions)
+                _process_emotion_post_llm(
+                    user_id, agent_id, behavior, session_id,
+                    pre_llm_triggers=pre_llm_triggers,
+                    user_message=request.message,
+                )
 
                 # Send done event FIRST so UI unblocks immediately
                 logger.info("[SSE] Yielding done event at %dms", processing_ms)
