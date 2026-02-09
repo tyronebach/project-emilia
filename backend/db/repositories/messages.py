@@ -74,6 +74,13 @@ class MessageRepository:
                 "timestamp": now,
             }
 
+    @staticmethod
+    def delete_by_id(msg_id: str) -> bool:
+        """Delete a single message by ID. Returns True if deleted."""
+        with get_db() as conn:
+            result = conn.execute("DELETE FROM messages WHERE id = ?", (msg_id,))
+            return result.rowcount > 0
+
     # --- Session compaction (Phase 3.1) ---
 
     @staticmethod

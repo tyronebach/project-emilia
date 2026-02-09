@@ -10,6 +10,75 @@ import { animationLibrary, type AnimationClipData } from './AnimationLibrary';
 import { animationStateMachine } from './AnimationStateMachine';
 import type { AnimationGraph } from './AnimationGraph';
 
+// Static bone mapping (Mixamo/BVH -> VRM humanoid bone names)
+const BONE_MAP: Record<string, string> = {
+  'mixamorig:Hips': 'hips',
+  'mixamorig:Spine': 'spine',
+  'mixamorig:Spine1': 'chest',
+  'mixamorig:Spine2': 'upperChest',
+  'mixamorig:Neck': 'neck',
+  'mixamorig:Head': 'head',
+  'mixamorig:LeftShoulder': 'leftShoulder',
+  'mixamorig:LeftArm': 'leftUpperArm',
+  'mixamorig:LeftForeArm': 'leftLowerArm',
+  'mixamorig:LeftHand': 'leftHand',
+  'mixamorig:RightShoulder': 'rightShoulder',
+  'mixamorig:RightArm': 'rightUpperArm',
+  'mixamorig:RightForeArm': 'rightLowerArm',
+  'mixamorig:RightHand': 'rightHand',
+  'mixamorig:LeftUpLeg': 'leftUpperLeg',
+  'mixamorig:LeftLeg': 'leftLowerLeg',
+  'mixamorig:LeftFoot': 'leftFoot',
+  'mixamorig:LeftToeBase': 'leftToes',
+  'mixamorig:RightUpLeg': 'rightUpperLeg',
+  'mixamorig:RightLeg': 'rightLowerLeg',
+  'mixamorig:RightFoot': 'rightFoot',
+  'mixamorig:RightToeBase': 'rightToes',
+  'mixamorigHips': 'hips',
+  'mixamorigSpine': 'spine',
+  'mixamorigSpine1': 'chest',
+  'mixamorigSpine2': 'upperChest',
+  'mixamorigNeck': 'neck',
+  'mixamorigHead': 'head',
+  'mixamorigLeftShoulder': 'leftShoulder',
+  'mixamorigLeftArm': 'leftUpperArm',
+  'mixamorigLeftForeArm': 'leftLowerArm',
+  'mixamorigLeftHand': 'leftHand',
+  'mixamorigRightShoulder': 'rightShoulder',
+  'mixamorigRightArm': 'rightUpperArm',
+  'mixamorigRightForeArm': 'rightLowerArm',
+  'mixamorigRightHand': 'rightHand',
+  'mixamorigLeftUpLeg': 'leftUpperLeg',
+  'mixamorigLeftLeg': 'leftLowerLeg',
+  'mixamorigLeftFoot': 'leftFoot',
+  'mixamorigRightUpLeg': 'rightUpperLeg',
+  'mixamorigRightLeg': 'rightLowerLeg',
+  'mixamorigRightFoot': 'rightFoot',
+  'Hips': 'hips',
+  'Spine': 'spine',
+  'Chest': 'chest',
+  'Neck': 'neck',
+  'Head': 'head',
+  'Shoulder_L': 'leftShoulder',
+  'UpperArm_L': 'leftUpperArm',
+  'LowerArm_L': 'leftLowerArm',
+  'Hand_L': 'leftHand',
+  'Shoulder_R': 'rightShoulder',
+  'UpperArm_R': 'rightUpperArm',
+  'LowerArm_R': 'rightLowerArm',
+  'Hand_R': 'rightHand',
+  'UpperLeg_L': 'leftUpperLeg',
+  'LowerLeg_L': 'leftLowerLeg',
+  'Foot_L': 'leftFoot',
+  'Toes_L': 'leftToes',
+  'UpperLeg_R': 'rightUpperLeg',
+  'LowerLeg_R': 'rightLowerLeg',
+  'Foot_R': 'rightFoot',
+  'Toes_R': 'rightToes',
+};
+
+const SKIP_BONES = new Set(['joint_Root', 'Armature', 'Root']);
+
 export interface PlayOptions {
   loop?: boolean;
   fadeIn?: number;   // Fade in duration (seconds)
@@ -225,74 +294,6 @@ export class AnimationPlayer {
    * Retarget animation clip to VRM bone names
    */
   private retargetToVRM(clip: THREE.AnimationClip): THREE.AnimationClip {
-    const boneMap: Record<string, string> = {
-      'mixamorig:Hips': 'hips',
-      'mixamorig:Spine': 'spine',
-      'mixamorig:Spine1': 'chest',
-      'mixamorig:Spine2': 'upperChest',
-      'mixamorig:Neck': 'neck',
-      'mixamorig:Head': 'head',
-      'mixamorig:LeftShoulder': 'leftShoulder',
-      'mixamorig:LeftArm': 'leftUpperArm',
-      'mixamorig:LeftForeArm': 'leftLowerArm',
-      'mixamorig:LeftHand': 'leftHand',
-      'mixamorig:RightShoulder': 'rightShoulder',
-      'mixamorig:RightArm': 'rightUpperArm',
-      'mixamorig:RightForeArm': 'rightLowerArm',
-      'mixamorig:RightHand': 'rightHand',
-      'mixamorig:LeftUpLeg': 'leftUpperLeg',
-      'mixamorig:LeftLeg': 'leftLowerLeg',
-      'mixamorig:LeftFoot': 'leftFoot',
-      'mixamorig:LeftToeBase': 'leftToes',
-      'mixamorig:RightUpLeg': 'rightUpperLeg',
-      'mixamorig:RightLeg': 'rightLowerLeg',
-      'mixamorig:RightFoot': 'rightFoot',
-      'mixamorig:RightToeBase': 'rightToes',
-      'mixamorigHips': 'hips',
-      'mixamorigSpine': 'spine',
-      'mixamorigSpine1': 'chest',
-      'mixamorigSpine2': 'upperChest',
-      'mixamorigNeck': 'neck',
-      'mixamorigHead': 'head',
-      'mixamorigLeftShoulder': 'leftShoulder',
-      'mixamorigLeftArm': 'leftUpperArm',
-      'mixamorigLeftForeArm': 'leftLowerArm',
-      'mixamorigLeftHand': 'leftHand',
-      'mixamorigRightShoulder': 'rightShoulder',
-      'mixamorigRightArm': 'rightUpperArm',
-      'mixamorigRightForeArm': 'rightLowerArm',
-      'mixamorigRightHand': 'rightHand',
-      'mixamorigLeftUpLeg': 'leftUpperLeg',
-      'mixamorigLeftLeg': 'leftLowerLeg',
-      'mixamorigLeftFoot': 'leftFoot',
-      'mixamorigRightUpLeg': 'rightUpperLeg',
-      'mixamorigRightLeg': 'rightLowerLeg',
-      'mixamorigRightFoot': 'rightFoot',
-      'Hips': 'hips',
-      'Spine': 'spine',
-      'Chest': 'chest',
-      'Neck': 'neck',
-      'Head': 'head',
-      'Shoulder_L': 'leftShoulder',
-      'UpperArm_L': 'leftUpperArm',
-      'LowerArm_L': 'leftLowerArm',
-      'Hand_L': 'leftHand',
-      'Shoulder_R': 'rightShoulder',
-      'UpperArm_R': 'rightUpperArm',
-      'LowerArm_R': 'rightLowerArm',
-      'Hand_R': 'rightHand',
-      'UpperLeg_L': 'leftUpperLeg',
-      'LowerLeg_L': 'leftLowerLeg',
-      'Foot_L': 'leftFoot',
-      'Toes_L': 'leftToes',
-      'UpperLeg_R': 'rightUpperLeg',
-      'LowerLeg_R': 'rightLowerLeg',
-      'Foot_R': 'rightFoot',
-      'Toes_R': 'rightToes',
-    };
-
-    const skipBones = new Set(['joint_Root', 'Armature', 'Root']);
-
     const bvhOnlyBones = new Set([
       'Spine', 'Chest', 'Neck', 'Head',
       'Shoulder_L', 'UpperArm_L', 'LowerArm_L', 'Hand_L',
@@ -305,7 +306,7 @@ export class AnimationPlayer {
 
     const vrmBoneNodes: Record<string, THREE.Object3D> = {};
     if (this.vrm.humanoid) {
-      for (const [srcName, vrmName] of Object.entries(boneMap)) {
+      for (const [srcName, vrmName] of Object.entries(BONE_MAP)) {
         const node = this.vrm.humanoid.getNormalizedBoneNode(vrmName as any);
         if (node) {
           vrmBoneNodes[srcName] = node;
@@ -322,7 +323,7 @@ export class AnimationPlayer {
       const boneName = track.name.substring(0, dotIndex);
       const property = track.name.substring(dotIndex + 1);
 
-      if (skipBones.has(boneName)) continue;
+      if (SKIP_BONES.has(boneName)) continue;
 
       if (!isMixamo && bvhOnlyBones.has(boneName)) {
         const upperBodyBvh = ['Spine', 'Chest', 'Neck', 'Head',

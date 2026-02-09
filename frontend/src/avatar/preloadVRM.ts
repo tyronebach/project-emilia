@@ -35,8 +35,10 @@ export async function preloadVRM(url: string): Promise<void> {
         resolve();
       },
       (progress) => {
-        const percent = (progress.loaded / progress.total) * 100;
-        console.log(`[Preload] Progress: ${percent.toFixed(0)}%`);
+        if (progress.total > 0) {
+          const percent = (progress.loaded / progress.total) * 100;
+          console.log(`[Preload] Progress: ${percent.toFixed(0)}%`);
+        }
       },
       (error) => {
         console.error(`[Preload] Failed to preload VRM: ${url}`, error);

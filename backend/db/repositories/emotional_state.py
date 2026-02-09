@@ -38,6 +38,15 @@ class EmotionalStateRepository:
         return profile
 
     @staticmethod
+    def get(user_id: str, agent_id: str) -> dict | None:
+        """Get emotional state for a user-agent pair, or None if it doesn't exist."""
+        with get_db() as conn:
+            return conn.execute(
+                "SELECT * FROM emotional_state WHERE user_id = ? AND agent_id = ?",
+                (user_id, agent_id)
+            ).fetchone()
+
+    @staticmethod
     def get_or_create(user_id: str, agent_id: str) -> dict:
         """Get emotional state for a user-agent pair, creating default if needed."""
         with get_db() as conn:
@@ -76,7 +85,8 @@ class EmotionalStateRepository:
             ).fetchone()
 
     @staticmethod
-    def update(user_id: str, agent_id: str, mood_weights: dict | None = None, **changes) -> dict:
+    def update(user_id: str, agent_id: str, mood_weights: dict | None = None,
+               increment_interaction: bool = True, **changes) -> dict:
         """Update emotional state axes. Clamps values to valid ranges."""
         allowed = {
             "valence", "arousal", "dominance",
@@ -84,10 +94,14 @@ class EmotionalStateRepository:
             "intimacy", "playfulness_safety", "conflict_tolerance",
         }
 
-        set_clauses = ["last_updated = ?", "interaction_count = interaction_count + 1",
-                       "last_interaction = ?"]
+        set_clauses = ["last_updated = ?"]
         now = time.time()
-        params: list = [now, now]
+        params: list = [now]
+
+        if increment_interaction:
+            set_clauses.append("interaction_count = interaction_count + 1")
+            set_clauses.append("last_interaction = ?")
+            params.append(now)
 
         for key, value in changes.items():
             if key not in allowed:

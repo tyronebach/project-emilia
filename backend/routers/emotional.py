@@ -123,6 +123,7 @@ async def reset_emotional_state(
     
     EmotionalStateRepository.update(
         user_id, agent_id,
+        increment_interaction=False,
         valence=baseline_valence,
         arousal=baseline_arousal,
         dominance=baseline_dominance,
@@ -197,6 +198,7 @@ async def apply_decay(
 
     EmotionalStateRepository.update(
         user_id, agent_id,
+        increment_interaction=False,
         valence=state.valence,
         arousal=state.arousal,
         dominance=state.dominance,

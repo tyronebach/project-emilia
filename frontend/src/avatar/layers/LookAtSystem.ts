@@ -130,8 +130,13 @@ export class LookAtSystem {
   }
 
   setCamera(camera: THREE.Camera): void {
+    // Remove target from old camera if switching
+    if (this.camera && this.camera !== camera) {
+      this.camera.remove(this.lookAtTarget);
+    }
+
     this.camera = camera;
-    
+
     // Add lookAtTarget as child of camera (for eye tracking)
     camera.add(this.lookAtTarget);
     

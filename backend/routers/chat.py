@@ -5,6 +5,7 @@ import asyncio
 import time
 import json
 import logging
+import threading
 import httpx
 from fastapi import APIRouter, File, UploadFile, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -21,6 +22,20 @@ from services.emotion_engine import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Per-user-agent lock to serialize emotional state read-modify-write (C3 fix)
+_emotion_locks: dict[tuple[str, str], threading.Lock] = {}
+_emotion_locks_guard = threading.Lock()
+
+
+def _get_emotion_lock(user_id: str, agent_id: str) -> threading.Lock:
+    """Get or create a per-user-agent lock for emotional state serialization."""
+    key = (user_id, agent_id)
+    if key not in _emotion_locks:
+        with _emotion_locks_guard:
+            if key not in _emotion_locks:
+                _emotion_locks[key] = threading.Lock()
+    return _emotion_locks[key]
 
 
 async def _run_llm_trigger_batch(
@@ -59,121 +74,116 @@ async def _process_emotion_pre_llm(
     Returns (context_block, detected_triggers).
     """
     try:
-        # Load state and profile
-        state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
-        profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
+        lock = _get_emotion_lock(user_id, agent_id)
+        with lock:
+            # Load state and profile
+            state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
+            profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
 
-        # Get agent baseline from DB
-        agent = AgentRepository.get_by_id(agent_id)
-        if not agent:
-            return None, []
+            # Get agent baseline from DB
+            agent = AgentRepository.get_by_id(agent_id)
+            if not agent:
+                return None, []
 
-        # Build profile from DB (emotional_profile column has all settings)
-        profile = AgentProfile.from_db(agent, profile_data)
+            # Build profile from DB (emotional_profile column has all settings)
+            profile = AgentProfile.from_db(agent, profile_data)
 
-        engine = EmotionEngine(profile)
+            engine = EmotionEngine(profile)
 
-        # Convert DB row to EmotionalState
-        # Load persisted mood_weights from DB, or initialize from agent's mood_baseline
-        mood_weights = {}
-        if state_row.get('mood_weights_json'):
-            mood_weights = json.loads(state_row['mood_weights_json'])
-        
-        # FIX: Initialize mood_weights from mood_baseline if empty (Bug #1)
-        if not mood_weights:
-            from services.emotion_engine import get_mood_list
-            mood_weights = {mood: profile.mood_baseline.get(mood, 0) for mood in get_mood_list()}
-            logger.info("[Emotion] Initialized mood_weights from mood_baseline for %s/%s", user_id, agent_id)
+            # Convert DB row to EmotionalState
+            # Load persisted mood_weights from DB, or initialize from agent's mood_baseline
+            mood_weights = {}
+            if state_row.get('mood_weights_json'):
+                mood_weights = json.loads(state_row['mood_weights_json'])
 
-        # Load V2 trigger calibration
-        cal_json = {}
-        raw_cal = state_row.get('trigger_calibration_json')
-        if raw_cal:
-            try:
-                cal_json = json.loads(raw_cal) if isinstance(raw_cal, str) else raw_cal
-            except (json.JSONDecodeError, TypeError):
-                cal_json = {}
-        calibrations: dict[str, ContextualTriggerCalibration] = {}
-        for k, v in cal_json.items():
-            if isinstance(v, dict):
-                calibrations[k] = ContextualTriggerCalibration.from_dict(v)
+            # FIX: Initialize mood_weights from mood_baseline if empty (Bug #1)
+            if not mood_weights:
+                from services.emotion_engine import get_mood_list
+                mood_weights = {mood: profile.mood_baseline.get(mood, 0) for mood in get_mood_list()}
+                logger.info("[Emotion] Initialized mood_weights from mood_baseline for %s/%s", user_id, agent_id)
 
-        state = EmotionalState.from_db_row(state_row, calibrations=calibrations, mood_weights=mood_weights)
+            # Load V2 trigger calibration
+            cal_json = {}
+            raw_cal = state_row.get('trigger_calibration_json')
+            if raw_cal:
+                try:
+                    cal_json = json.loads(raw_cal) if isinstance(raw_cal, str) else raw_cal
+                except (json.JSONDecodeError, TypeError):
+                    cal_json = {}
+            calibrations: dict[str, ContextualTriggerCalibration] = {}
+            for k, v in cal_json.items():
+                if isinstance(v, dict):
+                    calibrations[k] = ContextualTriggerCalibration.from_dict(v)
 
-        # Apply decay since last interaction
-        last_updated = state_row.get('last_updated') or 0
-        if last_updated:
-            import time as time_module
-            elapsed = time_module.time() - last_updated
-            state = engine.apply_decay(state, elapsed)
-            engine.apply_mood_decay(state, elapsed)
+            state = EmotionalState.from_db_row(state_row, calibrations=calibrations, mood_weights=mood_weights)
 
-        # Async trigger detection with batching (no blocking on LLM)
-        # 1. Pop pending LLM triggers from previous batch
-        # 2. Run instant regex detection on current message
-        # 3. Combine and apply
-        # 4. Buffer message for next LLM batch (every 4 messages)
-        
-        pending_triggers = EmotionalStateRepository.pop_pending_triggers(user_id, agent_id)
-        regex_triggers = engine.detect_triggers(user_message)
-        
-        # Combine pending (from LLM batch) + regex (instant)
-        # Deduplicate by trigger name, taking max intensity
-        trigger_map = {}
-        for trigger, intensity in pending_triggers + regex_triggers:
-            if trigger not in trigger_map or intensity > trigger_map[trigger]:
-                trigger_map[trigger] = intensity
-        triggers = list(trigger_map.items())
-        
-        # Buffer message for async LLM batch classification
-        if settings.llm_trigger_detection:
-            buffer = EmotionalStateRepository.append_to_buffer(user_id, agent_id, user_message, max_size=4)
-            
-            # Fire background LLM batch when buffer is full
-            if len(buffer) >= 4:
-                _spawn_background(_run_llm_trigger_batch(
-                    user_id, agent_id, buffer.copy(), engine
-                ))
-                EmotionalStateRepository.clear_buffer(user_id, agent_id)
+            # Apply decay since last interaction
+            last_updated = state_row.get('last_updated') or 0
+            if last_updated:
+                import time as time_module
+                elapsed = time_module.time() - last_updated
+                state = engine.apply_decay(state, elapsed)
+                engine.apply_mood_decay(state, elapsed)
 
-        # Snapshot state before triggers for V2 event logging
-        state_before_dict = state.to_dict()
+            # Async trigger detection with batching (no blocking on LLM)
+            pending_triggers = EmotionalStateRepository.pop_pending_triggers(user_id, agent_id)
+            regex_triggers = engine.detect_triggers(user_message)
 
-        # Accumulate V/A deltas during trigger loop, then project onto moods
-        total_va_delta = {'valence': 0.0, 'arousal': 0.0}
-        for trigger, intensity in triggers:
-            canonical = normalize_trigger(trigger)
-            cal = state.trigger_calibration.get(canonical) if canonical else None
-            deltas = engine.apply_trigger_calibrated(state, trigger, intensity, cal)
-            for axis in ('valence', 'arousal'):
-                total_va_delta[axis] += deltas.get(axis, 0.0)
+            # Combine pending (from LLM batch) + regex (instant)
+            trigger_map = {}
+            for trigger, intensity in pending_triggers + regex_triggers:
+                if trigger not in trigger_map or intensity > trigger_map[trigger]:
+                    trigger_map[trigger] = intensity
+            triggers = list(trigger_map.items())
 
-        if triggers:
-            mood_deltas = engine.calculate_mood_deltas_from_va(total_va_delta)
-            if mood_deltas:
-                engine.apply_mood_deltas(state, mood_deltas)
-                logger.debug("[Emotion] Mood deltas (V/A projected): %s", {k: round(v, 3) for k, v in mood_deltas.items() if abs(v) > 0.001})
+            # Buffer message for async LLM batch classification
+            if settings.llm_trigger_detection:
+                buffer = EmotionalStateRepository.append_to_buffer(user_id, agent_id, user_message, max_size=4)
 
-        # Save updated state (including mood_weights + V2 dimensions)
-        # FIX: Don't use `or None` - empty dict {} is falsy but valid (Bug #2)
-        EmotionalStateRepository.update(
-            user_id, agent_id,
-            mood_weights=state.mood_weights,
-            valence=state.valence,
-            arousal=state.arousal,
-            dominance=state.dominance,
-            trust=state.trust,
-            attachment=state.attachment,
-            familiarity=state.familiarity,
-            intimacy=state.intimacy,
-            playfulness_safety=state.playfulness_safety,
-            conflict_tolerance=state.conflict_tolerance,
-        )
-        
-        # Generate context block for prompt
-        context = engine.generate_context_block(state)
-        logger.info("[Emotion] Pre-LLM context for %s/%s:\n%s", user_id, agent_id, context)
-        return context, triggers
+                # Fire background LLM batch when buffer is full
+                if len(buffer) >= 4:
+                    _spawn_background(_run_llm_trigger_batch(
+                        user_id, agent_id, buffer.copy(), engine
+                    ))
+                    EmotionalStateRepository.clear_buffer(user_id, agent_id)
+
+            # Snapshot state before triggers for V2 event logging
+            state_before_dict = state.to_dict()
+
+            # Accumulate V/A deltas during trigger loop, then project onto moods
+            total_va_delta = {'valence': 0.0, 'arousal': 0.0}
+            for trigger, intensity in triggers:
+                canonical = normalize_trigger(trigger)
+                cal = state.trigger_calibration.get(canonical) if canonical else None
+                deltas = engine.apply_trigger_calibrated(state, trigger, intensity, cal)
+                for axis in ('valence', 'arousal'):
+                    total_va_delta[axis] += deltas.get(axis, 0.0)
+
+            if triggers:
+                mood_deltas = engine.calculate_mood_deltas_from_va(total_va_delta)
+                if mood_deltas:
+                    engine.apply_mood_deltas(state, mood_deltas)
+                    logger.debug("[Emotion] Mood deltas (V/A projected): %s", {k: round(v, 3) for k, v in mood_deltas.items() if abs(v) > 0.001})
+
+            # Save updated state (including mood_weights + V2 dimensions)
+            EmotionalStateRepository.update(
+                user_id, agent_id,
+                mood_weights=state.mood_weights,
+                valence=state.valence,
+                arousal=state.arousal,
+                dominance=state.dominance,
+                trust=state.trust,
+                attachment=state.attachment,
+                familiarity=state.familiarity,
+                intimacy=state.intimacy,
+                playfulness_safety=state.playfulness_safety,
+                conflict_tolerance=state.conflict_tolerance,
+            )
+
+            # Generate context block for prompt
+            context = engine.generate_context_block(state)
+            logger.info("[Emotion] Pre-LLM context for %s/%s:\n%s", user_id, agent_id, context)
+            return context, triggers
 
     except Exception:
         logger.exception("Emotion engine error (pre-LLM), continuing without emotional context")
@@ -200,101 +210,103 @@ def _process_emotion_post_llm(
         if not behavior:
             return
 
-        state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
-        profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
-        agent = AgentRepository.get_by_id(agent_id)
+        lock = _get_emotion_lock(user_id, agent_id)
+        with lock:
+            state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
+            profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
+            agent = AgentRepository.get_by_id(agent_id)
 
-        if not agent:
-            return
+            if not agent:
+                return
 
-        profile = AgentProfile.from_db(agent, profile_data)
-        engine = EmotionEngine(profile)
+            profile = AgentProfile.from_db(agent, profile_data)
+            engine = EmotionEngine(profile)
 
-        # Load state with V2 fields
-        cal_json = {}
-        raw_cal = state_row.get('trigger_calibration_json')
-        if raw_cal:
-            try:
-                cal_json = json.loads(raw_cal) if isinstance(raw_cal, str) else raw_cal
-            except (json.JSONDecodeError, TypeError):
-                cal_json = {}
-        calibrations: dict[str, ContextualTriggerCalibration] = {}
-        for k, v in cal_json.items():
-            if isinstance(v, dict):
-                calibrations[k] = ContextualTriggerCalibration.from_dict(v)
+            # Load state with V2 fields
+            cal_json = {}
+            raw_cal = state_row.get('trigger_calibration_json')
+            if raw_cal:
+                try:
+                    cal_json = json.loads(raw_cal) if isinstance(raw_cal, str) else raw_cal
+                except (json.JSONDecodeError, TypeError):
+                    cal_json = {}
+            calibrations: dict[str, ContextualTriggerCalibration] = {}
+            for k, v in cal_json.items():
+                if isinstance(v, dict):
+                    calibrations[k] = ContextualTriggerCalibration.from_dict(v)
 
-        state = EmotionalState.from_db_row(state_row, calibrations=calibrations)
+            state = EmotionalState.from_db_row(state_row, calibrations=calibrations)
 
-        state_before_dict = state.to_dict()
+            state_before_dict = state.to_dict()
 
-        # 1. Apply mood self-report trigger (existing behavior)
-        mood = behavior.get('mood')
-        mood_to_trigger = {
-            'happy': ('shared_joy', 0.3),
-            'sad': ('empathy_needed', 0.3),
-            'angry': ('conflict', 0.2),
-            'embarrassed': ('vulnerability', 0.2),
-            'excited': ('shared_joy', 0.4),
-        }
+            # 1. Apply mood self-report trigger (existing behavior)
+            mood = behavior.get('mood')
+            mood_to_trigger = {
+                'happy': ('shared_joy', 0.3),
+                'sad': ('empathy_needed', 0.3),
+                'angry': ('conflict', 0.2),
+                'embarrassed': ('vulnerability', 0.2),
+                'excited': ('shared_joy', 0.4),
+            }
 
-        if mood and mood in mood_to_trigger:
-            trigger, intensity = mood_to_trigger[mood]
-            intensity *= behavior.get('mood_intensity', 1.0)
-            engine.apply_trigger(state, trigger, intensity)
+            if mood and mood in mood_to_trigger:
+                trigger, intensity = mood_to_trigger[mood]
+                intensity *= behavior.get('mood_intensity', 1.0)
+                engine.apply_trigger(state, trigger, intensity)
 
-        # 2. V2: Infer outcome from multiple signals
-        outcome, confidence = infer_outcome_multisignal(
-            next_user_message=user_message,
-            agent_behavior=behavior,
-        )
+            # 2. V2: Infer outcome from multiple signals
+            outcome, confidence = infer_outcome_multisignal(
+                next_user_message=user_message,
+                agent_behavior=behavior,
+            )
 
-        # 3. V2: Learn from outcome (update trigger calibrations)
-        calibration_updates: dict[str, dict] = {}
-        if pre_llm_triggers and outcome != "neutral":
-            updated = engine.learn_from_outcome(state, pre_llm_triggers, outcome, confidence)
-            calibration_updates = {k: v.to_dict() for k, v in updated.items()}
+            # 3. V2: Learn from outcome (update trigger calibrations)
+            calibration_updates: dict[str, dict] = {}
+            if pre_llm_triggers and outcome != "neutral":
+                updated = engine.learn_from_outcome(state, pre_llm_triggers, outcome, confidence)
+                calibration_updates = {k: v.to_dict() for k, v in updated.items()}
 
-            if calibration_updates:
-                # Persist calibrations
-                all_cals = {
-                    k: (v.to_dict() if hasattr(v, 'to_dict') else v)
-                    for k, v in state.trigger_calibration.items()
-                }
-                EmotionalStateRepository.update_calibration_json(user_id, agent_id, all_cals)
-                logger.info("[Emotion] Learned from %s outcome (conf=%.2f): %s",
-                            outcome, confidence, list(calibration_updates.keys()))
+                if calibration_updates:
+                    all_cals = {
+                        k: (v.to_dict() if hasattr(v, 'to_dict') else v)
+                        for k, v in state.trigger_calibration.items()
+                    }
+                    EmotionalStateRepository.update_calibration_json(user_id, agent_id, all_cals)
+                    logger.info("[Emotion] Learned from %s outcome (conf=%.2f): %s",
+                                outcome, confidence, list(calibration_updates.keys()))
 
-        # 4. V2: Update relationship dimensions
-        dimension_deltas: dict[str, float] = {}
-        if pre_llm_triggers:
-            dimension_deltas = engine.update_relationship_dimensions(state, pre_llm_triggers, outcome)
-            if dimension_deltas:
-                logger.info("[Emotion] Dimension updates: %s", dimension_deltas)
+            # 4. V2: Update relationship dimensions
+            dimension_deltas: dict[str, float] = {}
+            if pre_llm_triggers:
+                dimension_deltas = engine.update_relationship_dimensions(state, pre_llm_triggers, outcome)
+                if dimension_deltas:
+                    logger.info("[Emotion] Dimension updates: %s", dimension_deltas)
 
-        # Save all updated state
-        EmotionalStateRepository.update(
-            user_id, agent_id,
-            valence=state.valence,
-            arousal=state.arousal,
-            intimacy=state.intimacy,
-            playfulness_safety=state.playfulness_safety,
-            conflict_tolerance=state.conflict_tolerance,
-            trust=state.trust,
-        )
+            # Save all updated state (no interaction increment — pre_llm already counted it)
+            EmotionalStateRepository.update(
+                user_id, agent_id,
+                increment_interaction=False,
+                valence=state.valence,
+                arousal=state.arousal,
+                intimacy=state.intimacy,
+                playfulness_safety=state.playfulness_safety,
+                conflict_tolerance=state.conflict_tolerance,
+                trust=state.trust,
+            )
 
-        # 5. V2: Log event (always, even without triggers)
-        EmotionalStateRepository.log_event_v2(
-            user_id=user_id,
-            agent_id=agent_id,
-            session_id=session_id,
-            message_snippet=user_message,
-            triggers=pre_llm_triggers or [],
-            state_before=state_before_dict,
-            state_after=state.to_dict(),
-            agent_behavior=behavior,
-            outcome=outcome,
-            calibration_updates=calibration_updates or None,
-        )
+            # 5. V2: Log event (always, even without triggers)
+            EmotionalStateRepository.log_event_v2(
+                user_id=user_id,
+                agent_id=agent_id,
+                session_id=session_id,
+                message_snippet=user_message,
+                triggers=pre_llm_triggers or [],
+                state_before=state_before_dict,
+                state_after=state.to_dict(),
+                agent_behavior=behavior,
+                outcome=outcome,
+                calibration_updates=calibration_updates or None,
+            )
 
     except Exception:
         logger.exception("Emotion engine error (post-LLM), ignoring")
@@ -492,25 +504,31 @@ async def chat(
         # Build messages array: raw history + current message with contexts
         messages = _build_llm_messages(sid, request.message, request.game_context, emotional_context)
 
-        # Store raw user message BEFORE calling LLM
-        MessageRepository.add(sid, "user", request.message)
+        # Store raw user message BEFORE calling LLM (cleaned up on failure)
+        user_msg = MessageRepository.add(sid, "user", request.message)
+        user_msg_id = user_msg["id"]
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{settings.clawdbot_url}/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.clawdbot_token}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": f"agent:{clawdbot_agent_id}",
-                    "messages": messages,
-                    "stream": False,
-                }
-            )
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    f"{settings.clawdbot_url}/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.clawdbot_token}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": f"agent:{clawdbot_agent_id}",
+                        "messages": messages,
+                        "stream": False,
+                    }
+                )
 
-            if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Chat service error")
+                if response.status_code != 200:
+                    raise HTTPException(status_code=response.status_code, detail="Chat service error")
+        except Exception:
+            # LLM failed — remove orphaned user message
+            MessageRepository.delete_by_id(user_msg_id)
+            raise
 
             result = response.json()
 
@@ -537,12 +555,12 @@ async def chat(
         SessionRepository.update_last_used(sid)
         SessionRepository.increment_message_count(sid)
 
-        # Process emotional state after LLM (V2: learning + relationship dimensions)
-        _process_emotion_post_llm(
+        # Process emotional state after LLM in background thread (M1 fix: avoid blocking event loop)
+        _spawn_background(asyncio.to_thread(
+            _process_emotion_post_llm,
             user_id, agent_id, behavior, sid,
-            pre_llm_triggers=pre_llm_triggers,
-            user_message=request.message,
-        )
+            pre_llm_triggers, request.message,
+        ))
 
         # Fire-and-forget: compact in background so response returns immediately
         _spawn_background(_maybe_compact_session(sid))
@@ -586,132 +604,147 @@ async def _stream_chat_sse(
         # Build messages array: raw history + current message with contexts
         messages = _build_llm_messages(session_id, request.message, request.game_context, emotional_context)
 
-        # Store raw user message BEFORE calling LLM
-        MessageRepository.add(session_id, "user", request.message)
+        # Store raw user message BEFORE calling LLM (cleaned up on failure)
+        user_msg = MessageRepository.add(session_id, "user", request.message)
+        user_msg_id = user_msg["id"]
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream(
-                "POST",
-                f"{settings.clawdbot_url}/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.clawdbot_token}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": f"agent:{clawdbot_agent_id}",
-                    "messages": messages,
-                    "stream": True,
-                    "stream_options": {"include_usage": True},
-                }
-            ) as response:
-                if response.status_code != 200:
-                    yield f"data: {json.dumps({'error': 'API error'})}\n\n"
-                    return
+        try:
+            _llm_success = False
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"{settings.clawdbot_url}/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.clawdbot_token}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": f"agent:{clawdbot_agent_id}",
+                        "messages": messages,
+                        "stream": True,
+                        "stream_options": {"include_usage": True},
+                    }
+                ) as response:
+                    if response.status_code != 200:
+                        yield f"data: {json.dumps({'error': 'API error'})}\n\n"
+                        return
 
-                full_content = ""
-                usage = None
+                    full_content = ""
+                    usage = None
+                    MAX_RESPONSE_CHARS = 50_000  # Guard against runaway LLM output
 
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-
-                    data_str = line[6:].strip()
-                    if data_str == "[DONE]":
-                        continue
-
-                    try:
-                        data = json.loads(data_str)
-
-                        if "usage" in data:
-                            usage = data["usage"]
-
-                        choices = data.get("choices", [])
-                        if not choices:
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data: "):
                             continue
 
-                        delta = choices[0].get("delta", {})
-                        chunk = delta.get("content", "")
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            continue
 
-                        if chunk:
-                            full_content += chunk
-                            yield f"data: {json.dumps({'content': chunk})}\n\n"
+                        try:
+                            data = json.loads(data_str)
 
-                        if choices[0].get("finish_reason"):
-                            break
+                            if "usage" in data:
+                                usage = data["usage"]
 
-                    except json.JSONDecodeError:
-                        continue
+                            choices = data.get("choices", [])
+                            if not choices:
+                                continue
 
-                # Final response - extract behavior tags from full content
-                clean_full, behavior = extract_avatar_commands(full_content)
-                processing_ms = int((time.time() - start_time) * 1000)
+                            delta = choices[0].get("delta", {})
+                            chunk = delta.get("content", "")
 
-                # Store assistant response with metadata
-                usage_data = usage or {}
-                MessageRepository.add(
-                    session_id, "assistant", clean_full,
-                    model=None,
-                    processing_ms=processing_ms,
-                    usage_prompt_tokens=usage_data.get("prompt_tokens"),
-                    usage_completion_tokens=usage_data.get("completion_tokens"),
-                    behavior_intent=behavior.get("intent"),
-                    behavior_mood=behavior.get("mood"),
-                    behavior_mood_intensity=behavior.get("mood_intensity"),
-                    behavior_energy=behavior.get("energy"),
-                    behavior_move=behavior.get("move"),
-                    behavior_game_action=behavior.get("game_action"),
-                )
+                            if chunk:
+                                full_content += chunk
+                                if len(full_content) > MAX_RESPONSE_CHARS:
+                                    logger.warning("[SSE] Response exceeded %d chars, truncating", MAX_RESPONSE_CHARS)
+                                    break
+                                yield f"data: {json.dumps({'content': chunk})}\n\n"
 
-                avatar_data = {}
-                if behavior.get("intent"):
-                    avatar_data["intent"] = behavior["intent"]
-                if behavior.get("mood"):
-                    avatar_data["mood"] = behavior["mood"]
-                    avatar_data["intensity"] = behavior["mood_intensity"]
-                if behavior.get("energy"):
-                    avatar_data["energy"] = behavior["energy"]
-                if behavior.get("move"):
-                    avatar_data["move"] = behavior["move"]
-                if behavior.get("game_action"):
-                    avatar_data["game_action"] = behavior["game_action"]
-                if avatar_data:
-                    yield f"event: avatar\ndata: {json.dumps(avatar_data)}\n\n"
+                            if choices[0].get("finish_reason"):
+                                break
 
-                # Emit emotion debug info (triggers + context block)
-                if emotional_context or pre_llm_triggers:
-                    emotion_debug = {
-                        "triggers": [[t, round(i, 3)] for t, i in pre_llm_triggers],
-                        "context_block": emotional_context,
+                        except json.JSONDecodeError:
+                            continue
+
+                    # Final response - extract behavior tags from full content
+                    clean_full, behavior = extract_avatar_commands(full_content)
+                    processing_ms = int((time.time() - start_time) * 1000)
+
+                    # Store assistant response with metadata
+                    usage_data = usage or {}
+                    MessageRepository.add(
+                        session_id, "assistant", clean_full,
+                        model=None,
+                        processing_ms=processing_ms,
+                        usage_prompt_tokens=usage_data.get("prompt_tokens"),
+                        usage_completion_tokens=usage_data.get("completion_tokens"),
+                        behavior_intent=behavior.get("intent"),
+                        behavior_mood=behavior.get("mood"),
+                        behavior_mood_intensity=behavior.get("mood_intensity"),
+                        behavior_energy=behavior.get("energy"),
+                        behavior_move=behavior.get("move"),
+                        behavior_game_action=behavior.get("game_action"),
+                    )
+
+                    avatar_data = {}
+                    if behavior.get("intent"):
+                        avatar_data["intent"] = behavior["intent"]
+                    if behavior.get("mood"):
+                        avatar_data["mood"] = behavior["mood"]
+                        avatar_data["intensity"] = behavior["mood_intensity"]
+                    if behavior.get("energy"):
+                        avatar_data["energy"] = behavior["energy"]
+                    if behavior.get("move"):
+                        avatar_data["move"] = behavior["move"]
+                    if behavior.get("game_action"):
+                        avatar_data["game_action"] = behavior["game_action"]
+                    if avatar_data:
+                        yield f"event: avatar\ndata: {json.dumps(avatar_data)}\n\n"
+
+                    # Emit emotion debug info (triggers + context block)
+                    if emotional_context or pre_llm_triggers:
+                        emotion_debug = {
+                            "triggers": [[t, round(i, 3)] for t, i in pre_llm_triggers],
+                            "context_block": emotional_context,
+                        }
+                        yield f"event: emotion\ndata: {json.dumps(emotion_debug)}\n\n"
+
+                    SessionRepository.update_last_used(session_id)
+                    SessionRepository.increment_message_count(session_id)
+
+                    # Process emotional state after LLM in background thread (M1 fix)
+                    _spawn_background(asyncio.to_thread(
+                        _process_emotion_post_llm,
+                        user_id, agent_id, behavior, session_id,
+                        pre_llm_triggers, request.message,
+                    ))
+
+                    # Send done event FIRST so UI unblocks immediately
+                    logger.info("[SSE] Yielding done event at %dms", processing_ms)
+                    final = {
+                        "done": True,
+                        "response": clean_full,
+                        "session_id": session_id,
+                        "processing_ms": processing_ms,
+                        "behavior": behavior
                     }
-                    yield f"event: emotion\ndata: {json.dumps(emotion_debug)}\n\n"
+                    if usage:
+                        final["usage"] = usage
 
-                SessionRepository.update_last_used(session_id)
-                SessionRepository.increment_message_count(session_id)
+                    yield f"data: {json.dumps(final)}\n\n"
+                    logger.info("[SSE] Done event yielded, spawning background compaction")
 
-                # Process emotional state after LLM (V2: learning + relationship dimensions)
-                _process_emotion_post_llm(
-                    user_id, agent_id, behavior, session_id,
-                    pre_llm_triggers=pre_llm_triggers,
-                    user_message=request.message,
-                )
+                    _llm_success = True
 
-                # Send done event FIRST so UI unblocks immediately
-                logger.info("[SSE] Yielding done event at %dms", processing_ms)
-                final = {
-                    "done": True,
-                    "response": clean_full,
-                    "session_id": session_id,
-                    "processing_ms": processing_ms,
-                    "behavior": behavior
-                }
-                if usage:
-                    final["usage"] = usage
+                    # Fire-and-forget: compact in background so stream closes immediately
+                    _spawn_background(_maybe_compact_session(session_id))
 
-                yield f"data: {json.dumps(final)}\n\n"
-                logger.info("[SSE] Done event yielded, spawning background compaction")
-
-                # Fire-and-forget: compact in background so stream closes immediately
-                _spawn_background(_maybe_compact_session(session_id))
+        except Exception:
+            # LLM failed — remove orphaned user message
+            if not _llm_success:
+                MessageRepository.delete_by_id(user_msg_id)
+            raise
 
     except Exception:
         logger.exception("Streaming error")

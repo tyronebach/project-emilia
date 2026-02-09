@@ -130,13 +130,21 @@ class SessionRepository:
     @staticmethod
     def get_all() -> list[dict]:
         with get_db() as conn:
-            return conn.execute("""
+            rows = conn.execute("""
                 SELECT s.*, GROUP_CONCAT(sp.user_id) as participants
                 FROM sessions s
                 LEFT JOIN session_participants sp ON s.id = sp.session_id
                 GROUP BY s.id
                 ORDER BY s.last_used DESC
             """).fetchall()
+            # GROUP_CONCAT returns comma-separated string; convert to list
+            result = []
+            for row in rows:
+                d = dict(row)
+                p = d.get("participants")
+                d["participants"] = p.split(",") if p else []
+                result.append(d)
+            return result
 
     @staticmethod
     def delete_by_agent(agent_id: str) -> int:

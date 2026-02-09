@@ -46,8 +46,8 @@ export class BlinkController {
   private intervalMin: number = DEFAULT_INTERVAL_MIN;
   private intervalMax: number = DEFAULT_INTERVAL_MAX;
   private blinkDuration: number = DEFAULT_BLINK_DURATION;
-  private closeSpeed: number = 0.15;  // How fast blink progresses (per frame blend)
-  private openSpeed: number = 0.12;   // How fast blink retracts
+  private closeSpeed: number = 12;  // How fast blink progresses (per second)
+  private openSpeed: number = 10;   // How fast blink retracts (per second)
 
   // For pause/resume with promise
   private pauseResolve: (() => void) | null = null;
@@ -177,13 +177,13 @@ export class BlinkController {
         }
         // Ensure blink progress is at 0 (base state)
         if (this.blinkProgress > 0) {
-          this.blinkProgress = Math.max(0, this.blinkProgress - this.openSpeed);
+          this.blinkProgress = Math.max(0, this.blinkProgress - this.openSpeed * deltaTime);
         }
         break;
 
       case 'closing':
         // Eyes closing toward fully shut
-        this.blinkProgress = Math.min(1, this.blinkProgress + this.closeSpeed);
+        this.blinkProgress = Math.min(1, this.blinkProgress + this.closeSpeed * deltaTime);
         if (this.blinkProgress >= 0.95) {
           this.blinkProgress = 1;
           this.phase = 'closed';
@@ -201,7 +201,7 @@ export class BlinkController {
 
       case 'opening':
         // Eyes opening back to base state
-        this.blinkProgress = Math.max(0, this.blinkProgress - this.openSpeed);
+        this.blinkProgress = Math.max(0, this.blinkProgress - this.openSpeed * deltaTime);
         if (this.blinkProgress <= 0.05) {
           this.blinkProgress = 0;
           this.phase = 'open';
