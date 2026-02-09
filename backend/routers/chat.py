@@ -624,7 +624,7 @@ async def _stream_chat_sse(
                         "messages": messages,
                         "stream": True,
                         "stream_options": {"include_usage": True},
-                        "user": f"emilia:{sid}",
+                        "user": f"emilia:{session_id}",
                     }
                 ) as response:
                     if response.status_code != 200:

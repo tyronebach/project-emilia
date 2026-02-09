@@ -1,247 +1,446 @@
 # Animation System Architecture
 
-This document describes how Kokoro handles VRM avatar animations, including idle movement, blinking, lip sync, and emotional expressions.
+Comprehensive documentation of the Emilia avatar animation system.
 
 ## Overview
 
-Kokoro uses a **layered animation system** that separates bone-based animations (VRMA) from procedural expression control. This is the standard approach used by VTuber applications like ChatVRM, SillyTavern VRM, and Animaze.
+The animation system is a multi-layered architecture that coordinates:
+- Body animations (idle, gestures)
+- Facial expressions (emotions, lip sync, blinks)
+- Procedural head/eye movement (LookAt, micro-behaviors)
+- State-driven behavior profiles
 
 ```
-┌─────────────────────────────────────────┐
-│           Animation Controller          │
-├─────────────────────────────────────────┤
-│  VRMA Layer (bones)                     │
-│  └─ idle.vrma (breathing, subtle sway)  │
-│  └─ talking.vrma (gestures)             │
-│  └─ emote_*.vrma (reactions)            │
-├─────────────────────────────────────────┤
-│  Procedural Layer (expressions)         │
-│  └─ AutoBlink (random intervals)        │
-│  └─ LipSync (driven by TTS/visemes)     │
-│  └─ Emotion blend (joy/sad/anger/etc)   │
-└─────────────────────────────────────────┘
-```
-
-## Why This Split?
-
-| Concern | VRMA (Bones) | Procedural (Expressions) |
-|---------|--------------|--------------------------|
-| Breathing/sway | ✅ | ❌ |
-| Hand gestures | ✅ | ❌ |
-| Blinking | ❌ | ✅ |
-| Lip sync | ❌ | ✅ |
-| Emotions | Either | Either |
-
-**Blinking must be procedural** because:
-- Random timing feels more natural than looped animation
-- Needs to pause gracefully during expression changes (don't blink mid-surprise)
-- Can be disabled contextually (e.g., during intense stare)
-
-**Idle body movement should be VRMA** because:
-- Bone animations are complex to generate procedurally
-- VRMA files are portable across any VRM model
-- Can have multiple variants for natural variation
-
----
-
-## VRMA Layer
-
-### Supported Animation States
-
-| State | File Pattern | Description |
-|-------|--------------|-------------|
-| Idle | `idle.vrma` or `idle1.vrma`, `idle2.vrma`... | Subtle breathing, weight shifts |
-| Talking | `talking.vrma` | Light gestures while speaking |
-| Emotes | `emote_wave.vrma`, `emote_nod.vrma`... | Triggered reactions |
-
-### Idle Variants
-
-For natural variation, support multiple idle animations:
-- `idle1.vrma` — default breathing
-- `idle2.vrma` — slight head tilt variant
-- `idle3.vrma` — weight shift variant
-
-When looping, randomly select the next variant (or use weighted selection based on mood).
-
-### Loading VRMA
-
-Use `@pixiv/three-vrm` and `@pixiv/three-vrm-animation`:
-
-```typescript
-import { VRMAnimationLoaderPlugin } from '@pixiv/three-vrm-animation';
-
-// Add plugin to GLTFLoader
-loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
-
-// Load and apply
-const vrmaGltf = await loader.loadAsync('idle.vrma');
-const clip = createVRMAnimationClip(vrmaGltf.userData.vrmAnimations[0], vrm);
-mixer.clipAction(clip).play();
+┌─────────────────────────────────────────────────────────────────┐
+│                    AnimationController                          │
+│                  (Central Orchestrator)                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
+│  │ Expression  │  │  Animation  │  │    Procedural Systems   │ │
+│  │   Mixer     │  │    Graph    │  │                         │ │
+│  │             │  │             │  │  • LookAtSystem         │ │
+│  │  Channels:  │  │  • Idle     │  │  • IdleMicroBehaviors   │ │
+│  │  • lipsync  │  │  • Gesture  │  │  • BlinkController      │ │
+│  │  • emotion  │  │  • Blend    │  │                         │ │
+│  │  • blink    │  │             │  │                         │ │
+│  │  • twitch   │  │             │  │                         │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────────┘ │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Procedural Layer
+## Layer Hierarchy
 
-### AutoBlink
+### Update Order (per frame)
 
-Controls the `blink` expression with randomized timing.
-
-**Constants:**
-```typescript
-const BLINK_INTERVAL_MIN = 2.0;   // minimum seconds between blinks
-const BLINK_INTERVAL_MAX = 6.0;   // maximum seconds between blinks
-const BLINK_CLOSE_DURATION = 0.12; // how long eyes stay closed
+```
+1. AnimationGraph.update()      → body animation playback
+2. LookAtSystem.update()        → head/eyes toward camera
+3. IdleMicroBehaviors.update()  → additive head variety
+4. BlinkController.update()     → procedural blinks
+5. LipSyncEngine.update()       → mouth shapes
+6. ExpressionMixer.apply()      → blend all expressions to VRM
 ```
 
-**Logic:**
-1. Eyes open, start random countdown (2-6 seconds)
-2. Countdown reaches 0 → close eyes (`blink = 1`)
-3. Wait 0.12 seconds → open eyes (`blink = 0`)
-4. Repeat
+### Priority System (ExpressionMixer)
 
-**Implementation reference** (from Pixiv ChatVRM):
-```typescript
-class AutoBlink {
-  private expressionManager: VRMExpressionManager;
-  private remainingTime: number = 0;
-  private isOpen: boolean = true;
-  private enabled: boolean = true;
+Higher priority channels override lower for the same expression:
 
-  constructor(expressionManager: VRMExpressionManager) {
-    this.expressionManager = expressionManager;
-    this.scheduleNextBlink();
-  }
+| Channel  | Priority | Purpose |
+|----------|----------|---------|
+| lipsync  | 100      | Mouth shapes during TTS |
+| emotion  | 80       | happy, sad, angry, etc. |
+| blink    | 60       | Procedural eye blinks |
+| twitch   | 50       | Micro-behavior eye twitches |
+| gesture  | 40       | Expression from animation clips |
+| clip     | 20       | Lowest priority |
 
-  setEnabled(enabled: boolean): number {
-    this.enabled = enabled;
-    // Return time until eyes open (for expression sync)
-    return this.isOpen ? 0 : this.remainingTime;
-  }
+---
 
-  update(delta: number) {
-    if (this.remainingTime > 0) {
-      this.remainingTime -= delta;
-      return;
-    }
+## Body Animation
 
-    if (this.isOpen && this.enabled) {
-      this.close();
-    } else {
-      this.open();
-    }
-  }
+### AnimationGraph
 
-  private close() {
-    this.isOpen = false;
-    this.remainingTime = BLINK_CLOSE_DURATION;
-    this.expressionManager.setValue('blink', 1);
-  }
+Central animation playback system using Three.js AnimationMixer.
 
-  private open() {
-    this.isOpen = true;
-    this.scheduleNextBlink();
-    this.expressionManager.setValue('blink', 0);
-  }
+**Layers:**
+- **Base layer**: Idle animation (always playing, loops)
+- **Gesture layer**: One-shot animations (wave, bow, dance)
 
-  private scheduleNextBlink() {
-    this.remainingTime = BLINK_INTERVAL_MIN + 
-      Math.random() * (BLINK_INTERVAL_MAX - BLINK_INTERVAL_MIN);
+**Key Methods:**
+```ts
+animationGraph.playBase(clip, crossfade)   // Switch idle animation
+animationGraph.playGesture(clip, options)  // Play one-shot gesture
+animationGraph.isGesturePlaying()          // Check if gesture active
+```
+
+### IdleAnimations + IdleRotator
+
+Rotates through a pool of idle animations for variety.
+
+**Configuration** (`state-machine.json`):
+```json
+{
+  "idle": {
+    "file": "mixamo_fbx/idles/idle_breathing.fbx",
+    "fadeIn": 0.3,
+    "fadeOut": 0.3
+  },
+  "idles": [
+    { "file": "mixamo_fbx/idles/idle_breathing.fbx", "weight": 2 },
+    { "file": "mixamo_fbx/idles/idle_subtle.fbx", "weight": 2 },
+    { "file": "mixamo_fbx/idles/neutral_idle.fbx", "weight": 1 }
+  ]
+}
+```
+
+**Behavior:**
+- Preloaded at startup (no stutter)
+- Random weighted selection every 8-16 seconds
+- 0.4s crossfade between idles
+- Avoids consecutive repeats
+
+### Gesture Animations
+
+One-shot animations triggered by LLM or user.
+
+**Loading:** Lazy-loaded on first use (small delay acceptable)
+
+**Configuration** (`state-machine.json`):
+```json
+{
+  "actions": {
+    "wave": { "file": "mixamo_fbx/Waving.fbx", "fadeIn": 0.25 },
+    "bow": { "file": "mixamo_fbx/Quick_Informal_Bow.fbx" },
+    "dance": { "file": "mixamo_fbx/Snake_Hip_Hop_Dance.fbx", "loop": true }
   }
 }
 ```
 
-**Expression sync:** When changing emotions, call `setEnabled(false)` to pause blinking, wait for eyes to open (use returned time), apply expression, then re-enable.
-
-### LipSync
-
-Controls mouth visemes based on TTS audio or text timing.
-
-**VRM preset expressions for mouth:**
-- `aa` — open mouth (あ)
-- `ih` — slightly open (い)
-- `ou` — rounded (う)
-- `ee` — wide (え)
-- `oh` — open rounded (お)
-
-**Options:**
-1. **Audio-driven** — Analyze TTS audio for phonemes, map to visemes
-2. **Text-driven** — Estimate timing from text length, animate mouth open/close
-3. **Simple** — Just animate `aa` expression based on speaking state
-
-For MVP, text-driven or simple approach is sufficient.
-
-### Emotion Expressions
-
-VRM preset emotions:
-- `happy` / `joy`
-- `angry`
-- `sad`
-- `surprised`
-- `relaxed` / `neutral`
-
 **Triggering:**
-- Agent emits emotion tags in response
-- Controller blends to target emotion over ~0.3s
-- Auto-decay back to neutral after timeout (or on next message)
-
-**Conflict with VRMA:** If VRMA files include expression tracks, don't also run procedural emotion control for those same expressions. Pick one source of truth per expression.
-
----
-
-## Conflict Prevention
-
-### Blink + Emotions
-When transitioning emotions:
-1. Pause AutoBlink
-2. Wait for eyes to open (if currently blinking)
-3. Blend to new emotion
-4. Resume AutoBlink
-
-### VRMA + Procedural Expressions
-- VRMA can include expression animations (e.g., a wave animation that also smiles)
-- If VRMA controls an expression, procedural layer should not override it
-- Solution: Track which expressions VRMA is animating, skip those in procedural update
-
-### Multiple VRMA Clips
-- Use `AnimationMixer` with proper blending
-- Idle should loop, emotes should play once then return to idle
-- Crossfade duration: ~0.3s for smooth transitions
-
----
-
-## File Organization
-
-```
-assets/
-├── animations/
-│   ├── idle1.vrma
-│   ├── idle2.vrma
-│   ├── idle3.vrma
-│   ├── talking.vrma
-│   └── emotes/
-│       ├── wave.vrma
-│       ├── nod.vrma
-│       └── shrug.vrma
+```ts
+animationController.triggerGesture('wave', { fadeIn: 0.25 });
 ```
 
 ---
 
-## Integration Checklist
+## Facial Expressions
 
-- [ ] Load VRMA files via `@pixiv/three-vrm-animation`
-- [ ] Implement `AutoBlink` class with random intervals
-- [ ] Implement basic lip sync (text-driven for MVP)
-- [ ] Implement emotion expression controller
-- [ ] Add expression sync (pause blink during emotion change)
-- [ ] Support multiple idle variants with random selection
-- [ ] Handle VRMA → idle transitions with crossfade
+### ExpressionMixer
+
+Priority-based blending of facial blend shapes.
+
+**How it works:**
+1. Multiple sources set expressions on their channel
+2. Each frame, higher priority wins for same expression
+3. Final values applied to VRM expression manager
+
+```ts
+// Emotion sets happy
+expressionMixer.setExpression('emotion', 'happy', 0.8);
+
+// Lip sync sets mouth shape
+expressionMixer.setExpression('lipsync', 'aa', 0.5);
+
+// Blink sets eye closure
+expressionMixer.setExpression('blink', 'blink', 1.0);
+
+// Apply to VRM
+expressionMixer.apply();
+```
+
+### BlinkController
+
+Procedural blinking with additive eye state.
+
+**Features:**
+- Random intervals (2-6 seconds)
+- Respects current eye state from emotions
+- If emotion has eyes 50% closed, blink goes 50%→100%
+- Pause/resume for gesture coordination
+
+**Emotion eye closure mapping:**
+```ts
+EMOTION_EYE_CLOSURE = {
+  angry: 0.3,
+  happy: 0.15,
+  relaxed: 0.2,
+  sleepy: 0.4,
+}
+```
+
+### LipSyncEngine
+
+Mouth shape animation synchronized to TTS audio.
+
+**Flow:**
+1. Backend returns phoneme alignment data
+2. Frontend plays audio + alignment
+3. LipSyncEngine maps phonemes to VRM visemes
+4. Applies via lipsync channel (highest priority for mouth)
 
 ---
 
-## References
+## Procedural Head/Eye Movement
 
-- [Pixiv ChatVRM](https://github.com/pixiv/ChatVRM) — Reference implementation
-- [SillyTavern VRM Extension](https://github.com/SillyTavern/Extension-VRM) — Animation grouping pattern
-- [VRM Animation Spec](https://vrm.dev/en/vrma/) — Official VRMA documentation
-- [@pixiv/three-vrm](https://github.com/pixiv/three-vrm) — Three.js VRM library
+### LookAtSystem
+
+Eyes and head track toward camera.
+
+**Components:**
+- **Eye tracking**: VRM's built-in `vrm.lookAt` (bone or expression type)
+- **Head tracking**: Manual bone rotation toward camera
+
+**Configuration:**
+```ts
+{
+  enabled: true,
+  headTrackingEnabled: true,
+  maxYaw: 30,           // degrees left/right
+  maxPitchUp: 25,
+  maxPitchDown: 15,
+  headWeight: 0.4,      // head follows 40%, eyes do rest
+  smoothSpeed: 6,
+}
+```
+
+**User toggle:** Settings → "Eye & head follow" (per-user localStorage)
+
+### IdleMicroBehaviors
+
+State-driven procedural micro-movements during idle.
+
+**Behaviors:**
+
+| Type | Description |
+|------|-------------|
+| Head glances | Random look away, hold, return |
+| Head tilts | Subtle roll side-to-side |
+| Eye twitches | Quick partial blinks |
+
+**Profiles (auto-switch with emotion):**
+
+| State | Glance Interval | Range | Twitches |
+|-------|-----------------|-------|----------|
+| neutral | 4-10s | 20° | occasional |
+| relaxed | 8-16s | 12° | none |
+| anxious | 1.5-4s | 35° | frequent |
+| excited | 2-5s | 28° | moderate |
+| sad | 6-12s | 15° | none |
+| thinking | 3-7s | 25° | none |
+
+**Order of operations:**
+1. LookAt sets head toward camera
+2. IdleMicroBehaviors adds rotation ON TOP (additive)
+
+**Pause behavior:**
+- Automatically pauses during gesture animations
+- Resumes when returning to idle
+
+---
+
+## Behavior System
+
+### BehaviorPlanner
+
+Interprets LLM output tags into animation commands.
+
+**Tag parsing:**
+```
+[INTENT:greeting] [MOOD:happy] [ENERGY:high]
+```
+
+**Maps to:**
+- Gesture selection (wave for greeting)
+- Emotion setting (happy expression)
+- Micro-behavior profile (excited for high energy)
+
+### AmbientBehavior
+
+Produces natural ambient micro-behaviors.
+
+**Triggers:**
+- Listening nods (when user is speaking)
+- Glances (scheduled randomly) — now handled by IdleMicroBehaviors
+
+### MicroBehaviorController
+
+Schedules and executes micro-behaviors with delays.
+
+---
+
+## Configuration Files
+
+### animation-manifest.json
+
+Registry of all available animations.
+
+```json
+[
+  { "id": "mixamo_fbx/Waving.fbx", "name": "Wave", "type": "fbx" },
+  { "id": "mixamo_fbx/idles/idle_breathing.fbx", "name": "Idle Breathing", "type": "fbx" }
+]
+```
+
+### state-machine.json
+
+Animation state configuration.
+
+```json
+{
+  "idle": { "file": "...", "fadeIn": 0.3 },
+  "idles": [ { "file": "...", "weight": 2 } ],
+  "actions": {
+    "wave": { "file": "...", "fadeIn": 0.25 }
+  },
+  "defaults": {
+    "fadeIn": 0.25,
+    "fadeOut": 0.25,
+    "returnToIdle": true
+  }
+}
+```
+
+---
+
+## User Settings
+
+Stored per-user in localStorage (`emilia-render-settings-v2`).
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| lookAtEnabled | true | Eye & head follow camera |
+| cameraDriftEnabled | true | Camera auto-reset after inactivity |
+| preset | medium | Graphics quality |
+
+---
+
+## File Structure
+
+```
+frontend/src/avatar/
+├── AnimationController.ts      # Central orchestrator
+├── AnimationGraph.ts           # Body animation playback
+├── AnimationLibrary.ts         # FBX/GLB loading & caching
+├── AnimationStateMachine.ts    # Config loading & preloading
+├── AnimationPlayer.ts          # Gesture triggering
+├── IdleAnimations.ts           # Idle rotation system
+├── IdleRotator.ts              # Weighted random idle selection
+├── AvatarRenderer.ts           # Three.js scene & VRM loading
+├── LipSyncEngine.ts            # Phoneme-to-viseme mapping
+│
+├── expression/
+│   └── ExpressionMixer.ts      # Priority-based expression blending
+│
+├── layers/
+│   ├── BlinkController.ts      # Procedural blinks
+│   ├── LookAtSystem.ts         # Eye/head camera tracking
+│   └── IdleMicroBehaviors.ts   # State-driven micro-movements
+│
+├── behavior/
+│   ├── BehaviorPlanner.ts      # LLM tag interpretation
+│   ├── AmbientBehavior.ts      # Ambient movement triggers
+│   └── MicroBehaviorController.ts  # Micro-behavior scheduling
+│
+└── types/
+    └── behavior.ts             # Behavior type definitions
+
+frontend/public/animations/
+├── animation-manifest.json     # Animation registry
+├── state-machine.json          # State machine config
+└── mixamo_fbx/
+    ├── idles/                  # Idle animation pool
+    └── *.fbx                   # Gesture animations
+```
+
+---
+
+## Adding New Animations
+
+### 1. Add FBX file
+```
+frontend/public/animations/mixamo_fbx/NewAnimation.fbx
+```
+
+### 2. Register in manifest
+```json
+{ "id": "mixamo_fbx/NewAnimation.fbx", "name": "New Animation", "type": "fbx" }
+```
+
+### 3. Add to state machine (if gesture)
+```json
+"actions": {
+  "new_action": { "file": "mixamo_fbx/NewAnimation.fbx", "fadeIn": 0.25 }
+}
+```
+
+### 4. Rebuild frontend
+```bash
+cd frontend && npm run build
+```
+
+---
+
+## Adding New Micro-Behavior Profile
+
+In `IdleMicroBehaviors.ts`:
+
+```ts
+const PROFILES: Record<string, MicroProfile> = {
+  // ... existing profiles ...
+  
+  sleepy: {
+    name: 'sleepy',
+    glanceEnabled: true,
+    glanceIntervalMin: 10,
+    glanceIntervalMax: 20,
+    glanceYawRange: 8,
+    glancePitchRange: 5,
+    glanceHoldDuration: 2.5,
+    glanceSmoothSpeed: 1.5,
+    tiltEnabled: true,
+    tiltIntervalMin: 15,
+    tiltIntervalMax: 25,
+    tiltRange: 3,
+    tiltHoldDuration: 4.0,
+    twitchEnabled: false,
+    twitchChance: 0,
+    twitchIntensity: 0,
+    twitchDuration: 0,
+  },
+};
+```
+
+---
+
+## Debugging
+
+### Debug Panel
+
+The Avatar Debug Panel (`/debug`) provides:
+- Animation playback controls
+- Expression sliders
+- State machine action list
+- Real-time bone/expression visualization
+
+### Console Logs
+
+Key prefixes:
+- `[AnimationController]` - orchestration events
+- `[AnimationGraph]` - playback state changes
+- `[IdleRotator]` - idle switches
+- `[LookAtSystem]` - head tracking
+- `[IdleMicroBehaviors]` - state changes
+- `[ExpressionMixer]` - expression application
+
+### Common Issues
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Animation not playing | Not in manifest | Add to animation-manifest.json |
+| Gesture has no effect | Not in state machine | Add to state-machine.json actions |
+| Head stuck | LookAt disabled | Check user settings |
+| No micro-movements | IdleMicroBehaviors paused | Check if gesture stuck playing |
