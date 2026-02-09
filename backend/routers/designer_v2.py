@@ -305,19 +305,12 @@ async def reset_bond(user_id: str, agent_id: str) -> dict:
 
 
 @router.post("/personalities/{agent_id}/reset-mood-state")
-async def reset_mood_state(
-    agent_id: str,
-    x_user_id: str | None = Header(None, alias="X-User-Id"),
-) -> dict:
-    """Reset a user's mood_weights back to the agent's mood_baseline.
+async def reset_mood_state(agent_id: str) -> dict:
+    """Reset ALL users' mood_weights + VAD back to the agent's baseline.
 
-    Does NOT touch relationship dimensions (trust, intimacy, etc.).
-    Reads user from X-User-Id header (sent automatically by fetchWithAuth).
+    This is a designer admin action — it resets every user-agent pair for this
+    agent. Does NOT touch relationship dimensions (trust, intimacy, etc.).
     """
-    if not x_user_id:
-        raise HTTPException(status_code=400, detail="X-User-Id header required — select a user first")
-    user_id = x_user_id.strip()
-
     agent = AgentRepository.get_by_id(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -325,17 +318,24 @@ async def reset_mood_state(
     profile = _parse_profile(agent.get("emotional_profile"))
     mood_baseline = profile.get("mood_baseline") or {}
 
-    # Also reset VAD to agent baseline so mood state is fully fresh
     baseline_v = agent.get("baseline_valence") or 0.0
     baseline_a = agent.get("baseline_arousal") or 0.0
     baseline_d = agent.get("baseline_dominance") or 0.0
 
-    EmotionalStateRepository.update(
-        user_id, agent_id,
-        mood_weights=mood_baseline if mood_baseline else None,
-        valence=baseline_v, arousal=baseline_a, dominance=baseline_d,
-    )
-    return {"reset": True, "mood_weights": mood_baseline}
+    now = time.time()
+    with get_db() as conn:
+        result = conn.execute(
+            """UPDATE emotional_state
+               SET valence = ?, arousal = ?, dominance = ?,
+                   mood_weights_json = ?, last_updated = ?
+               WHERE agent_id = ?""",
+            (baseline_v, baseline_a, baseline_d,
+             json.dumps(mood_baseline) if mood_baseline else None,
+             now, agent_id),
+        )
+        rows_affected = result.rowcount
+
+    return {"reset": True, "mood_weights": mood_baseline, "users_reset": rows_affected}
 
 
 # ============ CALIBRATION ============
