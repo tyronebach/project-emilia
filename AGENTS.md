@@ -1,28 +1,29 @@
 # AGENTS.md - Emilia Webapp
 
-Instructions for Claude coding agents working on this project.
+Instructions for Claude / Codex coding agents working on this project.
 
 ## Quick Reference
 
 | Item | Value |
 |------|-------|
 | Location | `/home/tbach/Projects/emilia-project/emilia-webapp` |
-| Version | 5.5.3 |
+| Version | Backend reports `5.5.3` in `backend/main.py` (CHANGELOG contains 5.6.x entries) |
 | Frontend | React 19 + Vite + TanStack Router + Zustand |
 | Backend | FastAPI (modular routers) + SQLite |
-| Tests | Backend: 140, Frontend: 93 |
+| Tests | `backend/tests/`, `frontend/src/**/*.test.ts(x)` |
 
 ## Read First
 
-1. **CHANGELOG.md** — Recent changes, current state
-2. **docs/API.md** — Endpoint reference with examples
+1. `CHANGELOG.md` — Recent changes, current state
+2. `DOCUMENTATION.md` — LLM-focused repo map
+3. `docs/animation/` — VRM/animation pipeline notes
 
 ## Project Structure
 
 ```
 emilia-webapp/
 ├── backend/
-│   ├── main.py              # App setup + health only (54 lines)
+│   ├── main.py              # App setup + health
 │   ├── config.py            # Centralized settings
 │   ├── dependencies.py      # Auth + header dependencies
 │   ├── routers/             # API routes (8 modules)
@@ -36,10 +37,10 @@ emilia-webapp/
 │   │   └── designer_v2.py   # Designer V2 (personality, bonds, calibration)
 │   ├── schemas/             # Pydantic request/response models
 │   ├── services/            # External API clients
-│   │   ├── elevenlabs.py    # TTS WebSocket client
+│   │   ├── elevenlabs.py    # TTS REST client with alignment
 │   │   └── emotion_engine.py # Emotion Engine V2
 │   ├── db/
-│   │   ├── connection.py    # Database management
+│   │   ├── connection.py    # Database management + migrations
 │   │   └── repositories/    # CRUD operations
 │   └── core/exceptions.py   # Custom exceptions
 │
@@ -51,17 +52,19 @@ emilia-webapp/
 │   │   ├── hooks/           # Custom React hooks
 │   │   ├── utils/api.ts     # API client with auth
 │   │   ├── avatar/          # Three.js + VRM avatar system
-│   │   └── types.ts         # TypeScript types
+│   │   └── games/           # LLM game modules
 │   ├── public/              # Static assets
-│   │   └── vrm/             # VRM models + vrm-manifest.json
+│   │   ├── vrm/             # VRM models + vrm-manifest.json
+│   │   └── animations/      # Animation assets + manifest
 │   └── dist/                # Production build output
 │
 ├── data/
 │   └── emilia.db            # SQLite database
 │
 ├── docs/
-│   ├── API.md               # Endpoint documentation
-│   └── ARCHITECTURE.md      # Network/security design
+│   ├── animation/           # VRM/animation pipeline docs
+│   ├── archive/             # Historical docs
+│   └── planning/            # Implementation plans
 │
 ├── docker-compose.yml       # Container orchestration
 ├── nginx.conf               # Frontend proxy config
@@ -134,7 +137,9 @@ User context via `X-User-Id`, `X-Agent-Id`, `X-Session-Id` headers.
 - **Push to main** — Always ask first
 - **Deploy to production** — Always ask first
 
-## Database Schema
+## Database Schema (SQLite)
+
+Defined in `backend/db/connection.py` and auto-initialized.
 
 ```sql
 -- Users
@@ -149,55 +154,68 @@ agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
 user_agents (user_id, agent_id)
 
 -- Sessions
-sessions (id, agent_id, name, created_at, last_used, message_count)
+sessions (id, agent_id, name, created_at, last_used, message_count,
+          summary, summary_updated_at, compaction_count)
 
 -- Session participants (many-to-many)
 session_participants (session_id, user_id)
 
 -- Messages
-messages (id, session_id, role, content, timestamp)
+messages (id, session_id, role, content, timestamp,
+          model, processing_ms, usage_prompt_tokens, usage_completion_tokens,
+          behavior_intent, behavior_mood, behavior_mood_intensity,
+          behavior_energy, behavior_move, behavior_game_action)
 
 -- TTS cache
-tts_cache (text_hash, voice_id, audio_base64, alignment_json, created_at)
+tts_cache (key, voice_id, model_id, voice_settings, text,
+           audio_base64, alignment_json, duration_estimate,
+           audio_bytes, created_at, last_used, hits)
 
 -- Game stats
-game_stats (user_id, agent_id, game_type, wins, losses, draws, last_played)
+game_stats (id, session_id, user_id, agent_id, game_id,
+            result, moves, duration_seconds, played_at)
 
 -- Emotional state (per user-agent pair)
-emotional_state (user_id, agent_id, valence, arousal, dominance,
-                 trust, attachment, familiarity, intimacy,
-                 playfulness_safety, conflict_tolerance,
+emotional_state (id, user_id, agent_id, valence, arousal, dominance,
+                 trust, attachment, familiarity,
+                 intimacy, playfulness_safety, conflict_tolerance,
                  mood_weights_json, trigger_calibration_json,
+                 trigger_buffer, pending_triggers,
                  interaction_count, last_interaction, last_updated)
 
 -- Emotional events (V1 legacy)
-emotional_events (id, user_id, agent_id, session_id, trigger, intensity,
-                  valence_before, valence_after, arousal_before, arousal_after, timestamp)
+emotional_events (id, user_id, agent_id, session_id, timestamp,
+                  trigger_type, trigger_value,
+                  delta_valence, delta_arousal, delta_dominance,
+                  delta_trust, delta_attachment, state_after_json)
 
 -- Emotional events V2
-emotional_events_v2 (id, user_id, agent_id, session_id, message_snippet,
-                     triggers_json, state_before_json, state_after_json,
-                     agent_behavior_json, outcome, timestamp)
+emotional_events_v2 (id, user_id, agent_id, session_id, timestamp,
+                     message_snippet, triggers_json,
+                     valence_before, valence_after,
+                     arousal_before, arousal_after,
+                     dominant_mood_before, dominant_mood_after,
+                     agent_mood_tag, agent_intent_tag, inferred_outcome,
+                     trust_delta, intimacy_delta, calibration_updates_json)
 
 -- Trigger counts (per user-agent-trigger)
-trigger_counts (user_id, agent_id, trigger_type, count, last_seen)
+trigger_counts (user_id, agent_id, trigger_type, window, count, last_seen)
 
--- Moods (mood weight snapshots)
-moods (id, user_id, agent_id, mood_weights_json, timestamp)
+-- Moods
+moods (id, description, valence, arousal, emoji, category, created_at)
 
--- Relationship types (reference table)
-relationship_types (id, name, description)
+-- Relationship types
+relationship_types (id, description,
+                    modifiers, behaviors, response_modifiers,
+                    trigger_mood_map, example_responses, extra, created_at)
 ```
 
 ## Common Issues
 
 | Problem | Solution |
 |---------|----------|
-| TTS 500 error | Check `websockets` version, use `additional_headers` not `extra_headers` |
+| TTS 503 | Ensure `ELEVENLABS_API_KEY` is set and valid |
+| Missing auth | Set `AUTH_TOKEN` or enable `AUTH_ALLOW_DEV_TOKEN=1` |
 | Ad blocker blocks routes | Don't use "admin" in URLs, use "manage" |
-| Session history empty | Check JSONL file exists in agent's sessions directory |
-| CORS errors | Check `ALLOWED_ORIGINS` in docker-compose.yml |
-
----
-
-**Maintainer:** Ram 🩷
+| CORS errors | Check `ALLOWED_ORIGINS` in `docker-compose.yml` |
+| Missing CLAWDBOT token | Set `CLAWDBOT_TOKEN` (required) |
