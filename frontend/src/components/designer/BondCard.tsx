@@ -28,9 +28,12 @@ function BondCard({ bond, onSelect, selected, comparing, onCompareToggle }: Bond
   const trustPct = Math.max(0, Math.min(100, bond.trust * 100));
   const intimacyPct = Math.max(0, Math.min(100, bond.intimacy * 100));
 
+  const checkboxId = `compare-${bond.user_id}-${bond.agent_id}`;
+
   return (
-    <div
-      className={`bg-bg-secondary/70 border rounded-xl transition-colors cursor-pointer hover:border-white/20 ${
+    <button
+      type="button"
+      className={`w-full text-left bg-bg-secondary/70 border rounded-xl transition-colors cursor-pointer hover:border-white/20 ${
         selected ? 'border-accent/50' : 'border-white/10'
       }`}
       onClick={() => onSelect(bond.user_id, bond.agent_id)}
@@ -41,16 +44,24 @@ function BondCard({ bond, onSelect, selected, comparing, onCompareToggle }: Bond
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               {onCompareToggle && (
-                <input
-                  type="checkbox"
-                  checked={comparing ?? false}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    onCompareToggle(bond.user_id);
-                  }}
+                <label
+                  htmlFor={checkboxId}
+                  className="flex items-center"
                   onClick={(e) => e.stopPropagation()}
-                  className="rounded border-white/20 bg-bg-tertiary text-accent focus:ring-accent/50"
-                />
+                >
+                  <input
+                    id={checkboxId}
+                    type="checkbox"
+                    checked={comparing ?? false}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      onCompareToggle(bond.user_id);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="rounded border-white/20 bg-bg-tertiary text-accent focus:ring-accent/50"
+                  />
+                  <span className="sr-only">Compare {bond.agent_name}</span>
+                </label>
               )}
               <div className="min-w-0">
                 <span className="text-sm font-medium truncate block">{bond.agent_name}</span>
@@ -103,7 +114,7 @@ function BondCard({ bond, onSelect, selected, comparing, onCompareToggle }: Bond
           </div>
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 

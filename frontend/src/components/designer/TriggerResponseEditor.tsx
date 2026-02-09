@@ -1,36 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, Info } from 'lucide-react';
-import { TRIGGER_TAXONOMY, TRIGGER_PRESETS } from '../../types/designer';
+import { TRIGGER_TAXONOMY, TRIGGER_PRESETS, CATEGORY_DESCRIPTIONS, TRIGGER_DESCRIPTIONS } from '../../types/designer';
 import type { TriggerCategory, TriggerResponseProfile, MoodGroup } from '../../types/designer';
 import { getTriggerDefaults, getMoodGroups } from '../../utils/designerApiV2';
 import SliderField from './SliderField';
-
-const CATEGORY_DESCRIPTIONS: Record<TriggerCategory, string> = {
-  play: 'Lighthearted interactions — teasing, banter, flirting',
-  care: 'Supportive interactions — compliments, comfort, encouragement',
-  friction: 'Negative interactions — criticism, rejection, dismissal',
-  repair: 'Making up after conflict — apologies, accountability',
-  vulnerability: 'Sharing something personal — secrets, trust signals',
-};
-
-const TRIGGER_DESCRIPTIONS: Record<string, string> = {
-  teasing: 'Playful poking or light mocking',
-  banter: 'Quick back-and-forth witty exchanges',
-  flirting: 'Romantic or suggestive playfulness',
-  comfort: 'Soothing words during distress',
-  praise: 'Complimenting abilities or character',
-  affirmation: 'Validating feelings or identity',
-  criticism: 'Pointing out flaws or mistakes',
-  rejection: 'Refusing or pushing away',
-  boundary: 'Setting limits on behavior',
-  dismissal: 'Ignoring or belittling feelings',
-  apology: 'Expressing regret for an action',
-  accountability: 'Taking responsibility for mistakes',
-  reconnection: 'Reaching out after a period of silence',
-  disclosure: 'Sharing personal or sensitive information',
-  trust_signal: 'Actions that demonstrate trust',
-};
 
 /**
  * Per-trigger preset descriptions that explain what each preset means

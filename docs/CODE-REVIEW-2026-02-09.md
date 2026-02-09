@@ -5,12 +5,12 @@
 
 ## Summary
 
-| Severity | Total | Resolved | Unresolved |
-|----------|-------|----------|------------|
-| CRITICAL | 5     | 5        | 0          |
-| HIGH     | 15    | 15       | 0          |
-| MEDIUM   | 25    | 17       | 8          |
-| LOW      | 20+   | 6        | 14+        |
+| Severity | Total | Resolved | Unresolved | Won't Fix / Not an Issue |
+|----------|-------|----------|------------|--------------------------|
+| CRITICAL | 5     | 5        | 0          | 0                        |
+| HIGH     | 15    | 15       | 0          | 0                        |
+| MEDIUM   | 25    | 22       | 0          | 3                        |
+| LOW      | 14    | 10       | 0          | 4                        |
 
 ---
 
@@ -139,23 +139,23 @@ Emotional (6) + designer_v2 (14) endpoints undocumented. AGENTS.md still has cla
 | M4 | Backend | `update()` always increments interaction_count (even resets) | RESOLVED |
 | M5 | Backend | TTS cache base64 blobs unbounded in SQLite | RESOLVED |
 | M6 | Backend | SSE response accumulation has no size limit | RESOLVED |
-| M7 | Backend | Session history returns [] instead of 403 for unauthorized | UNRESOLVED |
+| M7 | Backend | Session history returns [] instead of 403 for unauthorized | RESOLVED |
 | M8 | Backend | CORS allows all methods/headers | RESOLVED |
 | M9 | Backend | Mood cache never invalidated at runtime | RESOLVED |
 | M10 | Frontend | Audio base64 in Zustand messages → unbounded memory | RESOLVED |
 | M11 | Frontend | `sendMessage` stale closure for isLoading | RESOLVED |
 | M12 | Frontend | No React Error Boundary → white screen on crash | RESOLVED |
-| M13 | Frontend | DebugPanel/AvatarDebugPanel monolithic (700-800 lines each) | UNRESOLVED |
+| M13 | Frontend | DebugPanel/AvatarDebugPanel monolithic (700-800 lines each) | WONTFIX (refactoring scope) |
 | M14 | Frontend | `preloadVRM` divides by progress.total (can be 0) | RESOLVED |
 | M15 | Frontend | BlinkController speed is frame-rate dependent | RESOLVED |
-| M16 | Frontend | `renderStore.setSettings` bypasses per-user persistence | UNRESOLVED |
-| M17 | Frontend | Duplicate constants in TriggerResponseEditor/TriggerSensitivityEditor | UNRESOLVED |
-| M18 | Docs | CHANGELOG missing 5 recent commits | UNRESOLVED |
+| M16 | Frontend | `renderStore.setSettings` bypasses per-user persistence | RESOLVED |
+| M17 | Frontend | Duplicate constants in TriggerResponseEditor/TriggerSensitivityEditor | RESOLVED |
+| M18 | Docs | CHANGELOG missing 5 recent commits | WONTFIX (manual tracking) |
 | M19 | Docs | VERSION is 5.5.3/5.5.4/5.6.1 in 3 different places | RESOLVED |
 | M20 | Docs | clawdbot vs openclaw naming inconsistency | RESOLVED (docs) |
 | M21 | Docs | BACKEND-RUN.md references missing frontend nginx service | RESOLVED |
 | M22 | Docs | scripts/README.md references non-existent dev-designer.sh | RESOLVED (file deleted) |
-| M23 | Backend | No Pydantic models for emotional/designer endpoints | UNRESOLVED |
+| M23 | Backend | No Pydantic models for emotional/designer endpoints | WONTFIX (large scope) |
 | M24 | Backend | `compare_bonds` creates rows via get_or_create (read side-effect) | RESOLVED |
 | M25 | Frontend | LookAtSystem.setCamera doesn't remove target from old camera | RESOLVED |
 
@@ -167,15 +167,15 @@ Emotional (6) + designer_v2 (14) endpoints undocumented. AGENTS.md still has cla
 |---|------|---------|--------|
 | L1 | Backend | `_lever_description` is dead code (never called) | RESOLVED |
 | L2 | Backend | `calculate_mood_deltas` deprecated but no warning | RESOLVED (removed) |
-| L3 | Backend | datetime.now() uses local timezone instead of UTC | UNRESOLVED |
-| L4 | Backend | Inconsistent error handling patterns across routers | UNRESOLVED |
+| L3 | Backend | datetime.now() uses local timezone instead of UTC | RESOLVED |
+| L4 | Backend | Inconsistent error handling patterns across routers | RESOLVED |
 | L5 | Backend | GROUP_CONCAT returns string not list in admin sessions | RESOLVED |
 | L6 | Frontend | Duplicate StreamResponse interface in api.ts | RESOLVED |
-| L7 | Frontend | VoiceService/VoiceActivityDetector singletons never used | UNRESOLVED |
+| L7 | Frontend | VoiceService/VoiceActivityDetector singletons never used | NOT AN ISSUE (used in useVoiceChat) |
 | L8 | Frontend | chatStore uses Date.now()+Math.random() for IDs | RESOLVED |
-| L9 | Frontend | FBX cache in AnimationLibrary grows monotonically | UNRESOLVED |
+| L9 | Frontend | FBX cache in AnimationLibrary grows monotonically | NOT AN ISSUE (intentional design) |
 | L10 | Frontend | AnimationPlayer recreates static boneMap on every call | RESOLVED |
-| L11 | Frontend | Accessibility: tabs lack ARIA roles, BondCard div clickable | UNRESOLVED |
-| L12 | Docs | frontend/README.md is default Vite template | UNRESOLVED |
-| L13 | Docs | Test counts stale across multiple docs | UNRESOLVED |
-| L14 | Docs | CHANGELOG repo path stale | UNRESOLVED |
+| L11 | Frontend | Accessibility: tabs lack ARIA roles, BondCard div clickable | RESOLVED |
+| L12 | Docs | frontend/README.md is default Vite template | RESOLVED |
+| L13 | Docs | Test counts stale across multiple docs | RESOLVED |
+| L14 | Docs | CHANGELOG repo path stale | RESOLVED |

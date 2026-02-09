@@ -142,17 +142,13 @@ class TestSessionEndpoints:
         )
         assert response.status_code == 401
 
-    async def test_get_session_history_returns_empty_for_nonexistent(self, test_client, auth_headers):
+    async def test_get_session_history_returns_403_for_unauthorized(self, test_client, auth_headers):
         headers = {**auth_headers, "X-User-Id": "test-user"}
         response = await test_client.get(
             "/api/sessions/nonexistent-session-id/history",
             headers=headers
         )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["messages"] == []
-        assert data["count"] == 0
-        assert data["session_id"] == "nonexistent-session-id"
+        assert response.status_code == 403
 
 
 # ========================================

@@ -1,7 +1,8 @@
 """Emotional engine debug endpoints"""
 import json
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from dependencies import verify_token
+from core.exceptions import not_found
 from db.repositories import EmotionalStateRepository, AgentRepository
 from services.emotion_engine import EmotionEngine, EmotionalState, AgentProfile
 
@@ -59,7 +60,7 @@ async def apply_trigger(
     
     agent = AgentRepository.get_by_id(agent_id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise not_found("Agent")
     
     profile = AgentProfile.from_db(agent, profile_data)
 
@@ -115,7 +116,7 @@ async def reset_emotional_state(
     """Reset emotional state to baseline for testing."""
     agent = AgentRepository.get_by_id(agent_id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise not_found("Agent")
     
     baseline_valence = agent.get('baseline_valence') if agent.get('baseline_valence') is not None else 0.2
     baseline_arousal = agent.get('baseline_arousal') if agent.get('baseline_arousal') is not None else 0.0
@@ -186,7 +187,7 @@ async def apply_decay(
     
     agent = AgentRepository.get_by_id(agent_id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise not_found("Agent")
     
     profile = AgentProfile.from_db(agent, profile_data)
 

@@ -1,7 +1,8 @@
 """Session routes"""
 import logging
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, Depends, Query
 from dependencies import verify_token, get_user_id, get_optional_agent_id
+from core.exceptions import not_found, forbidden
 from schemas import (
     CreateSessionRequest, UpdateSessionRequest,
     SessionsListResponse, SessionHistoryResponse, DeleteResponse
@@ -20,7 +21,7 @@ async def list_sessions(
     agent_id: str | None = Depends(get_optional_agent_id)
 ):
     if not UserRepository.get_by_id(user_id):
-        raise HTTPException(status_code=404, detail="User not found")
+        raise not_found("User")
 
     sessions = SessionRepository.get_for_user(user_id, agent_id)
     return SessionsListResponse(sessions=sessions, count=len(sessions))
@@ -33,9 +34,9 @@ async def create_session(
     user_id: str = Depends(get_user_id)
 ):
     if not UserRepository.get_by_id(user_id):
-        raise HTTPException(status_code=404, detail="User not found")
+        raise not_found("User")
     if not UserRepository.can_access_agent(user_id, request.agent_id):
-        raise HTTPException(status_code=403, detail="User cannot access this agent")
+        raise forbidden("User cannot access this agent")
 
     return SessionRepository.create(request.agent_id, user_id, request.name)
 
@@ -47,11 +48,11 @@ async def get_session(
     user_id: str = Depends(get_user_id)
 ):
     if not SessionRepository.user_can_access(user_id, session_id):
-        raise HTTPException(status_code=403, detail="Cannot access this session")
+        raise forbidden("Cannot access this session")
 
     session = SessionRepository.get_by_id(session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise not_found("Session")
     return session
 
 
@@ -63,7 +64,7 @@ async def update_session(
     user_id: str = Depends(get_user_id)
 ):
     if not SessionRepository.user_can_access(user_id, session_id):
-        raise HTTPException(status_code=403, detail="Cannot access this session")
+        raise forbidden("Cannot access this session")
 
     return SessionRepository.update(session_id, request.name)
 
@@ -75,11 +76,11 @@ async def delete_session(
     user_id: str = Depends(get_user_id)
 ):
     if not SessionRepository.user_can_access(user_id, session_id):
-        raise HTTPException(status_code=403, detail="Cannot access this session")
+        raise forbidden("Cannot access this session")
 
     success = SessionRepository.delete(session_id)
     if not success:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise not_found("Session")
     return DeleteResponse(deleted=1)
 
 
@@ -91,10 +92,8 @@ async def get_session_history(
     limit: int = Query(50, ge=1, le=200)
 ):
     """Get chat history for a session from SQLite."""
-    empty = {"messages": [], "session_id": session_id, "count": 0}
-
     if not SessionRepository.user_can_access(user_id, session_id):
-        return empty
+        raise forbidden("Cannot access this session")
 
     messages = MessageRepository.get_by_session(session_id, limit=limit)
     return {

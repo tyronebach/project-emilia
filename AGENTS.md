@@ -10,7 +10,7 @@ Instructions for Claude coding agents working on this project.
 | Version | 5.5.3 |
 | Frontend | React 19 + Vite + TanStack Router + Zustand |
 | Backend | FastAPI (modular routers) + SQLite |
-| Tests | Backend: 98, Frontend: 83 |
+| Tests | Backend: 140, Frontend: 93 |
 
 ## Read First
 

@@ -11,6 +11,7 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from core.exceptions import not_found, bad_request
 
 from db.connection import get_db
 from db.repositories import EmotionalStateRepository, AgentRepository
@@ -127,7 +128,7 @@ async def get_personality(agent_id: str) -> dict:
     with get_db() as conn:
         row = conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+        raise not_found(f"Agent {agent_id}")
     return _agent_to_personality(dict(row))
 
 
@@ -136,7 +137,7 @@ async def update_personality(agent_id: str, config: dict[str, Any]) -> dict:
     with get_db() as conn:
         row = conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
         if not row:
-            raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found")
+            raise not_found(f"Agent {agent_id}")
         row = dict(row)
 
         profile = _parse_profile(row.get("emotional_profile"))
@@ -267,7 +268,7 @@ async def compare_bonds(body: dict[str, Any]) -> list[dict]:
     agent_id = body.get("agent_id")
     user_ids = body.get("user_ids", [])
     if not agent_id or not user_ids:
-        raise HTTPException(status_code=400, detail="agent_id and user_ids required")
+        raise bad_request("agent_id and user_ids required")
 
     agent = AgentRepository.get_by_id(agent_id)
     agent_name = (agent.get("display_name") or agent_id) if agent else agent_id
@@ -284,7 +285,7 @@ async def compare_bonds(body: dict[str, Any]) -> list[dict]:
 async def reset_bond(user_id: str, agent_id: str) -> dict:
     agent = AgentRepository.get_by_id(agent_id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise not_found("Agent")
 
     baseline_v = agent.get("baseline_valence") or 0.0
     baseline_a = agent.get("baseline_arousal") or 0.0
@@ -315,7 +316,7 @@ async def reset_mood_state(agent_id: str) -> dict:
     """
     agent = AgentRepository.get_by_id(agent_id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise not_found("Agent")
 
     profile = _parse_profile(agent.get("emotional_profile"))
     mood_baseline = profile.get("mood_baseline") or {}
@@ -427,11 +428,11 @@ async def simulate(body: dict[str, Any]) -> dict:
     message = body.get("message", "")
 
     if not agent_id or not user_id:
-        raise HTTPException(status_code=400, detail="agent_id and user_id required")
+        raise bad_request("agent_id and user_id required")
 
     agent = AgentRepository.get_by_id(agent_id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise not_found("Agent")
 
     profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
     profile = AgentProfile.from_db(agent, profile_data)
