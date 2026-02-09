@@ -19,7 +19,6 @@ from services.emotion_engine import (
     normalize_trigger, ContextualTriggerCalibration,
     infer_outcome_multisignal, CalibrationRecovery, CONFIDENCE_THRESHOLD,
 )
-from services.config_loader import get_trigger_mood_map
 
 logger = logging.getLogger(__name__)
 
@@ -152,36 +151,20 @@ async def _process_emotion_pre_llm(
         # Snapshot state before triggers for V2 event logging
         state_before_dict = state.to_dict()
 
+        # Accumulate V/A deltas during trigger loop, then project onto moods
+        total_va_delta = {'valence': 0.0, 'arousal': 0.0}
         for trigger, intensity in triggers:
-            # V2: Use calibrated trigger application
             canonical = normalize_trigger(trigger)
             cal = state.trigger_calibration.get(canonical) if canonical else None
             deltas = engine.apply_trigger_calibrated(state, trigger, intensity, cal)
+            for axis in ('valence', 'arousal'):
+                total_va_delta[axis] += deltas.get(axis, 0.0)
 
-            # Log event
-            if deltas:
-                EmotionalStateRepository.log_event(
-                    user_id=user_id,
-                    agent_id=agent_id,
-                    trigger_type='user_message',
-                    trigger_value=trigger,
-                    session_id=session_id,
-                    delta_valence=deltas.get('valence'),
-                    delta_arousal=deltas.get('arousal'),
-                    delta_dominance=deltas.get('dominance'),
-                    delta_trust=deltas.get('trust'),
-                    delta_attachment=deltas.get('attachment'),
-                    state_after=state.to_dict(),
-                )
-
-        # Apply mood system: trigger_mood_map from relationship config
         if triggers:
-            relationship_type = state_row.get('relationship_type') or 'friend'
-            trigger_mood_map = get_trigger_mood_map(relationship_type)
-            if trigger_mood_map:
-                mood_deltas = engine.calculate_mood_deltas(triggers, trigger_mood_map)
+            mood_deltas = engine.calculate_mood_deltas_from_va(total_va_delta)
+            if mood_deltas:
                 engine.apply_mood_deltas(state, mood_deltas)
-                logger.debug("[Emotion] Mood deltas applied: %s", {k: v for k, v in mood_deltas.items() if v != 0})
+                logger.debug("[Emotion] Mood deltas (V/A projected): %s", {k: round(v, 3) for k, v in mood_deltas.items() if abs(v) > 0.001})
 
         # Save updated state (including mood_weights + V2 dimensions)
         # FIX: Don't use `or None` - empty dict {} is falsy but valid (Bug #2)
@@ -280,19 +263,7 @@ def _process_emotion_post_llm(
         if mood and mood in mood_to_trigger:
             trigger, intensity = mood_to_trigger[mood]
             intensity *= behavior.get('mood_intensity', 1.0)
-            deltas = engine.apply_trigger(state, trigger, intensity)
-
-            if deltas:
-                EmotionalStateRepository.log_event(
-                    user_id=user_id,
-                    agent_id=agent_id,
-                    trigger_type='self_mood',
-                    trigger_value=mood,
-                    session_id=session_id,
-                    delta_valence=deltas.get('valence'),
-                    delta_arousal=deltas.get('arousal'),
-                    state_after=state.to_dict(),
-                )
+            engine.apply_trigger(state, trigger, intensity)
 
         # 2. V2: Infer outcome from multiple signals
         outcome, confidence = infer_outcome_multisignal(
@@ -334,20 +305,19 @@ def _process_emotion_post_llm(
             trust=state.trust,
         )
 
-        # 5. V2: Log event
-        if pre_llm_triggers:
-            EmotionalStateRepository.log_event_v2(
-                user_id=user_id,
-                agent_id=agent_id,
-                session_id=session_id,
-                message_snippet=user_message,
-                triggers=pre_llm_triggers,
-                state_before=state_before_dict,
-                state_after=state.to_dict(),
-                agent_behavior=behavior,
-                outcome=outcome,
-                calibration_updates=calibration_updates or None,
-            )
+        # 5. V2: Log event (always, even without triggers)
+        EmotionalStateRepository.log_event_v2(
+            user_id=user_id,
+            agent_id=agent_id,
+            session_id=session_id,
+            message_snippet=user_message,
+            triggers=pre_llm_triggers or [],
+            state_before=state_before_dict,
+            state_after=state.to_dict(),
+            agent_behavior=behavior,
+            outcome=outcome,
+            calibration_updates=calibration_updates or None,
+        )
 
     except Exception:
         logger.exception("Emotion engine error (post-LLM), ignoring")

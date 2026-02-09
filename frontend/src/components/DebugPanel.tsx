@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { X, Activity, AlertCircle, Archive, RefreshCw, Heart } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useChatStore } from '../store/chatStore';
@@ -10,6 +10,8 @@ import { fetchWithAuth } from '../utils/api';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
 import { VoiceIndicator } from './VoiceIndicator';
 import { VoiceDebugTimeline, type VoiceDebugEntry } from './VoiceDebugTimeline';
+import { Sparkline } from './debug/Sparkline';
+import { DeltaBadge } from './debug/DeltaBadge';
 import { STATUS_COLORS } from '../types';
 import type { AppStatus } from '../types';
 import type { VoiceState } from '../services/VoiceService';
@@ -50,6 +52,19 @@ interface EmotionalDebug {
   behavior_levers: BehaviorLevers | null;
   profile: Record<string, unknown>;
   interaction_count: number;
+}
+
+interface TimelineEvent {
+  timestamp: number;
+  valence_before: number;
+  valence_after: number;
+  arousal_before: number;
+  arousal_after: number;
+  trust_delta: number | null;
+  intimacy_delta: number | null;
+  dominant_mood_after: string | null;
+  triggers: Array<[string, number]>;
+  inferred_outcome: string | null;
 }
 
 interface DebugPanelProps {
@@ -94,6 +109,8 @@ function DebugPanel({
   const [emotionalLoading, setEmotionalLoading] = useState(false);
   const [emotionalError, setEmotionalError] = useState<string | null>(null);
   const [emotionalExpanded, setEmotionalExpanded] = useState(false);
+  const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const previousEmotionalData = useRef<EmotionalDebug | null>(null);
 
   const fetchCompaction = useCallback(async () => {
     if (!sessionId) return;
@@ -115,15 +132,30 @@ function DebugPanel({
     fetchCompaction();
   }, [fetchCompaction]);
 
-  // Fetch emotional state
+  // Fetch emotional state + timeline in parallel
   const fetchEmotionalState = useCallback(async () => {
     if (!currentUser?.id || !currentAgent?.id) return;
     setEmotionalLoading(true);
     setEmotionalError(null);
     try {
-      const res = await fetchWithAuth(`/api/debug/emotional-state/${currentUser.id}/${currentAgent.id}`);
-      if (!res.ok) throw new Error(`${res.status}`);
-      setEmotionalData(await res.json());
+      const [stateRes, timelineRes] = await Promise.all([
+        fetchWithAuth(`/api/debug/emotional-state/${currentUser.id}/${currentAgent.id}`),
+        fetchWithAuth(`/api/debug/emotional-timeline/${currentUser.id}/${currentAgent.id}?limit=30`),
+      ]);
+      if (!stateRes.ok) throw new Error(`${stateRes.status}`);
+      const newData = await stateRes.json();
+      setEmotionalData((prev) => {
+        // Only update previous when a new interaction happened, so
+        // hitting Refresh doesn't wipe the deltas
+        if (!prev || newData.interaction_count !== prev.interaction_count) {
+          previousEmotionalData.current = prev;
+        }
+        return newData;
+      });
+      if (timelineRes.ok) {
+        const tl = await timelineRes.json();
+        setTimelineEvents(tl.events || []);
+      }
     } catch (e) {
       setEmotionalError((e as Error).message);
     } finally {
@@ -288,6 +320,33 @@ function DebugPanel({
                 </div>
               ) : emotionalData ? (
                 <>
+                  {/* Sparkline: Valence + Arousal over time */}
+                  {timelineEvents.length >= 2 && (
+                    <div>
+                      <div className="text-[10px] text-text-secondary uppercase mb-1">Timeline</div>
+                      <div className="bg-white/5 rounded p-1.5 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] text-blue-400 w-10">Val</span>
+                          <Sparkline
+                            data={timelineEvents.map((e) => e.valence_after)}
+                            color="#60a5fa"
+                            width={260}
+                            height={28}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] text-red-400 w-10">Aro</span>
+                          <Sparkline
+                            data={timelineEvents.map((e) => e.arousal_after)}
+                            color="#f87171"
+                            width={260}
+                            height={28}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Core VAD State */}
                   <div>
                     <div className="text-[10px] text-text-secondary uppercase mb-1">VAD State</div>
@@ -300,6 +359,10 @@ function DebugPanel({
                             emotionalData.state[key] < -0.2 ? 'text-error' : 'text-text-primary'
                           }`}>
                             {emotionalData.state[key].toFixed(2)}
+                            <DeltaBadge
+                              current={emotionalData.state[key]}
+                              previous={previousEmotionalData.current?.state[key]}
+                            />
                           </div>
                         </div>
                       ))}
@@ -329,6 +392,10 @@ function DebugPanel({
                           <span className="text-[10px] text-text-primary font-mono w-10 text-right">
                             {(emotionalData.state[key] * 100).toFixed(0)}%
                           </span>
+                          <DeltaBadge
+                            current={emotionalData.state[key]}
+                            previous={previousEmotionalData.current?.state[key]}
+                          />
                         </div>
                       ))}
                     </div>
@@ -355,6 +422,10 @@ function DebugPanel({
                             <span className="text-[10px] text-text-primary font-mono w-10 text-right">
                               {emotionalData.behavior_levers![key].toFixed(2)}
                             </span>
+                            <DeltaBadge
+                              current={emotionalData.behavior_levers![key]}
+                              previous={previousEmotionalData.current?.behavior_levers?.[key]}
+                            />
                           </div>
                         ))}
                       </div>
@@ -364,6 +435,11 @@ function DebugPanel({
                   {/* Interaction Count */}
                   <div className="text-[10px] text-text-secondary text-right">
                     {emotionalData.interaction_count} interactions
+                    <DeltaBadge
+                      current={emotionalData.interaction_count}
+                      previous={previousEmotionalData.current?.interaction_count}
+                      precision={0}
+                    />
                   </div>
                 </>
               ) : (

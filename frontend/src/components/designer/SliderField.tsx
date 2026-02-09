@@ -1,3 +1,5 @@
+import { HelpDot } from './Tooltip';
+
 interface SliderFieldProps {
   label: string;
   value: number;
@@ -6,6 +8,7 @@ interface SliderFieldProps {
   max?: number;
   step?: number;
   disabled?: boolean;
+  tooltip?: string;
 }
 
 function SliderField({
@@ -16,11 +19,15 @@ function SliderField({
   max = 1,
   step = 0.05,
   disabled = false,
+  tooltip,
 }: SliderFieldProps) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <label className="text-xs text-text-secondary">{label}</label>
+        <label className="text-xs text-text-secondary">
+          {label}
+          {tooltip && <HelpDot tip={tooltip} />}
+        </label>
         <span className="text-xs font-mono text-text-secondary">{value.toFixed(2)}</span>
       </div>
       <input

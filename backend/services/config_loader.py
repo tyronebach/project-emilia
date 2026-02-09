@@ -34,16 +34,6 @@ def load_moods_config() -> dict:
     return {"moods": moods}
 
 
-def get_trigger_mood_map(relationship_type: str) -> dict:
-    """Get trigger_mood_map for a relationship type.
-
-    Returns the trigger_mood_map dict from the relationship config,
-    or an empty dict if the relationship type has no config.
-    """
-    config = load_relationship_config(relationship_type)
-    return config.get("trigger_mood_map", {})
-
-
 def clear_config_cache():
     """Clear cached configs (useful for hot reload during dev)."""
     load_relationship_config.cache_clear()

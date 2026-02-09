@@ -10,7 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ManageRouteImport } from './routes/manage'
-import { Route as DesignerRouteImport } from './routes/designer'
+import { Route as DesignerV2RouteImport } from './routes/designer-v2'
 import { Route as DebugRouteImport } from './routes/debug'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UserUserIdRouteImport } from './routes/user/$userId'
@@ -24,9 +24,9 @@ const ManageRoute = ManageRouteImport.update({
   path: '/manage',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DesignerRoute = DesignerRouteImport.update({
-  id: '/designer',
-  path: '/designer',
+const DesignerV2Route = DesignerV2RouteImport.update({
+  id: '/designer-v2',
+  path: '/designer-v2',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DebugRoute = DebugRouteImport.update({
@@ -69,7 +69,7 @@ const UserUserIdChatInitializingSessionIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/debug': typeof DebugRoute
-  '/designer': typeof DesignerRoute
+  '/designer-v2': typeof DesignerV2Route
   '/manage': typeof ManageRoute
   '/user/$userId': typeof UserUserIdRouteWithChildren
   '/user/$userId/': typeof UserUserIdIndexRoute
@@ -80,7 +80,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/debug': typeof DebugRoute
-  '/designer': typeof DesignerRoute
+  '/designer-v2': typeof DesignerV2Route
   '/manage': typeof ManageRoute
   '/user/$userId': typeof UserUserIdIndexRoute
   '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
@@ -91,7 +91,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/debug': typeof DebugRoute
-  '/designer': typeof DesignerRoute
+  '/designer-v2': typeof DesignerV2Route
   '/manage': typeof ManageRoute
   '/user/$userId': typeof UserUserIdRouteWithChildren
   '/user/$userId/': typeof UserUserIdIndexRoute
@@ -104,7 +104,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/debug'
-    | '/designer'
+    | '/designer-v2'
     | '/manage'
     | '/user/$userId'
     | '/user/$userId/'
@@ -115,7 +115,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/debug'
-    | '/designer'
+    | '/designer-v2'
     | '/manage'
     | '/user/$userId'
     | '/user/$userId/chat/$sessionId'
@@ -125,7 +125,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/debug'
-    | '/designer'
+    | '/designer-v2'
     | '/manage'
     | '/user/$userId'
     | '/user/$userId/'
@@ -137,7 +137,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DebugRoute: typeof DebugRoute
-  DesignerRoute: typeof DesignerRoute
+  DesignerV2Route: typeof DesignerV2Route
   ManageRoute: typeof ManageRoute
   UserUserIdRoute: typeof UserUserIdRouteWithChildren
 }
@@ -151,11 +151,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ManageRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/designer': {
-      id: '/designer'
-      path: '/designer'
-      fullPath: '/designer'
-      preLoaderRoute: typeof DesignerRouteImport
+    '/designer-v2': {
+      id: '/designer-v2'
+      path: '/designer-v2'
+      fullPath: '/designer-v2'
+      preLoaderRoute: typeof DesignerV2RouteImport
       parentRoute: typeof rootRouteImport
     }
     '/debug': {
@@ -232,7 +232,7 @@ const UserUserIdRouteWithChildren = UserUserIdRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DebugRoute: DebugRoute,
-  DesignerRoute: DesignerRoute,
+  DesignerV2Route: DesignerV2Route,
   ManageRoute: ManageRoute,
   UserUserIdRoute: UserUserIdRouteWithChildren,
 }
