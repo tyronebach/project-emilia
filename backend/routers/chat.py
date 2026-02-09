@@ -69,10 +69,16 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
         engine = EmotionEngine(profile)
 
         # Convert DB row to EmotionalState
-        # Load persisted mood_weights from DB
+        # Load persisted mood_weights from DB, or initialize from agent's mood_baseline
         mood_weights = {}
         if state_row.get('mood_weights_json'):
             mood_weights = json.loads(state_row['mood_weights_json'])
+        
+        # FIX: Initialize mood_weights from mood_baseline if empty (Bug #1)
+        if not mood_weights:
+            from services.emotion_engine import get_mood_list
+            mood_weights = {mood: profile.mood_baseline.get(mood, 0) for mood in get_mood_list()}
+            logger.info("[Emotion] Initialized mood_weights from mood_baseline for %s/%s", user_id, agent_id)
 
         state = EmotionalState(
             valence=state_row['valence'] or 0.0,
@@ -149,9 +155,10 @@ async def _process_emotion_pre_llm(user_id: str, agent_id: str, user_message: st
                 logger.debug("[Emotion] Mood deltas applied: %s", {k: v for k, v in mood_deltas.items() if v != 0})
 
         # Save updated state (including mood_weights)
+        # FIX: Don't use `or None` - empty dict {} is falsy but valid (Bug #2)
         EmotionalStateRepository.update(
             user_id, agent_id,
-            mood_weights=state.mood_weights or None,
+            mood_weights=state.mood_weights,
             valence=state.valence,
             arousal=state.arousal,
             dominance=state.dominance,
