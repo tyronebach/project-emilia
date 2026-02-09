@@ -98,11 +98,16 @@ function DebugPanel({
   const currentAgent = useUserStore((state) => state.currentAgent);
   const { voices: voiceOptions } = useVoiceOptions();
 
+  const lastEmotionDebug = useChatStore((s) => s.lastEmotionDebug);
+
   // Compaction modal state
   const [compactionOpen, setCompactionOpen] = useState(false);
   const [compactionData, setCompactionData] = useState<CompactionDebug | null>(null);
   const [compactionLoading, setCompactionLoading] = useState(false);
   const [compactionError, setCompactionError] = useState<string | null>(null);
+
+  // Emotion context modal
+  const [contextModalOpen, setContextModalOpen] = useState(false);
 
   // Emotional state
   const [emotionalData, setEmotionalData] = useState<EmotionalDebug | null>(null);
@@ -441,6 +446,42 @@ function DebugPanel({
                       precision={0}
                     />
                   </div>
+
+                  {/* Last Classification (from SSE emotion event) */}
+                  <div>
+                    <div className="text-[10px] text-text-secondary uppercase mb-1">Last Classification</div>
+                    {lastEmotionDebug ? (
+                      <div className="space-y-1.5">
+                        <div className="flex flex-wrap gap-1">
+                          {lastEmotionDebug.triggers.length > 0 ? (
+                            lastEmotionDebug.triggers.map(([trigger, intensity]) => (
+                              <span
+                                key={trigger}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-pink-500/20 text-pink-300 rounded text-[10px] font-mono"
+                              >
+                                {trigger}
+                                <span className="text-pink-400/70">{intensity.toFixed(2)}</span>
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[10px] text-text-secondary/60">No triggers</span>
+                          )}
+                        </div>
+                        {lastEmotionDebug.context_block && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 px-2 text-[10px] text-text-secondary hover:text-text-primary"
+                            onClick={() => setContextModalOpen(true)}
+                          >
+                            View Prompt Context
+                          </Button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-text-secondary/60">No data yet — send a message</div>
+                    )}
+                  </div>
                 </>
               ) : (
                 <div className="text-[10px] text-text-secondary text-center py-2">
@@ -545,6 +586,32 @@ function DebugPanel({
                     </div>
                   )}
                 </>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Emotion Context Block Modal */}
+        <Dialog open={contextModalOpen} onOpenChange={(next) => { if (!next) setContextModalOpen(false); }}>
+          <DialogContent className="w-[28rem] max-w-[92vw] max-h-[80vh] overflow-hidden flex flex-col p-0">
+            <div className="h-10 px-4 flex items-center justify-between border-b border-white/10 shrink-0">
+              <div className="flex items-center gap-2">
+                <Heart className="w-4 h-4 text-pink-400" />
+                <DialogTitle>Emotion Context Block</DialogTitle>
+              </div>
+              <DialogClose asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6">
+                  <X className="w-3 h-3" />
+                </Button>
+              </DialogClose>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {lastEmotionDebug?.context_block ? (
+                <pre className="text-xs text-text-primary font-mono whitespace-pre-wrap leading-relaxed bg-bg-tertiary/80 rounded-lg p-3 border border-white/5 overflow-x-auto">
+                  {lastEmotionDebug.context_block}
+                </pre>
+              ) : (
+                <div className="text-xs text-text-secondary text-center py-6">No context block available</div>
               )}
             </div>
           </DialogContent>

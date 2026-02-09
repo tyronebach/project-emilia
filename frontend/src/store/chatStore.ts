@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Message, MessageMeta } from '../types';
+import type { EmotionDebug } from '../utils/api';
 
 interface ChatState {
   messages: Message[];
@@ -9,6 +10,8 @@ interface ChatState {
   clearMessages: () => void;
   streamingContent: string;
   setStreamingContent: (content: string) => void;
+  lastEmotionDebug: EmotionDebug | null;
+  setLastEmotionDebug: (data: EmotionDebug | null) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -43,4 +46,7 @@ export const useChatStore = create<ChatState>((set) => ({
   
   streamingContent: '',
   setStreamingContent: (content) => set({ streamingContent: content }),
+
+  lastEmotionDebug: null,
+  setLastEmotionDebug: (data) => set({ lastEmotionDebug: data }),
 }));

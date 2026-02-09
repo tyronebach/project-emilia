@@ -1,7 +1,7 @@
 // # Phase 1.8 COMPLETE - 2026-02-08
 import { useCallback, useRef, useEffect } from 'react';
 import { fetchWithAuth, streamChat, stripAvatarTags, stripAvatarTagsStreaming } from '../utils/api';
-import type { StreamResponse, CompactionInfo } from '../utils/api';
+import type { StreamResponse, CompactionInfo, EmotionDebug } from '../utils/api';
 import { base64ToAudioBlob } from '../utils/helpers';
 import { useAppStore } from '../store';
 import { useChatStore } from '../store/chatStore';
@@ -169,6 +169,7 @@ export function useChat() {
     if (isLoading || !currentAgent) return;
 
     setStatus('thinking');
+    useChatStore.getState().setLastEmotionDebug(null);
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
@@ -251,6 +252,9 @@ export function useChat() {
             } else if (c.error) {
               addStateEntry('compact', `Compaction failed: ${c.error}`);
             }
+          },
+          onEmotion: (data: EmotionDebug) => {
+            useChatStore.getState().setLastEmotionDebug(data);
           },
         }
       );
