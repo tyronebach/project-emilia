@@ -1,6 +1,6 @@
 // # Phase 2.4 COMPLETE - 2026-02-07
 import { useEffect, useRef, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AudioLines, Paperclip, ArrowUp, Gamepad2 } from 'lucide-react';
 import { useAppStore } from '../store';
@@ -35,7 +35,7 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
     handleSubmit,
     reset,
     setFocus,
-    watch,
+    control,
     formState: { errors },
   } = useForm<ChatInput>({
     resolver: zodResolver(chatInputSchema),
@@ -81,7 +81,7 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
     }
   };
 
-  const messageValue = watch('message') || '';
+  const messageValue = useWatch({ control, name: 'message' }) || '';
   const canSend = Boolean(messageValue.trim()) && !isDisabled;
 
   const isListening = handsFreeEnabled && voiceState === 'ACTIVE';
