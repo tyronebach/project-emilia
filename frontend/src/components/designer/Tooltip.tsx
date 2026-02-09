@@ -13,6 +13,7 @@ function Tooltip({ content, children }: TooltipProps) {
   useEffect(() => {
     if (visible && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- layout-driven, no cascade
       setPosition(rect.top < 80 ? 'bottom' : 'top');
     }
   }, [visible]);

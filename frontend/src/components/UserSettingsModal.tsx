@@ -22,7 +22,6 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
   
   // Render quality
   const renderPreset = useRenderStore((state) => state.preset);
-  const renderSettings = useRenderStore((state) => state.settings);
   const setRenderPreset = useRenderStore((state) => state.setPreset);
   
   // Camera controls

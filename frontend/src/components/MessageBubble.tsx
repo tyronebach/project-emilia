@@ -32,6 +32,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
   }, [cleanupAudio]);
 
   // Replay audio from stored base64
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- compiler limitation with optional chain deps
   const handleReplay = useCallback(async () => {
     if (!meta?.audio_base64 || isPlaying) return;
 
@@ -69,6 +70,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
   }, [timestamp]);
   
   // Format processing time
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- compiler limitation with optional chain deps
   const processingTime = useMemo(() => {
     if (!meta?.processing_ms) return null;
     if (meta.processing_ms < 1000) {

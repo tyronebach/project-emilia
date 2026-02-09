@@ -85,7 +85,7 @@ export function useGame() {
     setIsAvatarThinking(false);
     useGameStore.getState().startGame(gameId, config);
     handleAvatarTurn();
-  }, [handleAvatarTurn]);
+  }, [handleAvatarTurn, setIsAvatarThinking]);
 
   const makeUserMove = useCallback((move: unknown) => {
     const success = useGameStore.getState().applyUserMove(move);

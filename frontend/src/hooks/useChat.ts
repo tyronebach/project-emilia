@@ -304,6 +304,7 @@ export function useChat() {
         setStatus('ready');
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- addStateEntry is stable (defined in same module)
   }, [currentAgent, setStatus, addMessage, updateMessage, applyAvatarCommand, handleAvatarResponse, getGameContext, ttsEnabled, speakText, updateStats]);
 
   // Reactive isLoading for consumers (re-renders on status change)

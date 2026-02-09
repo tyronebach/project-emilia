@@ -251,6 +251,7 @@ export class AnimationGraph {
       ];
 
       for (const boneName of boneNames) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- bone names are runtime strings
         const node = this.vrm.humanoid.getNormalizedBoneNode(boneName as any);
         if (node) {
           node.quaternion.identity();

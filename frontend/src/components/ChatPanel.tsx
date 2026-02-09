@@ -21,6 +21,7 @@ function ChatPanel() {
 
   useEffect(() => {
     if (immersiveMode) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync collapse with immersive toggle
       setCollapsed(true);
     }
   }, [immersiveMode]);

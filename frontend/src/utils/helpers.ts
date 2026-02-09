@@ -62,6 +62,7 @@ export function safeJsonParse<T>(json: string, fallback: T): T {
 /**
  * Debounce a function call
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic function signature
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number

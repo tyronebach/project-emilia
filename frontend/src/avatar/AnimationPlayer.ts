@@ -307,6 +307,7 @@ export class AnimationPlayer {
     const vrmBoneNodes: Record<string, THREE.Object3D> = {};
     if (this.vrm.humanoid) {
       for (const [srcName, vrmName] of Object.entries(BONE_MAP)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- bone names are runtime strings
         const node = this.vrm.humanoid.getNormalizedBoneNode(vrmName as any);
         if (node) {
           vrmBoneNodes[srcName] = node;

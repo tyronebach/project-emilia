@@ -252,6 +252,7 @@ function AppContent({
       setVoicePermissionWarning(null);
       void voiceChat.enableVoice();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally omitting voiceChat object
   }, [handsFreeEnabled, voiceChat.isEnabled, voiceChat.isSupported, voiceChat.enableVoice, voiceChat.disableVoice]);
 
   useEffect(() => {
@@ -276,6 +277,7 @@ function AppContent({
         voiceChat.activate();
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally omitting voiceChat object
   }, [
     handsFreeEnabled,
     voiceChat.isEnabled,
