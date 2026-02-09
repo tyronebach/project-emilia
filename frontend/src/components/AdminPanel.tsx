@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Save, AlertCircle, CheckCircle, RotateCcw, Bug, Sliders } from 'lucide-react';
+import { Save, AlertCircle, CheckCircle, RotateCcw, Bug, Sliders, Palette } from 'lucide-react';
 import { Button } from './ui/button';
 import { fetchWithAuth, type Agent } from '../utils/api';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
@@ -180,6 +180,13 @@ function AdminPanel() {
         subtitle="Agent Settings"
         rightSlot={(
           <>
+            <button
+              onClick={() => navigate({ to: '/designer' })}
+              className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
+              title="Agent Designer"
+            >
+              <Palette className="w-5 h-5" />
+            </button>
             <button
               onClick={() => navigate({ to: '/manage' })}
               className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"

@@ -5,12 +5,13 @@ All data stored in SQLite.
 import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from db.connection import get_db
 from db.repositories import MoodRepository, RelationshipTypeRepository
+from dependencies import verify_token
 
-router = APIRouter(prefix="/api/designer", tags=["designer"])
+router = APIRouter(prefix="/api/designer", tags=["designer"], dependencies=[Depends(verify_token)])
 
 
 # ============ MOODS (SQLite) ============
