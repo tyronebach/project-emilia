@@ -2,7 +2,7 @@
 # Phase 3.1 COMPLETE - 2026-02-08
 import uuid
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from db.connection import get_db
 
 
@@ -71,7 +71,7 @@ class SessionRepository:
                     "SELECT display_name FROM agents WHERE id = ?", (agent_id,)
                 ).fetchone()
                 agent_name = agent["display_name"] if agent else "Chat"
-                name = f"{agent_name} {datetime.now().strftime('%m.%d.%y')}"
+                name = f"{agent_name} {datetime.now(timezone.utc).strftime('%m.%d.%y')}"
 
             conn.execute(
                 "INSERT INTO sessions (id, agent_id, name, created_at, last_used) VALUES (?, ?, ?, ?, ?)",

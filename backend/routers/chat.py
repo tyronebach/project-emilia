@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from dependencies import verify_token, get_user_id, get_agent_id, get_optional_agent_id, get_session_id
 from schemas import ChatRequest, SpeakRequest
 from config import settings
-from core.exceptions import TTSError
+from core.exceptions import TTSError, not_found, forbidden, bad_request, service_unavailable, timeout_error
 from parse_chat import parse_chat_completion, extract_avatar_commands
 from db.repositories import UserRepository, AgentRepository, SessionRepository, MessageRepository, EmotionalStateRepository
 from services.emotion_engine import (
@@ -465,21 +465,21 @@ async def chat(
 
     user = UserRepository.get_by_id(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise not_found("User")
 
     if not UserRepository.can_access_agent(user_id, agent_id):
-        raise HTTPException(status_code=403, detail="User cannot access this agent")
+        raise forbidden("User cannot access this agent")
 
     agent = AgentRepository.get_by_id(agent_id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise not_found("Agent")
 
     clawdbot_agent_id = agent["clawdbot_agent_id"]
 
     if session_id:
         session = SessionRepository.get_by_id(session_id)
         if not session or not SessionRepository.user_can_access(user_id, session_id):
-            raise HTTPException(status_code=403, detail="Cannot access this session")
+            raise forbidden("Cannot access this session")
     else:
         session = SessionRepository.get_or_create_default(user_id, agent_id)
 
@@ -583,9 +583,9 @@ async def chat(
         return resp
 
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Timeout")
+        raise timeout_error("Chat")
     except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="Service unavailable")
+        raise service_unavailable("Chat")
 
 
 async def _stream_chat_sse(
@@ -774,14 +774,14 @@ async def transcribe(
             return response.json()
 
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="STT timeout")
+        raise timeout_error("STT")
     except httpx.ConnectError:
-        raise HTTPException(status_code=503, detail="STT unavailable")
+        raise service_unavailable("STT")
     except HTTPException:
         raise
     except Exception:
         logger.exception("Transcription error")
-        raise HTTPException(status_code=500, detail="Transcription error")
+        raise service_unavailable("Transcription")
 
 
 @router.post("/speak")
@@ -794,7 +794,7 @@ async def speak(
     from services.elevenlabs import ElevenLabsService
 
     if not settings.elevenlabs_api_key:
-        raise HTTPException(status_code=503, detail="TTS not configured")
+        raise service_unavailable("TTS")
 
     voice_id = request.voice_id or settings.elevenlabs_voice_id
 
@@ -805,10 +805,10 @@ async def speak(
 
     text = request.text.strip()
     if not text:
-        raise HTTPException(status_code=400, detail="Empty text")
+        raise bad_request("Empty text")
 
     try:
         result = await ElevenLabsService.synthesize(text, voice_id)
         return result
     except TTSError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise service_unavailable(str(e))

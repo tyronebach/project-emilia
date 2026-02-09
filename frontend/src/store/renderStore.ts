@@ -102,10 +102,19 @@ export const useRenderStore = create<RenderStore>()(
         });
       },
       
-      setSettings: (settings) => set({
-        preset: 'custom' as QualityPreset,
-        settings,
-      }),
+      setSettings: (settings) => {
+        const { currentUserId, userSettings } = get();
+        const current = userSettings[currentUserId] || DEFAULT_USER_SETTINGS;
+
+        set({
+          preset: 'custom' as QualityPreset,
+          settings,
+          userSettings: {
+            ...userSettings,
+            [currentUserId]: { ...current, preset: 'custom' as QualityPreset },
+          },
+        });
+      },
       
       setCameraPosition: (cameraPosition) => {
         const { currentUserId, userSettings } = get();

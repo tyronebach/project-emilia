@@ -1,7 +1,8 @@
 """Memory file routes"""
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
+from core.exceptions import not_found, forbidden
 from dependencies import verify_token, get_agent_workspace
 from schemas import MemoryFilesResponse, MemoryContentResponse
 
@@ -16,7 +17,7 @@ async def get_memory(
     """Get agent's MEMORY.md content"""
     memory_path = workspace / "MEMORY.md"
     if not memory_path.exists():
-        raise HTTPException(status_code=404, detail="Memory file not found")
+        raise not_found("Memory file")
 
     content = memory_path.read_text(encoding="utf-8")
     return PlainTextResponse(content, media_type="text/markdown")
@@ -54,7 +55,7 @@ async def get_memory_file(
     if filename == "MEMORY.md":
         memory_path = workspace / "MEMORY.md"
         if not memory_path.exists():
-            raise HTTPException(status_code=404, detail="Memory file not found")
+            raise not_found("Memory file")
         content = memory_path.read_text(encoding="utf-8")
         return MemoryContentResponse(filename=filename, content=content)
 
@@ -64,10 +65,10 @@ async def get_memory_file(
 
     # Security check - prevent path traversal
     if not file_path.is_relative_to(base_dir):
-        raise HTTPException(status_code=403, detail="Access denied")
+        raise forbidden()
 
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Memory file not found")
+        raise not_found("Memory file")
 
     content = file_path.read_text(encoding="utf-8")
     return MemoryContentResponse(filename=filename, content=content)

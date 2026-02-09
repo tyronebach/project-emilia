@@ -177,6 +177,32 @@ export const TRIGGER_TAXONOMY = {
 export type TriggerCategory = keyof typeof TRIGGER_TAXONOMY;
 export type TriggerType = (typeof TRIGGER_TAXONOMY)[TriggerCategory][number];
 
+export const CATEGORY_DESCRIPTIONS: Record<TriggerCategory, string> = {
+  play: 'Lighthearted interactions — teasing, banter, flirting',
+  care: 'Supportive interactions — compliments, comfort, encouragement',
+  friction: 'Negative interactions — criticism, rejection, dismissal',
+  repair: 'Making up after conflict — apologies, accountability',
+  vulnerability: 'Sharing something personal — secrets, trust signals',
+};
+
+export const TRIGGER_DESCRIPTIONS: Record<string, string> = {
+  teasing: 'Playful poking or light mocking',
+  banter: 'Quick back-and-forth witty exchanges',
+  flirting: 'Romantic or suggestive playfulness',
+  comfort: 'Soothing words during distress',
+  praise: 'Complimenting abilities or character',
+  affirmation: 'Validating feelings or identity',
+  criticism: 'Pointing out flaws or mistakes',
+  rejection: 'Refusing or pushing away',
+  boundary: 'Setting limits on behavior',
+  dismissal: 'Ignoring or belittling feelings',
+  apology: 'Expressing regret for an action',
+  accountability: 'Taking responsibility for mistakes',
+  reconnection: 'Reaching out after a period of silence',
+  disclosure: 'Sharing personal or sensitive information',
+  trust_signal: 'Actions that demonstrate trust',
+};
+
 // ============ MOOD GROUPS ============
 
 export interface MoodInfo {

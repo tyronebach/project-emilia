@@ -804,4 +804,4 @@ Format: `MAJOR.MINOR.PATCH`
 
 **Maintainer:** Ram 🩷
 **Project:** Emilia waifu voice assistant
-**Repository:** /home/tbach/clawd/emilia-project/emilia-webapp
+**Repository:** /home/tbach/Projects/emilia-project/emilia-webapp

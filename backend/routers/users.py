@@ -1,7 +1,8 @@
 """User routes"""
 import json
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from dependencies import verify_token
+from core.exceptions import not_found, forbidden, bad_request
 from schemas import UsersListResponse, AgentsListResponse, SessionsListResponse
 from schemas.requests import UserPreferencesUpdate
 from db.repositories import UserRepository, SessionRepository
@@ -19,7 +20,7 @@ async def list_users(token: str = Depends(verify_token)):
 async def get_user(user_id: str, token: str = Depends(verify_token)):
     user = UserRepository.get_by_id(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise not_found("User")
 
     agents = UserRepository.get_agents(user_id)
     return {**user, "agents": agents}
@@ -33,7 +34,7 @@ async def update_user_preferences(
 ):
     user = UserRepository.get_by_id(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise not_found("User")
 
     existing = {}
     try:
@@ -47,7 +48,7 @@ async def update_user_preferences(
     merged = {**existing, **update.preferences}
     updated = UserRepository.update_preferences(user_id, json.dumps(merged))
     if not updated:
-        raise HTTPException(status_code=500, detail="Failed to update preferences")
+        raise bad_request("Failed to update preferences")
 
     agents = UserRepository.get_agents(user_id)
     return {**updated, "agents": agents}
@@ -57,7 +58,7 @@ async def update_user_preferences(
 async def get_user_agents(user_id: str, token: str = Depends(verify_token)):
     user = UserRepository.get_by_id(user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise not_found("User")
 
     agents = UserRepository.get_agents(user_id)
     return AgentsListResponse(agents=agents, count=len(agents))
@@ -70,9 +71,9 @@ async def get_user_agent_sessions(
     token: str = Depends(verify_token)
 ):
     if not UserRepository.get_by_id(user_id):
-        raise HTTPException(status_code=404, detail="User not found")
+        raise not_found("User")
     if not UserRepository.can_access_agent(user_id, agent_id):
-        raise HTTPException(status_code=403, detail="User cannot access this agent")
+        raise forbidden("User cannot access this agent")
 
     sessions = SessionRepository.get_for_user(user_id, agent_id)
     return SessionsListResponse(sessions=sessions, count=len(sessions))
