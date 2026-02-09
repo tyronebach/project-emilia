@@ -34,20 +34,22 @@ interface EmotionalState {
   trust: number;
   attachment: number;
   familiarity: number;
+  intimacy: number;
+  playfulness_safety: number;
+  conflict_tolerance: number;
 }
 
 interface BehaviorLevers {
   warmth: number;
   playfulness: number;
   guardedness: number;
-  engagement: number;
-  formality: number;
 }
 
 interface EmotionalDebug {
   state: EmotionalState;
   behavior_levers: BehaviorLevers | null;
   profile: Record<string, unknown>;
+  interaction_count: number;
 }
 
 interface DebugPanelProps {
@@ -286,19 +288,47 @@ function DebugPanel({
                 </div>
               ) : emotionalData ? (
                 <>
-                  {/* Core Emotional State */}
+                  {/* Core VAD State */}
                   <div>
-                    <div className="text-[10px] text-text-secondary uppercase mb-1">Emotional State</div>
+                    <div className="text-[10px] text-text-secondary uppercase mb-1">VAD State</div>
                     <div className="grid grid-cols-3 gap-1">
-                      {Object.entries(emotionalData.state || {}).map(([key, value]) => (
+                      {(['valence', 'arousal', 'dominance'] as const).map((key) => (
                         <div key={key} className="bg-white/5 rounded px-2 py-1 text-center">
                           <div className="text-[10px] text-text-secondary capitalize">{key}</div>
                           <div className={`text-xs font-mono ${
-                            typeof value === 'number' && value > 0.5 ? 'text-success' : 
-                            typeof value === 'number' && value < -0.2 ? 'text-error' : 'text-text-primary'
+                            emotionalData.state[key] > 0.3 ? 'text-success' :
+                            emotionalData.state[key] < -0.2 ? 'text-error' : 'text-text-primary'
                           }`}>
-                            {typeof value === 'number' ? value.toFixed(2) : String(value)}
+                            {emotionalData.state[key].toFixed(2)}
                           </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Relationship Dimensions */}
+                  <div>
+                    <div className="text-[10px] text-text-secondary uppercase mb-1">Relationship</div>
+                    <div className="space-y-1">
+                      {([
+                        { key: 'trust' as const, label: 'Trust', color: 'bg-blue-400' },
+                        { key: 'intimacy' as const, label: 'Intimacy', color: 'bg-pink-400' },
+                        { key: 'playfulness_safety' as const, label: 'Play Safety', color: 'bg-purple-400' },
+                        { key: 'conflict_tolerance' as const, label: 'Conflict Tol.', color: 'bg-orange-400' },
+                        { key: 'attachment' as const, label: 'Attachment', color: 'bg-cyan-400' },
+                        { key: 'familiarity' as const, label: 'Familiarity', color: 'bg-green-400' },
+                      ]).map(({ key, label, color }) => (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="text-[10px] text-text-secondary w-20 truncate">{label}</span>
+                          <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full transition-all ${color}`}
+                              style={{ width: `${Math.max(0, Math.min(100, emotionalData.state[key] * 100))}%` }}
+                            />
+                          </div>
+                          <span className="text-[10px] text-text-primary font-mono w-10 text-right">
+                            {(emotionalData.state[key] * 100).toFixed(0)}%
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -309,23 +339,21 @@ function DebugPanel({
                     <div>
                       <div className="text-[10px] text-text-secondary uppercase mb-1">Behavior Levers</div>
                       <div className="space-y-1">
-                        {Object.entries(emotionalData.behavior_levers).map(([key, value]) => (
+                        {([
+                          { key: 'warmth' as const, color: 'bg-pink-400' },
+                          { key: 'playfulness' as const, color: 'bg-purple-400' },
+                          { key: 'guardedness' as const, color: 'bg-orange-400' },
+                        ]).map(({ key, color }) => (
                           <div key={key} className="flex items-center gap-2">
                             <span className="text-[10px] text-text-secondary w-20 capitalize">{key}</span>
                             <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
-                              <div 
-                                className={`h-full transition-all ${
-                                  key === 'guardedness' ? 'bg-orange-400' :
-                                  key === 'warmth' ? 'bg-pink-400' :
-                                  key === 'playfulness' ? 'bg-purple-400' :
-                                  key === 'engagement' ? 'bg-green-400' :
-                                  'bg-accent'
-                                }`}
-                                style={{ width: `${Math.max(0, Math.min(100, (value as number) * 100))}%` }}
+                              <div
+                                className={`h-full transition-all ${color}`}
+                                style={{ width: `${Math.max(0, Math.min(100, emotionalData.behavior_levers![key] * 100))}%` }}
                               />
                             </div>
-                            <span className="text-[10px] text-text-primary font-mono w-8">
-                              {(value as number).toFixed(2)}
+                            <span className="text-[10px] text-text-primary font-mono w-10 text-right">
+                              {emotionalData.behavior_levers![key].toFixed(2)}
                             </span>
                           </div>
                         ))}
@@ -333,23 +361,9 @@ function DebugPanel({
                     </div>
                   )}
 
-                  {/* Trust & Relationship */}
-                  <div className="flex gap-2 text-[10px]">
-                    <div className="flex-1 bg-white/5 rounded px-2 py-1">
-                      <span className="text-text-secondary">Trust: </span>
-                      <span className={`font-mono ${
-                        emotionalData.state.trust > 0.7 ? 'text-success' :
-                        emotionalData.state.trust < 0.3 ? 'text-error' : 'text-text-primary'
-                      }`}>
-                        {(emotionalData.state.trust * 100).toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="flex-1 bg-white/5 rounded px-2 py-1">
-                      <span className="text-text-secondary">Attachment: </span>
-                      <span className="text-text-primary font-mono">
-                        {(emotionalData.state.attachment * 100).toFixed(0)}%
-                      </span>
-                    </div>
+                  {/* Interaction Count */}
+                  <div className="text-[10px] text-text-secondary text-right">
+                    {emotionalData.interaction_count} interactions
                   </div>
                 </>
               ) : (

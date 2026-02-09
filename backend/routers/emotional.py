@@ -16,41 +16,36 @@ async def get_emotional_state(
 ):
     """
     Get current emotional state for a user-agent pair.
-    
-    Returns the raw state values plus computed behavior levers.
+
+    Returns clean state values, behavior levers, and relationship dimensions.
     """
     state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
     profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
     agent = AgentRepository.get_by_id(agent_id)
-    
-    # Compute behavior levers
+
+    state = EmotionalState(
+        valence=state_row.get('valence') or 0.0,
+        arousal=state_row.get('arousal') or 0.0,
+        dominance=state_row.get('dominance') or 0.0,
+        trust=state_row.get('trust') or 0.5,
+        attachment=state_row.get('attachment') or 0.3,
+        familiarity=state_row.get('familiarity') or 0.0,
+        intimacy=state_row.get('intimacy') or 0.2,
+        playfulness_safety=state_row.get('playfulness_safety') or 0.5,
+        conflict_tolerance=state_row.get('conflict_tolerance') or 0.7,
+    )
+
     levers = None
     if agent:
-        profile = AgentProfile(
-            baseline_valence=agent.get('baseline_valence') or 0.2,
-            baseline_arousal=agent.get('baseline_arousal') or 0.0,
-            emotional_volatility=agent.get('emotional_volatility') or 0.5,
-            emotional_recovery=agent.get('emotional_recovery') or 0.1,
-            trust_gain_multiplier=profile_data.get('trust_gain_multiplier', 1.0),
-            trust_loss_multiplier=profile_data.get('trust_loss_multiplier', 1.0),
-            trigger_multipliers=profile_data.get('trigger_multipliers', {}),
-        )
+        profile = AgentProfile.from_db(agent, profile_data)
         engine = EmotionEngine(profile)
-        
-        state = EmotionalState(
-            valence=state_row.get('valence') or 0.0,
-            arousal=state_row.get('arousal') or 0.0,
-            dominance=state_row.get('dominance') or 0.0,
-            trust=state_row.get('trust') or 0.5,
-            attachment=state_row.get('attachment') or 0.3,
-            familiarity=state_row.get('familiarity') or 0.0,
-        )
         levers = engine.get_behavior_levers(state)
-    
+
     return {
-        "state": state_row,
+        "state": state.to_dict(),
         "behavior_levers": levers,
         "profile": profile_data,
+        "interaction_count": state_row.get("interaction_count", 0),
     }
 
 
@@ -110,11 +105,14 @@ async def apply_trigger(
         trust=state_row.get('trust') or 0.5,
         attachment=state_row.get('attachment') or 0.3,
         familiarity=state_row.get('familiarity') or 0.0,
+        intimacy=state_row.get('intimacy') or 0.2,
+        playfulness_safety=state_row.get('playfulness_safety') or 0.5,
+        conflict_tolerance=state_row.get('conflict_tolerance') or 0.7,
     )
-    
+
     state_before = state.to_dict()
     deltas = engine.apply_trigger(state, trigger, intensity)
-    
+
     # Save updated state
     EmotionalStateRepository.update(
         user_id, agent_id,
@@ -124,6 +122,9 @@ async def apply_trigger(
         trust=state.trust,
         attachment=state.attachment,
         familiarity=state.familiarity,
+        intimacy=state.intimacy,
+        playfulness_safety=state.playfulness_safety,
+        conflict_tolerance=state.conflict_tolerance,
     )
     
     # Log the event
@@ -173,8 +174,14 @@ async def reset_emotional_state(
         trust=0.5,
         attachment=0.3,
         familiarity=0.0,
+        intimacy=0.2,
+        playfulness_safety=0.5,
+        conflict_tolerance=0.7,
     )
-    
+
+    # Clear trigger calibrations on reset
+    EmotionalStateRepository.update_calibration_json(user_id, agent_id, {})
+
     return {
         "reset": True,
         "state": {
@@ -184,6 +191,9 @@ async def reset_emotional_state(
             "trust": 0.5,
             "attachment": 0.3,
             "familiarity": 0.0,
+            "intimacy": 0.2,
+            "playfulness_safety": 0.5,
+            "conflict_tolerance": 0.7,
         }
     }
 
@@ -224,11 +234,14 @@ async def apply_decay(
         trust=state_row.get('trust') or 0.5,
         attachment=state_row.get('attachment') or 0.3,
         familiarity=state_row.get('familiarity') or 0.0,
+        intimacy=state_row.get('intimacy') or 0.2,
+        playfulness_safety=state_row.get('playfulness_safety') or 0.5,
+        conflict_tolerance=state_row.get('conflict_tolerance') or 0.7,
     )
-    
+
     state_before = state.to_dict()
     state = engine.apply_decay(state, seconds)
-    
+
     EmotionalStateRepository.update(
         user_id, agent_id,
         valence=state.valence,
@@ -237,6 +250,9 @@ async def apply_decay(
         trust=state.trust,
         attachment=state.attachment,
         familiarity=state.familiarity,
+        intimacy=state.intimacy,
+        playfulness_safety=state.playfulness_safety,
+        conflict_tolerance=state.conflict_tolerance,
     )
     
     return {
