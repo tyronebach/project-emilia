@@ -1,20 +1,22 @@
 # Emilia Webapp — Frontend
 
-React + TypeScript + Vite frontend for the Emilia voice assistant.
+React + TypeScript + Vite frontend for the Emilia VRM avatar chat app.
 
 ## Stack
 
-- **React 19** with TypeScript
-- **Vite** build tooling
-- **Three.js** + **@pixiv/three-vrm** for VRM avatar rendering
-- **Zustand** for state management
-- **TailwindCSS** for styling
+- React 19 + TypeScript
+- Vite (HTTPS dev server on `:3443`)
+- TanStack Router
+- Zustand for client state
+- React Query for server state
+- Three.js + @pixiv/three-vrm for VRM rendering
+- Tailwind CSS v4 + Radix UI
 
 ## Development
 
 ```bash
 npm install
-npm run dev
+npm run dev -- --host
 ```
 
 ## Build
@@ -26,7 +28,7 @@ npm run build
 ## Tests
 
 ```bash
-npx vitest run
+npm test
 ```
 
 ## Structure
@@ -34,10 +36,12 @@ npx vitest run
 ```
 src/
 ├── avatar/       # VRM rendering, animation, lip-sync, behaviors
-├── components/   # React UI components
-├── hooks/        # Custom React hooks (useChat, useVoiceChat, etc.)
-├── services/     # Voice service, audio utilities
-├── store/        # Zustand stores (app, chat, render)
-├── types/        # TypeScript type definitions
-└── utils/        # API client, helpers
+├── components/   # UI components + debug panels
+├── games/        # Game modules + registry
+├── hooks/        # useChat, useVoiceChat, useGame, useSession
+├── routes/       # TanStack Router pages
+├── services/     # Voice service + VAD
+├── store/        # Zustand stores (app, chat, render, game, stats)
+├── types/        # TypeScript types
+└── utils/        # API client, helpers, schemas
 ```

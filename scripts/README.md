@@ -8,33 +8,32 @@ Run each in a separate terminal:
 # Terminal 1: Backend API (port 8080)
 ./scripts/dev-backend-local.sh
 
-# Terminal 2: Game frontend (port 3443) 
+# Terminal 2: Frontend (port 3443)
 ./scripts/dev-frontend.sh
-
-# Terminal 3: Agent Designer (port 3002)
-./scripts/dev-designer.sh
 ```
 
 ## Scripts
 
 | Script | Description | Port |
 |--------|-------------|------|
-| `dev.sh` | Show all options | - |
+| `dev.sh` | Print dev shortcuts | - |
 | `dev-backend-local.sh` | Run backend locally (Python) | 8080 |
 | `dev-backend.sh` | Run backend via Docker | 8080 |
-| `dev-frontend.sh` | Run game frontend | 3443 |
-| `dev-designer.sh` | Run Agent Designer UI | 3002 |
-| `check-backend.sh` | Type-check backend | - |
-| `check-frontend.sh` | Type-check frontend | - |
-| `check-all.sh` | Type-check everything | - |
-| `test-scenarios.sh` | Run emotion scenarios | - |
+| `dev-frontend.sh` | Run Vite frontend (HTTPS) | 3443 |
+| `check-backend.sh` | Backend tests (docker) | - |
+| `check-frontend.sh` | Frontend tests/lint/build | - |
+| `check-all.sh` | Run backend + frontend checks | - |
+| `test-scenarios.sh` | Run emotion scenario suite | - |
+| `test-dialogues.py` | Run dialogue fixtures | - |
+| `test-emotion-scenarios.py` | Run emotion scenario fixtures | - |
+| `emotion-lab.py` | Interactive emotion tuning lab | - |
+| `compare-trigger-detection.py` | Compare trigger detection methods | - |
 
 ## URLs
 
-- **Game:** https://localhost:3443
-- **Agent Designer:** http://localhost:3002  
-- **API Health:** http://localhost:8080/api/health
-- **API Docs:** http://localhost:8080/docs
+- Frontend: https://localhost:3443
+- API Health: http://localhost:8080/api/health
+- API Docs: http://localhost:8080/docs
 
 ## Environment
 

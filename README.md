@@ -9,9 +9,9 @@ Voice + text chat with animated VRM avatar.
 | Frontend | React 19 + Vite + TanStack Router + Zustand |
 | Backend | FastAPI (modular) + SQLite |
 | Avatar | Three.js + @pixiv/three-vrm |
-| TTS | ElevenLabs WebSocket API |
-| STT | Faster Whisper (remote) |
-| LLM | Clawdbot Gateway |
+| TTS | ElevenLabs REST `/with-timestamps` |
+| STT | Faster Whisper (remote service) |
+| LLM | Clawdbot Gateway (OpenClaw) |
 
 ## Quick Start
 
@@ -21,10 +21,9 @@ docker compose up -d --build
 
 # View logs
 docker compose logs -f backend
-
-# Open
-open https://localhost:3443
 ```
+
+Open `https://localhost:3443`.
 
 ## URLs
 
@@ -55,7 +54,7 @@ pytest -q              # Backend tests
 # Frontend
 cd frontend
 npm run dev -- --host # Dev server :3443
-npm test              # 83 tests
+npm test              # Vitest
 npm run build         # Production build
 ```
 
@@ -63,10 +62,10 @@ npm run build         # Production build
 
 | File | Purpose |
 |------|---------|
-| [AGENTS.md](./AGENTS.md) | Guide for coding agents |
-| [CHANGELOG.md](./CHANGELOG.md) | Version history |
-| [docs/API.md](./docs/API.md) | Endpoint reference |
-| [docs/DESIGN.md](./docs/DESIGN.md) | UI design guide |
+| `AGENTS.md` | Guide for coding agents |
+| `CHANGELOG.md` | Version history |
+| `DOCUMENTATION.md` | LLM-focused repo map |
+| `docs/animation/` | VRM/animation pipeline notes |
 
 ## Avatar Assets
 
@@ -74,10 +73,6 @@ npm run build         # Production build
 - Model list is defined in `frontend/public/vrm/vrm-manifest.json`
 - Voice list is defined in `frontend/public/vrm/voice-ids.json`
 
-## Version
-
-**5.5.4** — See [CHANGELOG.md](./CHANGELOG.md) for details.
-
 ---
 
-Built by Ram 🩷
+Built by Ram
