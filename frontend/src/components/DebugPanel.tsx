@@ -1,5 +1,5 @@
-import { useMemo, useState, useCallback } from 'react';
-import { X, Activity, AlertCircle, Archive, RefreshCw } from 'lucide-react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
+import { X, Activity, AlertCircle, Archive, RefreshCw, Heart } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useChatStore } from '../store/chatStore';
 import { useStatsStore } from '../store/statsStore';
@@ -25,6 +25,29 @@ interface CompactionDebug {
   compaction_count: number;
   config: { threshold: number; keep_recent: number; model: string };
   should_compact: boolean;
+}
+
+interface EmotionalState {
+  valence: number;
+  arousal: number;
+  dominance: number;
+  trust: number;
+  attachment: number;
+  familiarity: number;
+}
+
+interface BehaviorLevers {
+  warmth: number;
+  playfulness: number;
+  guardedness: number;
+  engagement: number;
+  formality: number;
+}
+
+interface EmotionalDebug {
+  state: EmotionalState;
+  behavior_levers: BehaviorLevers | null;
+  profile: Record<string, unknown>;
 }
 
 interface DebugPanelProps {
@@ -64,6 +87,12 @@ function DebugPanel({
   const [compactionLoading, setCompactionLoading] = useState(false);
   const [compactionError, setCompactionError] = useState<string | null>(null);
 
+  // Emotional state
+  const [emotionalData, setEmotionalData] = useState<EmotionalDebug | null>(null);
+  const [emotionalLoading, setEmotionalLoading] = useState(false);
+  const [emotionalError, setEmotionalError] = useState<string | null>(null);
+  const [emotionalExpanded, setEmotionalExpanded] = useState(false);
+
   const fetchCompaction = useCallback(async () => {
     if (!sessionId) return;
     setCompactionLoading(true);
@@ -83,6 +112,29 @@ function DebugPanel({
     setCompactionOpen(true);
     fetchCompaction();
   }, [fetchCompaction]);
+
+  // Fetch emotional state
+  const fetchEmotionalState = useCallback(async () => {
+    if (!currentUser?.id || !currentAgent?.id) return;
+    setEmotionalLoading(true);
+    setEmotionalError(null);
+    try {
+      const res = await fetchWithAuth(`/api/debug/emotional-state/${currentUser.id}/${currentAgent.id}`);
+      if (!res.ok) throw new Error(`${res.status}`);
+      setEmotionalData(await res.json());
+    } catch (e) {
+      setEmotionalError((e as Error).message);
+    } finally {
+      setEmotionalLoading(false);
+    }
+  }, [currentUser?.id, currentAgent?.id]);
+
+  // Auto-fetch emotional state when panel opens and user/agent available
+  useEffect(() => {
+    if (open && currentUser?.id && currentAgent?.id) {
+      fetchEmotionalState();
+    }
+  }, [open, currentUser?.id, currentAgent?.id, fetchEmotionalState]);
 
   const userMessages = messages.filter((m) => m.role === 'user').length;
   const assistantMessages = messages.filter((m) => m.role === 'assistant').length;
@@ -191,6 +243,123 @@ function DebugPanel({
           <Archive className="w-3 h-3" />
           Session Compaction
         </Button>
+
+        {/* Emotion Engine */}
+        <div className="border border-white/10 rounded-lg overflow-hidden">
+          <button
+            className="w-full h-8 px-3 flex items-center justify-between text-xs hover:bg-white/5 transition-colors"
+            onClick={() => setEmotionalExpanded(!emotionalExpanded)}
+          >
+            <div className="flex items-center gap-2">
+              <Heart className="w-3 h-3 text-pink-400" />
+              <span className="text-text-primary">Emotion Engine</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {emotionalLoading && <RefreshCw className="w-3 h-3 animate-spin text-text-secondary" />}
+              <span className="text-text-secondary">{emotionalExpanded ? '−' : '+'}</span>
+            </div>
+          </button>
+
+          {emotionalExpanded && (
+            <div className="px-3 pb-3 pt-1 space-y-2 border-t border-white/10">
+              {/* Refresh button */}
+              <div className="flex justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 px-2 text-[10px]"
+                  onClick={fetchEmotionalState}
+                  disabled={emotionalLoading || !currentUser?.id || !currentAgent?.id}
+                >
+                  <RefreshCw className={`w-3 h-3 mr-1 ${emotionalLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
+
+              {emotionalError && (
+                <div className="text-[10px] text-error bg-error/10 rounded px-2 py-1">{emotionalError}</div>
+              )}
+
+              {!currentUser?.id || !currentAgent?.id ? (
+                <div className="text-[10px] text-text-secondary text-center py-2">
+                  Select user and agent to view emotional state
+                </div>
+              ) : emotionalData ? (
+                <>
+                  {/* Core Emotional State */}
+                  <div>
+                    <div className="text-[10px] text-text-secondary uppercase mb-1">Emotional State</div>
+                    <div className="grid grid-cols-3 gap-1">
+                      {Object.entries(emotionalData.state || {}).map(([key, value]) => (
+                        <div key={key} className="bg-white/5 rounded px-2 py-1 text-center">
+                          <div className="text-[10px] text-text-secondary capitalize">{key}</div>
+                          <div className={`text-xs font-mono ${
+                            typeof value === 'number' && value > 0.5 ? 'text-success' : 
+                            typeof value === 'number' && value < -0.2 ? 'text-error' : 'text-text-primary'
+                          }`}>
+                            {typeof value === 'number' ? value.toFixed(2) : String(value)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Behavior Levers */}
+                  {emotionalData.behavior_levers && (
+                    <div>
+                      <div className="text-[10px] text-text-secondary uppercase mb-1">Behavior Levers</div>
+                      <div className="space-y-1">
+                        {Object.entries(emotionalData.behavior_levers).map(([key, value]) => (
+                          <div key={key} className="flex items-center gap-2">
+                            <span className="text-[10px] text-text-secondary w-20 capitalize">{key}</span>
+                            <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+                              <div 
+                                className={`h-full transition-all ${
+                                  key === 'guardedness' ? 'bg-orange-400' :
+                                  key === 'warmth' ? 'bg-pink-400' :
+                                  key === 'playfulness' ? 'bg-purple-400' :
+                                  key === 'engagement' ? 'bg-green-400' :
+                                  'bg-accent'
+                                }`}
+                                style={{ width: `${Math.max(0, Math.min(100, (value as number) * 100))}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] text-text-primary font-mono w-8">
+                              {(value as number).toFixed(2)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Trust & Relationship */}
+                  <div className="flex gap-2 text-[10px]">
+                    <div className="flex-1 bg-white/5 rounded px-2 py-1">
+                      <span className="text-text-secondary">Trust: </span>
+                      <span className={`font-mono ${
+                        emotionalData.state.trust > 0.7 ? 'text-success' :
+                        emotionalData.state.trust < 0.3 ? 'text-error' : 'text-text-primary'
+                      }`}>
+                        {(emotionalData.state.trust * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="flex-1 bg-white/5 rounded px-2 py-1">
+                      <span className="text-text-secondary">Attachment: </span>
+                      <span className="text-text-primary font-mono">
+                        {(emotionalData.state.attachment * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-[10px] text-text-secondary text-center py-2">
+                  {emotionalLoading ? 'Loading...' : 'No emotional data'}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <Dialog open={compactionOpen} onOpenChange={(next) => { if (!next) setCompactionOpen(false); }}>
           <DialogContent className="w-[28rem] max-w-[92vw] max-h-[80vh] overflow-hidden flex flex-col p-0">
