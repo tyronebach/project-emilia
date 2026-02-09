@@ -1,4 +1,5 @@
 """Emotional engine debug endpoints"""
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query
 from dependencies import verify_token
 from db.repositories import EmotionalStateRepository, AgentRepository
@@ -242,4 +243,34 @@ async def apply_decay(
         "seconds_elapsed": seconds,
         "state_before": state_before,
         "state_after": state.to_dict(),
+    }
+
+
+@router.get("/calibration/{user_id}/{agent_id}")
+async def get_calibration(
+    user_id: str,
+    agent_id: str,
+    token: str = Depends(verify_token)
+):
+    """Get user's trigger calibration profile for debugging."""
+    state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
+    raw_cal = state_row.get('trigger_calibration_json')
+    calibration = {}
+    if raw_cal:
+        try:
+            calibration = json.loads(raw_cal) if isinstance(raw_cal, str) else raw_cal
+        except (json.JSONDecodeError, TypeError):
+            calibration = {}
+
+    return {
+        "user_id": user_id,
+        "agent_id": agent_id,
+        "relationship_dimensions": {
+            "trust": state_row.get("trust"),
+            "intimacy": state_row.get("intimacy"),
+            "playfulness_safety": state_row.get("playfulness_safety"),
+            "conflict_tolerance": state_row.get("conflict_tolerance"),
+        },
+        "trigger_calibration": calibration,
+        "interaction_count": state_row.get("interaction_count"),
     }
