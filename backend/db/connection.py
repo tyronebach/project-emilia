@@ -34,6 +34,8 @@ def get_db():
     conn.row_factory = dict_factory
     try:
         conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA busy_timeout = 5000")
         yield conn
         conn.commit()
     except Exception:

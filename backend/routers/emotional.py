@@ -23,17 +23,7 @@ async def get_emotional_state(
     profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
     agent = AgentRepository.get_by_id(agent_id)
 
-    state = EmotionalState(
-        valence=state_row.get('valence') or 0.0,
-        arousal=state_row.get('arousal') or 0.0,
-        dominance=state_row.get('dominance') or 0.0,
-        trust=state_row.get('trust') or 0.5,
-        attachment=state_row.get('attachment') or 0.3,
-        familiarity=state_row.get('familiarity') or 0.0,
-        intimacy=state_row.get('intimacy') or 0.2,
-        playfulness_safety=state_row.get('playfulness_safety') or 0.5,
-        conflict_tolerance=state_row.get('conflict_tolerance') or 0.7,
-    )
+    state = EmotionalState.from_db_row(state_row)
 
     levers = None
     if agent:
@@ -71,29 +61,10 @@ async def apply_trigger(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     
-    profile = AgentProfile(
-        baseline_valence=agent.get('baseline_valence') or 0.2,
-        baseline_arousal=agent.get('baseline_arousal') or 0.0,
-        baseline_dominance=agent.get('baseline_dominance') or 0.0,
-        emotional_volatility=agent.get('emotional_volatility') or 0.5,
-        emotional_recovery=agent.get('emotional_recovery') or 0.1,
-        trust_gain_multiplier=profile_data.get('trust_gain_multiplier', 1.0),
-        trust_loss_multiplier=profile_data.get('trust_loss_multiplier', 1.0),
-        trigger_multipliers=profile_data.get('trigger_multipliers', {}),
-    )
-    
+    profile = AgentProfile.from_db(agent, profile_data)
+
     engine = EmotionEngine(profile)
-    state = EmotionalState(
-        valence=state_row.get('valence') or 0.0,
-        arousal=state_row.get('arousal') or 0.0,
-        dominance=state_row.get('dominance') or 0.0,
-        trust=state_row.get('trust') or 0.5,
-        attachment=state_row.get('attachment') or 0.3,
-        familiarity=state_row.get('familiarity') or 0.0,
-        intimacy=state_row.get('intimacy') or 0.2,
-        playfulness_safety=state_row.get('playfulness_safety') or 0.5,
-        conflict_tolerance=state_row.get('conflict_tolerance') or 0.7,
-    )
+    state = EmotionalState.from_db_row(state_row)
 
     state_before = state.to_dict()
     deltas = engine.apply_trigger(state, trigger, intensity)
@@ -146,9 +117,9 @@ async def reset_emotional_state(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     
-    baseline_valence = agent.get('baseline_valence') or 0.2
-    baseline_arousal = agent.get('baseline_arousal') or 0.0
-    baseline_dominance = agent.get('baseline_dominance') or 0.0
+    baseline_valence = agent.get('baseline_valence') if agent.get('baseline_valence') is not None else 0.2
+    baseline_arousal = agent.get('baseline_arousal') if agent.get('baseline_arousal') is not None else 0.0
+    baseline_dominance = agent.get('baseline_dominance') if agent.get('baseline_dominance') is not None else 0.0
     
     EmotionalStateRepository.update(
         user_id, agent_id,
@@ -216,27 +187,10 @@ async def apply_decay(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     
-    profile = AgentProfile(
-        baseline_valence=agent.get('baseline_valence') or 0.2,
-        baseline_arousal=agent.get('baseline_arousal') or 0.0,
-        baseline_dominance=agent.get('baseline_dominance') or 0.0,
-        emotional_volatility=agent.get('emotional_volatility') or 0.5,
-        emotional_recovery=agent.get('emotional_recovery') or 0.1,
-        decay_rates=profile_data.get('decay_rates', {}),
-    )
-    
+    profile = AgentProfile.from_db(agent, profile_data)
+
     engine = EmotionEngine(profile)
-    state = EmotionalState(
-        valence=state_row.get('valence') or 0.0,
-        arousal=state_row.get('arousal') or 0.0,
-        dominance=state_row.get('dominance') or 0.0,
-        trust=state_row.get('trust') or 0.5,
-        attachment=state_row.get('attachment') or 0.3,
-        familiarity=state_row.get('familiarity') or 0.0,
-        intimacy=state_row.get('intimacy') or 0.2,
-        playfulness_safety=state_row.get('playfulness_safety') or 0.5,
-        conflict_tolerance=state_row.get('conflict_tolerance') or 0.7,
-    )
+    state = EmotionalState.from_db_row(state_row)
 
     state_before = state.to_dict()
     state = engine.apply_decay(state, seconds)

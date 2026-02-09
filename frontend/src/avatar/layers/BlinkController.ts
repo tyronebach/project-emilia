@@ -105,6 +105,12 @@ export class BlinkController {
     this.enabled = enabled;
 
     if (!enabled) {
+      // Resolve any previously orphaned pause promise
+      if (this.pauseResolve) {
+        this.pauseResolve();
+        this.pauseResolve = null;
+      }
+
       // Pausing - return promise that resolves when eyes are at base state
       if (this.phase === 'open') {
         return Promise.resolve();
@@ -114,7 +120,11 @@ export class BlinkController {
         this.pauseResolve = resolve;
       });
     } else {
-      // Resuming
+      // Resuming — resolve any lingering promise
+      if (this.pauseResolve) {
+        this.pauseResolve();
+        this.pauseResolve = null;
+      }
       this.scheduleNextBlink();
       return Promise.resolve();
     }

@@ -9,7 +9,9 @@ from dataclasses import dataclass, field
 from typing import ClassVar, Optional
 import json
 import logging
+import math
 import re
+import threading
 import time as _time
 
 # Lazy import httpx - only needed for LLM trigger detection
@@ -33,14 +35,18 @@ def _load_moods_from_db() -> tuple[list[str], dict[str, tuple[float, float]]]:
     return moods, va_map
 
 
-# Populated on first access (lazy) so DB is ready before we query
+# Populated on first access (lazy) so DB is ready before we query.
+# Thread-safe via lock to prevent duplicate init under concurrent access.
+_moods_lock = threading.Lock()
 _moods_cache: tuple[list[str], dict[str, tuple[float, float]]] | None = None
 
 
 def _get_moods() -> tuple[list[str], dict[str, tuple[float, float]]]:
     global _moods_cache
     if _moods_cache is None:
-        _moods_cache = _load_moods_from_db()
+        with _moods_lock:
+            if _moods_cache is None:  # double-checked locking
+                _moods_cache = _load_moods_from_db()
     return _moods_cache
 
 
@@ -52,39 +58,6 @@ def get_mood_list() -> list[str]:
 def get_mood_valence_arousal() -> dict[str, tuple[float, float]]:
     """Get mood -> (valence, arousal) mapping."""
     return _get_moods()[1]
-
-
-# Backwards-compatible module-level aliases (read via property-like access)
-# Code that does `for mood in MOODS` or `MOOD_VALENCE_AROUSAL[x]` still works.
-# These are loaded lazily on first use.
-class _LazyList(list):
-    _loaded = False
-    def _ensure(self):
-        if not self._loaded:
-            self.extend(get_mood_list())
-            self._loaded = True
-    def __iter__(self): self._ensure(); return super().__iter__()
-    def __len__(self): self._ensure(); return super().__len__()
-    def __contains__(self, item): self._ensure(); return super().__contains__(item)
-    def __getitem__(self, idx): self._ensure(); return super().__getitem__(idx)
-
-class _LazyDict(dict):
-    _loaded = False
-    def _ensure(self):
-        if not self._loaded:
-            self.update(get_mood_valence_arousal())
-            self._loaded = True
-    def __iter__(self): self._ensure(); return super().__iter__()
-    def __len__(self): self._ensure(); return super().__len__()
-    def __contains__(self, item): self._ensure(); return super().__contains__(item)
-    def __getitem__(self, key): self._ensure(); return super().__getitem__(key)
-    def get(self, key, default=None): self._ensure(); return super().get(key, default)
-    def items(self): self._ensure(); return super().items()
-    def values(self): self._ensure(); return super().values()
-    def keys(self): self._ensure(); return super().keys()
-
-MOODS = _LazyList()
-MOOD_VALENCE_AROUSAL = _LazyDict()
 
 
 @dataclass
@@ -135,6 +108,32 @@ class EmotionalState:
             conflict_tolerance=d.get('conflict_tolerance', 0.7),
         )
 
+    @classmethod
+    def from_db_row(cls, row: dict, calibrations: dict | None = None,
+                    mood_weights: dict | None = None) -> 'EmotionalState':
+        """Build EmotionalState from a DB row, handling None without clobbering 0.0.
+
+        Unlike `or` which treats 0.0 as falsy, this uses the dataclass defaults
+        only when the DB value is actually None (column missing or NULL).
+        """
+        def _v(key: str, default: float) -> float:
+            val = row.get(key)
+            return val if val is not None else default
+
+        return cls(
+            valence=_v('valence', 0.0),
+            arousal=_v('arousal', 0.0),
+            dominance=_v('dominance', 0.0),
+            trust=_v('trust', 0.5),
+            attachment=_v('attachment', 0.3),
+            familiarity=_v('familiarity', 0.0),
+            mood_weights=mood_weights if mood_weights is not None else (row.get('mood_weights') or {}),
+            intimacy=_v('intimacy', 0.2),
+            playfulness_safety=_v('playfulness_safety', 0.5),
+            conflict_tolerance=_v('conflict_tolerance', 0.7),
+            trigger_calibration=calibrations or {},
+        )
+
 
 @dataclass
 class AgentProfile:
@@ -162,12 +161,16 @@ class AgentProfile:
     @classmethod
     def from_db(cls, agent_row: dict, profile_json: dict) -> 'AgentProfile':
         """Build profile from agents table row + parsed JSON profile."""
+        def _v(key: str, default: float) -> float:
+            val = agent_row.get(key)
+            return val if val is not None else default
+
         return cls(
-            baseline_valence=agent_row.get('baseline_valence') or 0.2,
-            baseline_arousal=agent_row.get('baseline_arousal') or 0.0,
-            baseline_dominance=agent_row.get('baseline_dominance') or 0.0,
-            emotional_volatility=agent_row.get('emotional_volatility') or 0.5,
-            emotional_recovery=agent_row.get('emotional_recovery') or 0.1,
+            baseline_valence=_v('baseline_valence', 0.2),
+            baseline_arousal=_v('baseline_arousal', 0.0),
+            baseline_dominance=_v('baseline_dominance', 0.0),
+            emotional_volatility=_v('emotional_volatility', 0.5),
+            emotional_recovery=_v('emotional_recovery', 0.1),
             decay_rates=profile_json.get('decay_rates', {
                 'valence': 0.1, 'arousal': 0.12, 'trust': 0.02, 'attachment': 0.01
             }),
@@ -272,10 +275,10 @@ TRIGGER_ALIASES = {
 
 
 def normalize_trigger(trigger: str) -> str | None:
-    """Convert legacy trigger to consolidated taxonomy."""
+    """Convert legacy trigger to consolidated taxonomy. Returns None for unrecognized."""
     if trigger in ALL_TRIGGERS:
         return trigger
-    return TRIGGER_ALIASES.get(trigger, trigger)
+    return TRIGGER_ALIASES.get(trigger)
 
 
 # ============================================================
@@ -472,8 +475,11 @@ def infer_outcome_multisignal(
             signals.append(OutcomeSignal("user_behavior", "negative", 0.3, 0.5))
 
     mood = agent_behavior.get("mood", "").lower()
-    positive_moods = {"happy", "playful", "loving", "excited", "grateful", "bashful", "flirty"}
-    negative_moods = {"sad", "hurt", "angry", "frustrated", "disappointed", "defensive"}
+    # Derive mood sentiment from MOOD_GROUPS (matches actual DB mood IDs)
+    _positive_groups = {"warm", "playful"}
+    _negative_groups = {"sharp", "dark"}
+    positive_moods = {m for g, info in MOOD_GROUPS.items() if g in _positive_groups for m in info["moods"]}
+    negative_moods = {m for g, info in MOOD_GROUPS.items() if g in _negative_groups for m in info["moods"]}
 
     if mood in positive_moods:
         signals.append(OutcomeSignal("agent_tag", "positive", 0.4, 0.5))
@@ -688,24 +694,24 @@ class EmotionEngine:
     
     def apply_decay(self, state: EmotionalState, elapsed_seconds: float) -> EmotionalState:
         """
-        Apply temporal decay toward baseline.
-        
-        Decay formula: new = current - (current - baseline) * rate * (elapsed/3600)
+        Apply temporal decay toward baseline using exponential decay.
+
+        Formula: new = baseline + (current - baseline) * exp(-rate * recovery * hours)
+        This guarantees monotonic convergence without overshooting the baseline.
         """
         if elapsed_seconds <= 0:
             return state
-        
+
         hours = elapsed_seconds / 3600.0
-        
+
         # Get per-axis decay rates
         rates = self.profile.decay_rates
         recovery = self.profile.emotional_recovery
-        
-        # Decay each axis
+
+        # Exponential decay: always converges, never overshoots
         def decay_axis(current: float, baseline: float, rate: float) -> float:
-            decay_amount = (current - baseline) * rate * recovery * hours
-            return current - decay_amount
-        
+            return baseline + (current - baseline) * math.exp(-rate * recovery * hours)
+
         state.valence = self._clamp(
             decay_axis(state.valence, self.profile.baseline_valence, rates.get('valence', 0.1)),
             -1.0, 1.0
@@ -718,15 +724,17 @@ class EmotionEngine:
             decay_axis(state.dominance, self.profile.baseline_dominance, rates.get('dominance', 0.1)),
             -1.0, 1.0
         )
-        
+
         # Trust/attachment decay very slowly (toward baseline 0.5/0.3)
-        # But we don't decay trust below 0.3 or attachment below 0.2
-        trust_decay = (state.trust - 0.5) * rates.get('trust', 0.02) * recovery * hours
-        state.trust = self._clamp(state.trust - trust_decay, 0.0, 1.0)
-        
-        attachment_decay = (state.attachment - 0.3) * rates.get('attachment', 0.01) * recovery * hours
-        state.attachment = self._clamp(state.attachment - attachment_decay, 0.0, self.profile.attachment_ceiling)
-        
+        state.trust = self._clamp(
+            decay_axis(state.trust, 0.5, rates.get('trust', 0.02)),
+            0.0, 1.0
+        )
+        state.attachment = self._clamp(
+            decay_axis(state.attachment, 0.3, rates.get('attachment', 0.01)),
+            0.0, self.profile.attachment_ceiling
+        )
+
         return state
     
     def detect_triggers(self, text: str) -> list[tuple[str, float]]:
@@ -1114,14 +1122,14 @@ class EmotionEngine:
         Play triggers: trust-gated modulation.
         Vulnerability triggers: intimacy-gated modulation.
         """
-        # Play triggers: trust-gated
+        # Play triggers: trust-gated (clamped to >= 0 to prevent negative spiral)
         if trigger in ('teasing', 'banter', 'flirting'):
             if state.trust >= self.profile.play_trust_threshold:
                 return abs(intensity) * 0.8   # safe: bonding
             elif state.trust >= 0.4:
                 return abs(intensity) * 0.2   # cautious
             else:
-                return -abs(intensity) * 0.5  # risky: hurts
+                return 0.0  # too risky: suppress entirely (prevents trust spiral)
 
         # Vulnerability triggers: intimacy-gated
         if trigger in ('disclosure', 'trust_signal'):
@@ -1165,12 +1173,13 @@ class EmotionEngine:
         DEPRECATED: Use calculate_mood_deltas_from_va() instead.
         This method used the old trigger_mood_map config surface which is no longer needed.
         """
-        mood_deltas = {mood: 0.0 for mood in MOODS}
+        all_moods = get_mood_list()
+        mood_deltas = {mood: 0.0 for mood in all_moods}
 
         for trigger, intensity in triggers:
             if trigger in trigger_mood_map:
                 for mood, weight in trigger_mood_map[trigger].items():
-                    if mood in MOODS:
+                    if mood in all_moods:
                         mood_deltas[mood] += weight * intensity
 
         return mood_deltas
@@ -1181,7 +1190,7 @@ class EmotionEngine:
         V/A is now driven by triggers directly, not back-derived from moods.
         """
         if not state.mood_weights:
-            state.mood_weights = {mood: self.profile.mood_baseline.get(mood, 0) for mood in MOODS}
+            state.mood_weights = {mood: self.profile.mood_baseline.get(mood, 0) for mood in get_mood_list()}
 
         for mood, delta in mood_deltas.items():
             effective_delta = delta * self.profile.emotional_volatility
@@ -1192,13 +1201,14 @@ class EmotionEngine:
         """Derive valence/arousal from mood weights."""
         total_weight = sum(max(0, w) for w in state.mood_weights.values()) or 1
 
+        va_map = get_mood_valence_arousal()
         valence = sum(
-            MOOD_VALENCE_AROUSAL.get(mood, (0, 0))[0] * max(0, weight)
+            va_map.get(mood, (0, 0))[0] * max(0, weight)
             for mood, weight in state.mood_weights.items()
         ) / total_weight
 
         arousal = sum(
-            MOOD_VALENCE_AROUSAL.get(mood, (0, 0))[1] * max(0, weight)
+            va_map.get(mood, (0, 0))[1] * max(0, weight)
             for mood, weight in state.mood_weights.items()
         ) / total_weight
 
@@ -1215,11 +1225,10 @@ class EmotionEngine:
         decay_rate = self.profile.mood_decay_rate
         baseline = self.profile.mood_baseline
 
-        for mood in MOODS:
+        for mood in get_mood_list():
             current = state.mood_weights.get(mood, 0)
             target = baseline.get(mood, 0)
-            decay = (current - target) * decay_rate * hours
-            state.mood_weights[mood] = current - decay
+            state.mood_weights[mood] = target + (current - target) * math.exp(-decay_rate * hours)
 
     def get_dominant_moods(self, state: EmotionalState, top_n: int = 3) -> list[tuple[str, float]]:
         """Get top N moods by current weight."""

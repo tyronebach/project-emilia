@@ -19,6 +19,7 @@ import { BehaviorPlanner } from './behavior/BehaviorPlanner';
 import { MicroBehaviorController } from './behavior/MicroBehaviorController';
 import { AmbientBehavior } from './behavior/AmbientBehavior';
 import type { BehaviorInput, BehaviorOutput, MicroBehavior } from './types/behavior';
+import { animationStateMachine } from './AnimationStateMachine';
 import type * as THREE from 'three';
 
 // Supported emotion names
@@ -350,14 +351,14 @@ export class AnimationController {
         break;
       case 'head_tilt':
         // Optional ambient gesture - skip if not in state machine
-        if (this.stateMachine?.hasAction('head_tilt')) {
+        if (animationStateMachine.hasAction('head_tilt')) {
           this.triggerGesture('head_tilt', { fadeIn: 0.2, fadeOut: 0.2 });
         }
         break;
       case 'posture_shift':
         // Optional ambient gesture - idle animation has natural movement built-in
         // Only trigger if explicitly defined in state machine
-        if (this.stateMachine?.hasAction('posture_shift')) {
+        if (animationStateMachine.hasAction('posture_shift')) {
           this.triggerGesture('posture_shift', { fadeIn: 0.3, fadeOut: 0.3 });
         }
         break;
@@ -533,9 +534,19 @@ export class AnimationController {
     this.blinkController?.dispose();
     this.lookAtSystem?.dispose();
     this.idleMicroBehaviors?.dispose();
-    this.lipSyncEngine?.stop();
+    this.idleAnimations?.dispose();
+    this.animationPlayer?.dispose();
+    this.lipSyncEngine?.dispose();
     this.animationGraph?.dispose();
     this.expressionMixer.dispose();
+
+    this.blinkController = null;
+    this.lookAtSystem = null;
+    this.idleMicroBehaviors = null;
+    this.idleAnimations = null;
+    this.animationPlayer = null;
+    this.lipSyncEngine = null;
+    this.animationGraph = null;
 
     this.initialized = false;
     this.vrm = null;
