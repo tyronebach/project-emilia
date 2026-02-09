@@ -274,8 +274,9 @@ async def compare_bonds(body: dict[str, Any]) -> list[dict]:
 
     bonds = []
     for uid in user_ids:
-        state_row = EmotionalStateRepository.get_or_create(uid, agent_id)
-        bonds.append(_bond_from_row(dict(state_row), agent_name))
+        state_row = EmotionalStateRepository.get(uid, agent_id)
+        if state_row:
+            bonds.append(_bond_from_row(dict(state_row), agent_name))
     return bonds
 
 
@@ -295,6 +296,7 @@ async def reset_bond(user_id: str, agent_id: str) -> dict:
 
     EmotionalStateRepository.update(
         user_id, agent_id,
+        increment_interaction=False,
         mood_weights=mood_baseline if mood_baseline else None,
         valence=baseline_v, arousal=baseline_a, dominance=baseline_d,
         trust=0.5, attachment=0.3, familiarity=0.0,
@@ -456,26 +458,18 @@ async def simulate(body: dict[str, Any]) -> dict:
     trigger_details = []
     for trigger, intensity in triggers:
         canonical = normalize_trigger(trigger)
-        has_response = trigger in profile_data.get("trigger_responses", {})
-        dna_sens = 1.0 if has_response else profile.trigger_multipliers.get(trigger, 1.0)
         cal = calibrations.get(canonical) if canonical else None
-        cal_mult = 1.0
-        if cal:
-            from services.emotion_engine import ContextBucket
-            ctx = ContextBucket.from_state(state)
-            cal_mult = cal.get_multiplier(ctx)
 
+        # Use same formula as the actual engine (M3 fix)
+        effective = engine.compute_effective_delta(trigger, intensity, state, cal)
         engine.apply_trigger_calibrated(state, trigger, intensity, cal)
 
-        effective = intensity * dna_sens * cal_mult * profile.emotional_volatility
         # Per-axis deltas for direction visualization
         axis_deltas = profile.get_trigger_deltas(trigger)
         trigger_details.append({
             "trigger": trigger,
             "raw_intensity": round(intensity, 3),
             "effective_intensity": round(effective, 3),
-            "dna_sensitivity": round(dna_sens, 2),
-            "calibration_multiplier": round(cal_mult, 2),
             "axis_deltas": {k: round(v, 3) for k, v in axis_deltas.items()},
         })
 

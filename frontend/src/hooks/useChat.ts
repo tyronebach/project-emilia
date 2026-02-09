@@ -38,8 +38,6 @@ export function useChat() {
   const { updateStats, addStateEntry } = useStatsStore();
   const currentAgent = useUserStore((state) => state.currentAgent);
 
-  // Use global isLoading to prevent concurrent sends from multiple useChat instances
-  const isLoading = useAppStore((s) => s.status === 'thinking' || s.status === 'speaking');
   const abortControllerRef = useRef<AbortController | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
@@ -166,6 +164,9 @@ export function useChat() {
    * Send message and handle streaming response
    */
   const sendMessage = useCallback(async (message: string): Promise<void> => {
+    // Read isLoading fresh from store to avoid stale closure (M11 fix)
+    const currentStatus = useAppStore.getState().status;
+    const isLoading = currentStatus === 'thinking' || currentStatus === 'speaking';
     if (isLoading || !currentAgent) return;
 
     setStatus('thinking');
@@ -268,6 +269,13 @@ export function useChat() {
         const ttsTimeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 30000));
         const audio_base64 = await Promise.race([speakText(finalResponse.response), ttsTimeout]);
         if (audio_base64) {
+          // Clear audio from previous messages to prevent unbounded memory growth (M10 fix)
+          const { messages } = useChatStore.getState();
+          for (const msg of messages) {
+            if (msg.id !== messageId && msg.meta?.audio_base64) {
+              updateMessage(msg.id, { meta: { ...msg.meta, audio_base64: undefined } });
+            }
+          }
           updateMessage(messageId, {
             meta: {
               processing_ms: finalResponse.processing_ms,
@@ -296,7 +304,10 @@ export function useChat() {
         setStatus('ready');
       }
     }
-  }, [currentAgent, isLoading, setStatus, addMessage, updateMessage, applyAvatarCommand, handleAvatarResponse, getGameContext, ttsEnabled, speakText, updateStats]);
+  }, [currentAgent, setStatus, addMessage, updateMessage, applyAvatarCommand, handleAvatarResponse, getGameContext, ttsEnabled, speakText, updateStats]);
+
+  // Reactive isLoading for consumers (re-renders on status change)
+  const isLoading = useAppStore((s) => s.status === 'thinking' || s.status === 'speaking');
 
   const abort = useCallback(() => {
     abortControllerRef.current?.abort();

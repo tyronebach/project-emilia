@@ -46,24 +46,6 @@ export interface HistoryMessage {
   timestamp?: string;
 }
 
-interface StreamResponse {
-  response?: string;
-  session_id?: string;
-  processing_ms?: number;
-  model?: string;
-  behavior?: {
-    intent?: string | null;
-    mood?: string | null;
-    mood_intensity?: number;
-    energy?: string | null;
-  };
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  };
-}
-
 
 // ============ HELPERS ============
 
@@ -286,6 +268,7 @@ export async function streamChat(
     let buffer = '';
     let currentEventType: string | null = null;
     let fullContent = '';
+    let receivedDone = false;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -337,6 +320,7 @@ export async function streamChat(
             }
 
             if (data.done) {
+              receivedDone = true;
               onDone({
                 response: data.response || stripAvatarTags(fullContent),
                 session_id: data.session_id,
@@ -354,6 +338,18 @@ export async function streamChat(
           currentEventType = null;
         }
       }
+    }
+
+    // Stream ended without a done event — flush partial content so UI isn't stuck
+    if (!receivedDone && fullContent) {
+      onDone({
+        response: stripAvatarTags(fullContent),
+        session_id: '',
+        processing_ms: 0,
+        model: '',
+        behavior: undefined,
+        usage: undefined,
+      });
     }
   } catch (error) {
     onError(error as Error);

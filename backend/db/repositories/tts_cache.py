@@ -2,6 +2,10 @@
 import time
 from db.connection import get_db
 
+# Prune every N puts to avoid checking count on every insert
+_put_counter = 0
+_PRUNE_INTERVAL = 10
+
 
 class TTSCacheRepository:
 
@@ -71,6 +75,14 @@ class TTSCacheRepository:
                     0,
                 )
             )
+
+        # Periodically prune to enforce max_entries limit
+        global _put_counter
+        _put_counter += 1
+        if _put_counter >= _PRUNE_INTERVAL:
+            _put_counter = 0
+            from config import settings
+            TTSCacheRepository.prune(settings.tts_cache_max_entries)
 
     @staticmethod
     def prune(max_entries: int) -> int:

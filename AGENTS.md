@@ -7,10 +7,10 @@ Instructions for Claude coding agents working on this project.
 | Item | Value |
 |------|-------|
 | Location | `/home/tbach/Projects/emilia-project/emilia-webapp` |
-| Version | 5.5.4 |
+| Version | 5.5.3 |
 | Frontend | React 19 + Vite + TanStack Router + Zustand |
 | Backend | FastAPI (modular routers) + SQLite |
-| Tests | Backend: 40, Frontend: 83 |
+| Tests | Backend: 98, Frontend: 83 |
 
 ## Read First
 
@@ -25,18 +25,19 @@ emilia-webapp/
 │   ├── main.py              # App setup + health only (54 lines)
 │   ├── config.py            # Centralized settings
 │   ├── dependencies.py      # Auth + header dependencies
-│   ├── routers/             # API routes (6 modules)
+│   ├── routers/             # API routes (8 modules)
 │   │   ├── users.py         # User management
 │   │   ├── agents.py        # Agent details
 │   │   ├── sessions.py      # Session CRUD + history
 │   │   ├── chat.py          # Chat, transcribe, speak
 │   │   ├── memory.py        # Memory file access
-│   │   └── admin.py         # Admin/manage operations
+│   │   ├── admin.py         # Admin/manage operations
+│   │   ├── emotional.py     # Emotion engine debug endpoints
+│   │   └── designer_v2.py   # Designer V2 (personality, bonds, calibration)
 │   ├── schemas/             # Pydantic request/response models
 │   ├── services/            # External API clients
-│   │   ├── clawdbot.py      # LLM gateway client
 │   │   ├── elevenlabs.py    # TTS WebSocket client
-│   │   └── stt.py           # Speech-to-text client
+│   │   └── emotion_engine.py # Emotion Engine V2
 │   ├── db/
 │   │   ├── connection.py    # Database management
 │   │   └── repositories/    # CRUD operations
@@ -129,7 +130,7 @@ User context via `X-User-Id`, `X-Agent-Id`, `X-Session-Id` headers.
 ## Don't Touch Without Approval
 
 - **Model config** — Agents use `gpt-5.1-codex-mini`, don't change
-- **Gateway config** — `~/.clawdbot/clawdbot.json`
+- **Gateway config** — `~/.openclaw/openclaw.json`
 - **Push to main** — Always ask first
 - **Deploy to production** — Always ask first
 
@@ -139,8 +140,10 @@ User context via `X-User-Id`, `X-Agent-Id`, `X-Session-Id` headers.
 -- Users
 users (id, display_name, preferences, created_at)
 
--- Agents (linked to Clawdbot agents)
-agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, created_at)
+-- Agents (linked to OpenClaw agents)
+agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
+        baseline_valence, baseline_arousal, baseline_dominance,
+        emotional_volatility, emotional_recovery, emotional_profile, created_at)
 
 -- User-Agent access (many-to-many)
 user_agents (user_id, agent_id)
@@ -150,6 +153,40 @@ sessions (id, agent_id, name, created_at, last_used, message_count)
 
 -- Session participants (many-to-many)
 session_participants (session_id, user_id)
+
+-- Messages
+messages (id, session_id, role, content, timestamp)
+
+-- TTS cache
+tts_cache (text_hash, voice_id, audio_base64, alignment_json, created_at)
+
+-- Game stats
+game_stats (user_id, agent_id, game_type, wins, losses, draws, last_played)
+
+-- Emotional state (per user-agent pair)
+emotional_state (user_id, agent_id, valence, arousal, dominance,
+                 trust, attachment, familiarity, intimacy,
+                 playfulness_safety, conflict_tolerance,
+                 mood_weights_json, trigger_calibration_json,
+                 interaction_count, last_interaction, last_updated)
+
+-- Emotional events (V1 legacy)
+emotional_events (id, user_id, agent_id, session_id, trigger, intensity,
+                  valence_before, valence_after, arousal_before, arousal_after, timestamp)
+
+-- Emotional events V2
+emotional_events_v2 (id, user_id, agent_id, session_id, message_snippet,
+                     triggers_json, state_before_json, state_after_json,
+                     agent_behavior_json, outcome, timestamp)
+
+-- Trigger counts (per user-agent-trigger)
+trigger_counts (user_id, agent_id, trigger_type, count, last_seen)
+
+-- Moods (mood weight snapshots)
+moods (id, user_id, agent_id, mood_weights_json, timestamp)
+
+-- Relationship types (reference table)
+relationship_types (id, name, description)
 ```
 
 ## Common Issues

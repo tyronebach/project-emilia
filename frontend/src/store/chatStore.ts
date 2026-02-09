@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { Message, MessageMeta } from '../types';
 import type { EmotionDebug } from '../utils/api';
 
+let _nextMessageId = 1;
+
 interface ChatState {
   messages: Message[];
   addMessage: (role: 'user' | 'assistant', content: string, meta?: Partial<MessageMeta>) => number;
@@ -16,9 +18,9 @@ interface ChatState {
 
 export const useChatStore = create<ChatState>((set) => ({
   messages: [],
-  
+
   addMessage: (role, content, meta = {}) => {
-    const id = Date.now() + Math.random();
+    const id = _nextMessageId++;
     const message: Message = {
       id,
       role,

@@ -38,3 +38,6 @@ def clear_config_cache():
     """Clear cached configs (useful for hot reload during dev)."""
     load_relationship_config.cache_clear()
     load_moods_config.cache_clear()
+    # Also clear the emotion engine's mood cache (M9 fix)
+    from services.emotion_engine import clear_mood_cache
+    clear_mood_cache()

@@ -60,6 +60,13 @@ def get_mood_valence_arousal() -> dict[str, tuple[float, float]]:
     return _get_moods()[1]
 
 
+def clear_mood_cache() -> None:
+    """Clear the cached mood data. Call when mood definitions change at runtime."""
+    global _moods_cache
+    with _moods_lock:
+        _moods_cache = None
+
+
 @dataclass
 class EmotionalState:
     """Snapshot of emotional state."""
@@ -1163,27 +1170,6 @@ class EmotionEngine:
                 mood_deltas[mood] = dot
         return mood_deltas
 
-    def calculate_mood_deltas(
-        self,
-        triggers: list[tuple[str, float]],
-        trigger_mood_map: dict,
-    ) -> dict[str, float]:
-        """Calculate mood weight changes from triggers.
-
-        DEPRECATED: Use calculate_mood_deltas_from_va() instead.
-        This method used the old trigger_mood_map config surface which is no longer needed.
-        """
-        all_moods = get_mood_list()
-        mood_deltas = {mood: 0.0 for mood in all_moods}
-
-        for trigger, intensity in triggers:
-            if trigger in trigger_mood_map:
-                for mood, weight in trigger_mood_map[trigger].items():
-                    if mood in all_moods:
-                        mood_deltas[mood] += weight * intensity
-
-        return mood_deltas
-
     def apply_mood_deltas(self, state: EmotionalState, mood_deltas: dict) -> None:
         """Apply mood deltas with volatility scaling.
 
@@ -1360,12 +1346,6 @@ Dynamic: {play_desc}"""
 
         return ', '.join(hints) if hints else ""
 
-    @staticmethod
-    def _lever_description(value: float, descriptions: list[str]) -> str:
-        """Map a 0-1 value to a description from a list."""
-        idx = min(int(value * len(descriptions)), len(descriptions) - 1)
-        return descriptions[idx]
-    
     @staticmethod
     def _clamp(value: float, min_val: float, max_val: float) -> float:
         """Clamp value to range."""

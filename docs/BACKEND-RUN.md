@@ -27,7 +27,7 @@ Quick reference for running the backend with Docker.
 # Build and start backend
 docker compose up -d --build backend
 
-# Build and start everything (backend + frontend nginx)
+# Build and start all services
 docker compose up -d --build
 ```
 
@@ -89,4 +89,4 @@ docker compose run --rm \
 - Backend uses `network_mode: host` and listens on port `8080`
 - DB volume: `./data:/data`
 - Agent workspaces: `/home/tbach/clawd-agents` mounted read-write
-- Frontend depends on backend being healthy before starting
+- Frontend runs via `npm run dev` (not Docker); backend is the only Docker service
