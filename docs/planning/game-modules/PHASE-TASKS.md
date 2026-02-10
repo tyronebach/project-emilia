@@ -132,30 +132,30 @@
 **Goal:** Unified draggable/minimizable/closable floating game planes.
 
 ### D1. Window shell components
-- [ ] Add `frontend/src/games/ui/GameWindowShell.tsx`.
-- [ ] Add `frontend/src/games/ui/GameWindowManager.tsx`.
-- [ ] Move current game panel rendering into shell.
+- [x] Add `frontend/src/games/ui/GameWindowShell.tsx`.
+- [x] Add `frontend/src/games/ui/GameWindowManager.tsx`.
+- [x] Move current game panel rendering into shell.
 
 ### D2. Window state store
-- [ ] Add `frontend/src/store/gameWindowStore.ts`:
-- [ ] position, z-index, minimized state, viewport bounds.
+- [x] Add `frontend/src/store/gameWindowStore.ts`:
+- [x] position, z-index, minimized state, viewport bounds.
 
 ### D3. Interaction behavior
-- [ ] Mouse drag and touch drag.
-- [ ] Minimize/restore and close.
-- [ ] Mobile-safe bounds + snap behavior.
+- [x] Mouse drag and touch drag.
+- [x] Minimize/restore and close.
+- [x] Mobile-safe bounds + snap behavior.
 
 ### D4. Accessibility
-- [ ] Keyboard-close and keyboard-minimize actions.
-- [ ] Focus management when minimized/restored.
+- [x] Keyboard-close and keyboard-minimize actions.
+- [x] Focus management when minimized/restored.
 
 ### D5. Tests
-- [ ] Unit tests for store reducers.
-- [ ] Component tests for drag bounds and minimize/restore lifecycle.
+- [x] Unit tests for store reducers.
+- [x] Component tests for drag bounds and minimize/restore lifecycle.
 
 **Exit Criteria**
-- [ ] Tic-tac-toe runs entirely inside shared shell.
-- [ ] Window behavior is stable on desktop and mobile.
+- [x] Tic-tac-toe runs entirely inside shared shell.
+- [x] Window behavior is stable on desktop and mobile.
 
 ---
 
