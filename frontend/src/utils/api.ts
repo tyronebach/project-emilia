@@ -43,7 +43,8 @@ export interface Session {
 }
 
 export interface HistoryMessage {
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
+  origin?: 'user' | 'assistant' | 'game_runtime' | 'system' | null;
   content: string;
   timestamp?: string;
 }
@@ -387,9 +388,13 @@ export async function getSession(sessionId: string): Promise<Session> {
   return response.json();
 }
 
-export async function getSessionHistory(sessionId: string, limit = 50): Promise<HistoryMessage[]> {
+export async function getSessionHistory(
+  sessionId: string,
+  limit = 50,
+  includeRuntime = false,
+): Promise<HistoryMessage[]> {
   const response = await fetchWithAuth(
-    `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/history?limit=${limit}`
+    `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/history?limit=${limit}&includeRuntime=${includeRuntime ? 'true' : 'false'}`
   );
   // Return empty array for 403/404 instead of throwing (session doesn't exist or not accessible)
   if (response.status === 403 || response.status === 404) {

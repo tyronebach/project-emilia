@@ -170,7 +170,7 @@ class TestChatEndpoint:
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
     @patch("routers.chat.httpx.AsyncClient")
-    async def test_chat_runtime_trigger_does_not_persist_user_message(
+    async def test_chat_runtime_trigger_marks_message_origin_and_hides_from_history(
         self,
         mock_client_class,
         mock_pre_llm,
@@ -242,11 +242,32 @@ class TestChatEndpoint:
 
         with get_db() as conn:
             stored = conn.execute(
-                "SELECT role, content FROM messages WHERE session_id = ? ORDER BY timestamp ASC",
+                "SELECT role, origin, content FROM messages WHERE session_id = ? ORDER BY timestamp ASC",
                 (data["session_id"],),
             ).fetchall()
-        assert len(stored) == 1
-        assert stored[0]["role"] == "assistant"
+        assert len(stored) == 2
+        assert stored[0]["role"] == "user"
+        assert stored[0]["origin"] == "game_runtime"
+        assert stored[1]["role"] == "assistant"
+        assert stored[1]["origin"] == "assistant"
+
+        history = await test_client.get(
+            f"/api/sessions/{data['session_id']}/history",
+            headers=headers,
+        )
+        assert history.status_code == 200
+        history_messages = history.json()["messages"]
+        assert len(history_messages) == 1
+        assert history_messages[0]["role"] == "assistant"
+
+        history_with_runtime = await test_client.get(
+            f"/api/sessions/{data['session_id']}/history?includeRuntime=true",
+            headers=headers,
+        )
+        assert history_with_runtime.status_code == 200
+        runtime_messages = history_with_runtime.json()["messages"]
+        assert len(runtime_messages) == 2
+        assert runtime_messages[0]["origin"] == "game_runtime"
 
 
 # ========================================

@@ -268,6 +268,7 @@ def init_db():
                 id TEXT PRIMARY KEY,
                 session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
                 role TEXT NOT NULL,
+                origin TEXT DEFAULT 'user',
                 content TEXT NOT NULL,
                 timestamp REAL NOT NULL,
                 model TEXT,
@@ -319,6 +320,18 @@ def init_db():
         _add_column(cur, "sessions", "summary_updated_at", "INTEGER")
         _add_column(cur, "sessions", "compaction_count", "INTEGER DEFAULT 0")
 
+        # Message origin metadata for runtime/system filtering.
+        _add_column(cur, "messages", "origin", "TEXT")
+        cur.execute(
+            """UPDATE messages
+               SET origin = CASE
+                   WHEN role = 'assistant' THEN 'assistant'
+                   WHEN role = 'user' THEN 'user'
+                   ELSE 'system'
+               END
+               WHERE origin IS NULL OR TRIM(origin) = ''"""
+        )
+
         # Mood definitions
         cur.execute("""
             CREATE TABLE IF NOT EXISTS moods (
@@ -353,6 +366,7 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_last_used ON tts_cache(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_created_at ON tts_cache(created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_session_origin ON messages(session_id, origin, timestamp)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_game_stats_user ON game_stats(user_id, agent_id, game_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_game_registry_active ON game_registry(active)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_agent_game_config_agent ON agent_game_config(agent_id)")

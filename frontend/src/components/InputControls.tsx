@@ -60,7 +60,7 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
     reset();
 
     // Add user message
-    addMessage('user', trimmedText, { source: 'text' });
+    addMessage('user', trimmedText, { source: 'text', origin: 'user' });
 
     // Send to API
     await sendMessage(trimmedText);

@@ -3,8 +3,27 @@
 import { create } from 'zustand';
 import type { GameConfig, GameStatus, MoveRecord, PlayerRole, Turn } from '../games/types';
 import { getGame } from '../games/registry';
+import { useAppStore } from './index';
+import { useUserStore } from './userStore';
 
-const STORAGE_KEY = 'emilia-game-state';
+const STORAGE_PREFIX = 'emilia-game-state';
+
+function getStorageContextKey(): string | null {
+  const userId = useUserStore.getState().currentUser?.id;
+  const agentId = useUserStore.getState().currentAgent?.id;
+  const sessionId = useAppStore.getState().sessionId;
+
+  if (!userId || !agentId || !sessionId) return null;
+  return `${STORAGE_PREFIX}:${userId}:${agentId}:${sessionId}`;
+}
+
+function getPointerKey(contextKey: string): string {
+  return `${contextKey}:active`;
+}
+
+function getGameDataKey(contextKey: string, gameId: string): string {
+  return `${contextKey}:${gameId}`;
+}
 
 interface PersistedGameState {
   activeGameId: string | null;
@@ -15,13 +34,27 @@ interface PersistedGameState {
   gameConfig: GameConfig;
 }
 
-function saveToSession(state: PersistedGameState): void {
+function saveToSession(state: PersistedGameState, previousGameId: string | null = null): void {
   try {
+    const contextKey = getStorageContextKey();
+    if (!contextKey) return;
+
+    const pointerKey = getPointerKey(contextKey);
     if (!state.activeGameId) {
-      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(pointerKey);
+      if (previousGameId) {
+        sessionStorage.removeItem(getGameDataKey(contextKey, previousGameId));
+      }
       return;
     }
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+    const currentGameKey = getGameDataKey(contextKey, state.activeGameId);
+    sessionStorage.setItem(currentGameKey, JSON.stringify(state));
+    sessionStorage.setItem(pointerKey, state.activeGameId);
+
+    if (previousGameId && previousGameId !== state.activeGameId) {
+      sessionStorage.removeItem(getGameDataKey(contextKey, previousGameId));
+    }
   } catch {
     // sessionStorage full or unavailable — ignore silently
   }
@@ -29,7 +62,13 @@ function saveToSession(state: PersistedGameState): void {
 
 function loadFromSession(): PersistedGameState | null {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const contextKey = getStorageContextKey();
+    if (!contextKey) return null;
+
+    const activeGameId = sessionStorage.getItem(getPointerKey(contextKey));
+    if (!activeGameId) return null;
+
+    const raw = sessionStorage.getItem(getGameDataKey(contextKey, activeGameId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedGameState;
     // Validate the game module still exists
@@ -49,6 +88,7 @@ interface GameStoreState {
   moveHistory: MoveRecord[];
   gameConfig: GameConfig;
   isAvatarThinking: boolean;
+  hydratedContextKey: string | null;
 
   // Actions
   startGame: (gameId: string, config?: GameConfig) => void;
@@ -57,6 +97,7 @@ interface GameStoreState {
   endGame: () => void;
   resetGame: () => void;
   setIsAvatarThinking: (thinking: boolean) => void;
+  hydrateForContext: () => void;
 
   // Internal
   _setGameState: (state: unknown) => void;
@@ -94,9 +135,9 @@ function resolveConfig(config?: GameConfig): GameConfig {
 
 export const useGameStore = create<GameStoreState>((set, get) => {
   // Persist game state to sessionStorage on relevant changes
-  const persistState = () => {
+  const persistState = (previousGameId: string | null = null) => {
     const { activeGameId, gameState, currentTurn, gameStatus, moveHistory, gameConfig } = get();
-    saveToSession({ activeGameId, gameState, currentTurn, gameStatus, moveHistory, gameConfig });
+    saveToSession({ activeGameId, gameState, currentTurn, gameStatus, moveHistory, gameConfig }, previousGameId);
   };
 
   const applyMove = (player: PlayerRole, move: unknown): boolean => {
@@ -151,7 +192,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
       moveHistory: [...state.moveHistory, record],
     }));
 
-    persistState();
+    persistState(activeGameId);
     return true;
   };
 
@@ -166,6 +207,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
     moveHistory: restored?.moveHistory ?? [],
     gameConfig: restored?.gameConfig ?? { ...defaultConfig },
     isAvatarThinking: false,
+    hydratedContextKey: getStorageContextKey(),
 
     // Actions
     startGame: (gameId, config) => {
@@ -179,6 +221,7 @@ export const useGameStore = create<GameStoreState>((set, get) => {
       const initialState = module.createGame(resolvedConfig);
       const status = module.getStatus(initialState);
       const firstPlayer = status.isOver ? null : (resolvedConfig.firstPlayer ?? 'user');
+      const previousGameId = get().activeGameId;
 
       set({
         activeGameId: gameId,
@@ -188,12 +231,13 @@ export const useGameStore = create<GameStoreState>((set, get) => {
         moveHistory: [],
         gameConfig: resolvedConfig,
       });
-      persistState();
+      persistState(previousGameId);
     },
     applyUserMove: (move) => applyMove('user', move),
     applyAvatarMove: (move) => applyMove('avatar', move),
     endGame: () => {
-      if (!get().activeGameId) {
+      const previousGameId = get().activeGameId;
+      if (!previousGameId) {
         return;
       }
 
@@ -201,9 +245,10 @@ export const useGameStore = create<GameStoreState>((set, get) => {
         gameStatus: { ...endedStatus },
         currentTurn: null,
       });
-      persistState();
+      persistState(previousGameId);
     },
     resetGame: () => {
+      const previousGameId = get().activeGameId;
       set({
         activeGameId: null,
         gameState: null,
@@ -213,9 +258,51 @@ export const useGameStore = create<GameStoreState>((set, get) => {
         gameConfig: { ...defaultConfig },
         isAvatarThinking: false,
       });
-      saveToSession({ activeGameId: null, gameState: null, currentTurn: null, gameStatus: defaultStatus, moveHistory: [], gameConfig: defaultConfig });
+      saveToSession(
+        {
+          activeGameId: null,
+          gameState: null,
+          currentTurn: null,
+          gameStatus: defaultStatus,
+          moveHistory: [],
+          gameConfig: defaultConfig,
+        },
+        previousGameId,
+      );
     },
     setIsAvatarThinking: (thinking) => set({ isAvatarThinking: thinking }),
+    hydrateForContext: () => {
+      const contextKey = getStorageContextKey();
+      if (contextKey === get().hydratedContextKey) {
+        return;
+      }
+
+      const restoredForContext = loadFromSession();
+      if (restoredForContext) {
+        set({
+          activeGameId: restoredForContext.activeGameId,
+          gameState: restoredForContext.gameState,
+          currentTurn: restoredForContext.currentTurn,
+          gameStatus: restoredForContext.gameStatus,
+          moveHistory: restoredForContext.moveHistory,
+          gameConfig: restoredForContext.gameConfig,
+          isAvatarThinking: false,
+          hydratedContextKey: contextKey,
+        });
+        return;
+      }
+
+      set({
+        activeGameId: null,
+        gameState: null,
+        currentTurn: null,
+        gameStatus: { ...defaultStatus },
+        moveHistory: [],
+        gameConfig: { ...defaultConfig },
+        isAvatarThinking: false,
+        hydratedContextKey: contextKey,
+      });
+    },
 
     // Internal
     _setGameState: (state) => set({ gameState: state }),

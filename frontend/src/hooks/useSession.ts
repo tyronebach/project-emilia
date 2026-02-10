@@ -3,7 +3,7 @@ import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
 import { getSessions, createSession, getSession, getSessionHistory, deleteSession as deleteSessionApi } from '../utils/api';
-import type { Session, Message } from '../types';
+import type { Session, Message, MessageOrigin } from '../types';
 
 export function useSession() {
   const sessionId = useAppStore((state) => state.sessionId);
@@ -78,7 +78,9 @@ export function useSession() {
         role: msg.role,
         content: msg.content,
         timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-        meta: {},
+        meta: {
+          origin: (msg.origin ?? undefined) as MessageOrigin | undefined,
+        },
       }));
 
       // Don't overwrite if chatStore already has MORE messages than backend

@@ -39,6 +39,7 @@ class SessionResponse(BaseModel):
 
 class MessageHistoryItem(BaseModel):
     role: str
+    origin: str | None = None
     content: str
     timestamp: float | str | None = None
 

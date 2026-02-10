@@ -17,12 +17,15 @@ export interface BehaviorData {
   energy?: string | null;
 }
 
+export type MessageOrigin = 'user' | 'assistant' | 'game_runtime' | 'system';
+
 export interface MessageMeta {
   processing_ms?: number;
   model?: string;
   streaming?: boolean;
   error?: boolean;
   source?: 'text' | 'voice';
+  origin?: MessageOrigin;
   behavior?: BehaviorData;
   usage?: TokenUsage;
   audio_base64?: string;  // Stored TTS audio for replay
@@ -30,7 +33,7 @@ export interface MessageMeta {
 
 export interface Message {
   id: number | string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
   meta: MessageMeta;

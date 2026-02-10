@@ -182,7 +182,7 @@ function AppContent({
   const voiceChat = useVoiceChat({
     onTranscript: (text) => {
       setVoiceTranscript(text);
-      addMessage('user', text, { source: 'voice' });
+      addMessage('user', text, { source: 'voice', origin: 'user' });
       void sendMessage(text);
     },
     onError: (error) => {
