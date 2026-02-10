@@ -89,16 +89,26 @@ async def get_session_history(
     session_id: str,
     token: str = Depends(verify_token),
     user_id: str = Depends(get_user_id),
-    limit: int = Query(50, ge=1, le=200)
+    limit: int = Query(50, ge=1, le=200),
+    include_runtime: bool = Query(False, alias="includeRuntime"),
 ):
     """Get chat history for a session from SQLite."""
     if not SessionRepository.user_can_access(user_id, session_id):
         raise forbidden("Cannot access this session")
 
-    messages = MessageRepository.get_by_session(session_id, limit=limit)
+    messages = MessageRepository.get_by_session(
+        session_id,
+        limit=limit,
+        include_game_runtime=include_runtime,
+    )
     return {
         "messages": [
-            {"role": m["role"], "content": m["content"], "timestamp": m["timestamp"]}
+            {
+                "role": m["role"],
+                "origin": m.get("origin"),
+                "content": m["content"],
+                "timestamp": m["timestamp"],
+            }
             for m in messages
         ],
         "session_id": session_id,

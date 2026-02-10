@@ -1,11 +1,12 @@
 // # Phase 1.7 COMPLETE - 2026-02-08
 // # Phase 2.5 FIX - 2026-02-07: Move isAvatarThinking to Zustand store
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { getGame } from '../games/registry';
 import type { GameConfig, GameContext, GameModule, MoveProviderType } from '../games/types';
 import { useGameStore } from '../store/gameStore';
 import { useGameCatalogStore } from '../store/gameCatalogStore';
 import { useUserStore } from '../store/userStore';
+import { useAppStore } from '../store';
 
 const MAX_VALID_MOVES = 30;
 const DEFAULT_DIFFICULTY = 0.5;
@@ -23,10 +24,17 @@ export function useGame() {
   const gameConfig = useGameStore((state) => state.gameConfig);
   const isAvatarThinking = useGameStore((state) => state.isAvatarThinking);
   const setIsAvatarThinking = useGameStore((state) => state.setIsAvatarThinking);
+  const hydrateForContext = useGameStore((state) => state.hydrateForContext);
   const catalogGames = useGameCatalogStore((state) => state.games);
   const catalogHasFetched = useGameCatalogStore((state) => state.hasFetched);
   const catalogLoadedForAgentId = useGameCatalogStore((state) => state.loadedForAgentId);
+  const currentUserId = useUserStore((state) => state.currentUser?.id ?? null);
   const currentAgentId = useUserStore((state) => state.currentAgent?.id ?? null);
+  const sessionId = useAppStore((state) => state.sessionId);
+
+  useEffect(() => {
+    hydrateForContext();
+  }, [hydrateForContext, currentUserId, currentAgentId, sessionId]);
 
   const handleAvatarTurn = useCallback(() => {
     const {

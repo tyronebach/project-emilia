@@ -101,29 +101,29 @@
 **Goal:** Decouple game runtime side effects from normal chat/emotion history.
 
 ### C1. Message origin metadata
-- [ ] Extend message model in backend and frontend with `origin` (`user|assistant|game_runtime|system`).
-- [ ] Ensure synthetic game-turn/outcome prompts are marked `game_runtime`.
+- [x] Extend message model in backend and frontend with `origin` (`user|assistant|game_runtime|system`).
+- [x] Ensure synthetic game-turn/outcome prompts are marked `game_runtime`.
 
 ### C2. Chat/emotion separation
-- [ ] Update emotional processing path to ignore `game_runtime` origins by default.
-- [ ] Ensure compaction/history tooling can filter game-runtime prompts.
+- [x] Update emotional processing path to ignore `game_runtime` origins by default.
+- [x] Ensure compaction/history tooling can filter game-runtime prompts.
 
 ### C3. Game state persistence keys
-- [ ] Update `frontend/src/store/gameStore.ts` storage key to include:
-- [ ] `userId`, `agentId`, `sessionId`, `gameId`.
-- [ ] Clear or namespace state on session/agent switch.
+- [x] Update `frontend/src/store/gameStore.ts` storage key to include:
+- [x] `userId`, `agentId`, `sessionId`, `gameId`.
+- [x] Clear or namespace state on session/agent switch.
 
 ### C4. useGame/useChat refactor
-- [ ] Stop relying on generic hidden user messages for runtime turn triggers.
-- [ ] Introduce explicit game-runtime send path (still text-only to LLM, no tools).
+- [x] Stop relying on generic hidden user messages for runtime turn triggers.
+- [x] Introduce explicit game-runtime send path (still text-only to LLM, no tools).
 
 ### C5. Tests
-- [ ] Add regression test for no cross-session leakage.
-- [ ] Add tests that game-runtime prompts do not appear as normal user chat entries.
+- [x] Add regression test for no cross-session leakage.
+- [x] Add tests that game-runtime prompts do not appear as normal user chat entries.
 
 **Exit Criteria**
-- [ ] Session switch never restores unrelated game state.
-- [ ] Emotion state is not unintentionally perturbed by synthetic runtime prompts.
+- [x] Session switch never restores unrelated game state.
+- [x] Emotion state is not unintentionally perturbed by synthetic runtime prompts.
 
 ---
 

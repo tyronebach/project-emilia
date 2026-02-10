@@ -575,12 +575,10 @@ async def chat(
             trusted_game_prompt=trusted_game_prompt,
         )
 
-        # Store raw user message BEFORE calling LLM (cleaned up on failure).
-        # Runtime-triggered prompts (e.g. game turn nudge) are intentionally excluded.
-        user_msg_id = None
-        if not runtime_trigger:
-            user_msg = MessageRepository.add(sid, "user", request.message)
-            user_msg_id = user_msg["id"]
+        # Store user/runtime trigger message BEFORE calling LLM (cleaned up on failure).
+        user_origin = "game_runtime" if runtime_trigger else "user"
+        user_msg = MessageRepository.add(sid, "user", request.message, origin=user_origin)
+        user_msg_id = user_msg["id"]
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -616,6 +614,7 @@ async def chat(
         usage = result.get("usage") or {}
         MessageRepository.add(
             sid, "assistant", parsed["response_text"],
+            origin="assistant",
             model=result.get("model"),
             processing_ms=processing_ms,
             usage_prompt_tokens=usage.get("prompt_tokens"),
@@ -692,12 +691,10 @@ async def _stream_chat_sse(
             trusted_game_prompt=trusted_game_prompt,
         )
 
-        # Store raw user message BEFORE calling LLM (cleaned up on failure).
-        # Runtime-triggered prompts (e.g. game turn nudge) are intentionally excluded.
-        user_msg_id = None
-        if not runtime_trigger:
-            user_msg = MessageRepository.add(session_id, "user", request.message)
-            user_msg_id = user_msg["id"]
+        # Store user/runtime trigger message BEFORE calling LLM (cleaned up on failure).
+        user_origin = "game_runtime" if runtime_trigger else "user"
+        user_msg = MessageRepository.add(session_id, "user", request.message, origin=user_origin)
+        user_msg_id = user_msg["id"]
 
         try:
             _llm_success = False
@@ -767,6 +764,7 @@ async def _stream_chat_sse(
                     usage_data = usage or {}
                     MessageRepository.add(
                         session_id, "assistant", clean_full,
+                        origin="assistant",
                         model=None,
                         processing_ms=processing_ms,
                         usage_prompt_tokens=usage_data.get("prompt_tokens"),

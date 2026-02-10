@@ -6,7 +6,7 @@ let _nextMessageId = 1;
 
 interface ChatState {
   messages: Message[];
-  addMessage: (role: 'user' | 'assistant', content: string, meta?: Partial<MessageMeta>) => number;
+  addMessage: (role: 'user' | 'assistant' | 'system', content: string, meta?: Partial<MessageMeta>) => number;
   updateMessage: (id: number | string, updates: Partial<Message>) => void;
   setMessages: (messages: Message[]) => void;
   clearMessages: () => void;

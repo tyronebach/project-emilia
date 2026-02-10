@@ -178,7 +178,7 @@ export function useChat() {
     abortControllerRef.current = abortController;
 
     try {
-      const messageId = addMessage('assistant', '', { streaming: true });
+      const messageId = addMessage('assistant', '', { streaming: true, origin: 'assistant' });
       let fullContent = '';
       let finalResponse: StreamResponse = {};
       let didAbort = false;
@@ -219,7 +219,8 @@ export function useChat() {
               model: data.model,
               behavior: data.behavior,
               usage: data.usage,
-              streaming: false
+              streaming: false,
+              origin: 'assistant',
             }
           });
           updateStats({ processing_ms: data.processing_ms });
@@ -234,7 +235,7 @@ export function useChat() {
           if (error.name === 'AbortError') {
             didAbort = true;
             updateMessage(messageId, {
-              meta: { streaming: false }
+              meta: { streaming: false, origin: 'assistant' }
             });
             setStatus('ready');
             return;
@@ -242,7 +243,7 @@ export function useChat() {
           console.error('Chat error:', error);
           updateMessage(messageId, {
             content: `⚠️ Error: ${error.message}`,
-            meta: { error: true }
+            meta: { error: true, origin: 'assistant' }
           });
           setStatus('error');
           setTimeout(() => setStatus('ready'), 3000);
@@ -287,6 +288,7 @@ export function useChat() {
               behavior: finalResponse.behavior,
               usage: finalResponse.usage,
               streaming: false,
+              origin: 'assistant',
               audio_base64,
             }
           });
