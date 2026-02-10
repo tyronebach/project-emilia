@@ -557,20 +557,23 @@ async def chat(
 
     # Non-streaming
     try:
-        runtime_trigger = bool(request.runtime_trigger)
+        game_context = request.game_context if settings.games_v2_enabled else None
+        runtime_trigger = bool(request.runtime_trigger) if settings.games_v2_enabled else False
+        if not settings.games_v2_enabled and (request.runtime_trigger or request.game_context):
+            logger.info("[Chat] Ignoring game payload because GAMES_V2_ENABLED is off")
         emotion_input_message = "" if runtime_trigger else request.message
 
         # Process emotional state before LLM (detect triggers, apply decay)
         emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
             user_id, agent_id, emotion_input_message, sid
         )
-        trusted_game_prompt = _resolve_trusted_prompt_instructions(agent_id, request.game_context)
+        trusted_game_prompt = _resolve_trusted_prompt_instructions(agent_id, game_context)
 
         # Build messages array: raw history + current message with contexts
         messages = _build_llm_messages(
             sid,
             request.message,
-            request.game_context,
+            game_context,
             emotional_context,
             trusted_game_prompt=trusted_game_prompt,
         )
@@ -673,20 +676,23 @@ async def _stream_chat_sse(
 ):
     """SSE streaming chat"""
     try:
-        runtime_trigger = bool(request.runtime_trigger)
+        game_context = request.game_context if settings.games_v2_enabled else None
+        runtime_trigger = bool(request.runtime_trigger) if settings.games_v2_enabled else False
+        if not settings.games_v2_enabled and (request.runtime_trigger or request.game_context):
+            logger.info("[SSE] Ignoring game payload because GAMES_V2_ENABLED is off")
         emotion_input_message = "" if runtime_trigger else request.message
 
         # Process emotional state before LLM (detect triggers, apply decay)
         emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
             user_id, agent_id, emotion_input_message, session_id
         )
-        trusted_game_prompt = _resolve_trusted_prompt_instructions(agent_id, request.game_context)
+        trusted_game_prompt = _resolve_trusted_prompt_instructions(agent_id, game_context)
 
         # Build messages array: raw history + current message with contexts
         messages = _build_llm_messages(
             session_id,
             request.message,
-            request.game_context,
+            game_context,
             emotional_context,
             trusted_game_prompt=trusted_game_prompt,
         )

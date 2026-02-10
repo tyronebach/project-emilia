@@ -21,6 +21,7 @@ import AwakeningOverlay from './components/AwakeningOverlay';
 import GamePanel from './components/GamePanel';
 import { STATUS_COLORS } from './types';
 import type { AppStatus } from './types';
+import { GAMES_V2_ENABLED } from './config/features';
 
 interface AppProps {
   userId: string;
@@ -317,7 +318,7 @@ function AppContent({
       <StatusPill status={status} immersive={immersiveMode} />
 
       {/* Game Panel */}
-      {!isAwakening && <GamePanel />}
+      {!isAwakening && GAMES_V2_ENABLED && <GamePanel />}
 
       {/* Chat History Overlay - hidden during awakening */}
       {!isAwakening && <ChatPanel />}

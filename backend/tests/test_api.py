@@ -4,6 +4,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from config import settings
 from db.connection import get_db
 
 pytestmark = pytest.mark.anyio
@@ -268,6 +269,80 @@ class TestChatEndpoint:
         runtime_messages = history_with_runtime.json()["messages"]
         assert len(runtime_messages) == 2
         assert runtime_messages[0]["origin"] == "game_runtime"
+
+    @patch("routers.chat._spawn_background")
+    @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.chat.httpx.AsyncClient")
+    async def test_chat_ignores_runtime_trigger_when_games_v2_disabled(
+        self,
+        mock_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+        monkeypatch,
+    ):
+        monkeypatch.setattr(settings, "games_v2_enabled", False)
+
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Test Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "agent:test-claw-id",
+            "choices": [{"message": {"content": "No runtime origin while games are disabled."}}],
+            "usage": {"prompt_tokens": 8, "completion_tokens": 4},
+        }
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        response = await test_client.post(
+            "/api/chat?stream=0",
+            json={
+                "message": "Your turn!",
+                "runtime_trigger": True,
+            },
+            headers=headers,
+        )
+        assert response.status_code == 200
+        session_id = response.json()["session_id"]
+
+        with get_db() as conn:
+            stored = conn.execute(
+                "SELECT role, origin FROM messages WHERE session_id = ? ORDER BY timestamp ASC",
+                (session_id,),
+            ).fetchall()
+        assert len(stored) == 2
+        assert stored[0]["role"] == "user"
+        assert stored[0]["origin"] == "user"
 
 
 # ========================================
@@ -591,6 +666,39 @@ class TestManageEndpoints:
         catalog_after_delete_cfg = await test_client.get("/api/games/catalog", headers=headers)
         assert catalog_after_delete_cfg.status_code == 200
         assert any(g["id"] == game_id for g in catalog_after_delete_cfg.json()["games"])
+
+    async def test_games_routes_disabled_by_feature_flag(self, test_client, auth_headers, monkeypatch):
+        monkeypatch.setattr(settings, "games_v2_enabled", False)
+
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Test Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        catalog_resp = await test_client.get("/api/games/catalog", headers=headers)
+        assert catalog_resp.status_code == 404
+        assert "Games V2 is disabled" in catalog_resp.json()["detail"]
+
+        manage_resp = await test_client.get("/api/manage/games", headers=auth_headers)
+        assert manage_resp.status_code == 404
+        assert "Games V2 is disabled" in manage_resp.json()["detail"]
 
     async def test_delete_agent_removes_related_data(self, test_client, auth_headers):
         user_id = f"user-{uuid.uuid4().hex[:8]}"

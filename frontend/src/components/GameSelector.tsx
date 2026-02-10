@@ -8,6 +8,7 @@ import { useGameCatalogStore } from '../store/gameCatalogStore';
 import { useUserStore } from '../store/userStore';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
 import { cn } from '../lib/utils';
+import { GAMES_V2_ENABLED } from '../config/features';
 
 interface GameSelectorProps {
   open: boolean;
@@ -37,6 +38,7 @@ function GameSelector({ open, onClose }: GameSelectorProps) {
   const { startGame } = useGame();
 
   useEffect(() => {
+    if (!GAMES_V2_ENABLED) return;
     if (!open || !currentAgent?.id) return;
     void refreshCatalog(currentAgent.id);
   }, [open, currentAgent?.id, refreshCatalog]);
@@ -56,6 +58,10 @@ function GameSelector({ open, onClose }: GameSelectorProps) {
     void startGame(gameId);
     onClose();
   };
+
+  if (!GAMES_V2_ENABLED) {
+    return null;
+  }
 
   return (
     <Dialog

@@ -194,7 +194,7 @@
 **Goal:** Safely switch from legacy game runtime to V2 foundation.
 
 ### F1. Feature flag rollout
-- [ ] Add `GAMES_V2_ENABLED` checks in frontend + backend.
+- [x] Add `GAMES_V2_ENABLED` checks in frontend + backend.
 - [ ] Run internal A/B on selected agents first.
 
 ### F2. Data migration checks
