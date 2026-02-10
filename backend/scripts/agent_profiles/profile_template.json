@@ -28,6 +28,12 @@
   },
   "trust_gain_rate": 1.0,
   "trust_loss_rate": 1.0,
+  "valence_gain_multiplier": 0.95,
+  "valence_loss_multiplier": 1.1,
+  "bond_gain_multiplier": 0.95,
+  "bond_loss_multiplier": 1.1,
+  "mood_gain_multiplier": 0.9,
+  "mood_loss_multiplier": 1.1,
   "trigger_sensitivities": {
     "praise": 1.0,
     "affirmation": 1.0,

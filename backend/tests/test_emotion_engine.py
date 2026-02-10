@@ -120,12 +120,12 @@ class TestEmotionEngineTriggerDetection:
     def test_detect_compliment(self, engine):
         triggers = engine.detect_triggers("You're so amazing!")
         trigger_names = [t[0] for t in triggers]
-        assert 'compliment' in trigger_names
+        assert 'praise' in trigger_names
     
     def test_detect_gratitude(self, engine):
         triggers = engine.detect_triggers("Thank you so much")
         trigger_names = [t[0] for t in triggers]
-        assert 'gratitude' in trigger_names
+        assert 'praise' in trigger_names
     
     def test_detect_teasing(self, engine):
         triggers = engine.detect_triggers("haha you're such a dummy")
@@ -135,13 +135,12 @@ class TestEmotionEngineTriggerDetection:
     def test_detect_conflict(self, engine):
         triggers = engine.detect_triggers("I'm so angry at you right now")
         trigger_names = [t[0] for t in triggers]
-        assert 'conflict' in trigger_names
+        assert 'boundary' in trigger_names
     
     def test_detect_multiple_triggers(self, engine):
         triggers = engine.detect_triggers("Thank you, you're amazing!")
         trigger_names = [t[0] for t in triggers]
-        assert 'gratitude' in trigger_names
-        assert 'compliment' in trigger_names
+        assert 'praise' in trigger_names
     
     def test_no_triggers_in_neutral_text(self, engine):
         triggers = engine.detect_triggers("The weather is nice today")
@@ -259,6 +258,41 @@ class TestVolatilityScaling:
         EmotionEngine(high_vol).apply_trigger(state_high, 'compliment', 0.8)
         
         assert state_high.valence > state_low.valence
+
+
+class TestAsymmetricDeltaBias:
+    """Tests for non-trust asymmetry tuning."""
+
+    def test_negative_valence_moves_farther_than_equal_positive(self):
+        profile = AgentProfile(
+            emotional_volatility=1.0,
+            trigger_responses={
+                "praise": {"valence": 0.1},
+                "criticism": {"valence": -0.1},
+            },
+        )
+        engine = EmotionEngine(profile)
+
+        state_pos = EmotionalState()
+        state_neg = EmotionalState()
+        engine.apply_trigger(state_pos, "praise", 1.0)
+        engine.apply_trigger(state_neg, "criticism", 1.0)
+
+        positive_delta = state_pos.valence
+        negative_delta = -state_neg.valence
+        assert negative_delta > positive_delta
+
+    def test_negative_mood_delta_stronger_than_equal_positive(self):
+        engine = EmotionEngine(AgentProfile(emotional_volatility=1.0))
+        state_pos = EmotionalState(mood_weights={"supportive": 10.0})
+        state_neg = EmotionalState(mood_weights={"supportive": 10.0})
+
+        engine.apply_mood_deltas(state_pos, {"supportive": 0.5})
+        engine.apply_mood_deltas(state_neg, {"supportive": -0.5})
+
+        positive_delta = state_pos.mood_weights["supportive"] - 10.0
+        negative_delta = 10.0 - state_neg.mood_weights["supportive"]
+        assert negative_delta > positive_delta
 
 
 class TestPlayContext:

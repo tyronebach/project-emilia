@@ -208,6 +208,13 @@ def _agent_to_personality(row: dict) -> dict:
         # Trust
         "trust_gain_rate": profile.get("trust_gain_multiplier", 1.0),
         "trust_loss_rate": profile.get("trust_loss_multiplier", 1.0),
+        # Asymmetry tuning
+        "valence_gain_multiplier": profile.get("valence_gain_multiplier", 0.95),
+        "valence_loss_multiplier": profile.get("valence_loss_multiplier", 1.1),
+        "bond_gain_multiplier": profile.get("bond_gain_multiplier", 0.95),
+        "bond_loss_multiplier": profile.get("bond_loss_multiplier", 1.1),
+        "mood_gain_multiplier": profile.get("mood_gain_multiplier", 0.9),
+        "mood_loss_multiplier": profile.get("mood_loss_multiplier", 1.1),
         # Trigger sensitivities
         "trigger_sensitivities": profile.get("trigger_multipliers", {}),
         # Trigger response profiles (per-axis overrides)
@@ -327,6 +334,12 @@ async def update_personality(agent_id: str, config: dict[str, Any]) -> dict:
             "mood_baseline": "mood_baseline",
             "trust_gain_rate": "trust_gain_multiplier",
             "trust_loss_rate": "trust_loss_multiplier",
+            "valence_gain_multiplier": "valence_gain_multiplier",
+            "valence_loss_multiplier": "valence_loss_multiplier",
+            "bond_gain_multiplier": "bond_gain_multiplier",
+            "bond_loss_multiplier": "bond_loss_multiplier",
+            "mood_gain_multiplier": "mood_gain_multiplier",
+            "mood_loss_multiplier": "mood_loss_multiplier",
             "trigger_sensitivities": "trigger_multipliers",
             "trigger_responses": "trigger_responses",
             "description": "description",
