@@ -253,3 +253,15 @@ export interface GameModule<TState = unknown, TMove = unknown> {
 }
 
 export type GameCategory = 'board' | 'card' | 'word' | 'creative';
+
+// ============================================================
+// Lazy Loader Contract
+// ============================================================
+
+/**
+ * Every packaged game module exposes this contract so it can be loaded lazily.
+ */
+export interface GameLoaderContract {
+  readonly id: string;
+  load: () => Promise<GameModule>;
+}

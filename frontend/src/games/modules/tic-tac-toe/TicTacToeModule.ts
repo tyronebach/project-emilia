@@ -1,5 +1,5 @@
 // # Phase 2.1 COMPLETE - 2026-02-07
-import type { GameConfig, GameModule, GameStatus, MoveResult, PlayerRole } from '../types';
+import type { GameConfig, GameModule, GameStatus, MoveResult, PlayerRole } from '../../types';
 import TicTacToeBoard from './TicTacToeBoard';
 
 export type TicTacToeMark = 'X' | 'O';

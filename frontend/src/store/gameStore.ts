@@ -2,7 +2,7 @@
 // # Upgrade: sessionStorage persistence - 2026-02-07
 import { create } from 'zustand';
 import type { GameConfig, GameStatus, MoveRecord, PlayerRole, Turn } from '../games/types';
-import { getGame } from '../games/registry';
+import { getGame, hasGameLoader } from '../games/registry';
 import { useAppStore } from './index';
 import { useUserStore } from './userStore';
 
@@ -71,8 +71,8 @@ function loadFromSession(): PersistedGameState | null {
     const raw = sessionStorage.getItem(getGameDataKey(contextKey, activeGameId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as PersistedGameState;
-    // Validate the game module still exists
-    if (parsed.activeGameId && !getGame(parsed.activeGameId)) return null;
+    // Validate the game module is still known by the loader manifest
+    if (parsed.activeGameId && !hasGameLoader(parsed.activeGameId)) return null;
     return parsed;
   } catch {
     return null;

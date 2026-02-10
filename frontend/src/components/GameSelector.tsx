@@ -2,7 +2,7 @@
 import { useEffect, useMemo } from 'react';
 import { Grid3x3, Type, Sparkles, Spade } from 'lucide-react';
 import type { GameCategory } from '../games/types';
-import { getGame } from '../games/registry';
+import { hasGameLoader, preloadGame } from '../games/registry';
 import { useGame } from '../hooks/useGame';
 import { useGameCatalogStore } from '../store/gameCatalogStore';
 import { useUserStore } from '../store/userStore';
@@ -21,6 +21,13 @@ const CATEGORY_ICONS: Record<GameCategory, typeof Grid3x3> = {
   creative: Sparkles,
 };
 
+function normalizeCategory(category: string): GameCategory {
+  if (category === 'card' || category === 'word' || category === 'creative') {
+    return category;
+  }
+  return 'board';
+}
+
 function GameSelector({ open, onClose }: GameSelectorProps) {
   const currentAgent = useUserStore((state) => state.currentAgent);
   const catalogGames = useGameCatalogStore((state) => state.games);
@@ -36,21 +43,17 @@ function GameSelector({ open, onClose }: GameSelectorProps) {
 
   const games = useMemo(() => {
     return catalogGames
-      .map((catalogGame) => {
-        const module = getGame(catalogGame.id);
-        if (!module) return null;
-        return {
-          id: module.id,
-          name: module.name,
-          description: catalogGame.description || module.description,
-          category: module.category,
-        };
-      })
-      .filter((game): game is { id: string; name: string; description: string; category: GameCategory } => game !== null);
+      .filter((catalogGame) => hasGameLoader(catalogGame.id))
+      .map((catalogGame) => ({
+        id: catalogGame.id,
+        name: catalogGame.display_name || catalogGame.id,
+        description: catalogGame.description || 'No description available.',
+        category: normalizeCategory(catalogGame.category),
+      }));
   }, [catalogGames]);
 
   const handleSelect = (gameId: string) => {
-    startGame(gameId);
+    void startGame(gameId);
     onClose();
   };
 
@@ -93,6 +96,12 @@ function GameSelector({ open, onClose }: GameSelectorProps) {
                 key={game.id}
                 type="button"
                 onClick={() => handleSelect(game.id)}
+                onMouseEnter={() => {
+                  void preloadGame(game.id);
+                }}
+                onFocus={() => {
+                  void preloadGame(game.id);
+                }}
                 className={cn(
                   'w-full rounded-xl border border-white/10 bg-bg-tertiary/40 px-4 py-3 text-left transition-colors',
                   'hover:bg-bg-tertiary/70 hover:border-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50'

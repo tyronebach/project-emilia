@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { getGame } from '../registry';
+import { useEffect, useRef, useState } from 'react';
+import { getGame, loadGame } from '../registry';
 import { useGame } from '../../hooks/useGame';
 import { useChat } from '../../hooks/useChat';
 import { useGameStore } from '../../store/gameStore';
 import { useGameWindowStore } from '../../store/gameWindowStore';
 import { useAppStore } from '../../store';
 import type { AvatarCommand } from '../../types';
+import type { GameModule } from '../types';
 import GameWindowShell from './GameWindowShell';
 
 const GAME_EVENT_BEHAVIORS: Record<string, AvatarCommand> = {
@@ -41,12 +42,58 @@ function GameWindowManager() {
   const wasThinking = useRef(false);
   const wasGameOver = useRef(false);
   const wasActive = useRef(false);
+  const [module, setModule] = useState<GameModule | null>(null);
 
   useEffect(() => {
     if (!activeGameId) return;
     ensureWindow(activeGameId);
     bringToFront(activeGameId);
   }, [activeGameId, ensureWindow, bringToFront]);
+
+  useEffect(() => {
+    const scheduleModuleUpdate = (nextModule: GameModule | null, cancelledRef: { value: boolean }) => {
+      queueMicrotask(() => {
+        if (!cancelledRef.value) {
+          setModule(nextModule);
+        }
+      });
+    };
+
+    const cancelledRef = { value: false };
+
+    if (!activeGameId) {
+      scheduleModuleUpdate(null, cancelledRef);
+      return () => {
+        cancelledRef.value = true;
+      };
+    }
+
+    const cached = getGame(activeGameId);
+    if (cached) {
+      scheduleModuleUpdate(cached, cancelledRef);
+      return () => {
+        cancelledRef.value = true;
+      };
+    }
+
+    scheduleModuleUpdate(null, cancelledRef);
+    void loadGame(activeGameId)
+      .then((loaded) => {
+        if (!cancelledRef.value) {
+          setModule(loaded);
+        }
+      })
+      .catch((error) => {
+        if (!cancelledRef.value) {
+          console.warn('[GameWindowManager] Failed to load game module:', activeGameId, error);
+          setModule(null);
+        }
+      });
+
+    return () => {
+      cancelledRef.value = true;
+    };
+  }, [activeGameId]);
 
   useEffect(() => {
     const syncViewport = () => {
@@ -91,11 +138,6 @@ function GameWindowManager() {
     wasGameOver.current = gameStatus.isOver;
   }, [gameStatus.isOver, gameStatus.winner, activeGameId, sendMessage, applyAvatarCommand]);
 
-  const module = useMemo(() => {
-    if (!activeGameId) return null;
-    return getGame(activeGameId) ?? null;
-  }, [activeGameId]);
-
   if (!activeGameId || !module || gameState == null || !windowState) {
     return null;
   }
@@ -111,7 +153,7 @@ function GameWindowManager() {
   };
 
   const handleReset = () => {
-    startGame(activeGameId, gameConfig);
+    void startGame(activeGameId, gameConfig);
   };
 
   return (

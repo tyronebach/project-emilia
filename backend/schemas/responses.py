@@ -16,7 +16,7 @@ class AgentResponse(BaseModel):
     id: str
     display_name: str
     clawdbot_agent_id: str
-    vrm_model: str = "emilia.vrm"
+    vrm_model: str | None = "emilia.vrm"
     voice_id: str | None = None
     workspace: str | None = None
     created_at: int

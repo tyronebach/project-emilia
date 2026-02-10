@@ -164,24 +164,24 @@
 **Goal:** Prepare for 20+ games without bloating initial load.
 
 ### E1. Module loaders
-- [ ] Create `frontend/src/games/loaders/manifest.ts` (`gameId -> dynamic import`).
-- [ ] Convert registry to metadata + lazy runtime loading.
+- [x] Create `frontend/src/games/loaders/manifest.ts` (`gameId -> dynamic import`).
+- [x] Convert registry to metadata + lazy runtime loading.
 
 ### E2. Module packaging
-- [ ] Move tic-tac-toe into `games/modules/tic-tac-toe/`.
-- [ ] Ensure each module exports a consistent loader contract.
+- [x] Move tic-tac-toe into `games/modules/tic-tac-toe/`.
+- [x] Ensure each module exports a consistent loader contract.
 
 ### E3. Performance guardrails
-- [ ] Add build-size checks in CI or script.
-- [ ] Verify inactive game engines are absent from initial chunk.
+- [x] Add build-size checks in CI or script.
+- [x] Verify inactive game engines are absent from initial chunk.
 
 ### E4. Next-game pilot
 - [ ] Add chess as first heavy module through lazy loader path.
 - [ ] Validate engine/rule behavior under strict mode.
 
 ### E5. Tests
-- [ ] Loader success/failure tests.
-- [ ] Preload-on-hover behavior tests.
+- [x] Loader success/failure tests.
+- [x] Preload-on-hover behavior tests.
 
 **Exit Criteria**
 - [ ] Initial app bundle remains stable while adding new games.

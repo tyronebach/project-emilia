@@ -1,0 +1,94 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import GameSelector from './GameSelector';
+import { useGameCatalogStore } from '../store/gameCatalogStore';
+import { useUserStore } from '../store/userStore';
+
+const {
+  mockStartGame,
+  mockPreloadGame,
+  mockHasGameLoader,
+} = vi.hoisted(() => ({
+  mockStartGame: vi.fn().mockResolvedValue(undefined),
+  mockPreloadGame: vi.fn().mockResolvedValue(undefined),
+  mockHasGameLoader: vi.fn(() => true),
+}));
+
+vi.mock('../hooks/useGame', () => ({
+  useGame: () => ({
+    startGame: mockStartGame,
+  }),
+}));
+
+vi.mock('../games/registry', () => ({
+  hasGameLoader: mockHasGameLoader,
+  preloadGame: mockPreloadGame,
+}));
+
+const CATALOG_GAME = {
+  id: 'tic-tac-toe',
+  display_name: 'Tic-Tac-Toe',
+  category: 'board',
+  description: 'Classic 3x3 strategy game.',
+  module_key: 'tic_tac_toe',
+  move_provider_default: 'llm',
+  rule_mode: 'strict',
+  version: '1.0.0',
+};
+
+describe('GameSelector preload behavior', () => {
+  beforeEach(() => {
+    mockStartGame.mockClear();
+    mockPreloadGame.mockClear();
+    mockHasGameLoader.mockClear();
+    mockHasGameLoader.mockReturnValue(true);
+
+    useUserStore.setState({
+      currentUser: {
+        id: 'user-1',
+        display_name: 'User 1',
+        preferences: '{}',
+      },
+      currentAgent: {
+        id: 'agent-1',
+        display_name: 'Agent 1',
+        clawdbot_agent_id: 'agent-1-claw',
+        vrm_model: 'emilia.vrm',
+        voice_id: null,
+      },
+    });
+
+    useGameCatalogStore.setState({
+      games: [CATALOG_GAME],
+      loadedForAgentId: 'agent-1',
+      loading: false,
+      hasFetched: true,
+      error: null,
+      refresh: vi.fn().mockResolvedValue(undefined),
+    });
+  });
+
+  it('preloads the game module on hover and focus', () => {
+    render(<GameSelector open onClose={vi.fn()} />);
+
+    const gameButton = screen.getByRole('button', { name: /tic-tac-toe/i });
+    const beforeHoverCalls = mockPreloadGame.mock.calls.length;
+    fireEvent.mouseEnter(gameButton);
+    fireEvent.focus(gameButton);
+
+    const newCalls = mockPreloadGame.mock.calls.slice(beforeHoverCalls);
+    expect(newCalls.length).toBeGreaterThanOrEqual(2);
+    expect(newCalls).toEqual(expect.arrayContaining([['tic-tac-toe'], ['tic-tac-toe']]));
+  });
+
+  it('starts the game when selected', () => {
+    const onClose = vi.fn();
+    render(<GameSelector open onClose={onClose} />);
+
+    const gameButton = screen.getByRole('button', { name: /tic-tac-toe/i });
+    fireEvent.click(gameButton);
+
+    expect(mockStartGame).toHaveBeenCalledWith('tic-tac-toe');
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+});
