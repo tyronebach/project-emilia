@@ -3,12 +3,15 @@ import sqlite3
 from fastapi import APIRouter, Depends
 from dependencies import verify_token
 from core.exceptions import not_found, bad_request
-from db.repositories import AgentRepository, SessionRepository, MessageRepository, UserRepository
+from db.repositories import AgentRepository, SessionRepository, MessageRepository, UserRepository, GameRepository
 from db.connection import get_db
 from config import settings
 from schemas import (
     AgentUpdate,
     AgentCreate,
+    GameRegistryCreate,
+    GameRegistryUpdate,
+    AgentGameConfigUpdate,
     UserCreate,
     UserUpdate,
     UsersListResponse,
@@ -17,6 +20,10 @@ from schemas import (
     AgentResponse,
     AgentsListResponse,
     SessionsListResponse,
+    GameRegistryListResponse,
+    GameRegistryItemResponse,
+    AgentGameConfigListResponse,
+    AgentGameConfigResponse,
     AgentDeleteResponse,
     DeleteResponse,
     StatusResponse,
@@ -139,6 +146,114 @@ async def delete_manage_agent(agent_id: str, token: str = Depends(verify_token))
         raise not_found("Agent")
     deleted = AgentRepository.delete(agent_id)
     return AgentDeleteResponse(deleted=deleted, agent_id=agent_id)
+
+
+@router.get("/games", response_model=GameRegistryListResponse)
+async def get_manage_games(token: str = Depends(verify_token)):
+    games = GameRepository.list_registry(include_inactive=True)
+    return GameRegistryListResponse(games=games, count=len(games))
+
+
+@router.post("/games", response_model=GameRegistryItemResponse)
+async def create_manage_game(
+    game: GameRegistryCreate,
+    token: str = Depends(verify_token),
+):
+    existing = GameRepository.get_registry(game.id)
+    if existing:
+        raise bad_request("Game already exists")
+
+    created = GameRepository.create_registry_game(
+        game_id=game.id,
+        display_name=game.display_name,
+        category=game.category,
+        description=game.description,
+        module_key=game.module_key,
+        active=game.active,
+        move_provider_default=game.move_provider_default,
+        rule_mode=game.rule_mode,
+        prompt_instructions=game.prompt_instructions,
+        version=game.version,
+    )
+    return created
+
+
+@router.put("/games/{game_id}", response_model=StatusResponse)
+async def update_manage_game(
+    game_id: str,
+    update: GameRegistryUpdate,
+    token: str = Depends(verify_token),
+):
+    if not GameRepository.get_registry(game_id):
+        raise not_found("Game")
+
+    updates = update.model_dump(exclude_unset=True)
+    if not updates:
+        raise bad_request("No updates provided")
+
+    GameRepository.update_registry_game(game_id, updates)
+    return StatusResponse(status="ok", message="game_updated")
+
+
+@router.delete("/games/{game_id}", response_model=StatusResponse)
+async def delete_manage_game(game_id: str, token: str = Depends(verify_token)):
+    if not GameRepository.get_registry(game_id):
+        raise not_found("Game")
+    GameRepository.deactivate_registry_game(game_id)
+    return StatusResponse(status="ok", message="game_deactivated")
+
+
+@router.get("/agents/{agent_id}/games", response_model=AgentGameConfigListResponse)
+async def get_manage_agent_games(agent_id: str, token: str = Depends(verify_token)):
+    if not AgentRepository.get_by_id(agent_id):
+        raise not_found("Agent")
+    games = GameRepository.list_agent_game_configs(agent_id, include_inactive=True)
+    return AgentGameConfigListResponse(agent_id=agent_id, games=games, count=len(games))
+
+
+@router.put("/agents/{agent_id}/games/{game_id}", response_model=AgentGameConfigResponse)
+async def upsert_manage_agent_game(
+    agent_id: str,
+    game_id: str,
+    update: AgentGameConfigUpdate,
+    token: str = Depends(verify_token),
+):
+    if not AgentRepository.get_by_id(agent_id):
+        raise not_found("Agent")
+    if not GameRepository.get_registry(game_id):
+        raise not_found("Game")
+
+    payload = update.model_dump(exclude_unset=True)
+    if not payload:
+        raise bad_request("No updates provided")
+
+    config = GameRepository.upsert_agent_game_config(
+        agent_id=agent_id,
+        game_id=game_id,
+        enabled=payload.get("enabled"),
+        mode=payload.get("mode"),
+        difficulty=payload.get("difficulty"),
+        prompt_override=payload.get("prompt_override"),
+        workspace_required=payload.get("workspace_required"),
+    )
+    return config
+
+
+@router.delete("/agents/{agent_id}/games/{game_id}", response_model=StatusResponse)
+async def delete_manage_agent_game(
+    agent_id: str,
+    game_id: str,
+    token: str = Depends(verify_token),
+):
+    if not AgentRepository.get_by_id(agent_id):
+        raise not_found("Agent")
+    if not GameRepository.get_registry(game_id):
+        raise not_found("Game")
+
+    deleted = GameRepository.delete_agent_game_config(agent_id, game_id)
+    if deleted:
+        return StatusResponse(status="ok", message="game_config_deleted")
+    return StatusResponse(status="ok", message="game_config_absent")
 
 
 @router.get("/users/{user_id}/agents", response_model=UserAgentsResponse)

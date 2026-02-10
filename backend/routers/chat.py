@@ -14,7 +14,14 @@ from schemas import ChatRequest, SpeakRequest
 from config import settings
 from core.exceptions import TTSError, not_found, forbidden, bad_request, service_unavailable, timeout_error
 from parse_chat import parse_chat_completion, extract_avatar_commands
-from db.repositories import UserRepository, AgentRepository, SessionRepository, MessageRepository, EmotionalStateRepository
+from db.repositories import (
+    UserRepository,
+    AgentRepository,
+    SessionRepository,
+    MessageRepository,
+    EmotionalStateRepository,
+    GameRepository,
+)
 from services.emotion_engine import (
     EmotionEngine, EmotionalState, AgentProfile,
     normalize_trigger, ContextualTriggerCalibration,
@@ -126,19 +133,24 @@ async def _process_emotion_pre_llm(
                 engine.apply_mood_decay(state, elapsed)
 
             # Async trigger detection with batching (no blocking on LLM)
+            normalized_user_message = (user_message or "").strip()
             pending_triggers = EmotionalStateRepository.pop_pending_triggers(user_id, agent_id)
-            regex_triggers = engine.detect_triggers(user_message)
+            regex_triggers = engine.detect_triggers(normalized_user_message) if normalized_user_message else []
 
-            # Combine pending (from LLM batch) + regex (instant)
+            # Combine pending (from LLM batch) + regex (instant), normalized to
+            # canonical trigger keys so designer presets always apply.
             trigger_map = {}
             for trigger, intensity in pending_triggers + regex_triggers:
-                if trigger not in trigger_map or intensity > trigger_map[trigger]:
-                    trigger_map[trigger] = intensity
+                canonical = normalize_trigger(trigger) or trigger
+                if canonical not in trigger_map or intensity > trigger_map[canonical]:
+                    trigger_map[canonical] = intensity
             triggers = list(trigger_map.items())
 
             # Buffer message for async LLM batch classification
-            if settings.llm_trigger_detection:
-                buffer = EmotionalStateRepository.append_to_buffer(user_id, agent_id, user_message, max_size=4)
+            if settings.llm_trigger_detection and normalized_user_message:
+                buffer = EmotionalStateRepository.append_to_buffer(
+                    user_id, agent_id, normalized_user_message, max_size=4
+                )
 
                 # Fire background LLM batch when buffer is full
                 if len(buffer) >= 4:
@@ -153,8 +165,7 @@ async def _process_emotion_pre_llm(
             # Accumulate V/A deltas during trigger loop, then project onto moods
             total_va_delta = {'valence': 0.0, 'arousal': 0.0}
             for trigger, intensity in triggers:
-                canonical = normalize_trigger(trigger)
-                cal = state.trigger_calibration.get(canonical) if canonical else None
+                cal = state.trigger_calibration.get(trigger)
                 deltas = engine.apply_trigger_calibrated(state, trigger, intensity, cal)
                 for axis in ('valence', 'arousal'):
                     total_va_delta[axis] += deltas.get(axis, 0.0)
@@ -326,18 +337,61 @@ def _spawn_background(coro) -> asyncio.Task:
     return task
 
 
-def inject_game_context(message: str, game_context: dict | None) -> str:
+def _ctx_value(game_context, *keys):
+    """Read a value from either dict-style or model-style game context."""
+    if game_context is None:
+        return None
+
+    if isinstance(game_context, dict):
+        for key in keys:
+            if key in game_context:
+                value = game_context.get(key)
+                if value is not None:
+                    return value
+        return None
+
+    for key in keys:
+        if hasattr(game_context, key):
+            value = getattr(game_context, key)
+            if value is not None:
+                return value
+    return None
+
+
+def _resolve_trusted_prompt_instructions(agent_id: str, game_context) -> str:
+    """Resolve per-game prompt instructions from server-side registry/config."""
+    game_id = _ctx_value(game_context, "game_id", "gameId")
+    if not isinstance(game_id, str) or not game_id.strip():
+        return ""
+
+    effective = GameRepository.get_effective_game_for_agent(agent_id, game_id.strip())
+    if not effective:
+        return ""
+
+    prompt = effective.get("prompt_override") or effective.get("prompt_instructions") or ""
+    if not isinstance(prompt, str):
+        return ""
+    return prompt.strip()
+
+
+def inject_game_context(
+    message: str,
+    game_context,
+    prompt_instructions: str | None = None,
+) -> str:
     """Append game context to the user's message for the LLM prompt."""
     if not game_context:
         return message
 
-    game_id = game_context.get("gameId", "unknown")
-    prompt_instructions = game_context.get("promptInstructions") or ""
-    state = game_context.get("state") or ""
-    last_move = game_context.get("lastUserMove") or ""
-    avatar_move = game_context.get("avatarMove")
-    valid_moves = game_context.get("validMoves") or []
-    status = game_context.get("status", "in_progress")
+    game_id = _ctx_value(game_context, "game_id", "gameId") or "unknown"
+    if prompt_instructions is None:
+        # Backward-compatible fallback for callsites/tests that don't inject trusted prompts.
+        prompt_instructions = _ctx_value(game_context, "prompt_instructions", "promptInstructions") or ""
+    state = _ctx_value(game_context, "state_text", "state") or ""
+    last_move = _ctx_value(game_context, "last_user_move", "lastUserMove") or ""
+    avatar_move = _ctx_value(game_context, "avatar_move", "avatarMove")
+    valid_moves = _ctx_value(game_context, "valid_moves", "validMoves") or []
+    status = _ctx_value(game_context, "status") or "in_progress"
 
     # Build context block: Layer 2 (prompt instructions) + Layer 3 (game state)
     context_block = f"\n\n---\n[game: {game_id}]\n"
@@ -368,8 +422,9 @@ def inject_game_context(message: str, game_context: dict | None) -> str:
 def _build_llm_messages(
     session_id: str,
     current_msg: str,
-    game_context: dict | None,
-    emotional_context: str | None = None
+    game_context,
+    emotional_context: str | None = None,
+    trusted_game_prompt: str = "",
 ) -> list[dict]:
     """Build the messages array for the LLM: [summary] + recent history + current message."""
     messages: list[dict] = []
@@ -393,7 +448,11 @@ def _build_llm_messages(
         current_content = emotional_context + "\n\n" + current_content
     
     # Then game context (specific to game state)
-    current_content = inject_game_context(current_content, game_context)
+    current_content = inject_game_context(
+        current_content,
+        game_context,
+        prompt_instructions=trusted_game_prompt,
+    )
     
     messages.append({"role": "user", "content": current_content})
 
@@ -498,15 +557,30 @@ async def chat(
 
     # Non-streaming
     try:
+        runtime_trigger = bool(request.runtime_trigger)
+        emotion_input_message = "" if runtime_trigger else request.message
+
         # Process emotional state before LLM (detect triggers, apply decay)
-        emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(user_id, agent_id, request.message, sid)
+        emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
+            user_id, agent_id, emotion_input_message, sid
+        )
+        trusted_game_prompt = _resolve_trusted_prompt_instructions(agent_id, request.game_context)
 
         # Build messages array: raw history + current message with contexts
-        messages = _build_llm_messages(sid, request.message, request.game_context, emotional_context)
+        messages = _build_llm_messages(
+            sid,
+            request.message,
+            request.game_context,
+            emotional_context,
+            trusted_game_prompt=trusted_game_prompt,
+        )
 
-        # Store raw user message BEFORE calling LLM (cleaned up on failure)
-        user_msg = MessageRepository.add(sid, "user", request.message)
-        user_msg_id = user_msg["id"]
+        # Store raw user message BEFORE calling LLM (cleaned up on failure).
+        # Runtime-triggered prompts (e.g. game turn nudge) are intentionally excluded.
+        user_msg_id = None
+        if not runtime_trigger:
+            user_msg = MessageRepository.add(sid, "user", request.message)
+            user_msg_id = user_msg["id"]
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
@@ -528,10 +602,11 @@ async def chat(
                     raise HTTPException(status_code=response.status_code, detail="Chat service error")
         except Exception:
             # LLM failed — remove orphaned user message
-            MessageRepository.delete_by_id(user_msg_id)
+            if user_msg_id:
+                MessageRepository.delete_by_id(user_msg_id)
             raise
 
-            result = response.json()
+        result = response.json()
 
         parsed = parse_chat_completion(result)
         processing_ms = int((time.time() - start_time) * 1000)
@@ -560,7 +635,7 @@ async def chat(
         _spawn_background(asyncio.to_thread(
             _process_emotion_post_llm,
             user_id, agent_id, behavior, sid,
-            pre_llm_triggers, request.message,
+            pre_llm_triggers, None if runtime_trigger else request.message,
         ))
 
         # Fire-and-forget: compact in background so response returns immediately
@@ -599,15 +674,30 @@ async def _stream_chat_sse(
 ):
     """SSE streaming chat"""
     try:
+        runtime_trigger = bool(request.runtime_trigger)
+        emotion_input_message = "" if runtime_trigger else request.message
+
         # Process emotional state before LLM (detect triggers, apply decay)
-        emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(user_id, agent_id, request.message, session_id)
+        emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
+            user_id, agent_id, emotion_input_message, session_id
+        )
+        trusted_game_prompt = _resolve_trusted_prompt_instructions(agent_id, request.game_context)
 
         # Build messages array: raw history + current message with contexts
-        messages = _build_llm_messages(session_id, request.message, request.game_context, emotional_context)
+        messages = _build_llm_messages(
+            session_id,
+            request.message,
+            request.game_context,
+            emotional_context,
+            trusted_game_prompt=trusted_game_prompt,
+        )
 
-        # Store raw user message BEFORE calling LLM (cleaned up on failure)
-        user_msg = MessageRepository.add(session_id, "user", request.message)
-        user_msg_id = user_msg["id"]
+        # Store raw user message BEFORE calling LLM (cleaned up on failure).
+        # Runtime-triggered prompts (e.g. game turn nudge) are intentionally excluded.
+        user_msg_id = None
+        if not runtime_trigger:
+            user_msg = MessageRepository.add(session_id, "user", request.message)
+            user_msg_id = user_msg["id"]
 
         try:
             _llm_success = False
@@ -719,7 +809,7 @@ async def _stream_chat_sse(
                     _spawn_background(asyncio.to_thread(
                         _process_emotion_post_llm,
                         user_id, agent_id, behavior, session_id,
-                        pre_llm_triggers, request.message,
+                        pre_llm_triggers, None if runtime_trigger else request.message,
                     ))
 
                     # Send done event FIRST so UI unblocks immediately
@@ -744,7 +834,7 @@ async def _stream_chat_sse(
 
         except Exception:
             # LLM failed — remove orphaned user message
-            if not _llm_success:
+            if not _llm_success and user_msg_id:
                 MessageRepository.delete_by_id(user_msg_id)
             raise
 

@@ -1,5 +1,6 @@
 """Pydantic schemas for API requests and responses."""
 from .requests import (
+    GameContextRequest,
     ChatRequest,
     CreateSessionRequest,
     UpdateSessionRequest,
@@ -8,6 +9,9 @@ from .requests import (
     UserCreate,
     UserUpdate,
     AgentCreate,
+    GameRegistryCreate,
+    GameRegistryUpdate,
+    AgentGameConfigUpdate,
 )
 from .responses import (
     UserResponse,
@@ -28,9 +32,16 @@ from .responses import (
     DeleteResponse,
     AgentDeleteResponse,
     StatusResponse,
+    GameRegistryItemResponse,
+    GameRegistryListResponse,
+    AgentGameConfigResponse,
+    AgentGameConfigListResponse,
+    GameCatalogItemResponse,
+    GameCatalogResponse,
 )
 
 __all__ = [
+    "GameContextRequest",
     "ChatRequest",
     "CreateSessionRequest",
     "UpdateSessionRequest",
@@ -39,6 +50,9 @@ __all__ = [
     "UserCreate",
     "UserUpdate",
     "AgentCreate",
+    "GameRegistryCreate",
+    "GameRegistryUpdate",
+    "AgentGameConfigUpdate",
     "UserResponse",
     "AgentResponse",
     "SessionResponse",
@@ -57,4 +71,10 @@ __all__ = [
     "DeleteResponse",
     "AgentDeleteResponse",
     "StatusResponse",
+    "GameRegistryItemResponse",
+    "GameRegistryListResponse",
+    "AgentGameConfigResponse",
+    "AgentGameConfigListResponse",
+    "GameCatalogItemResponse",
+    "GameCatalogResponse",
 ]

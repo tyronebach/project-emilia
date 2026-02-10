@@ -49,7 +49,7 @@ function GamePanel() {
   // Auto-trigger chat when avatar needs to make a move (LLM mode)
   useEffect(() => {
     if (isAvatarThinking && !wasThinking.current) {
-      sendMessage('Your turn!');
+      void sendMessage('Your turn!', { runtimeTrigger: true });
     }
     wasThinking.current = isAvatarThinking;
   }, [isAvatarThinking, sendMessage]);
@@ -62,7 +62,7 @@ function GamePanel() {
         : gameStatus.winner === 'avatar'
           ? 'You won!'
           : "It's a draw!";
-      sendMessage(outcome);
+      void sendMessage(outcome, { runtimeTrigger: true });
 
       // Apply fallback avatar emotion for game outcome
       const eventKey = gameStatus.winner === 'avatar'

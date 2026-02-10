@@ -25,6 +25,8 @@ A plugin architecture that enables LLM avatars to play games with users. Games r
 | **[MESSAGE-HISTORY-REDESIGN.md](./MESSAGE-HISTORY-REDESIGN.md)** | Webapp-managed history to prevent game context token multiplication |
 | **[FRONTEND-DESIGN.md](./FRONTEND-DESIGN.md)** | UI/UX design, component layout, game panel rendering |
 | **[IMPLEMENTATION-GUIDE.md](./IMPLEMENTATION-GUIDE.md)** | Step-by-step build plan with phases and milestones |
+| **[FOUNDATION-PLAN.md](./FOUNDATION-PLAN.md)** | Post-MVP hardening plan for pluggable agent-specific games, robust runtime isolation, manage UI, shared window UX, and lazy-loading |
+| **[PHASE-TASKS.md](./PHASE-TASKS.md)** | Execution checklist with file-level tasks, tests, and exit criteria for each implementation phase |
 
 ---
 

@@ -153,6 +153,38 @@ def init_db():
             )
         """)
 
+        # Game registry (global game catalog / metadata)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS game_registry (
+                id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                description TEXT NOT NULL,
+                module_key TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                move_provider_default TEXT NOT NULL DEFAULT 'llm',
+                rule_mode TEXT NOT NULL DEFAULT 'strict',
+                prompt_instructions TEXT,
+                version TEXT NOT NULL DEFAULT '1',
+                created_at INTEGER DEFAULT (strftime('%s', 'now')),
+                updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+            )
+        """)
+
+        # Agent-specific game overrides (enable/disable + runtime tuning)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS agent_game_config (
+                agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                game_id TEXT NOT NULL REFERENCES game_registry(id) ON DELETE CASCADE,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                mode TEXT DEFAULT NULL,
+                difficulty REAL DEFAULT NULL,
+                prompt_override TEXT DEFAULT NULL,
+                workspace_required INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (agent_id, game_id)
+            )
+        """)
+
         # Emotional state (one per user-agent pair)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS emotional_state (
@@ -322,8 +354,46 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_created_at ON tts_cache(created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_game_stats_user ON game_stats(user_id, agent_id, game_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_game_registry_active ON game_registry(active)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_agent_game_config_agent ON agent_game_config(agent_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_emotional_events_user ON emotional_events(user_id, agent_id, timestamp)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_events_v2_user_agent ON emotional_events_v2(user_id, agent_id, timestamp DESC)")
+
+        # Baseline game registry seed for MVP compatibility.
+        # Existing agents can keep playing tic-tac-toe while agent-specific controls are rolled out.
+        cur.execute(
+            """INSERT OR IGNORE INTO game_registry
+               (id, display_name, category, description, module_key, active,
+                move_provider_default, rule_mode, prompt_instructions, version)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "tic-tac-toe",
+                "Tic-Tac-Toe",
+                "board",
+                "Classic 3x3 strategy game.",
+                "tic-tac-toe",
+                1,
+                "llm",
+                "strict",
+                "\n".join([
+                    "## Tic-Tac-Toe -- How You Play",
+                    "- Think out loud about your strategy: \"If I go here, you might...\"",
+                    "- When blocking: notice the threat and comment on it",
+                    "- When setting up a fork: be sneaky about it",
+                    "- When winning: build up excitement before revealing your move",
+                    "- Keep it light -- it's a quick, casual game",
+                    "- Positions are numbered 1-9 (top-left to bottom-right)",
+                    "- Include your move as [move:N] where N is the position number",
+                ]),
+                "1",
+            ),
+        )
+
+        # Backfill default configuration row for existing agents.
+        cur.execute(
+            """INSERT OR IGNORE INTO agent_game_config (agent_id, game_id, enabled, workspace_required)
+               SELECT id, 'tic-tac-toe', 1, 0 FROM agents"""
+        )
 
         conn.commit()
 
