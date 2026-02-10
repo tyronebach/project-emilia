@@ -198,8 +198,8 @@
 - [ ] Run internal A/B on selected agents first.
 
 ### F2. Data migration checks
-- [ ] Verify existing sessions continue to function.
-- [ ] Validate fallback behavior when no game config exists.
+- [x] Verify existing sessions continue to function.
+- [x] Validate fallback behavior when no game config exists.
 
 ### F3. Remove legacy paths
 - [ ] Decommission old global registry-only assumptions.

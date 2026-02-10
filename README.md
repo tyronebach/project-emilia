@@ -25,6 +25,11 @@ docker compose logs -f backend
 
 Open `https://localhost:3443`.
 
+## Feature Flags
+
+- `GAMES_V2_ENABLED` (backend, docker-compose default: `1`)
+- `VITE_GAMES_V2_ENABLED` (frontend, default: `1`)
+
 ## URLs
 
 | Service | URL |
