@@ -39,7 +39,23 @@
     "banter": 0.95,
     "teasing": 0.95
   },
-  "trigger_responses": {},
+  "trigger_responses": {
+    "teasing": { "preset": "muted" },
+    "banter": { "preset": "muted" },
+    "flirting": { "preset": "muted" },
+    "comfort": { "preset": "amplified" },
+    "praise": { "preset": "amplified" },
+    "affirmation": { "preset": "amplified" },
+    "criticism": { "preset": "uncomfortable" },
+    "rejection": { "preset": "intense" },
+    "boundary": { "preset": "uncomfortable" },
+    "dismissal": { "preset": "uncomfortable" },
+    "apology": { "preset": "normal" },
+    "accountability": { "preset": "normal" },
+    "reconnection": { "preset": "amplified" },
+    "disclosure": { "preset": "amplified" },
+    "trust_signal": { "preset": "amplified" }
+  },
   "essence_floors": {
     "warmth": 0.6,
     "loyalty": 0.7,

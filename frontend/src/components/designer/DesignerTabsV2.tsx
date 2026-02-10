@@ -6,6 +6,7 @@ const tabs: { id: DesignerV2Tab; label: string }[] = [
   { id: 'calibration', label: 'Calibration' },
   { id: 'simulator', label: 'Simulator' },
   { id: 'drift', label: 'Drift' },
+  { id: 'dynamics', label: 'Dynamics' },
 ];
 
 interface DesignerTabsV2Props {

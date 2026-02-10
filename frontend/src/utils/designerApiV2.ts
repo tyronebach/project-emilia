@@ -15,6 +15,7 @@ import type {
   DriftSimulationConfig,
   DriftSimulationResult,
   DriftComparisonResult,
+  MoodInjectionSettings,
 } from '../types/designer';
 
 // ============ PERSONALITY (Agent DNA) ============
@@ -183,5 +184,22 @@ export async function runDriftComparison(
     }),
   });
   if (!res.ok) throw new Error(`Drift comparison failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getMoodInjectionSettings(): Promise<MoodInjectionSettings> {
+  const res = await fetchWithAuth('/api/designer/v2/mood-injection-settings');
+  if (!res.ok) throw new Error(`Failed to fetch mood injection settings: ${res.status}`);
+  return res.json();
+}
+
+export async function updateMoodInjectionSettings(
+  settings: MoodInjectionSettings
+): Promise<MoodInjectionSettings> {
+  const res = await fetchWithAuth('/api/designer/v2/mood-injection-settings', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error(`Failed to update mood injection settings: ${res.status}`);
   return res.json();
 }

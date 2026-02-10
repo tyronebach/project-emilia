@@ -4,6 +4,48 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.6.2] - 2026-02-10
+
+### Added - Drift + Mood Injection Tuning
+
+- **Drift Simulator expansion** - Added natural, phased archetypes with weekly cycling behavior (`rough_day_then_recover`, `lonely_then_playful`, `moody_week`)
+- **Drift mood analytics fix** - Mood distribution now uses weighted mood mix instead of only dominant mood labels
+- **Injection-focused Drift charts** - Added primary/secondary injected mood count pies and LLM context mood preview
+- **Global dynamics controls** - New Designer V2 `Dynamics` tab to tune and persist mood injection knobs in DB
+- **Backend settings persistence** - Added `app_settings` table and mood injection settings API endpoints
+- **Volatility-driven mood selection** - LLM mood injection now allows controlled variation among close top moods based on volatility and global knobs
+- **Preset handling for profiles** - Backend now resolves trigger response presets to numeric deltas; explicit axis values override preset-derived values
+
+#### Files Added
+- `backend/db/repositories/app_settings.py`
+- `backend/services/drift_simulator.py`
+- `frontend/src/components/designer/DriftSimulatorTab.tsx`
+- `frontend/src/components/designer/GlobalDynamicsTab.tsx`
+- `backend/scripts/agent_profiles/profile_template.json`
+- `backend/scripts/agent_profiles/playful_companion_profile.json`
+- `backend/tests/test_mood_injection_dynamics.py`
+- `backend/tests/test_drift_mood_distribution.py`
+- `backend/tests/test_drift_simulator_phases.py`
+- `backend/tests/test_trigger_presets.py`
+
+#### Files Modified
+- `backend/services/emotion_engine.py`
+- `backend/routers/designer_v2.py`
+- `backend/db/connection.py`
+- `backend/db/repositories/__init__.py`
+- `backend/scripts/agent_profiles/README.md`
+- `backend/scripts/agent_profiles/rem_rezero_profile.json`
+- `frontend/src/components/designer/DesignerPageV2.tsx`
+- `frontend/src/components/designer/DesignerTabsV2.tsx`
+- `frontend/src/types/designer.ts`
+- `frontend/src/utils/designerApiV2.ts`
+
+#### Validation
+- Targeted backend tests passing (`mood injection`, `drift distribution`, `phase cycling`, `trigger preset`)
+- Targeted frontend lint passing for updated designer components
+
+---
+
 ## [5.6.1] - 2026-02-05
 
 ### Fixed - Streaming Chat + First Reply Lip Sync

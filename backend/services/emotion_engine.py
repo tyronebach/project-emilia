@@ -10,6 +10,7 @@ from typing import ClassVar, Optional
 import json
 import logging
 import math
+import random
 import re
 import threading
 import time as _time
@@ -202,8 +203,26 @@ class AgentProfile:
         from services.emotion_engine import EmotionEngine
 
         if trigger in self.trigger_responses:
-            return {k: v for k, v in self.trigger_responses[trigger].items()
-                    if k != 'preset'}
+            response = self.trigger_responses[trigger]
+            preset = response.get("preset") if isinstance(response, dict) else None
+            base = EmotionEngine.DEFAULT_TRIGGER_DELTAS.get(trigger, {})
+
+            if preset in TRIGGER_PRESET_MULTIPLIERS and base:
+                mult = TRIGGER_PRESET_MULTIPLIERS[preset]
+                computed = {axis: delta * mult for axis, delta in base.items()}
+            else:
+                computed = {}
+
+            overrides = {
+                k: v for k, v in response.items()
+                if k != "preset" and isinstance(v, (int, float))
+            } if isinstance(response, dict) else {}
+
+            if computed:
+                computed.update(overrides)
+                return computed
+
+            return overrides
 
         mult = self.trigger_multipliers.get(trigger, 1.0)
         base = EmotionEngine.DEFAULT_TRIGGER_DELTAS.get(trigger, {})
@@ -223,6 +242,25 @@ TRIGGER_TAXONOMY = {
 }
 
 ALL_TRIGGERS = [t for triggers in TRIGGER_TAXONOMY.values() for t in triggers]
+
+# Preset multipliers for trigger responses (matches frontend presets)
+TRIGGER_PRESET_MULTIPLIERS = {
+    "threatening": -1.5,
+    "uncomfortable": -0.5,
+    "neutral": 0.0,
+    "muted": 0.5,
+    "normal": 1.0,
+    "amplified": 1.5,
+    "intense": 2.0,
+}
+
+DEFAULT_MOOD_INJECTION_SETTINGS = {
+    "top_k": 3,
+    "volatility_threshold": 0.3,
+    "min_margin": 0.15,
+    "random_strength": 0.7,
+    "max_random_chance": 0.85,
+}
 
 # ============================================================
 # Mood groups for UI organization + dot product projection
@@ -689,7 +727,24 @@ class EmotionEngine:
     
     def __init__(self, profile: AgentProfile):
         self.profile = profile
+        self.mood_injection_settings = self._load_mood_injection_settings()
         self._compile_patterns()
+
+    def _load_mood_injection_settings(self) -> dict:
+        from db.repositories import AppSettingsRepository
+
+        raw = AppSettingsRepository.get_json(
+            "mood_injection_settings",
+            DEFAULT_MOOD_INJECTION_SETTINGS,
+        )
+        merged = {**DEFAULT_MOOD_INJECTION_SETTINGS, **raw}
+        return {
+            "top_k": int(max(1, min(6, merged.get("top_k", 3)))),
+            "volatility_threshold": self._clamp(float(merged.get("volatility_threshold", 0.3)), 0.0, 1.0),
+            "min_margin": self._clamp(float(merged.get("min_margin", 0.15)), 0.0, 1.0),
+            "random_strength": self._clamp(float(merged.get("random_strength", 0.7)), 0.0, 2.0),
+            "max_random_chance": self._clamp(float(merged.get("max_random_chance", 0.85)), 0.0, 1.0),
+        }
     
     def _compile_patterns(self) -> None:
         """Compile regex patterns once."""
@@ -1181,7 +1236,7 @@ class EmotionEngine:
         for mood, delta in mood_deltas.items():
             effective_delta = delta * self.profile.emotional_volatility
             current = state.mood_weights.get(mood, 0)
-            state.mood_weights[mood] = self._clamp(current + effective_delta, -10, 20)
+            state.mood_weights[mood] = self._clamp(current + effective_delta, 0, 10)
 
     def _update_valence_arousal_from_moods(self, state: EmotionalState) -> None:
         """Derive valence/arousal from mood weights."""
@@ -1228,6 +1283,71 @@ class EmotionEngine:
         )
         return [(m, w) for m, w in sorted_moods[:top_n] if w > 0]
 
+    def get_injected_moods(self, state: EmotionalState, top_n: int = 2) -> list[tuple[str, float]]:
+        """Get moods for LLM injection with volatility-aware variation.
+
+        Low-volatility personas remain mostly deterministic (top moods).
+        High-volatility personas occasionally sample from top candidates.
+        """
+        settings = self.mood_injection_settings
+        candidate_k = max(top_n, int(settings["top_k"]))
+        deterministic = self.get_dominant_moods(state, top_n=candidate_k)
+        if not deterministic:
+            return []
+        if len(deterministic) <= 1:
+            return deterministic[:top_n]
+
+        # volatility is typically 0..3; normalize to 0..1-ish for selection dynamics
+        vol = self._clamp(self.profile.emotional_volatility, 0.0, 3.0)
+        vol_norm = self._clamp(vol / 1.5, 0.0, 1.0)
+        volatility_threshold = float(settings["volatility_threshold"])
+        if vol_norm < volatility_threshold:
+            return deterministic[:top_n]
+
+        top_k = min(candidate_k, len(deterministic))
+        candidates = deterministic[:top_k]
+        first_weight = candidates[0][1]
+        second_weight = candidates[1][1]
+
+        # If the top mood dominates strongly, stay deterministic.
+        margin_ratio = 0.0
+        if first_weight > 0:
+            margin_ratio = self._clamp((first_weight - second_weight) / first_weight, 0.0, 1.0)
+        min_margin = float(settings["min_margin"])
+        if margin_ratio >= min_margin:
+            return deterministic[:top_n]
+
+        if volatility_threshold >= 1.0:
+            vol_factor = 1.0
+        else:
+            vol_factor = self._clamp(
+                (vol_norm - volatility_threshold) / (1.0 - volatility_threshold),
+                0.0,
+                1.0,
+            )
+        margin_factor = 1.0
+        if min_margin > 0:
+            margin_factor = self._clamp(1.0 - (margin_ratio / min_margin), 0.0, 1.0)
+        random_chance = float(settings["random_strength"]) * vol_factor * margin_factor
+        random_chance = self._clamp(random_chance, 0.0, float(settings["max_random_chance"]))
+        if random.random() >= random_chance:
+            return deterministic[:top_n]
+
+        # High volatility flattens preference among top moods.
+        # vol_norm=0.3 -> alpha~1.2 (more greedy), vol_norm=1 -> alpha~0.6 (flatter)
+        alpha = 1.2 - (0.6 * (vol_norm - 0.3) / 0.7)
+        alpha = self._clamp(alpha, 0.6, 1.2)
+        weights = [max(0.0001, w) ** alpha for _, w in candidates]
+        primary = random.choices(candidates, weights=weights, k=1)[0]
+
+        if top_n <= 1:
+            return [primary]
+
+        secondary_candidates = [c for c in deterministic if c[0] != primary[0]]
+        if not secondary_candidates:
+            return [primary]
+        return [primary, secondary_candidates[0]]
+
     def get_behavior_levers(self, state: EmotionalState) -> dict[str, float]:
         """
         Convert emotional state to LLM-injectable behavior levers.
@@ -1255,7 +1375,7 @@ class EmotionEngine:
     def generate_context_block(self, state: EmotionalState) -> str:
         """Generate rich emotional context block for LLM prompt injection."""
         # Dominant moods
-        dominant = self.get_dominant_moods(state, top_n=2)
+        dominant = self.get_injected_moods(state, top_n=2)
         if dominant:
             primary, weight = dominant[0]
             intensity = "strongly" if weight > 10 else "somewhat" if weight > 5 else "slightly"

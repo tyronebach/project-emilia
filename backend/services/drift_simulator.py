@@ -111,6 +111,140 @@ ARCHETYPES: dict[str, dict[str, Any]] = {
             "negative": 0.33,
         },
     },
+    "rough_day_then_recover": {
+        "name": "Rough Day → Recovery",
+        "description": "Starts critical and tense, then settles into neutral recovery.",
+        "cycle_days": 7,
+        "phases": [
+            {
+                "days": 2,
+                "trigger_weights": {
+                    "criticism": 0.30,
+                    "boundary": 0.25,
+                    "dismissal": 0.20,
+                    "rejection": 0.15,
+                    "teasing": 0.05,
+                    "praise": 0.05,
+                },
+                "outcome_weights": {
+                    "negative": 0.65,
+                    "neutral": 0.25,
+                    "positive": 0.10,
+                },
+            },
+            {
+                "days": 5,
+                "trigger_weights": {
+                    "affirmation": 0.24,
+                    "praise": 0.18,
+                    "comfort": 0.16,
+                    "banter": 0.12,
+                    "teasing": 0.10,
+                    "disclosure": 0.10,
+                    "trust_signal": 0.10,
+                },
+                "outcome_weights": {
+                    "neutral": 0.55,
+                    "positive": 0.35,
+                    "negative": 0.10,
+                },
+            },
+        ],
+    },
+    "lonely_then_playful": {
+        "name": "Lonely → Playful",
+        "description": "Starts vulnerable/withdrawn, then becomes playful and warm.",
+        "cycle_days": 7,
+        "phases": [
+            {
+                "days": 3,
+                "trigger_weights": {
+                    "disclosure": 0.28,
+                    "trust_signal": 0.18,
+                    "comfort": 0.18,
+                    "reconnection": 0.14,
+                    "praise": 0.12,
+                    "affirmation": 0.10,
+                },
+                "outcome_weights": {
+                    "neutral": 0.50,
+                    "positive": 0.35,
+                    "negative": 0.15,
+                },
+            },
+            {
+                "days": 5,
+                "trigger_weights": {
+                    "teasing": 0.28,
+                    "banter": 0.24,
+                    "flirting": 0.16,
+                    "praise": 0.12,
+                    "affirmation": 0.10,
+                    "trust_signal": 0.10,
+                },
+                "outcome_weights": {
+                    "positive": 0.55,
+                    "neutral": 0.35,
+                    "negative": 0.10,
+                },
+            },
+        ],
+    },
+    "moody_week": {
+        "name": "Moody Week",
+        "description": "Swings between negative, neutral, and positive days.",
+        "cycle_days": 7,
+        "phases": [
+            {
+                "days": 2,
+                "trigger_weights": {
+                    "criticism": 0.25,
+                    "dismissal": 0.22,
+                    "boundary": 0.18,
+                    "rejection": 0.15,
+                    "teasing": 0.10,
+                    "banter": 0.10,
+                },
+                "outcome_weights": {
+                    "negative": 0.60,
+                    "neutral": 0.30,
+                    "positive": 0.10,
+                },
+            },
+            {
+                "days": 2,
+                "trigger_weights": {
+                    "affirmation": 0.22,
+                    "praise": 0.20,
+                    "comfort": 0.16,
+                    "banter": 0.14,
+                    "teasing": 0.14,
+                    "reconnection": 0.14,
+                },
+                "outcome_weights": {
+                    "neutral": 0.55,
+                    "positive": 0.35,
+                    "negative": 0.10,
+                },
+            },
+            {
+                "days": 3,
+                "trigger_weights": {
+                    "teasing": 0.26,
+                    "banter": 0.22,
+                    "flirting": 0.16,
+                    "praise": 0.14,
+                    "affirmation": 0.12,
+                    "trust_signal": 0.10,
+                },
+                "outcome_weights": {
+                    "positive": 0.55,
+                    "neutral": 0.35,
+                    "negative": 0.10,
+                },
+            },
+        ],
+    },
 }
 
 
@@ -138,6 +272,8 @@ class TimelinePoint:
     outcome: str
     state: dict
     dominant_mood: str
+    primary_mood: str
+    secondary_mood: str | None
 
 
 @dataclass
@@ -226,7 +362,7 @@ class DriftSimulator:
                     elapsed_hours += gap
 
                 for msg in range(self.config.messages_per_session):
-                    trigger = self._sample_trigger()
+                    trigger = self._sample_trigger(day)
                     intensity = self.rng.uniform(0.3, 1.0)
 
                     deltas = self.engine.apply_trigger(self.state, trigger, intensity)
@@ -238,8 +374,12 @@ class DriftSimulator:
                         self.engine.apply_mood_deltas(self.state, mood_deltas)
                     self._track_trigger(trigger_agg, trigger, intensity, deltas)
 
-                    outcome = self._sample_outcome()
+                    outcome = self._sample_outcome(day)
                     self._apply_outcome(outcome)
+
+                    injected = self.engine.get_injected_moods(self.state, top_n=2)
+                    primary_mood = injected[0][0] if injected else "neutral"
+                    secondary_mood = injected[1][0] if len(injected) > 1 else None
 
                     point = TimelinePoint(
                         day=day,
@@ -250,7 +390,9 @@ class DriftSimulator:
                         intensity=float(f"{intensity:.4f}"),
                         outcome=outcome,
                         state=self._snapshot_state(),
-                        dominant_mood=self._get_dominant_mood(),
+                        dominant_mood=primary_mood,
+                        primary_mood=primary_mood,
+                        secondary_mood=secondary_mood,
                     )
                     timeline.append(point)
                     day_points.append(point)
@@ -271,16 +413,16 @@ class DriftSimulator:
             significant_events=self._find_significant_events(timeline),
         )
 
-    def _sample_trigger(self) -> str:
-        weights = self.archetype["trigger_weights"]
+    def _sample_trigger(self, day: int) -> str:
+        weights = self._get_phase_weights(day, "trigger_weights")
         if weights == "uniform":
             return self.rng.choice(ALL_TRIGGERS)
 
         triggers, probs = zip(*weights.items())
         return self.rng.choices(triggers, weights=probs, k=1)[0]
 
-    def _sample_outcome(self) -> str:
-        weights = self.archetype["outcome_weights"]
+    def _sample_outcome(self, day: int) -> str:
+        weights = self._get_phase_weights(day, "outcome_weights")
         outcomes, probs = zip(*weights.items())
         return self.rng.choices(outcomes, weights=probs, k=1)[0]
 
@@ -297,9 +439,22 @@ class DriftSimulator:
             return self.config.overnight_gap_hours
         return self.config.session_gap_hours
 
-    def _get_dominant_mood(self) -> str:
-        moods = self.engine.get_dominant_moods(self.state, top_n=1)
-        return moods[0][0] if moods else "neutral"
+    def _get_phase_weights(self, day: int, key: str) -> Any:
+        if "phases" not in self.archetype:
+            return self.archetype[key]
+
+        phases = self.archetype["phases"]
+        cycle_days = int(self.archetype.get("cycle_days", 0))
+        remaining = day
+        if cycle_days > 0:
+            remaining = remaining % cycle_days
+        for phase in phases:
+            span = int(phase.get("days", 0))
+            if remaining < span:
+                return phase[key]
+            remaining -= span
+
+        return phases[-1][key]
 
     def _snapshot_state(self) -> dict:
         snapshot = self.state.to_dict()
@@ -356,12 +511,34 @@ class DriftSimulator:
         if not timeline:
             return {}
 
-        counts: dict[str, int] = {}
+        # Aggregate all mood weights (normalized per point) so the distribution
+        # reflects the full emotional mix, not only the top mood label.
+        weights_sum: dict[str, float] = {}
         for point in timeline:
-            counts[point.dominant_mood] = counts.get(point.dominant_mood, 0) + 1
+            mood_weights = point.state.get("mood_weights")
+            if not isinstance(mood_weights, dict) or not mood_weights:
+                mood = point.dominant_mood or "neutral"
+                weights_sum[mood] = weights_sum.get(mood, 0.0) + 1.0
+                continue
 
-        total = len(timeline)
-        return {m: round(c / total, 4) for m, c in counts.items()}
+            positive_weights = {
+                mood: max(0.0, float(weight))
+                for mood, weight in mood_weights.items()
+            }
+            total = sum(positive_weights.values())
+            if total <= 0:
+                mood = point.dominant_mood or "neutral"
+                weights_sum[mood] = weights_sum.get(mood, 0.0) + 1.0
+                continue
+
+            for mood, weight in positive_weights.items():
+                if weight <= 0:
+                    continue
+                weights_sum[mood] = weights_sum.get(mood, 0.0) + (weight / total)
+
+        grand_total = sum(weights_sum.values()) or 1.0
+        distribution = {m: round(w / grand_total, 4) for m, w in weights_sum.items()}
+        return dict(sorted(distribution.items(), key=lambda item: item[1], reverse=True))
 
     def _track_trigger(
         self,

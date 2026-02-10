@@ -32,6 +32,27 @@ function formatNumber(value: number): string {
   return value >= 0 ? `+${value.toFixed(2)}` : value.toFixed(2);
 }
 
+function getTopMoodsFromWeights(
+  moodWeights: Record<string, number> | undefined,
+  topN = 2
+): Array<{ mood: string; weight: number }> {
+  if (!moodWeights) return [];
+  return Object.entries(moodWeights)
+    .filter(([, w]) => typeof w === 'number' && w > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, topN)
+    .map(([mood, weight]) => ({ mood, weight }));
+}
+
+function formatInjectedMoodText(moods: Array<{ mood: string; weight: number }>): string {
+  if (moods.length === 0) return 'emotionally neutral';
+  const primary = moods[0];
+  const intensity =
+    primary.weight > 10 ? 'strongly' : primary.weight > 5 ? 'somewhat' : 'slightly';
+  if (moods.length === 1) return `${intensity} ${primary.mood}`;
+  return `${intensity} ${primary.mood}, with hints of ${moods[1].mood}`;
+}
+
 function DriftSimulatorTab() {
   const [selectedAgent, setSelectedAgent] = useState<string>('');
   const [selectedArchetype, setSelectedArchetype] = useState<string>('aggressive');
@@ -126,12 +147,32 @@ function DriftSimulatorTab() {
     }));
   }, [result]);
 
-  const moodData = useMemo(() => {
-    if (!result) return [];
-    return Object.entries(result.mood_distribution).map(([name, value]) => ({
-      name,
-      value,
-    }));
+  const injectedMoodCountData = useMemo(() => {
+    if (!result || result.timeline.length === 0) {
+      return { primary: [] as Array<{ name: string; value: number }>, secondary: [] as Array<{ name: string; value: number }> };
+    }
+
+    const primaryCounts: Record<string, number> = {};
+    const secondaryCounts: Record<string, number> = {};
+
+    for (const point of result.timeline) {
+      const primaryMood = point.primary_mood || point.dominant_mood || 'neutral';
+      const secondaryMood = point.secondary_mood || '';
+      primaryCounts[primaryMood] = (primaryCounts[primaryMood] ?? 0) + 1;
+      if (secondaryMood) {
+        secondaryCounts[secondaryMood] = (secondaryCounts[secondaryMood] ?? 0) + 1;
+      }
+    }
+
+    const toRows = (counts: Record<string, number>) =>
+      Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, value]) => ({ name, value }));
+
+    return {
+      primary: toRows(primaryCounts),
+      secondary: toRows(secondaryCounts),
+    };
   }, [result]);
 
   const moodShiftData = useMemo(() => {
@@ -154,8 +195,8 @@ function DriftSimulatorTab() {
       };
     });
 
-    rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
-    return rows.slice(0, 10);
+    rows.sort((a, b) => a.mood.localeCompare(b.mood));
+    return rows;
   }, [result, personality]);
 
   const topMoodSeries = useMemo(() => {
@@ -199,6 +240,30 @@ function DriftSimulatorTab() {
 
   const topTriggers = result?.trigger_stats.slice(0, 8) ?? [];
   const events = result?.significant_events ?? [];
+
+  const injectedMoodPreview = useMemo(() => {
+    if (!result || result.timeline.length === 0) return [];
+    const lastPointByDay = new Map<number, (typeof result.timeline)[number]>();
+    for (const point of result.timeline) {
+      lastPointByDay.set(point.day, point);
+    }
+
+    return Array.from(lastPointByDay.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([day, point]) => {
+        return {
+          day: day + 1,
+          primary: point.primary_mood || point.dominant_mood || 'neutral',
+          secondary: point.secondary_mood || '',
+          summary: formatInjectedMoodText(
+            getTopMoodsFromWeights(
+              (point.state.mood_weights as Record<string, number> | undefined) ?? {},
+              2
+            )
+          ),
+        };
+      });
+  }, [result]);
 
   const comparisonChartData = useMemo(() => {
     if (!comparison) return [];
@@ -420,25 +485,45 @@ function DriftSimulatorTab() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="bg-bg-secondary/70 border border-white/10 rounded-2xl p-4">
+            <div className="lg:col-span-2 bg-bg-secondary/70 border border-white/10 rounded-2xl p-4">
               <h3 className="text-sm font-medium text-text-secondary mb-3 uppercase tracking-wider">
-                Mood Distribution
+                LLM Injected Mood Counts
               </h3>
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={moodData} dataKey="value" nameKey="name" outerRadius={90} label>
-                      {moodData.map((entry, index) => (
-                        <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <div className="text-xs text-text-secondary mb-2 uppercase tracking-wider">Primary Mood</div>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={injectedMoodCountData.primary} dataKey="value" nameKey="name" outerRadius={72} label>
+                          {injectedMoodCountData.primary.map((entry, index) => (
+                            <Cell key={`primary-${entry.name}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-text-secondary mb-2 uppercase tracking-wider">Secondary Mood</div>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={injectedMoodCountData.secondary} dataKey="value" nameKey="name" outerRadius={72} label>
+                          {injectedMoodCountData.secondary.map((entry, index) => (
+                            <Cell key={`secondary-${entry.name}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="lg:col-span-2 bg-bg-secondary/70 border border-white/10 rounded-2xl p-4">
+            <div className="bg-bg-secondary/70 border border-white/10 rounded-2xl p-4">
               <h3 className="text-sm font-medium text-text-secondary mb-3 uppercase tracking-wider">
                 Drift Summary
               </h3>
@@ -517,6 +602,41 @@ function DriftSimulatorTab() {
                     ))}
                   </LineChart>
                 </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-bg-secondary/70 border border-white/10 rounded-2xl p-4">
+            <h3 className="text-sm font-medium text-text-secondary mb-3 uppercase tracking-wider">
+              LLM Context Mood Preview
+            </h3>
+            <p className="text-xs text-text-secondary mb-3">
+              Mirrors live chat mood injection style: top mood plus optional second hint.
+            </p>
+            {injectedMoodPreview.length === 0 ? (
+              <div className="text-sm text-text-secondary">No preview data available.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-xs text-text-secondary uppercase">
+                    <tr>
+                      <th className="text-left py-2 px-2">Day</th>
+                      <th className="text-left py-2 px-2">Primary</th>
+                      <th className="text-left py-2 px-2">Secondary</th>
+                      <th className="text-left py-2 px-2">Injected Text</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {injectedMoodPreview.map((row) => (
+                      <tr key={`inj-${row.day}`} className="border-t border-white/5">
+                        <td className="py-2 px-2">{row.day}</td>
+                        <td className="py-2 px-2">{row.primary}</td>
+                        <td className="py-2 px-2">{row.secondary || '-'}</td>
+                        <td className="py-2 px-2 text-text-secondary">{row.summary}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
