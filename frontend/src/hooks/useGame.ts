@@ -4,6 +4,8 @@ import { useCallback } from 'react';
 import { getGame } from '../games/registry';
 import type { GameConfig, GameContext, GameModule, MoveProviderType } from '../games/types';
 import { useGameStore } from '../store/gameStore';
+import { useGameCatalogStore } from '../store/gameCatalogStore';
+import { useUserStore } from '../store/userStore';
 
 const MAX_VALID_MOVES = 30;
 const DEFAULT_DIFFICULTY = 0.5;
@@ -21,6 +23,10 @@ export function useGame() {
   const gameConfig = useGameStore((state) => state.gameConfig);
   const isAvatarThinking = useGameStore((state) => state.isAvatarThinking);
   const setIsAvatarThinking = useGameStore((state) => state.setIsAvatarThinking);
+  const catalogGames = useGameCatalogStore((state) => state.games);
+  const catalogHasFetched = useGameCatalogStore((state) => state.hasFetched);
+  const catalogLoadedForAgentId = useGameCatalogStore((state) => state.loadedForAgentId);
+  const currentAgentId = useUserStore((state) => state.currentAgent?.id ?? null);
 
   const handleAvatarTurn = useCallback(() => {
     const {
@@ -82,10 +88,16 @@ export function useGame() {
   }, [setIsAvatarThinking]);
 
   const startGame = useCallback((gameId: string, config?: GameConfig) => {
+    const canGate = catalogHasFetched && currentAgentId && catalogLoadedForAgentId === currentAgentId;
+    if (canGate && !catalogGames.some((game) => game.id === gameId)) {
+      console.warn('[useGame] Game is not enabled for this agent:', gameId);
+      return;
+    }
+
     setIsAvatarThinking(false);
     useGameStore.getState().startGame(gameId, config);
     handleAvatarTurn();
-  }, [handleAvatarTurn, setIsAvatarThinking]);
+  }, [catalogGames, catalogHasFetched, catalogLoadedForAgentId, currentAgentId, handleAvatarTurn, setIsAvatarThinking]);
 
   const makeUserMove = useCallback((move: unknown) => {
     const success = useGameStore.getState().applyUserMove(move);

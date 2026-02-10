@@ -54,6 +54,200 @@ class TestChatEndpoint:
         )
         assert response.status_code == 422
 
+    async def test_chat_rejects_invalid_game_context_shape(self, test_client, auth_headers):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Test Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        response = await test_client.post(
+            "/api/chat",
+            json={
+                "message": "Hello",
+                "game_context": {
+                    "gameId": "tic-tac-toe",
+                    "state": "X | O | 3",
+                    "status": "in_progress",
+                    "moveCount": 1,
+                    "unknownField": "not-allowed",
+                },
+            },
+            headers=headers,
+        )
+        assert response.status_code == 422
+
+    @patch("routers.chat._spawn_background")
+    @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.chat.httpx.AsyncClient")
+    async def test_chat_non_stream_success_returns_parsed_response(
+        self,
+        mock_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Test Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "agent:test-claw-id",
+            "choices": [
+                {
+                    "message": {
+                        "content": "[intent:playful] [mood:happy:0.8] Hello from non-stream!"
+                    }
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 5,
+            },
+        }
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        response = await test_client.post(
+            "/api/chat?stream=0",
+            json={"message": "Hi"},
+            headers=headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"] == "Hello from non-stream!"
+        assert data["behavior"]["intent"] == "playful"
+        assert data["behavior"]["mood"] == "happy"
+        assert data["usage"]["prompt_tokens"] == 10
+
+    @patch("routers.chat._spawn_background")
+    @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.chat.httpx.AsyncClient")
+    async def test_chat_runtime_trigger_does_not_persist_user_message(
+        self,
+        mock_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Test Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "agent:test-claw-id",
+            "choices": [
+                {
+                    "message": {
+                        "content": "[intent:playful] [move:5] Taking my move."
+                    }
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 4,
+            },
+        }
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        response = await test_client.post(
+            "/api/chat?stream=0",
+            json={
+                "message": "Your turn!",
+                "runtime_trigger": True,
+            },
+            headers=headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"]
+
+        with get_db() as conn:
+            stored = conn.execute(
+                "SELECT role, content FROM messages WHERE session_id = ? ORDER BY timestamp ASC",
+                (data["session_id"],),
+            ).fetchall()
+        assert len(stored) == 1
+        assert stored[0]["role"] == "assistant"
+
 
 # ========================================
 # Speak Endpoint Tests
@@ -307,6 +501,75 @@ class TestManageEndpoints:
     async def test_list_agents_requires_auth(self, test_client):
         response = await test_client.get("/api/manage/agents")
         assert response.status_code == 401
+
+    async def test_manage_games_and_agent_config_affect_catalog(self, test_client, auth_headers):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+        game_id = f"game-{uuid.uuid4().hex[:8]}"
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Test Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        create_resp = await test_client.post(
+            "/api/manage/games",
+            json={
+                "id": game_id,
+                "display_name": "Test Game",
+                "category": "board",
+                "description": "A test game",
+                "module_key": "test-game",
+                "active": True,
+                "move_provider_default": "llm",
+                "rule_mode": "strict",
+                "version": "1",
+            },
+            headers=auth_headers,
+        )
+        assert create_resp.status_code == 200
+        assert create_resp.json()["id"] == game_id
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        catalog_before = await test_client.get("/api/games/catalog", headers=headers)
+        assert catalog_before.status_code == 200
+        assert any(g["id"] == game_id for g in catalog_before.json()["games"])
+
+        disable_resp = await test_client.put(
+            f"/api/manage/agents/{agent_id}/games/{game_id}",
+            json={"enabled": False},
+            headers=auth_headers,
+        )
+        assert disable_resp.status_code == 200
+        assert disable_resp.json()["enabled"] is False
+
+        catalog_after_disable = await test_client.get("/api/games/catalog", headers=headers)
+        assert catalog_after_disable.status_code == 200
+        assert all(g["id"] != game_id for g in catalog_after_disable.json()["games"])
+
+        delete_cfg = await test_client.delete(
+            f"/api/manage/agents/{agent_id}/games/{game_id}",
+            headers=auth_headers,
+        )
+        assert delete_cfg.status_code == 200
+
+        catalog_after_delete_cfg = await test_client.get("/api/games/catalog", headers=headers)
+        assert catalog_after_delete_cfg.status_code == 200
+        assert any(g["id"] == game_id for g in catalog_after_delete_cfg.json()["games"])
 
     async def test_delete_agent_removes_related_data(self, test_client, auth_headers):
         user_id = f"user-{uuid.uuid4().hex[:8]}"

@@ -128,3 +128,65 @@ class StatusResponse(BaseModel):
     status: str
     agent_id: str | None = None
     message: str | None = None
+
+
+class GameRegistryItemResponse(BaseModel):
+    id: str
+    display_name: str
+    category: str
+    description: str
+    module_key: str
+    active: bool = True
+    move_provider_default: str = "llm"
+    rule_mode: str = "strict"
+    prompt_instructions: str | None = None
+    version: str = "1"
+    created_at: int | None = None
+    updated_at: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GameRegistryListResponse(BaseModel):
+    games: list[GameRegistryItemResponse]
+    count: int
+
+
+class AgentGameConfigResponse(BaseModel):
+    agent_id: str
+    game_id: str
+    enabled: bool = True
+    mode: str | None = None
+    difficulty: float | None = None
+    prompt_override: str | None = None
+    workspace_required: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgentGameConfigListResponse(BaseModel):
+    agent_id: str
+    games: list[dict]
+    count: int
+
+
+class GameCatalogItemResponse(BaseModel):
+    id: str
+    display_name: str
+    category: str
+    description: str
+    module_key: str
+    move_provider_default: str
+    rule_mode: str
+    prompt_instructions: str | None = None
+    effective_mode: str | None = None
+    effective_difficulty: float | None = None
+    version: str = "1"
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GameCatalogResponse(BaseModel):
+    agent_id: str
+    games: list[GameCatalogItemResponse]
+    count: int

@@ -5,6 +5,7 @@ import {
   Bot,
   Bug,
   CheckCircle,
+  Gamepad2,
   Link,
   Palette,
   Pencil,
@@ -23,13 +24,22 @@ import {
   createAgent,
   createUser,
   deleteAgent,
+  deleteAgentGameConfig,
   deleteUser,
   fetchUserAgents,
   fetchUsers,
   fetchWithAuth,
+  fetchManageGames,
+  fetchAgentGames,
+  createManageGame,
+  deactivateManageGame,
+  updateAgentGameConfig,
+  updateManageGame,
   removeUserAgent,
   updateUser,
   type Agent,
+  type ManageGame,
+  type ManageAgentGame,
   type User,
 } from '../utils/api';
 import { queryClient } from '../lib/queryClient';
@@ -44,7 +54,20 @@ type AgentWithWorkspace = Agent & {
   created_at: number;
 };
 
-type TabKey = 'users' | 'agents' | 'mappings';
+type GameFormState = {
+  id: string;
+  display_name: string;
+  category: 'board' | 'card' | 'word' | 'creative';
+  description: string;
+  module_key: string;
+  active: boolean;
+  move_provider_default: 'llm' | 'engine' | 'random';
+  rule_mode: 'strict' | 'narrative' | 'spectator';
+  prompt_instructions: string;
+  version: string;
+};
+
+type TabKey = 'users' | 'agents' | 'mappings' | 'games';
 
 type FieldProps = {
   label: string;
@@ -124,9 +147,33 @@ function AdminPanel() {
   const [userAgentIds, setUserAgentIds] = useState<Set<string>>(new Set());
   const [mappingBusy, setMappingBusy] = useState<Set<string>>(new Set());
 
+  const [games, setGames] = useState<ManageGame[]>([]);
+  const [loadingGames, setLoadingGames] = useState(true);
+  const [selectedAgentForGames, setSelectedAgentForGames] = useState('');
+  const [agentGames, setAgentGames] = useState<ManageAgentGame[]>([]);
+  const [loadingAgentGames, setLoadingAgentGames] = useState(false);
+  const [agentGameBusy, setAgentGameBusy] = useState<Set<string>>(new Set());
+  const [gameModalOpen, setGameModalOpen] = useState(false);
+  const [gameModalMode, setGameModalMode] = useState<'create' | 'edit'>('create');
+  const [gameSaving, setGameSaving] = useState(false);
+  const [deleteGameId, setDeleteGameId] = useState<string | null>(null);
+  const [gameForm, setGameForm] = useState<GameFormState>({
+    id: '',
+    display_name: '',
+    category: 'board',
+    description: '',
+    module_key: '',
+    active: true,
+    move_provider_default: 'llm',
+    rule_mode: 'strict',
+    prompt_instructions: '',
+    version: '1',
+  });
+
   useEffect(() => {
     void refreshUsers();
     void refreshAgents();
+    void refreshGames();
   }, []);
 
   useEffect(() => {
@@ -136,6 +183,24 @@ function AdminPanel() {
     }
     void refreshUserAgents(selectedUserId);
   }, [selectedUserId]);
+
+  useEffect(() => {
+    if (!agents.length) {
+      setSelectedAgentForGames('');
+      setAgentGames([]);
+      return;
+    }
+
+    setSelectedAgentForGames((prev) => (prev && agents.some((a) => a.id === prev) ? prev : agents[0].id));
+  }, [agents]);
+
+  useEffect(() => {
+    if (!selectedAgentForGames) {
+      setAgentGames([]);
+      return;
+    }
+    void refreshAgentGames(selectedAgentForGames);
+  }, [selectedAgentForGames]);
 
   const agentById = useMemo(() => {
     const map = new Map<string, AgentWithWorkspace>();
@@ -183,6 +248,30 @@ function AdminPanel() {
       setError(err instanceof Error ? err.message : 'Failed to load mappings');
     } finally {
       setLoadingMappings(false);
+    }
+  };
+
+  const refreshGames = async () => {
+    setLoadingGames(true);
+    try {
+      const gameList = await fetchManageGames();
+      setGames(gameList);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load games');
+    } finally {
+      setLoadingGames(false);
+    }
+  };
+
+  const refreshAgentGames = async (agentId: string) => {
+    setLoadingAgentGames(true);
+    try {
+      const items = await fetchAgentGames(agentId);
+      setAgentGames(items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load agent game config');
+    } finally {
+      setLoadingAgentGames(false);
     }
   };
 
@@ -438,15 +527,166 @@ function AdminPanel() {
     }
   };
 
+  const resetGameForm = () => {
+    setGameForm({
+      id: '',
+      display_name: '',
+      category: 'board',
+      description: '',
+      module_key: '',
+      active: true,
+      move_provider_default: 'llm',
+      rule_mode: 'strict',
+      prompt_instructions: '',
+      version: '1',
+    });
+  };
+
+  const openCreateGame = () => {
+    setGameModalMode('create');
+    resetGameForm();
+    setGameModalOpen(true);
+  };
+
+  const openEditGame = (game: ManageGame) => {
+    setGameModalMode('edit');
+    setGameForm({
+      id: game.id,
+      display_name: game.display_name,
+      category: game.category as 'board' | 'card' | 'word' | 'creative',
+      description: game.description,
+      module_key: game.module_key,
+      active: Boolean(game.active),
+      move_provider_default: game.move_provider_default as 'llm' | 'engine' | 'random',
+      rule_mode: game.rule_mode as 'strict' | 'narrative' | 'spectator',
+      prompt_instructions: game.prompt_instructions ?? '',
+      version: game.version,
+    });
+    setGameModalOpen(true);
+  };
+
+  const handleGameSave = async () => {
+    const payload = {
+      display_name: gameForm.display_name.trim(),
+      category: gameForm.category,
+      description: gameForm.description.trim(),
+      module_key: gameForm.module_key.trim(),
+      active: gameForm.active,
+      move_provider_default: gameForm.move_provider_default,
+      rule_mode: gameForm.rule_mode,
+      prompt_instructions: gameForm.prompt_instructions.trim() || null,
+      version: gameForm.version.trim(),
+    };
+
+    if (
+      !gameForm.id.trim() ||
+      !payload.display_name ||
+      !payload.description ||
+      !payload.module_key ||
+      !payload.version
+    ) {
+      setError('Game ID, display name, description, module key, and version are required.');
+      return;
+    }
+
+    setGameSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      if (gameModalMode === 'create') {
+        await createManageGame({
+          id: gameForm.id.trim(),
+          ...payload,
+        });
+        setSuccess(`Created game ${payload.display_name}`);
+      } else {
+        await updateManageGame(gameForm.id, payload);
+        setSuccess(`Updated game ${payload.display_name}`);
+      }
+
+      setGameModalOpen(false);
+      await refreshGames();
+      if (selectedAgentForGames) {
+        await refreshAgentGames(selectedAgentForGames);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save game');
+    } finally {
+      setGameSaving(false);
+    }
+  };
+
+  const handleDeactivateGame = async () => {
+    if (!deleteGameId) return;
+    setDeleting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await deactivateManageGame(deleteGameId);
+      setSuccess('Game deactivated');
+      setDeleteGameId(null);
+      await refreshGames();
+      if (selectedAgentForGames) {
+        await refreshAgentGames(selectedAgentForGames);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to deactivate game');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const setAgentGameEnabled = async (gameId: string, enabled: boolean) => {
+    if (!selectedAgentForGames) return;
+    setAgentGameBusy((prev) => new Set([...prev, gameId]));
+    setError(null);
+    setSuccess(null);
+    try {
+      await updateAgentGameConfig(selectedAgentForGames, gameId, { enabled });
+      await refreshAgentGames(selectedAgentForGames);
+      setSuccess(enabled ? 'Game enabled for agent' : 'Game disabled for agent');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update agent game');
+    } finally {
+      setAgentGameBusy((prev) => {
+        const next = new Set(prev);
+        next.delete(gameId);
+        return next;
+      });
+    }
+  };
+
+  const clearAgentGameOverride = async (gameId: string) => {
+    if (!selectedAgentForGames) return;
+    setAgentGameBusy((prev) => new Set([...prev, gameId]));
+    setError(null);
+    setSuccess(null);
+    try {
+      await deleteAgentGameConfig(selectedAgentForGames, gameId);
+      await refreshAgentGames(selectedAgentForGames);
+      setSuccess('Agent game override removed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to clear override');
+    } finally {
+      setAgentGameBusy((prev) => {
+        const next = new Set(prev);
+        next.delete(gameId);
+        return next;
+      });
+    }
+  };
+
   const tabs = [
     { id: 'users', label: 'Users', icon: Users },
     { id: 'agents', label: 'Agents', icon: Bot },
     { id: 'mappings', label: 'Mappings', icon: Link },
+    { id: 'games', label: 'Games', icon: Gamepad2 },
   ] as const;
 
   const selectedUser = users.find((user) => user.id === selectedUserId) || null;
   const deleteUserTarget = deleteUserId ? users.find((user) => user.id === deleteUserId) : null;
   const deleteAgentTarget = deleteAgentId ? agentById.get(deleteAgentId) : null;
+  const deleteGameTarget = deleteGameId ? games.find((game) => game.id === deleteGameId) : null;
 
   return (
     <div className="min-h-[100svh] bg-bg-primary text-text-primary flex flex-col">
@@ -805,6 +1045,170 @@ function AdminPanel() {
             )}
           </div>
         )}
+
+        {activeTab === 'games' && (
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-display text-xl">Games</h2>
+                <p className="text-sm text-text-secondary">Manage global game registry and per-agent availability.</p>
+              </div>
+              <Button onClick={openCreateGame} className="gap-2">
+                <Plus className="w-4 h-4" />
+                Add Game
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div className="bg-bg-secondary/70 border border-white/10 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-display text-lg">Registry</h3>
+                  <span className="text-xs text-text-secondary">{games.length} total</span>
+                </div>
+
+                {loadingGames ? (
+                  <div className="text-sm text-text-secondary py-6 text-center">Loading games...</div>
+                ) : games.length === 0 ? (
+                  <div className="text-sm text-text-secondary py-6 text-center">No games registered.</div>
+                ) : (
+                  <div className="space-y-2 max-h-[540px] overflow-y-auto pr-1">
+                    {games.map((game) => (
+                      <div
+                        key={game.id}
+                        className="rounded-xl border border-white/10 bg-bg-tertiary/50 p-3 space-y-2"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm text-text-primary">{game.display_name}</div>
+                            <div className="text-xs text-text-secondary font-mono">{game.id}</div>
+                          </div>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full border ${game.active
+                              ? 'border-success/40 text-success'
+                              : 'border-white/20 text-text-secondary'
+                            }`}
+                          >
+                            {game.active ? 'active' : 'inactive'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-text-secondary">
+                          {game.category} · {game.move_provider_default} · {game.rule_mode} · v{game.version}
+                        </div>
+                        <div className="text-xs text-text-secondary/80">{game.description}</div>
+                        <div className="text-[11px] text-text-secondary font-mono">module: {game.module_key}</div>
+                        <div className="flex items-center justify-end gap-2 pt-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1"
+                            onClick={() => openEditGame(game)}
+                          >
+                            <Pencil className="w-4 h-4" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1 text-error hover:text-error"
+                            onClick={() => setDeleteGameId(game.id)}
+                            disabled={!game.active}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Deactivate
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-bg-secondary/70 border border-white/10 rounded-2xl p-4 space-y-4">
+                <div>
+                  <h3 className="font-display text-lg">Agent Availability</h3>
+                  <p className="text-xs text-text-secondary">Enable or disable games per agent.</p>
+                </div>
+
+                {agents.length === 0 ? (
+                  <div className="text-sm text-text-secondary py-6 text-center">Create an agent first.</div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs text-text-secondary mb-2">Select agent</label>
+                      <select
+                        value={selectedAgentForGames}
+                        onChange={(e) => setSelectedAgentForGames(e.target.value)}
+                        className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                      >
+                        {agents.map((agent) => (
+                          <option key={agent.id} value={agent.id}>
+                            {agent.display_name} ({agent.id})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {loadingAgentGames ? (
+                      <div className="text-sm text-text-secondary py-6 text-center">Loading agent game config...</div>
+                    ) : agentGames.length === 0 ? (
+                      <div className="text-sm text-text-secondary py-6 text-center">No games available for this agent.</div>
+                    ) : (
+                      <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+                        {agentGames.map((game) => {
+                          const busy = agentGameBusy.has(game.id);
+                          const active = Boolean(game.active);
+                          const effectiveEnabled = Boolean(game.effective_enabled ?? true);
+                          const hasOverride = game.config_enabled !== null && game.config_enabled !== undefined;
+                          return (
+                            <div
+                              key={game.id}
+                              className={`rounded-xl border p-3 ${effectiveEnabled ? 'border-accent/30 bg-bg-tertiary/60' : 'border-white/10 bg-bg-tertiary/40'}`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-sm">{game.display_name}</div>
+                                  <div className="text-[11px] font-mono text-text-secondary">{game.id}</div>
+                                </div>
+                                <label className="flex items-center gap-2 text-xs text-text-secondary">
+                                  <input
+                                    type="checkbox"
+                                    checked={effectiveEnabled}
+                                    disabled={busy || !active}
+                                    onChange={(e) => void setAgentGameEnabled(game.id, e.target.checked)}
+                                    className="h-4 w-4 accent-accent"
+                                  />
+                                  enabled
+                                </label>
+                              </div>
+                              <div className="mt-2 text-xs text-text-secondary">
+                                {active ? `Effective mode: ${game.effective_mode ?? game.rule_mode}` : 'Globally inactive'}
+                              </div>
+                              <div className="mt-1 text-[11px] text-text-secondary/80">
+                                {hasOverride
+                                  ? `Override set (${game.config_enabled ? 'enabled' : 'disabled'})`
+                                  : 'Inherited from global default'}
+                              </div>
+                              <div className="mt-2 flex justify-end">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => void clearAgentGameOverride(game.id)}
+                                  disabled={busy || !hasOverride}
+                                >
+                                  Use Default
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <Dialog open={userModalOpen} onOpenChange={(open) => !open && setUserModalOpen(false)}>
@@ -930,6 +1334,127 @@ function AdminPanel() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={gameModalOpen} onOpenChange={(open) => !open && setGameModalOpen(false)}>
+        <DialogContent className="w-[min(96vw,640px)] p-5">
+          <DialogTitle className="font-display text-lg">
+            {gameModalMode === 'create' ? 'Add Game' : 'Edit Game'}
+          </DialogTitle>
+          <DialogDescription className="sr-only">Manage game registry entries.</DialogDescription>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field
+              label="Game ID"
+              value={gameForm.id}
+              onChange={(v) => setGameForm((prev) => ({ ...prev, id: v }))}
+              placeholder="tic-tac-toe"
+              mono
+              readOnly={gameModalMode === 'edit'}
+            />
+            <Field
+              label="Display Name"
+              value={gameForm.display_name}
+              onChange={(v) => setGameForm((prev) => ({ ...prev, display_name: v }))}
+              placeholder="Tic Tac Toe"
+            />
+
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Category</label>
+              <select
+                value={gameForm.category}
+                onChange={(e) => setGameForm((prev) => ({ ...prev, category: e.target.value as GameFormState['category'] }))}
+                className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              >
+                <option value="board">Board</option>
+                <option value="card">Card</option>
+                <option value="word">Word</option>
+                <option value="creative">Creative</option>
+              </select>
+            </div>
+
+            <Field
+              label="Module Key"
+              value={gameForm.module_key}
+              onChange={(v) => setGameForm((prev) => ({ ...prev, module_key: v }))}
+              placeholder="tic-tac-toe"
+              mono
+            />
+
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Move Provider</label>
+              <select
+                value={gameForm.move_provider_default}
+                onChange={(e) => setGameForm((prev) => ({ ...prev, move_provider_default: e.target.value as GameFormState['move_provider_default'] }))}
+                className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              >
+                <option value="llm">LLM</option>
+                <option value="engine">Engine</option>
+                <option value="random">Random</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Rule Mode</label>
+              <select
+                value={gameForm.rule_mode}
+                onChange={(e) => setGameForm((prev) => ({ ...prev, rule_mode: e.target.value as GameFormState['rule_mode'] }))}
+                className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              >
+                <option value="strict">Strict</option>
+                <option value="narrative">Narrative</option>
+                <option value="spectator">Spectator</option>
+              </select>
+            </div>
+
+            <Field
+              label="Version"
+              value={gameForm.version}
+              onChange={(v) => setGameForm((prev) => ({ ...prev, version: v }))}
+              placeholder="1"
+            />
+
+            <label className="flex items-center gap-2 text-sm text-text-secondary pt-6">
+              <input
+                type="checkbox"
+                checked={gameForm.active}
+                onChange={(e) => setGameForm((prev) => ({ ...prev, active: e.target.checked }))}
+                className="h-4 w-4 accent-accent"
+              />
+              Active
+            </label>
+          </div>
+
+          <div className="mt-3">
+            <label className="block text-xs text-text-secondary mb-1">Description</label>
+            <textarea
+              value={gameForm.description}
+              onChange={(e) => setGameForm((prev) => ({ ...prev, description: e.target.value }))}
+              rows={2}
+              className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+            />
+          </div>
+
+          <div className="mt-3">
+            <label className="block text-xs text-text-secondary mb-1">Prompt Instructions (optional)</label>
+            <textarea
+              value={gameForm.prompt_instructions}
+              onChange={(e) => setGameForm((prev) => ({ ...prev, prompt_instructions: e.target.value }))}
+              rows={4}
+              className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none font-mono"
+              placeholder="Instructions used when this game is active."
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="ghost" onClick={() => setGameModalOpen(false)} disabled={gameSaving}>
+              Cancel
+            </Button>
+            <Button onClick={handleGameSave} disabled={gameSaving}>
+              {gameSaving ? 'Saving...' : 'Save Game'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <DeleteConfirmDialog
         open={Boolean(deleteUserId)}
         onOpenChange={(open) => !open && setDeleteUserId(null)}
@@ -945,6 +1470,15 @@ function AdminPanel() {
         title={deleteAgentTarget ? `Delete ${deleteAgentTarget.display_name}?` : 'Delete agent?'}
         description="This will remove the agent and associated mappings/sessions."
         onConfirm={handleDeleteAgent}
+        loading={deleting}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(deleteGameId)}
+        onOpenChange={(open) => !open && setDeleteGameId(null)}
+        title={deleteGameTarget ? `Deactivate ${deleteGameTarget.display_name}?` : 'Deactivate game?'}
+        description="This keeps existing records but removes the game from active catalogs."
+        onConfirm={handleDeactivateGame}
         loading={deleting}
       />
     </div>

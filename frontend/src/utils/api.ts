@@ -48,6 +48,55 @@ export interface HistoryMessage {
   timestamp?: string;
 }
 
+export interface GameCatalogItem {
+  id: string;
+  display_name: string;
+  category: 'board' | 'card' | 'word' | 'creative' | string;
+  description: string;
+  module_key: string;
+  move_provider_default: 'llm' | 'engine' | 'random' | string;
+  rule_mode: 'strict' | 'narrative' | 'spectator' | string;
+  prompt_instructions?: string | null;
+  effective_mode?: string | null;
+  effective_difficulty?: number | null;
+  version: string;
+}
+
+export interface ManageGame {
+  id: string;
+  display_name: string;
+  category: 'board' | 'card' | 'word' | 'creative' | string;
+  description: string;
+  module_key: string;
+  active: boolean;
+  move_provider_default: 'llm' | 'engine' | 'random' | string;
+  rule_mode: 'strict' | 'narrative' | 'spectator' | string;
+  prompt_instructions?: string | null;
+  version: string;
+  created_at?: number | null;
+  updated_at?: number | null;
+}
+
+export interface ManageAgentGame extends ManageGame {
+  config_enabled?: boolean | number | null;
+  config_mode?: string | null;
+  config_difficulty?: number | null;
+  config_prompt_override?: string | null;
+  config_workspace_required?: boolean | number | null;
+  effective_enabled?: boolean | number;
+  effective_mode?: string | null;
+}
+
+export interface AgentGameConfig {
+  agent_id: string;
+  game_id: string;
+  enabled: boolean;
+  mode?: string | null;
+  difficulty?: number | null;
+  prompt_override?: string | null;
+  workspace_required?: boolean;
+}
+
 
 // ============ HELPERS ============
 
@@ -120,6 +169,22 @@ export async function getUserAgents(userId: string): Promise<Agent[]> {
   if (!response.ok) throw new Error(`Failed to fetch agents: ${response.status}`);
   const data = await response.json();
   return data.agents || [];
+}
+
+
+// ============ GAMES API ============
+
+export async function getGameCatalog(): Promise<GameCatalogItem[]> {
+  const response = await fetchWithAuth(`${API_URL}/api/games/catalog`);
+  if (!response.ok) throw new Error(`Failed to fetch game catalog: ${response.status}`);
+  const data = await response.json();
+  return data.games || [];
+}
+
+export async function getGameCatalogItem(gameId: string): Promise<GameCatalogItem> {
+  const response = await fetchWithAuth(`${API_URL}/api/games/catalog/${encodeURIComponent(gameId)}`);
+  if (!response.ok) throw new Error(`Failed to fetch game catalog item: ${response.status}`);
+  return response.json();
 }
 
 
@@ -201,6 +266,95 @@ export async function removeUserAgent(userId: string, agentId: string): Promise<
     { method: 'DELETE' }
   );
   if (!response.ok) throw new Error(`Failed to remove mapping: ${response.status}`);
+}
+
+export async function fetchManageGames(): Promise<ManageGame[]> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/games`);
+  if (!response.ok) throw new Error(`Failed to fetch games: ${response.status}`);
+  const data = await response.json();
+  return data.games || [];
+}
+
+export async function createManageGame(data: {
+  id: string;
+  display_name: string;
+  category: 'board' | 'card' | 'word' | 'creative';
+  description: string;
+  module_key: string;
+  active?: boolean;
+  move_provider_default?: 'llm' | 'engine' | 'random';
+  rule_mode?: 'strict' | 'narrative' | 'spectator';
+  prompt_instructions?: string | null;
+  version?: string;
+}): Promise<ManageGame> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/games`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Failed to create game: ${response.status}`);
+  return response.json();
+}
+
+export async function updateManageGame(gameId: string, data: {
+  display_name?: string;
+  category?: 'board' | 'card' | 'word' | 'creative';
+  description?: string;
+  module_key?: string;
+  active?: boolean;
+  move_provider_default?: 'llm' | 'engine' | 'random';
+  rule_mode?: 'strict' | 'narrative' | 'spectator';
+  prompt_instructions?: string | null;
+  version?: string;
+}): Promise<void> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/games/${encodeURIComponent(gameId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Failed to update game: ${response.status}`);
+}
+
+export async function deactivateManageGame(gameId: string): Promise<void> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/games/${encodeURIComponent(gameId)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) throw new Error(`Failed to deactivate game: ${response.status}`);
+}
+
+export async function fetchAgentGames(agentId: string): Promise<ManageAgentGame[]> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/agents/${encodeURIComponent(agentId)}/games`);
+  if (!response.ok) throw new Error(`Failed to fetch agent games: ${response.status}`);
+  const data = await response.json();
+  return data.games || [];
+}
+
+export async function updateAgentGameConfig(
+  agentId: string,
+  gameId: string,
+  data: {
+    enabled?: boolean;
+    mode?: 'strict' | 'narrative' | 'spectator';
+    difficulty?: number;
+    prompt_override?: string | null;
+    workspace_required?: boolean;
+  }
+): Promise<AgentGameConfig> {
+  const response = await fetchWithAuth(
+    `${API_URL}/api/manage/agents/${encodeURIComponent(agentId)}/games/${encodeURIComponent(gameId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }
+  );
+  if (!response.ok) throw new Error(`Failed to update agent game config: ${response.status}`);
+  return response.json();
+}
+
+export async function deleteAgentGameConfig(agentId: string, gameId: string): Promise<void> {
+  const response = await fetchWithAuth(
+    `${API_URL}/api/manage/agents/${encodeURIComponent(agentId)}/games/${encodeURIComponent(gameId)}`,
+    { method: 'DELETE' }
+  );
+  if (!response.ok) throw new Error(`Failed to delete agent game config: ${response.status}`);
 }
 
 
@@ -327,7 +481,13 @@ export async function streamChat(
   onAvatar: (data: AvatarCommand) => void,
   onDone: (data: StreamResponse) => void,
   onError: (error: Error) => void,
-  options?: { signal?: AbortSignal; gameContext?: GameContext; onCompaction?: (data: CompactionInfo) => void; onEmotion?: (data: EmotionDebug) => void }
+  options?: {
+    signal?: AbortSignal;
+    gameContext?: GameContext;
+    runtimeTrigger?: boolean;
+    onCompaction?: (data: CompactionInfo) => void;
+    onEmotion?: (data: EmotionDebug) => void;
+  }
 ): Promise<void> {
   try {
     const response = await fetchWithAuth(`${API_URL}/api/chat?stream=1`, {
@@ -335,6 +495,7 @@ export async function streamChat(
       body: JSON.stringify({
         message,
         game_context: options?.gameContext ?? undefined,
+        runtime_trigger: options?.runtimeTrigger ?? undefined,
       }),
       signal: options?.signal,
     });
@@ -496,6 +657,15 @@ export default {
   getUsers,
   getUser,
   getUserAgents,
+  getGameCatalog,
+  getGameCatalogItem,
+  fetchManageGames,
+  createManageGame,
+  updateManageGame,
+  deactivateManageGame,
+  fetchAgentGames,
+  updateAgentGameConfig,
+  deleteAgentGameConfig,
   getSessions,
   createSession,
   getSession,

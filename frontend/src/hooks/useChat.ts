@@ -163,7 +163,10 @@ export function useChat() {
   /**
    * Send message and handle streaming response
    */
-  const sendMessage = useCallback(async (message: string): Promise<void> => {
+  const sendMessage = useCallback(async (
+    message: string,
+    options?: { runtimeTrigger?: boolean }
+  ): Promise<void> => {
     // Read isLoading fresh from store to avoid stale closure (M11 fix)
     const currentStatus = useAppStore.getState().status;
     const isLoading = currentStatus === 'thinking' || currentStatus === 'speaking';
@@ -247,6 +250,7 @@ export function useChat() {
         {
           signal: abortController.signal,
           gameContext: gameContext ?? undefined,
+          runtimeTrigger: options?.runtimeTrigger ?? false,
           onCompaction: (c: CompactionInfo) => {
             if (c.compacted) {
               addStateEntry('compact', `Compacted: ${c.messages_deleted} msgs deleted, kept ${c.messages_kept}, summary ${c.summary_chars} chars`);

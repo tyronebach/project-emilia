@@ -2,15 +2,73 @@
 Pydantic request models for API endpoints.
 """
 # Phase 1.5 COMPLETE - 2026-02-08
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field, field_validator, ConfigDict
+from typing import Optional, Dict, Any, Literal
+
+
+class GameContextRequest(BaseModel):
+    """Validated game context payload from frontend runtime."""
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    version: str = Field("1", min_length=1, max_length=16)
+    game_id: str = Field(..., alias="gameId", min_length=1, max_length=100)
+    state_text: str = Field("", alias="state", max_length=20000)
+    last_user_move: str | None = Field(None, alias="lastUserMove", max_length=256)
+    avatar_move: str | None = Field(None, alias="avatarMove", max_length=256)
+    valid_moves: list[str] | None = Field(None, alias="validMoves")
+    status: Literal["in_progress", "game_over"] = Field("in_progress")
+    move_count: int = Field(0, alias="moveCount", ge=0, le=20000)
+    turn: Literal["user", "avatar"] | None = Field(None)
+    mode: Literal["interactive", "narrative", "spectator"] | None = Field(None)
+    # Kept for compatibility with existing frontend payloads.
+    prompt_instructions: str | None = Field(None, alias="promptInstructions", max_length=4000)
+
+    @field_validator("game_id")
+    @classmethod
+    def strip_game_id(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("gameId cannot be empty")
+        return stripped
+
+    @field_validator("version", "state_text", "last_user_move", "avatar_move", "prompt_instructions")
+    @classmethod
+    def strip_optional_text(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        return v.strip()
+
+    @field_validator("valid_moves")
+    @classmethod
+    def validate_valid_moves(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        if len(v) > 100:
+            raise ValueError("validMoves cannot exceed 100 entries")
+
+        cleaned: list[str] = []
+        for item in v:
+            move = (item or "").strip()
+            if not move:
+                continue
+            if len(move) > 64:
+                raise ValueError("validMoves entries must be <= 64 chars")
+            cleaned.append(move)
+        return cleaned
 
 
 class ChatRequest(BaseModel):
     """Chat message request."""
+    model_config = ConfigDict(populate_by_name=True)
+
     message: str = Field(..., min_length=1, max_length=10000, description="User message")
-    # Optional game context for prompt injection.
-    game_context: dict | None = None
+    # Optional validated game context for prompt injection.
+    game_context: GameContextRequest | None = None
+    runtime_trigger: bool = Field(
+        False,
+        alias="runtimeTrigger",
+        description="Marks non-user runtime prompts (e.g. game turns) to skip user-history persistence.",
+    )
 
     @field_validator('message')
     @classmethod
@@ -132,3 +190,67 @@ class AgentCreate(BaseModel):
 class UserPreferencesUpdate(BaseModel):
     """Update user preferences."""
     preferences: Dict[str, Any] = Field(default_factory=dict, description="Preferences to merge")
+
+
+class GameRegistryCreate(BaseModel):
+    """Create a game in the global registry."""
+    id: str = Field(..., min_length=1, max_length=100)
+    display_name: str = Field(..., min_length=1, max_length=200)
+    category: Literal["board", "card", "word", "creative"] = Field("board")
+    description: str = Field(..., min_length=1, max_length=500)
+    module_key: str = Field(..., min_length=1, max_length=100)
+    active: bool = True
+    move_provider_default: Literal["llm", "engine", "random"] = "llm"
+    rule_mode: Literal["strict", "narrative", "spectator"] = "strict"
+    prompt_instructions: str | None = Field(None, max_length=4000)
+    version: str = Field("1", min_length=1, max_length=16)
+
+    @field_validator("id", "display_name", "description", "module_key", "prompt_instructions", "version")
+    @classmethod
+    def strip_game_strings(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        stripped = v.strip()
+        if stripped == "":
+            raise ValueError("String fields cannot be empty")
+        return stripped
+
+
+class GameRegistryUpdate(BaseModel):
+    """Update a game in the global registry."""
+    display_name: Optional[str] = Field(None, min_length=1, max_length=200)
+    category: Optional[Literal["board", "card", "word", "creative"]] = None
+    description: Optional[str] = Field(None, min_length=1, max_length=500)
+    module_key: Optional[str] = Field(None, min_length=1, max_length=100)
+    active: Optional[bool] = None
+    move_provider_default: Optional[Literal["llm", "engine", "random"]] = None
+    rule_mode: Optional[Literal["strict", "narrative", "spectator"]] = None
+    prompt_instructions: Optional[str] = Field(None, max_length=4000)
+    version: Optional[str] = Field(None, min_length=1, max_length=16)
+
+    @field_validator("display_name", "description", "module_key", "prompt_instructions", "version")
+    @classmethod
+    def strip_optional_game_strings(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        stripped = v.strip()
+        if stripped == "":
+            raise ValueError("String fields cannot be empty")
+        return stripped
+
+
+class AgentGameConfigUpdate(BaseModel):
+    """Update per-agent game configuration."""
+    enabled: Optional[bool] = None
+    mode: Optional[Literal["strict", "narrative", "spectator"]] = None
+    difficulty: Optional[float] = Field(None, ge=0.0, le=1.0)
+    prompt_override: Optional[str] = Field(None, max_length=4000)
+    workspace_required: Optional[bool] = None
+
+    @field_validator("prompt_override")
+    @classmethod
+    def strip_prompt_override(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        stripped = v.strip()
+        return stripped if stripped else None
