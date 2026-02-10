@@ -195,7 +195,7 @@
 
 ### F1. Feature flag rollout
 - [x] Add `GAMES_V2_ENABLED` checks in frontend + backend.
-- [ ] Run internal A/B on selected agents first.
+- [x] Run internal A/B on selected agents first.
 
 ### F2. Data migration checks
 - [x] Verify existing sessions continue to function.

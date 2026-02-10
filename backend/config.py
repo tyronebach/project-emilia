@@ -41,6 +41,11 @@ class Settings:
 
         # Feature flags
         self.games_v2_enabled: bool = os.getenv("GAMES_V2_ENABLED", "1").lower() not in {"0", "false", "no"}
+        self.games_v2_agent_allowlist: set[str] = {
+            agent_id.strip()
+            for agent_id in os.getenv("GAMES_V2_AGENT_ALLOWLIST", "").split(",")
+            if agent_id.strip()
+        }
 
         # Session compaction (Phase 3.1)
         self.compact_threshold: int = int(os.getenv("COMPACT_THRESHOLD", "25"))
@@ -54,6 +59,16 @@ class Settings:
         # Validation
         if not self.clawdbot_token:
             raise RuntimeError("Missing CLAWDBOT_TOKEN env var")
+
+    def is_games_v2_enabled_for_agent(self, agent_id: str | None) -> bool:
+        """Return whether Games V2 is enabled for a given agent cohort."""
+        if not self.games_v2_enabled:
+            return False
+        if not self.games_v2_agent_allowlist:
+            return True
+        if not agent_id:
+            return False
+        return agent_id in self.games_v2_agent_allowlist
 
 
 # Global settings instance
