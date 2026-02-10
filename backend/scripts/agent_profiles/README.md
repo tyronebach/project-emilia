@@ -93,6 +93,12 @@ Top-level fields (these map to the Designer V2 UI):
 - `mood_baseline`: Map of mood → weight. Range `0..30` per mood (clamped by the engine).
 - `trust_gain_rate`: Trust increase multiplier. Range `0..3`.
 - `trust_loss_rate`: Trust decrease multiplier. Range `0..3`.
+- `valence_gain_multiplier`: Positive valence scaling. Default `0.95`.
+- `valence_loss_multiplier`: Negative valence scaling. Default `1.1`.
+- `bond_gain_multiplier`: Positive attachment/intimacy scaling. Default `0.95`.
+- `bond_loss_multiplier`: Negative attachment/intimacy scaling. Default `1.1`.
+- `mood_gain_multiplier`: Positive mood-weight scaling. Default `0.9`.
+- `mood_loss_multiplier`: Negative mood-weight scaling. Default `1.1`.
 - `trigger_sensitivities`: Map of trigger → multiplier (float). `1.0` is default; values > 1 amplify, values < 1 dampen. Negative values flip direction.
 - `trigger_responses`: Map of trigger → per-axis override. Each entry can include:
   - `preset`: One of `threatening`, `uncomfortable`, `neutral`, `muted`, `normal`, `amplified`, `intense`, `custom`.
@@ -107,6 +113,7 @@ Notes:
 - `essence_floors` / `essence_ceilings` are stored and surfaced in the Designer UI, but are not currently enforced by the engine. They are safe to include for future behavior.
 - `preset` is supported by the backend. If a preset is provided, the engine converts it into numeric axis deltas using preset multipliers. Explicit axis values override preset-derived values on a per-axis basis.
 - `custom` is not a backend multiplier. Use `custom` only when you provide explicit axis values.
+- Legacy trigger aliases (for example `compliment` and `conflict`) are normalized to canonical triggers (`praise`, `boundary`) during processing, and canonical `trigger_responses` will apply to those alias detections.
 
 ## Triggers And Moods
 - Canonical triggers are exposed by `GET /api/designer/v2/trigger-defaults` and used by the UI.

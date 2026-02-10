@@ -29,3 +29,17 @@ def test_trigger_preset_to_deltas_with_override():
     assert comfort["valence"] == 0.05
     assert comfort["arousal"] == base_comfort["arousal"] * 0.5
     assert comfort["trust"] == base_comfort["trust"] * 0.5
+
+
+def test_canonical_preset_applies_to_legacy_alias_trigger():
+    profile = AgentProfile(
+        trigger_responses={
+            "praise": {"preset": "uncomfortable"},
+        }
+    )
+
+    canonical = profile.get_trigger_deltas("praise")
+    alias = profile.get_trigger_deltas("compliment")
+
+    assert canonical == alias
+    assert canonical["valence"] < 0
