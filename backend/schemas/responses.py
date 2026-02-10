@@ -95,6 +95,11 @@ class AgentsListResponse(BaseModel):
     count: int
 
 
+class UserAgentsResponse(BaseModel):
+    agents: list[AgentResponse]
+    count: int
+
+
 class SessionsListResponse(BaseModel):
     sessions: list[SessionResponse]
     count: int

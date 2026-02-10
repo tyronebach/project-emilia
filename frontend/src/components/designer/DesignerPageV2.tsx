@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Sliders, Bug } from 'lucide-react';
+import { Sliders, Bug, Palette } from 'lucide-react';
 import AppTopNav from '../AppTopNav';
 import DesignerTabsV2 from './DesignerTabsV2';
 import PersonalityTab from './PersonalityTab';
@@ -27,6 +27,13 @@ function DesignerPageV2() {
               title="Agent Settings"
             >
               <Sliders className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => navigate({ to: '/designer-v2' })}
+              className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
+              title="Agent Designer"
+            >
+              <Palette className="w-5 h-5" />
             </button>
             <button
               onClick={() => navigate({ to: '/debug' })}
