@@ -1,4 +1,3 @@
-// # Phase 2.3 COMPLETE - 2026-02-07
 import { useEffect, useMemo } from 'react';
 import { Grid3x3, Type, Sparkles, Spade } from 'lucide-react';
 import type { GameCategory } from '../games/types';

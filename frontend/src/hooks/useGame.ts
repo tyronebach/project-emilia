@@ -1,5 +1,3 @@
-// # Phase 1.7 COMPLETE - 2026-02-08
-// # Phase 2.5 FIX - 2026-02-07: Move isAvatarThinking to Zustand store
 import { useCallback, useEffect } from 'react';
 import { getGame, loadGame } from '../games/registry';
 import type { GameConfig, GameContext, GameModule, MoveProviderType } from '../games/types';
@@ -29,6 +27,7 @@ export function useGame() {
   const catalogGames = useGameCatalogStore((state) => state.games);
   const catalogHasFetched = useGameCatalogStore((state) => state.hasFetched);
   const catalogLoadedForAgentId = useGameCatalogStore((state) => state.loadedForAgentId);
+  const refreshCatalog = useGameCatalogStore((state) => state.refresh);
   const currentUserId = useUserStore((state) => state.currentUser?.id ?? null);
   const currentAgentId = useUserStore((state) => state.currentAgent?.id ?? null);
   const sessionId = useAppStore((state) => state.sessionId);
@@ -43,6 +42,31 @@ export function useGame() {
       console.warn('[useGame] Failed to load game module:', activeGameId, error);
     });
   }, [activeGameId]);
+
+  useEffect(() => {
+    if (!GAMES_V2_ENABLED || !currentAgentId) return;
+    const catalogReady = catalogHasFetched && catalogLoadedForAgentId === currentAgentId;
+    if (catalogReady) return;
+    void refreshCatalog(currentAgentId);
+  }, [catalogHasFetched, catalogLoadedForAgentId, currentAgentId, refreshCatalog]);
+
+  useEffect(() => {
+    if (!GAMES_V2_ENABLED || !activeGameId || !currentAgentId) return;
+    const catalogReady = catalogHasFetched && catalogLoadedForAgentId === currentAgentId;
+    if (!catalogReady) return;
+    if (catalogGames.some((game) => game.id === activeGameId)) return;
+
+    console.warn('[useGame] Active game is no longer enabled for this agent:', activeGameId);
+    setIsAvatarThinking(false);
+    useGameStore.getState().resetGame();
+  }, [
+    activeGameId,
+    catalogGames,
+    catalogHasFetched,
+    catalogLoadedForAgentId,
+    currentAgentId,
+    setIsAvatarThinking,
+  ]);
 
   useEffect(() => {
     if (GAMES_V2_ENABLED) return;
@@ -116,8 +140,21 @@ export function useGame() {
       return;
     }
 
-    const canGate = catalogHasFetched && currentAgentId && catalogLoadedForAgentId === currentAgentId;
-    if (canGate && !catalogGames.some((game) => game.id === gameId)) {
+    const catalogReady = Boolean(
+      currentAgentId
+      && catalogHasFetched
+      && catalogLoadedForAgentId === currentAgentId
+    );
+
+    if (!catalogReady) {
+      console.warn('[useGame] Game catalog is not ready for current agent.');
+      if (currentAgentId) {
+        void refreshCatalog(currentAgentId);
+      }
+      return;
+    }
+
+    if (!catalogGames.some((game) => game.id === gameId)) {
       console.warn('[useGame] Game is not enabled for this agent:', gameId);
       return;
     }
@@ -132,7 +169,15 @@ export function useGame() {
     setIsAvatarThinking(false);
     useGameStore.getState().startGame(gameId, config);
     handleAvatarTurn();
-  }, [catalogGames, catalogHasFetched, catalogLoadedForAgentId, currentAgentId, handleAvatarTurn, setIsAvatarThinking]);
+  }, [
+    catalogGames,
+    catalogHasFetched,
+    catalogLoadedForAgentId,
+    currentAgentId,
+    handleAvatarTurn,
+    refreshCatalog,
+    setIsAvatarThinking,
+  ]);
 
   const makeUserMove = useCallback((move: unknown) => {
     const success = useGameStore.getState().applyUserMove(move);

@@ -202,12 +202,12 @@
 - [x] Validate fallback behavior when no game config exists.
 
 ### F3. Remove legacy paths
-- [ ] Decommission old global registry-only assumptions.
-- [ ] Remove dead code/comments tied to legacy MVP flow.
+- [x] Decommission old global registry-only assumptions.
+- [x] Remove dead code/comments tied to legacy MVP flow.
 
 ### F4. Final verification
-- [ ] Backend tests.
-- [ ] Frontend tests.
+- [x] Backend tests.
+- [x] Frontend tests.
 - [ ] Manual E2E for agent/game enablement and window behavior.
 
 **Exit Criteria**

@@ -1,4 +1,3 @@
-// # Phase 2.5 COMPLETE - 2026-02-07
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useAppStore } from './store';

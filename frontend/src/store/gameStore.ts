@@ -1,5 +1,3 @@
-// # Phase 1.2 COMPLETE - 2026-02-08
-// # Upgrade: sessionStorage persistence - 2026-02-07
 import { create } from 'zustand';
 import type { GameConfig, GameStatus, MoveRecord, PlayerRole, Turn } from '../games/types';
 import { getGame, hasGameLoader } from '../games/registry';

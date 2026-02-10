@@ -1,4 +1,3 @@
-// # Phase 1.1 COMPLETE - 2026-02-08
 import type { ComponentType } from 'react';
 
 // ============================================================
