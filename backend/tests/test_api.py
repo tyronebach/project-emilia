@@ -443,6 +443,88 @@ class TestSessionEndpoints:
         )
         assert response.status_code == 403
 
+    @patch("routers.chat._spawn_background")
+    @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.chat.httpx.AsyncClient")
+    async def test_existing_session_chat_continues_to_work(
+        self,
+        mock_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+        session_id = f"session-{uuid.uuid4().hex[:8]}"
+        now = int(time.time())
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Session User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Session Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+            conn.execute(
+                "INSERT INTO sessions (id, agent_id, name, created_at, last_used, message_count) VALUES (?, ?, ?, ?, ?, ?)",
+                (session_id, agent_id, "existing-session", now, now, 1),
+            )
+            conn.execute(
+                "INSERT INTO session_participants (session_id, user_id) VALUES (?, ?)",
+                (session_id, user_id),
+            )
+            conn.execute(
+                "INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), session_id, "user", "legacy message", now),
+            )
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "agent:test-claw-id",
+            "choices": [{"message": {"content": "Session still works."}}],
+            "usage": {"prompt_tokens": 12, "completion_tokens": 5},
+        }
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+            "X-Session-Id": session_id,
+        }
+        response = await test_client.post(
+            "/api/chat?stream=0",
+            json={"message": "Continue this session."},
+            headers=headers,
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["session_id"] == session_id
+
+        with get_db() as conn:
+            count_row = conn.execute(
+                "SELECT COUNT(*) AS c FROM messages WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            assert count_row["c"] == 3
+
 
 # ========================================
 # User Endpoint Tests
@@ -666,6 +748,57 @@ class TestManageEndpoints:
         catalog_after_delete_cfg = await test_client.get("/api/games/catalog", headers=headers)
         assert catalog_after_delete_cfg.status_code == 200
         assert any(g["id"] == game_id for g in catalog_after_delete_cfg.json()["games"])
+
+    async def test_catalog_uses_registry_fallback_when_agent_has_no_game_config(self, test_client, auth_headers):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+        game_id = f"game-{uuid.uuid4().hex[:8]}"
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Test Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+            conn.execute(
+                """INSERT INTO game_registry
+                   (id, display_name, category, description, module_key, active, move_provider_default, rule_mode, prompt_instructions, version, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))""",
+                (
+                    game_id,
+                    "Registry Fallback Game",
+                    "board",
+                    "No override required",
+                    "fallback-game",
+                    "llm",
+                    "strict",
+                    "Fallback prompt",
+                    "1",
+                ),
+            )
+            fallback_cfg_count = conn.execute(
+                "SELECT COUNT(*) AS c FROM agent_game_config WHERE agent_id = ? AND game_id = ?",
+                (agent_id, game_id),
+            ).fetchone()
+            assert fallback_cfg_count["c"] == 0
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        catalog = await test_client.get("/api/games/catalog", headers=headers)
+        assert catalog.status_code == 200
+        catalog_ids = [game["id"] for game in catalog.json()["games"]]
+        assert game_id in catalog_ids
 
     async def test_games_routes_disabled_by_feature_flag(self, test_client, auth_headers, monkeypatch):
         monkeypatch.setattr(settings, "games_v2_enabled", False)

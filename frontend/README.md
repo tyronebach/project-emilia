@@ -19,6 +19,12 @@ npm install
 npm run dev -- --host
 ```
 
+Optional flag override for local frontend:
+
+```bash
+VITE_GAMES_V2_ENABLED=1 npm run dev -- --host
+```
+
 ## Build
 
 ```bash
