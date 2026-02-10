@@ -1,4 +1,3 @@
-// # Phase 1.8 COMPLETE - 2026-02-08
 import { useCallback, useRef, useEffect } from 'react';
 import { fetchWithAuth, streamChat, stripAvatarTags, stripAvatarTagsStreaming } from '../utils/api';
 import type { StreamResponse, CompactionInfo, EmotionDebug } from '../utils/api';

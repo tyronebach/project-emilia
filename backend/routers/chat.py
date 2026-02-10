@@ -1,6 +1,4 @@
 """Chat and media routes (chat, transcribe, speak)"""
-# Phase 1.6 COMPLETE - 2026-02-08
-# Phase 3.1 COMPLETE - 2026-02-08
 import asyncio
 import time
 import json

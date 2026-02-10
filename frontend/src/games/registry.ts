@@ -24,16 +24,8 @@ export function hasGameLoader(gameId: string): boolean {
   return Object.prototype.hasOwnProperty.call(gameLoaderManifest, gameId);
 }
 
-export function listKnownGameIds(): string[] {
-  return Object.keys(gameLoaderManifest);
-}
-
 export function getGame(id: string): GameModule | undefined {
   return registry.get(id);
-}
-
-export function listGames(): GameModule[] {
-  return Array.from(registry.values());
 }
 
 export async function loadGame(gameId: string): Promise<GameModule> {

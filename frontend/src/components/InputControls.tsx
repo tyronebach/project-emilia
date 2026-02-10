@@ -1,4 +1,3 @@
-// # Phase 2.4 COMPLETE - 2026-02-07
 import { useEffect, useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
