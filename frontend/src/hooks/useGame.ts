@@ -5,7 +5,7 @@ import { useGameStore } from '../store/gameStore';
 import { useGameCatalogStore } from '../store/gameCatalogStore';
 import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
-import { GAMES_V2_ENABLED } from '../config/features';
+import { isGamesV2EnabledForAgent } from '../config/features';
 
 const MAX_VALID_MOVES = 30;
 const DEFAULT_DIFFICULTY = 0.5;
@@ -31,6 +31,7 @@ export function useGame() {
   const currentUserId = useUserStore((state) => state.currentUser?.id ?? null);
   const currentAgentId = useUserStore((state) => state.currentAgent?.id ?? null);
   const sessionId = useAppStore((state) => state.sessionId);
+  const gamesEnabledForAgent = isGamesV2EnabledForAgent(currentAgentId);
 
   useEffect(() => {
     hydrateForContext();
@@ -44,14 +45,14 @@ export function useGame() {
   }, [activeGameId]);
 
   useEffect(() => {
-    if (!GAMES_V2_ENABLED || !currentAgentId) return;
+    if (!gamesEnabledForAgent || !currentAgentId) return;
     const catalogReady = catalogHasFetched && catalogLoadedForAgentId === currentAgentId;
     if (catalogReady) return;
     void refreshCatalog(currentAgentId);
-  }, [catalogHasFetched, catalogLoadedForAgentId, currentAgentId, refreshCatalog]);
+  }, [catalogHasFetched, catalogLoadedForAgentId, currentAgentId, gamesEnabledForAgent, refreshCatalog]);
 
   useEffect(() => {
-    if (!GAMES_V2_ENABLED || !activeGameId || !currentAgentId) return;
+    if (!gamesEnabledForAgent || !activeGameId || !currentAgentId) return;
     const catalogReady = catalogHasFetched && catalogLoadedForAgentId === currentAgentId;
     if (!catalogReady) return;
     if (catalogGames.some((game) => game.id === activeGameId)) return;
@@ -65,15 +66,16 @@ export function useGame() {
     catalogHasFetched,
     catalogLoadedForAgentId,
     currentAgentId,
+    gamesEnabledForAgent,
     setIsAvatarThinking,
   ]);
 
   useEffect(() => {
-    if (GAMES_V2_ENABLED) return;
+    if (gamesEnabledForAgent) return;
     if (!activeGameId) return;
     setIsAvatarThinking(false);
     useGameStore.getState().resetGame();
-  }, [activeGameId, setIsAvatarThinking]);
+  }, [activeGameId, gamesEnabledForAgent, setIsAvatarThinking]);
 
   const handleAvatarTurn = useCallback(() => {
     const {
@@ -135,8 +137,8 @@ export function useGame() {
   }, [setIsAvatarThinking]);
 
   const startGame = useCallback(async (gameId: string, config?: GameConfig) => {
-    if (!GAMES_V2_ENABLED) {
-      console.warn('[useGame] GAMES_V2_ENABLED is disabled.');
+    if (!gamesEnabledForAgent) {
+      console.warn('[useGame] Games V2 rollout is disabled for this agent.');
       return;
     }
 
@@ -174,6 +176,7 @@ export function useGame() {
     catalogHasFetched,
     catalogLoadedForAgentId,
     currentAgentId,
+    gamesEnabledForAgent,
     handleAvatarTurn,
     refreshCatalog,
     setIsAvatarThinking,
@@ -188,7 +191,7 @@ export function useGame() {
   }, [handleAvatarTurn]);
 
   const getGameContext = useCallback((): GameContext | null => {
-    if (!GAMES_V2_ENABLED) return null;
+    if (!gamesEnabledForAgent) return null;
     if (!activeGameId || gameState == null) return null;
 
     const module = getGame(activeGameId);
@@ -223,10 +226,10 @@ export function useGame() {
       moveCount: moveHistory.length,
       promptInstructions: module.promptInstructions,
     };
-  }, [activeGameId, gameState, currentTurn, gameStatus.isOver, moveHistory, gameConfig]);
+  }, [activeGameId, gameState, currentTurn, gameStatus.isOver, moveHistory, gameConfig, gamesEnabledForAgent]);
 
   const handleAvatarResponse = useCallback((moveTag?: string) => {
-    if (!GAMES_V2_ENABLED) {
+    if (!gamesEnabledForAgent) {
       setIsAvatarThinking(false);
       return;
     }
@@ -305,7 +308,7 @@ export function useGame() {
     }
 
     setIsAvatarThinking(false);
-  }, [setIsAvatarThinking]);
+  }, [gamesEnabledForAgent, setIsAvatarThinking]);
 
   return {
     activeGame: activeGameId,

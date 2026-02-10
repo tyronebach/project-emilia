@@ -1,15 +1,11 @@
 """Public game catalog routes."""
 from fastapi import APIRouter, Depends
-from dependencies import verify_token, get_user_id, get_agent_id, ensure_games_v2_enabled
+from dependencies import verify_token, get_user_id, get_agent_id, ensure_games_v2_enabled_for_agent
 from core.exceptions import forbidden, not_found
 from db.repositories import UserRepository, GameRepository
 from schemas import GameCatalogResponse, GameCatalogItemResponse
 
-router = APIRouter(
-    prefix="/api/games",
-    tags=["games"],
-    dependencies=[Depends(ensure_games_v2_enabled)],
-)
+router = APIRouter(prefix="/api/games", tags=["games"])
 
 
 @router.get("/catalog", response_model=GameCatalogResponse)
@@ -17,6 +13,7 @@ async def list_game_catalog(
     token: str = Depends(verify_token),
     user_id: str = Depends(get_user_id),
     agent_id: str = Depends(get_agent_id),
+    _: None = Depends(ensure_games_v2_enabled_for_agent),
 ):
     if not UserRepository.can_access_agent(user_id, agent_id):
         raise forbidden("User cannot access this agent")
@@ -31,6 +28,7 @@ async def get_game_catalog_item(
     token: str = Depends(verify_token),
     user_id: str = Depends(get_user_id),
     agent_id: str = Depends(get_agent_id),
+    _: None = Depends(ensure_games_v2_enabled_for_agent),
 ):
     if not UserRepository.can_access_agent(user_id, agent_id):
         raise forbidden("User cannot access this agent")

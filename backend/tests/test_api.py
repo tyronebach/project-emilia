@@ -344,6 +344,80 @@ class TestChatEndpoint:
         assert stored[0]["role"] == "user"
         assert stored[0]["origin"] == "user"
 
+    @patch("routers.chat._spawn_background")
+    @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.chat.httpx.AsyncClient")
+    async def test_chat_ignores_runtime_trigger_when_agent_not_in_games_v2_allowlist(
+        self,
+        mock_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+        monkeypatch,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+        monkeypatch.setattr(settings, "games_v2_enabled", True)
+        monkeypatch.setattr(settings, "games_v2_agent_allowlist", {"agent-allowlisted"})
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Test Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "agent:test-claw-id",
+            "choices": [{"message": {"content": "Runtime trigger ignored for non-rollout agent."}}],
+            "usage": {"prompt_tokens": 8, "completion_tokens": 4},
+        }
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        response = await test_client.post(
+            "/api/chat?stream=0",
+            json={
+                "message": "Your turn!",
+                "runtime_trigger": True,
+            },
+            headers=headers,
+        )
+        assert response.status_code == 200
+        session_id = response.json()["session_id"]
+
+        with get_db() as conn:
+            stored = conn.execute(
+                "SELECT role, origin FROM messages WHERE session_id = ? ORDER BY timestamp ASC",
+                (session_id,),
+            ).fetchall()
+        assert len(stored) == 2
+        assert stored[0]["role"] == "user"
+        assert stored[0]["origin"] == "user"
+
 
 # ========================================
 # Speak Endpoint Tests
@@ -832,6 +906,55 @@ class TestManageEndpoints:
         manage_resp = await test_client.get("/api/manage/games", headers=auth_headers)
         assert manage_resp.status_code == 404
         assert "Games V2 is disabled" in manage_resp.json()["detail"]
+
+    async def test_games_catalog_blocks_non_allowlisted_agent(self, test_client, auth_headers, monkeypatch):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        allowlisted_agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+        blocked_agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+
+        monkeypatch.setattr(settings, "games_v2_enabled", True)
+        monkeypatch.setattr(settings, "games_v2_agent_allowlist", {allowlisted_agent_id})
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (allowlisted_agent_id, "Allowlisted Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (blocked_agent_id, "Blocked Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, allowlisted_agent_id),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, blocked_agent_id),
+            )
+
+        allowlisted_headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": allowlisted_agent_id,
+        }
+        allowlisted_resp = await test_client.get("/api/games/catalog", headers=allowlisted_headers)
+        assert allowlisted_resp.status_code == 200
+
+        blocked_headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": blocked_agent_id,
+        }
+        blocked_resp = await test_client.get("/api/games/catalog", headers=blocked_headers)
+        assert blocked_resp.status_code == 404
+        assert blocked_resp.json()["detail"] == "Games V2 is disabled for this agent"
 
     async def test_delete_agent_removes_related_data(self, test_client, auth_headers):
         user_id = f"user-{uuid.uuid4().hex[:8]}"

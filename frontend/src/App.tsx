@@ -20,7 +20,7 @@ import AwakeningOverlay from './components/AwakeningOverlay';
 import GamePanel from './components/GamePanel';
 import { STATUS_COLORS } from './types';
 import type { AppStatus } from './types';
-import { GAMES_V2_ENABLED } from './config/features';
+import { isGamesV2EnabledForAgent } from './config/features';
 
 interface AppProps {
   userId: string;
@@ -160,6 +160,7 @@ function AppContent({
   const { sendMessage } = useChat();
   const handsFreeEnabled = useAppStore((s) => s.handsFreeEnabled);
   const currentUser = useUserStore((state) => state.currentUser);
+  const currentAgentId = useUserStore((state) => state.currentAgent?.id ?? null);
   const [voiceTranscript, setVoiceTranscript] = useState('');
   const [voiceDebugEvents, setVoiceDebugEvents] = useState<VoiceDebugEntry[]>([]);
   const [voicePermissionWarning, setVoicePermissionWarning] = useState<string | null>(null);
@@ -203,6 +204,7 @@ function AppContent({
   // Awakening mode: no assistant messages AND thinking
   const isAwakening = !hasAwakened && !hasAssistantMessage && status === 'thinking';
   const immersiveMode = handsFreeEnabled && ttsEnabled;
+  const gamesEnabledForAgent = isGamesV2EnabledForAgent(currentAgentId);
 
   // Latch: once we exit awakening, never go back
   useEffect(() => {
@@ -317,7 +319,7 @@ function AppContent({
       <StatusPill status={status} immersive={immersiveMode} />
 
       {/* Game Panel */}
-      {!isAwakening && GAMES_V2_ENABLED && <GamePanel />}
+      {!isAwakening && gamesEnabledForAgent && <GamePanel />}
 
       {/* Chat History Overlay - hidden during awakening */}
       {!isAwakening && <ChatPanel />}

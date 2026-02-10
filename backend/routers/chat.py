@@ -555,10 +555,11 @@ async def chat(
 
     # Non-streaming
     try:
-        game_context = request.game_context if settings.games_v2_enabled else None
-        runtime_trigger = bool(request.runtime_trigger) if settings.games_v2_enabled else False
-        if not settings.games_v2_enabled and (request.runtime_trigger or request.game_context):
-            logger.info("[Chat] Ignoring game payload because GAMES_V2_ENABLED is off")
+        games_v2_enabled_for_agent = settings.is_games_v2_enabled_for_agent(agent_id)
+        game_context = request.game_context if games_v2_enabled_for_agent else None
+        runtime_trigger = bool(request.runtime_trigger) if games_v2_enabled_for_agent else False
+        if not games_v2_enabled_for_agent and (request.runtime_trigger or request.game_context):
+            logger.info("[Chat] Ignoring game payload because Games V2 rollout is disabled for agent %s", agent_id)
         emotion_input_message = "" if runtime_trigger else request.message
 
         # Process emotional state before LLM (detect triggers, apply decay)
@@ -674,10 +675,11 @@ async def _stream_chat_sse(
 ):
     """SSE streaming chat"""
     try:
-        game_context = request.game_context if settings.games_v2_enabled else None
-        runtime_trigger = bool(request.runtime_trigger) if settings.games_v2_enabled else False
-        if not settings.games_v2_enabled and (request.runtime_trigger or request.game_context):
-            logger.info("[SSE] Ignoring game payload because GAMES_V2_ENABLED is off")
+        games_v2_enabled_for_agent = settings.is_games_v2_enabled_for_agent(agent_id)
+        game_context = request.game_context if games_v2_enabled_for_agent else None
+        runtime_trigger = bool(request.runtime_trigger) if games_v2_enabled_for_agent else False
+        if not games_v2_enabled_for_agent and (request.runtime_trigger or request.game_context):
+            logger.info("[SSE] Ignoring game payload because Games V2 rollout is disabled for agent %s", agent_id)
         emotion_input_message = "" if runtime_trigger else request.message
 
         # Process emotional state before LLM (detect triggers, apply decay)

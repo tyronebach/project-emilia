@@ -12,6 +12,11 @@ A plugin architecture that enables LLM avatars to play games with users. Games r
 
 **Core Principle:** The game engine is authoritative. The LLM is a personality layer, not a game logic layer. Games are fun social experiences, not AI benchmarks.
 
+## Rollout Flags
+
+- `GAMES_V2_ENABLED`: global on/off switch for game-runtime V2 paths.
+- `GAMES_V2_AGENT_ALLOWLIST`: optional comma-separated agent IDs for staged rollout. Empty means all agents are eligible when V2 is enabled.
+
 ---
 
 ## Documentation Map

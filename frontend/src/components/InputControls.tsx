@@ -9,7 +9,8 @@ import { chatInputSchema, ChatInput } from '../schemas/chat';
 import type { VoiceState } from '../services/VoiceService';
 import { useGameStore } from '../store/gameStore';
 import GameSelector from './GameSelector';
-import { GAMES_V2_ENABLED } from '../config/features';
+import { isGamesV2EnabledForAgent } from '../config/features';
+import { useUserStore } from '../store/userStore';
 
 /**
  * ChatGPT-style floating input bar
@@ -27,6 +28,7 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
   const handsFreeEnabled = useAppStore((s) => s.handsFreeEnabled);
   const setHandsFreeEnabled = useAppStore((s) => s.setHandsFreeEnabled);
   const activeGameId = useGameStore((s) => s.activeGameId);
+  const currentAgentId = useUserStore((state) => state.currentAgent?.id ?? null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const [gameSelectorOpen, setGameSelectorOpen] = useState(false);
 
@@ -83,6 +85,7 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
 
   const messageValue = useWatch({ control, name: 'message' }) || '';
   const canSend = Boolean(messageValue.trim()) && !isDisabled;
+  const gamesEnabledForAgent = isGamesV2EnabledForAgent(currentAgentId);
 
   const isListening = handsFreeEnabled && voiceState === 'ACTIVE';
   const isProcessing = handsFreeEnabled && voiceState === 'PROCESSING';
@@ -154,7 +157,7 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
                 <ArrowUp className="h-5 w-5" />
               </button>
 
-              {GAMES_V2_ENABLED && (
+              {gamesEnabledForAgent && (
                 <button
                   type="button"
                   onClick={() => setGameSelectorOpen(true)}
@@ -219,7 +222,7 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
         </button>
       </div>
 
-      {GAMES_V2_ENABLED && (
+      {gamesEnabledForAgent && (
         <GameSelector open={gameSelectorOpen} onClose={() => setGameSelectorOpen(false)} />
       )}
     </>

@@ -7,7 +7,7 @@ import { useGameCatalogStore } from '../store/gameCatalogStore';
 import { useUserStore } from '../store/userStore';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
 import { cn } from '../lib/utils';
-import { GAMES_V2_ENABLED } from '../config/features';
+import { isGamesV2EnabledForAgent } from '../config/features';
 
 interface GameSelectorProps {
   open: boolean;
@@ -35,12 +35,13 @@ function GameSelector({ open, onClose }: GameSelectorProps) {
   const error = useGameCatalogStore((state) => state.error);
   const refreshCatalog = useGameCatalogStore((state) => state.refresh);
   const { startGame } = useGame();
+  const gamesEnabledForAgent = isGamesV2EnabledForAgent(currentAgent?.id ?? null);
 
   useEffect(() => {
-    if (!GAMES_V2_ENABLED) return;
+    if (!gamesEnabledForAgent) return;
     if (!open || !currentAgent?.id) return;
     void refreshCatalog(currentAgent.id);
-  }, [open, currentAgent?.id, refreshCatalog]);
+  }, [gamesEnabledForAgent, open, currentAgent?.id, refreshCatalog]);
 
   const games = useMemo(() => {
     return catalogGames
@@ -58,7 +59,7 @@ function GameSelector({ open, onClose }: GameSelectorProps) {
     onClose();
   };
 
-  if (!GAMES_V2_ENABLED) {
+  if (!gamesEnabledForAgent) {
     return null;
   }
 

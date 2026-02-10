@@ -328,7 +328,7 @@ Shared shell props:
 
 ## 12. Rollout Strategy
 
-1. Behind feature flag: `GAMES_V2_ENABLED`.
+1. Behind feature flags: `GAMES_V2_ENABLED` (global) and optional `GAMES_V2_AGENT_ALLOWLIST` (internal A/B cohort).
 2. Keep current `tic-tac-toe` path as fallback until Phase D complete.
 3. Migrate one game first (`tic-tac-toe`), then add chess.
 4. Enable per-agent gradually via manage UI.
