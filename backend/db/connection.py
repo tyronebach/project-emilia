@@ -373,8 +373,8 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_emotional_events_user ON emotional_events(user_id, agent_id, timestamp)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_events_v2_user_agent ON emotional_events_v2(user_id, agent_id, timestamp DESC)")
 
-        # Baseline game registry seed for MVP compatibility.
-        # Existing agents can keep playing tic-tac-toe while agent-specific controls are rolled out.
+        # Baseline game registry seed for rollout compatibility.
+        # Keep tic-tac-toe and chess registered for all environments.
         cur.execute(
             """INSERT OR IGNORE INTO game_registry
                (id, display_name, category, description, module_key, active,
@@ -402,11 +402,40 @@ def init_db():
                 "1",
             ),
         )
+        cur.execute(
+            """INSERT OR IGNORE INTO game_registry
+               (id, display_name, category, description, module_key, active,
+                move_provider_default, rule_mode, prompt_instructions, version)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                "chess",
+                "Chess",
+                "board",
+                "Classic 8x8 strategy game with strict legal-move validation.",
+                "chess",
+                1,
+                "engine",
+                "strict",
+                "\n".join([
+                    "## Chess -- How You Play",
+                    "- React in character to each move and evaluate the position briefly.",
+                    "- Mention tactical ideas when relevant (checks, forks, pins, development).",
+                    "- Keep the tone playful and concise; avoid long lectures.",
+                    "- The engine chooses your move in strict mode, so narrate confidently.",
+                    "- When providing move tags, use UCI format like [move:e2e4].",
+                ]),
+                "1",
+            ),
+        )
 
-        # Backfill default configuration row for existing agents.
+        # Backfill default configuration rows for existing agents.
         cur.execute(
             """INSERT OR IGNORE INTO agent_game_config (agent_id, game_id, enabled, workspace_required)
                SELECT id, 'tic-tac-toe', 1, 0 FROM agents"""
+        )
+        cur.execute(
+            """INSERT OR IGNORE INTO agent_game_config (agent_id, game_id, enabled, workspace_required)
+               SELECT id, 'chess', 1, 0 FROM agents"""
         )
 
         conn.commit()

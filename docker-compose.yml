@@ -18,6 +18,7 @@ services:
       - ELEVENLABS_MODEL=${ELEVENLABS_MODEL:-eleven_turbo_v2_5}
       - CLAWDBOT_AGENTS_DIR=${CLAWDBOT_AGENTS_DIR:-/home/tbach/.openclaw/agents}
       - GAMES_V2_ENABLED=${GAMES_V2_ENABLED:-1}
+      - GAMES_V2_AGENT_ALLOWLIST=${GAMES_V2_AGENT_ALLOWLIST:-}
 
     volumes:
       - ${CLAWD_AGENTS_HOST_DIR:-/home/tbach/clawd-agents}:/home/tbach/clawd-agents:rw
