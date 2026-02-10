@@ -10,6 +10,7 @@ import { chatInputSchema, ChatInput } from '../schemas/chat';
 import type { VoiceState } from '../services/VoiceService';
 import { useGameStore } from '../store/gameStore';
 import GameSelector from './GameSelector';
+import { GAMES_V2_ENABLED } from '../config/features';
 
 /**
  * ChatGPT-style floating input bar
@@ -154,19 +155,21 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
                 <ArrowUp className="h-5 w-5" />
               </button>
 
-              <button
-                type="button"
-                onClick={() => setGameSelectorOpen(true)}
-                aria-pressed={Boolean(activeGameId)}
-                aria-label={activeGameId ? 'Game active' : 'Play a game'}
-                className={`h-11 w-11 rounded-full flex items-center justify-center transition-colors focus:outline-none focus:ring-0 border ${
-                  activeGameId
-                    ? 'bg-accent/20 text-accent border-accent/40'
-                    : 'bg-bg-tertiary/70 text-text-secondary border-white/10'
-                }`}
-              >
-                <Gamepad2 className="h-5 w-5" />
-              </button>
+              {GAMES_V2_ENABLED && (
+                <button
+                  type="button"
+                  onClick={() => setGameSelectorOpen(true)}
+                  aria-pressed={Boolean(activeGameId)}
+                  aria-label={activeGameId ? 'Game active' : 'Play a game'}
+                  className={`h-11 w-11 rounded-full flex items-center justify-center transition-colors focus:outline-none focus:ring-0 border ${
+                    activeGameId
+                      ? 'bg-accent/20 text-accent border-accent/40'
+                      : 'bg-bg-tertiary/70 text-text-secondary border-white/10'
+                  }`}
+                >
+                  <Gamepad2 className="h-5 w-5" />
+                </button>
+              )}
 
               <button
                 type="button"
@@ -217,7 +220,9 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
         </button>
       </div>
 
-      <GameSelector open={gameSelectorOpen} onClose={() => setGameSelectorOpen(false)} />
+      {GAMES_V2_ENABLED && (
+        <GameSelector open={gameSelectorOpen} onClose={() => setGameSelectorOpen(false)} />
+      )}
     </>
   );
 }

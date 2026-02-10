@@ -39,6 +39,9 @@ class Settings:
         # Emotion engine
         self.llm_trigger_detection: bool = os.getenv("LLM_TRIGGER_DETECTION", "0") == "1"
 
+        # Feature flags
+        self.games_v2_enabled: bool = os.getenv("GAMES_V2_ENABLED", "1").lower() not in {"0", "false", "no"}
+
         # Session compaction (Phase 3.1)
         self.compact_threshold: int = int(os.getenv("COMPACT_THRESHOLD", "25"))
         self.compact_keep_recent: int = int(os.getenv("COMPACT_KEEP_RECENT", "10"))

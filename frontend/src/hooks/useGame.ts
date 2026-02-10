@@ -7,6 +7,7 @@ import { useGameStore } from '../store/gameStore';
 import { useGameCatalogStore } from '../store/gameCatalogStore';
 import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
+import { GAMES_V2_ENABLED } from '../config/features';
 
 const MAX_VALID_MOVES = 30;
 const DEFAULT_DIFFICULTY = 0.5;
@@ -42,6 +43,13 @@ export function useGame() {
       console.warn('[useGame] Failed to load game module:', activeGameId, error);
     });
   }, [activeGameId]);
+
+  useEffect(() => {
+    if (GAMES_V2_ENABLED) return;
+    if (!activeGameId) return;
+    setIsAvatarThinking(false);
+    useGameStore.getState().resetGame();
+  }, [activeGameId, setIsAvatarThinking]);
 
   const handleAvatarTurn = useCallback(() => {
     const {
@@ -103,6 +111,11 @@ export function useGame() {
   }, [setIsAvatarThinking]);
 
   const startGame = useCallback(async (gameId: string, config?: GameConfig) => {
+    if (!GAMES_V2_ENABLED) {
+      console.warn('[useGame] GAMES_V2_ENABLED is disabled.');
+      return;
+    }
+
     const canGate = catalogHasFetched && currentAgentId && catalogLoadedForAgentId === currentAgentId;
     if (canGate && !catalogGames.some((game) => game.id === gameId)) {
       console.warn('[useGame] Game is not enabled for this agent:', gameId);
@@ -130,6 +143,7 @@ export function useGame() {
   }, [handleAvatarTurn]);
 
   const getGameContext = useCallback((): GameContext | null => {
+    if (!GAMES_V2_ENABLED) return null;
     if (!activeGameId || gameState == null) return null;
 
     const module = getGame(activeGameId);
@@ -167,6 +181,11 @@ export function useGame() {
   }, [activeGameId, gameState, currentTurn, gameStatus.isOver, moveHistory, gameConfig]);
 
   const handleAvatarResponse = useCallback((moveTag?: string) => {
+    if (!GAMES_V2_ENABLED) {
+      setIsAvatarThinking(false);
+      return;
+    }
+
     const {
       activeGameId: activeId,
       gameState: state,

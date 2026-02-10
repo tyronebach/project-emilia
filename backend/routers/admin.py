@@ -1,7 +1,7 @@
 """Admin/manage routes"""
 import sqlite3
 from fastapi import APIRouter, Depends
-from dependencies import verify_token
+from dependencies import verify_token, ensure_games_v2_enabled
 from core.exceptions import not_found, bad_request
 from db.repositories import AgentRepository, SessionRepository, MessageRepository, UserRepository, GameRepository
 from db.connection import get_db
@@ -149,7 +149,10 @@ async def delete_manage_agent(agent_id: str, token: str = Depends(verify_token))
 
 
 @router.get("/games", response_model=GameRegistryListResponse)
-async def get_manage_games(token: str = Depends(verify_token)):
+async def get_manage_games(
+    token: str = Depends(verify_token),
+    _: None = Depends(ensure_games_v2_enabled),
+):
     games = GameRepository.list_registry(include_inactive=True)
     return GameRegistryListResponse(games=games, count=len(games))
 
@@ -158,6 +161,7 @@ async def get_manage_games(token: str = Depends(verify_token)):
 async def create_manage_game(
     game: GameRegistryCreate,
     token: str = Depends(verify_token),
+    _: None = Depends(ensure_games_v2_enabled),
 ):
     existing = GameRepository.get_registry(game.id)
     if existing:
@@ -183,6 +187,7 @@ async def update_manage_game(
     game_id: str,
     update: GameRegistryUpdate,
     token: str = Depends(verify_token),
+    _: None = Depends(ensure_games_v2_enabled),
 ):
     if not GameRepository.get_registry(game_id):
         raise not_found("Game")
@@ -196,7 +201,11 @@ async def update_manage_game(
 
 
 @router.delete("/games/{game_id}", response_model=StatusResponse)
-async def delete_manage_game(game_id: str, token: str = Depends(verify_token)):
+async def delete_manage_game(
+    game_id: str,
+    token: str = Depends(verify_token),
+    _: None = Depends(ensure_games_v2_enabled),
+):
     if not GameRepository.get_registry(game_id):
         raise not_found("Game")
     GameRepository.deactivate_registry_game(game_id)
@@ -204,7 +213,11 @@ async def delete_manage_game(game_id: str, token: str = Depends(verify_token)):
 
 
 @router.get("/agents/{agent_id}/games", response_model=AgentGameConfigListResponse)
-async def get_manage_agent_games(agent_id: str, token: str = Depends(verify_token)):
+async def get_manage_agent_games(
+    agent_id: str,
+    token: str = Depends(verify_token),
+    _: None = Depends(ensure_games_v2_enabled),
+):
     if not AgentRepository.get_by_id(agent_id):
         raise not_found("Agent")
     games = GameRepository.list_agent_game_configs(agent_id, include_inactive=True)
@@ -217,6 +230,7 @@ async def upsert_manage_agent_game(
     game_id: str,
     update: AgentGameConfigUpdate,
     token: str = Depends(verify_token),
+    _: None = Depends(ensure_games_v2_enabled),
 ):
     if not AgentRepository.get_by_id(agent_id):
         raise not_found("Agent")
@@ -244,6 +258,7 @@ async def delete_manage_agent_game(
     agent_id: str,
     game_id: str,
     token: str = Depends(verify_token),
+    _: None = Depends(ensure_games_v2_enabled),
 ):
     if not AgentRepository.get_by_id(agent_id):
         raise not_found("Agent")

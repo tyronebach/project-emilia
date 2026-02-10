@@ -1,11 +1,15 @@
 """Public game catalog routes."""
 from fastapi import APIRouter, Depends
-from dependencies import verify_token, get_user_id, get_agent_id
+from dependencies import verify_token, get_user_id, get_agent_id, ensure_games_v2_enabled
 from core.exceptions import forbidden, not_found
 from db.repositories import UserRepository, GameRepository
 from schemas import GameCatalogResponse, GameCatalogItemResponse
 
-router = APIRouter(prefix="/api/games", tags=["games"])
+router = APIRouter(
+    prefix="/api/games",
+    tags=["games"],
+    dependencies=[Depends(ensure_games_v2_enabled)],
+)
 
 
 @router.get("/catalog", response_model=GameCatalogResponse)
