@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const manifestPath = path.join(__dirname, '..', 'dist', '.vite', 'manifest.json');
+const modulesPath = path.join(__dirname, '..', 'src', 'games', 'modules');
 
 function fail(message) {
   throw new Error(`[check-game-loaders] ${message}`);
@@ -76,24 +77,33 @@ try {
     );
   }
 
-  const ticTacToeManifestKey = manifestEntries
-    .map(([key]) => key)
-    .find((key) => key.includes('src/games/modules/tic-tac-toe/index.ts'));
+  const manifestKeys = manifestEntries.map(([key]) => key);
 
-  if (!ticTacToeManifestKey) {
-    fail('Tic-tac-toe module chunk not found in manifest.');
+  const moduleFolders = fs
+    .readdirSync(modulesPath, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+
+  for (const moduleFolder of moduleFolders) {
+    const moduleManifestKey = manifestKeys.find(
+      (key) => key.includes(`src/games/modules/${moduleFolder}/index.ts`)
+    );
+
+    if (!moduleManifestKey) {
+      fail(`Game module chunk not found for "${moduleFolder}".`);
+    }
+
+    const moduleChunk = manifest[moduleManifestKey];
+    if (!moduleChunk.isDynamicEntry) {
+      fail(`Game module "${moduleFolder}" is expected to be a dynamic entry.`);
+    }
+
+    if (!dynamicGraph.has(moduleManifestKey)) {
+      fail(`Game module "${moduleFolder}" is not reachable through dynamic imports from the entry graph.`);
+    }
   }
 
-  const ticTacToeChunk = manifest[ticTacToeManifestKey];
-  if (!ticTacToeChunk.isDynamicEntry) {
-    fail('Tic-tac-toe chunk is expected to be a dynamic entry.');
-  }
-
-  if (!dynamicGraph.has(ticTacToeManifestKey)) {
-    fail('Tic-tac-toe chunk is not reachable through dynamic imports from the entry graph.');
-  }
-
-  console.log('[check-game-loaders] OK: game modules are lazily chunked and tic-tac-toe is dynamic.');
+  console.log('[check-game-loaders] OK: game modules are lazily chunked and dynamically reachable.');
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);

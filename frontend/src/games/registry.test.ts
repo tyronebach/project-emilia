@@ -31,4 +31,11 @@ describe('games registry lazy loading', () => {
     await preloadGame('tic-tac-toe');
     expect(getGame('tic-tac-toe')).toBeDefined();
   });
+
+  it('loads chess via lazy manifest path', async () => {
+    expect(hasGameLoader('chess')).toBe(true);
+    const module = await loadGame('chess');
+    expect(module.id).toBe('chess');
+    expect(getGame('chess')).toBe(module);
+  });
 });
