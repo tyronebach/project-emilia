@@ -1,4 +1,5 @@
 {
+  "agent_id": "agent-id",
   "name": "Agent Name",
   "description": "Short personality description.",
   "baseline_valence": 0.2,
@@ -62,7 +63,5 @@
     "trust_signal": { "preset": "normal" }
   },
   "essence_floors": {},
-  "essence_ceilings": {},
-  "vrm_model": "emilia.vrm",
-  "voice_id": null
+  "essence_ceilings": {}
 }

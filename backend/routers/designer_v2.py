@@ -45,6 +45,137 @@ def _sanitize_mood_injection_settings(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _build_drift_result_payload(result) -> dict:
+    """Serialize full drift simulation payload (legacy/UI format)."""
+    return {
+        "config": result.config.__dict__,
+        "timeline": [p.__dict__ for p in result.timeline],
+        "daily_summaries": [s.__dict__ for s in result.daily_summaries],
+        "start_state": result.start_state,
+        "end_state": result.end_state,
+        "drift_vector": result.drift_vector,
+        "mood_distribution": result.mood_distribution,
+        "trigger_stats": [t.__dict__ for t in result.trigger_stats],
+        "stability_score": result.stability_score,
+        "recovery_rate": result.recovery_rate,
+        "significant_events": result.significant_events,
+    }
+
+
+def _top_items(items: dict[str, float], n: int = 3) -> list[dict[str, float | str]]:
+    ranked = sorted(items.items(), key=lambda x: x[1], reverse=True)[:n]
+    return [{"id": k, "value": v} for k, v in ranked]
+
+
+def _build_event_counts(events: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for event in events:
+        key = str(event.get("event") or "unknown")
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _build_drift_summary(result, include_config: bool = False) -> dict:
+    """Compact drift summary for automation/LLM tuning loops."""
+    start = result.start_state or {}
+    end = result.end_state or {}
+    core_keys = ("valence", "arousal", "trust", "intimacy")
+
+    start_core = {k: float(start.get(k, 0.0)) for k in core_keys}
+    end_core = {k: float(end.get(k, 0.0)) for k in core_keys}
+    core_drift = {k: float(result.drift_vector.get(k, 0.0)) for k in core_keys}
+
+    event_counts = _build_event_counts(result.significant_events or [])
+    top_moods = _top_items(result.mood_distribution or {}, n=3)
+    top_triggers = [
+        {
+            "trigger": t.trigger,
+            "count": t.count,
+            "avg_valence_delta": t.avg_valence_delta,
+            "avg_trust_delta": t.avg_trust_delta,
+        }
+        for t in (result.trigger_stats or [])[:5]
+    ]
+
+    risk_flags = {
+        "negative_drift": core_drift["valence"] < -0.15,
+        "trust_erosion": core_drift["trust"] < -0.1 or end_core["trust"] < 0.35,
+        "low_stability": float(result.stability_score) < 0.55,
+        "slow_recovery": float(result.recovery_rate) < 0.45,
+    }
+
+    tuning_hints: list[str] = []
+    if risk_flags["negative_drift"]:
+        tuning_hints.append("Raise baseline_valence or reduce volatility for negative triggers.")
+    if risk_flags["trust_erosion"]:
+        tuning_hints.append("Increase trust_gain_rate and/or soften trust-negative trigger responses.")
+    if risk_flags["low_stability"]:
+        tuning_hints.append("Lower volatility or increase recovery_rate to reduce oscillation.")
+    if risk_flags["slow_recovery"]:
+        tuning_hints.append("Increase recovery_rate or mood_decay_rate for faster baseline return.")
+    if not tuning_hints:
+        tuning_hints.append("Current profile appears stable for this archetype and timeframe.")
+
+    summary = {
+        "messages_simulated": len(result.timeline or []),
+        "scorecard": {
+            "start_core": start_core,
+            "end_core": end_core,
+            "core_drift": core_drift,
+            "stability_score": float(result.stability_score),
+            "recovery_rate": float(result.recovery_rate),
+        },
+        "top_moods": top_moods,
+        "top_triggers": top_triggers,
+        "significant_event_counts": event_counts,
+        "risk_flags": risk_flags,
+        "tuning_hints": tuning_hints,
+    }
+    if include_config:
+        summary["config"] = result.config.__dict__
+    return summary
+
+
+def _run_drift_simulation(
+    *,
+    agent_id: str,
+    archetype: str,
+    user_id: str = "sim-user",
+    duration_days: int = 7,
+    sessions_per_day: int = 2,
+    messages_per_session: int = 20,
+    session_gap_hours: float = 8.0,
+    overnight_gap_hours: float = 12.0,
+    seed: int | None = None,
+):
+    if not agent_id or not archetype:
+        raise bad_request("agent_id and archetype required")
+
+    if archetype not in ARCHETYPES:
+        raise bad_request("Invalid archetype")
+
+    if duration_days <= 0 or sessions_per_day <= 0 or messages_per_session <= 0:
+        raise bad_request("duration_days, sessions_per_day, messages_per_session must be positive")
+
+    config = DriftSimulationConfig(
+        agent_id=agent_id,
+        user_id=user_id,
+        archetype=archetype,
+        duration_days=duration_days,
+        sessions_per_day=sessions_per_day,
+        messages_per_session=messages_per_session,
+        session_gap_hours=session_gap_hours,
+        overnight_gap_hours=overnight_gap_hours,
+        seed=seed,
+    )
+
+    try:
+        simulator = DriftSimulator(config)
+        return simulator.run()
+    except ValueError as exc:
+        raise bad_request(str(exc)) from exc
+
+
 # ============ Helpers ============
 
 def _parse_profile(raw: str | None) -> dict:
@@ -85,6 +216,15 @@ def _agent_to_personality(row: dict) -> dict:
         "essence_floors": profile.get("essence_floors", {}),
         "essence_ceilings": profile.get("essence_ceilings", {}),
     }
+
+
+def _extract_agent_id(config: dict[str, Any]) -> str | None:
+    """Read target agent id from request body, if present."""
+    for key in ("agent_id", "id"):
+        raw = config.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    return None
 
 
 def _bond_from_row(state_row: dict, agent_name: str) -> dict:
@@ -149,6 +289,12 @@ async def get_personality(agent_id: str) -> dict:
 
 @router.put("/personalities/{agent_id}")
 async def update_personality(agent_id: str, config: dict[str, Any]) -> dict:
+    payload_agent_id = _extract_agent_id(config)
+    if payload_agent_id and payload_agent_id != agent_id:
+        raise bad_request(
+            f"agent id mismatch: path agent_id='{agent_id}' does not match payload '{payload_agent_id}'"
+        )
+
     with get_db() as conn:
         row = conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
         if not row:
@@ -203,6 +349,60 @@ async def update_personality(agent_id: str, config: dict[str, Any]) -> dict:
 
         updated = conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
     return _agent_to_personality(dict(updated))
+
+
+@router.post("/personalities/apply")
+async def apply_personality(
+    config: dict[str, Any],
+    full: bool = Query(False, description="Return full personality payload when true."),
+    simulate_archetype: str | None = Query(None, description="Optional archetype id to run drift summary immediately after apply."),
+    simulate_user_id: str = Query("sim-user", description="Simulation user id when simulate_archetype is set."),
+    simulate_duration_days: int = Query(7, description="Simulation duration in days when simulate_archetype is set."),
+    simulate_sessions_per_day: int = Query(2, description="Simulation sessions/day when simulate_archetype is set."),
+    simulate_messages_per_session: int = Query(20, description="Simulation messages/session when simulate_archetype is set."),
+    simulate_session_gap_hours: float = Query(8.0, description="Simulation intra-day gap in hours when simulate_archetype is set."),
+    simulate_overnight_gap_hours: float = Query(12.0, description="Simulation overnight gap in hours when simulate_archetype is set."),
+    simulate_seed: int | None = Query(None, description="Optional deterministic seed when simulate_archetype is set."),
+    simulate_include_config: bool = Query(False, description="Include resolved simulation config in simulation_summary."),
+) -> dict:
+    """Apply a personality payload that includes `agent_id` (or `id`).
+
+    Returns a compact ack by default for low-token automation clients.
+    """
+    agent_id = _extract_agent_id(config)
+    if not agent_id:
+        raise bad_request("Missing agent id in payload. Provide `agent_id` (or `id`).")
+    updated = await update_personality(agent_id, config)
+
+    if simulate_archetype:
+        sim_result = _run_drift_simulation(
+            agent_id=updated["id"],
+            user_id=simulate_user_id,
+            archetype=simulate_archetype,
+            duration_days=simulate_duration_days,
+            sessions_per_day=simulate_sessions_per_day,
+            messages_per_session=simulate_messages_per_session,
+            session_gap_hours=simulate_session_gap_hours,
+            overnight_gap_hours=simulate_overnight_gap_hours,
+            seed=simulate_seed,
+        )
+        response = {
+            "ok": True,
+            "agent_id": updated["id"],
+            "name": updated["name"],
+            "simulation_summary": _build_drift_summary(sim_result, include_config=simulate_include_config),
+        }
+        if full:
+            response["personality"] = updated
+        return response
+
+    if full:
+        return updated
+    return {
+        "ok": True,
+        "agent_id": updated["id"],
+        "name": updated["name"],
+    }
 
 
 # ============ TRIGGER DEFAULTS ============
@@ -558,16 +758,7 @@ async def drift_simulate(body: dict[str, Any]) -> dict:
     seed = body.get("seed")
     seed = int(seed) if seed is not None and seed != "" else None
 
-    if not agent_id or not archetype:
-        raise bad_request("agent_id and archetype required")
-
-    if archetype not in ARCHETYPES:
-        raise bad_request("Invalid archetype")
-
-    if duration_days <= 0 or sessions_per_day <= 0 or messages_per_session <= 0:
-        raise bad_request("duration_days, sessions_per_day, messages_per_session must be positive")
-
-    config = DriftSimulationConfig(
+    result = _run_drift_simulation(
         agent_id=agent_id,
         user_id=user_id,
         archetype=archetype,
@@ -579,25 +770,40 @@ async def drift_simulate(body: dict[str, Any]) -> dict:
         seed=seed,
     )
 
-    try:
-        simulator = DriftSimulator(config)
-        result = simulator.run()
-    except ValueError as exc:
-        raise bad_request(str(exc)) from exc
+    return _build_drift_result_payload(result)
 
-    return {
-        "config": result.config.__dict__,
-        "timeline": [p.__dict__ for p in result.timeline],
-        "daily_summaries": [s.__dict__ for s in result.daily_summaries],
-        "start_state": result.start_state,
-        "end_state": result.end_state,
-        "drift_vector": result.drift_vector,
-        "mood_distribution": result.mood_distribution,
-        "trigger_stats": [t.__dict__ for t in result.trigger_stats],
-        "stability_score": result.stability_score,
-        "recovery_rate": result.recovery_rate,
-        "significant_events": result.significant_events,
-    }
+
+@router.post("/drift-simulate-summary")
+async def drift_simulate_summary(
+    body: dict[str, Any],
+    include_config: bool = Query(False, description="Include resolved simulation config in response."),
+) -> dict:
+    """Run drift simulation and return compact summary for automation clients."""
+    agent_id = body.get("agent_id")
+    user_id = body.get("user_id", "sim-user")
+    archetype = body.get("archetype")
+
+    duration_days = int(body.get("duration_days", 7))
+    sessions_per_day = int(body.get("sessions_per_day", 2))
+    messages_per_session = int(body.get("messages_per_session", 20))
+    session_gap_hours = float(body.get("session_gap_hours", 8))
+    overnight_gap_hours = float(body.get("overnight_gap_hours", 12))
+    seed = body.get("seed")
+    seed = int(seed) if seed is not None and seed != "" else None
+
+    result = _run_drift_simulation(
+        agent_id=agent_id,
+        user_id=user_id,
+        archetype=archetype,
+        duration_days=duration_days,
+        sessions_per_day=sessions_per_day,
+        messages_per_session=messages_per_session,
+        session_gap_hours=session_gap_hours,
+        overnight_gap_hours=overnight_gap_hours,
+        seed=seed,
+    )
+
+    return _build_drift_summary(result, include_config=include_config)
 
 
 @router.post("/drift-compare")
@@ -635,19 +841,7 @@ async def drift_compare(body: dict[str, Any]) -> dict:
         result = simulator.run()
         comparisons.append({
             "archetype": archetype,
-            "result": {
-                "config": result.config.__dict__,
-                "timeline": [p.__dict__ for p in result.timeline],
-                "daily_summaries": [s.__dict__ for s in result.daily_summaries],
-                "start_state": result.start_state,
-                "end_state": result.end_state,
-                "drift_vector": result.drift_vector,
-                "mood_distribution": result.mood_distribution,
-                "trigger_stats": [t.__dict__ for t in result.trigger_stats],
-                "stability_score": result.stability_score,
-                "recovery_rate": result.recovery_rate,
-                "significant_events": result.significant_events,
-            },
+            "result": _build_drift_result_payload(result),
         })
 
     return {"comparisons": comparisons}

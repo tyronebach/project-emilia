@@ -98,6 +98,7 @@
 - `GET /api/designer/v2/personalities`: List agent personality configs.
 - `GET /api/designer/v2/personalities/{agent_id}`: Personality detail.
 - `PUT /api/designer/v2/personalities/{agent_id}`: Update agent personality (columns + profile JSON).
+- `POST /api/designer/v2/personalities/apply`: One-shot apply using `agent_id`/`id` in JSON body (compact response by default, `?full=true` for full object). Optional one-step eval: add `simulate_archetype` query to return `simulation_summary` in same response.
 - `GET /api/designer/v2/trigger-defaults`: Default trigger delta map.
 - `GET /api/designer/v2/mood-groups`: Mood groups + valence/arousal mapping.
 - `GET /api/designer/v2/bonds?agent_id=`: Relationship summaries (user-agent).
@@ -109,6 +110,21 @@
 - `DELETE /api/designer/v2/calibration/{user_id}/{agent_id}`: Reset all calibration.
 - `DELETE /api/designer/v2/calibration/{user_id}/{agent_id}/{trigger_type}`: Reset one trigger.
 - `POST /api/designer/v2/simulate`: Dry-run trigger detection + state evolution.
+- `GET /api/designer/v2/archetypes`: List available drift user archetypes.
+- `POST /api/designer/v2/drift-simulate`: Run a single long-horizon drift simulation.
+- `POST /api/designer/v2/drift-simulate-summary`: Run same simulation with compact scorecard output for automation/LLM loops (`config` omitted by default, `?include_config=true` to include).
+- `POST /api/designer/v2/drift-compare`: Run side-by-side drift simulations across archetypes.
+
+### Drift API (Used By `/designer-v2` Drift Tab)
+
+Detailed drift endpoint contract is documented in:
+- `docs/DRIFT-API.md`
+
+This includes:
+- Frontend request flow for the Drift tab
+- Exact request bodies for `drift-simulate`, `drift-simulate-summary`, and `drift-compare`
+- Backend defaults, validation behavior, and typical errors
+- Full and compact response shapes and field notes
 
 ### Data Models
 
