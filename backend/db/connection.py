@@ -331,7 +331,7 @@ def init_db():
 # Initialize on import
 init_db()
 
-# Seed data (skip when disabled, e.g., tests)
-if os.getenv("EMILIA_SEED_DATA", "1").lower() not in {"0", "false", "no"}:
+# Seed data is opt-in. Set EMILIA_SEED_DATA=1 to enable bootstrap seeding.
+if os.getenv("EMILIA_SEED_DATA", "0").lower() not in {"0", "false", "no"}:
     from db.seed import seed_data
     seed_data()

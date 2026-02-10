@@ -6,24 +6,21 @@ services:
     restart: unless-stopped
     network_mode: host
 
-    env_file:
-      - /home/tbach/.openclaw/secrets.env
-
     environment:
-      - CLAWDBOT_TOKEN=${CLAWDBOT_GATEWAY_TOKEN}
-      - STT_SERVICE_URL=http://192.168.88.252:8765
-      - CLAWDBOT_URL=http://127.0.0.1:18789
-      - AUTH_TOKEN=emilia-dev-token-2026
-      - AUTH_ALLOW_DEV_TOKEN=1
-      - ALLOWED_ORIGINS=http://localhost:3000,http://192.168.88.237:3000,https://localhost:3443,https://192.168.88.237:3443
-      - ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM
-      - ELEVENLABS_MODEL=eleven_turbo_v2_5
-      - CLAWDBOT_AGENTS_DIR=/home/tbach/.openclaw/agents
+      - CLAWDBOT_TOKEN=${CLAWDBOT_TOKEN}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - STT_SERVICE_URL=${STT_SERVICE_URL:-http://192.168.88.252:8765}
+      - CLAWDBOT_URL=${CLAWDBOT_URL:-http://127.0.0.1:18789}
+      - AUTH_TOKEN=${AUTH_TOKEN:-emilia-dev-token-2026}
+      - AUTH_ALLOW_DEV_TOKEN=${AUTH_ALLOW_DEV_TOKEN:-1}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://192.168.88.237:3000,https://localhost:3443,https://192.168.88.237:3443}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-21m00Tcm4TlvDq8ikWAM}
+      - ELEVENLABS_MODEL=${ELEVENLABS_MODEL:-eleven_turbo_v2_5}
+      - CLAWDBOT_AGENTS_DIR=${CLAWDBOT_AGENTS_DIR:-/home/tbach/.openclaw/agents}
 
     volumes:
-      - /home/tbach/clawd-agents:/home/tbach/clawd-agents:rw
+      - ${CLAWD_AGENTS_HOST_DIR:-/home/tbach/clawd-agents}:/home/tbach/clawd-agents:rw
       - ./data:/data:rw
-      - /home/tbach/.openclaw/agents:/home/tbach/.openclaw/agents:ro
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]

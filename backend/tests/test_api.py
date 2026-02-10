@@ -1,7 +1,10 @@
 """Tests for Emilia Web App API endpoints."""
+import time
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from db.connection import get_db
 
 pytestmark = pytest.mark.anyio
 
@@ -304,3 +307,85 @@ class TestManageEndpoints:
     async def test_list_agents_requires_auth(self, test_client):
         response = await test_client.get("/api/manage/agents")
         assert response.status_code == 401
+
+    async def test_delete_agent_removes_related_data(self, test_client, auth_headers):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+        session_id = f"session-{uuid.uuid4().hex[:8]}"
+        now = time.time()
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Test Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+            conn.execute(
+                "INSERT INTO sessions (id, agent_id, name, created_at, last_used, message_count) VALUES (?, ?, ?, ?, ?, ?)",
+                (session_id, agent_id, "test", int(now), int(now), 1),
+            )
+            conn.execute(
+                "INSERT INTO session_participants (session_id, user_id) VALUES (?, ?)",
+                (session_id, user_id),
+            )
+            conn.execute(
+                "INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)",
+                (str(uuid.uuid4()), session_id, "user", "hello", now),
+            )
+            conn.execute(
+                """INSERT INTO emotional_state
+                   (id, user_id, agent_id, valence, arousal, dominance, trust, attachment, familiarity, last_updated)
+                   VALUES (?, ?, ?, 0.0, 0.0, 0.0, 0.5, 0.3, 0.0, ?)""",
+                (str(uuid.uuid4()), user_id, agent_id, now),
+            )
+            conn.execute(
+                """INSERT INTO emotional_events
+                   (id, user_id, agent_id, session_id, timestamp, trigger_type)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (str(uuid.uuid4()), user_id, agent_id, session_id, now, "greeting"),
+            )
+            conn.execute(
+                """INSERT INTO emotional_events_v2
+                   (id, user_id, agent_id, session_id, timestamp)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (str(uuid.uuid4()), user_id, agent_id, session_id, now),
+            )
+            conn.execute(
+                """INSERT INTO trigger_counts
+                   (user_id, agent_id, trigger_type, window, count, last_seen)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (user_id, agent_id, "greeting", "daily", 1, now),
+            )
+            conn.execute(
+                """INSERT INTO game_stats
+                   (id, session_id, user_id, agent_id, game_id, result, played_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (str(uuid.uuid4()), session_id, user_id, agent_id, "tictactoe", "win", now),
+            )
+
+        response = await test_client.delete(
+            f"/api/manage/agents/{agent_id}",
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["deleted"] == 1
+
+        with get_db() as conn:
+            assert conn.execute("SELECT 1 FROM agents WHERE id = ?", (agent_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM sessions WHERE agent_id = ?", (agent_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM messages WHERE session_id = ?", (session_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM session_participants WHERE session_id = ?", (session_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM user_agents WHERE agent_id = ?", (agent_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM emotional_state WHERE agent_id = ?", (agent_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM emotional_events WHERE agent_id = ?", (agent_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM emotional_events_v2 WHERE agent_id = ?", (agent_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM trigger_counts WHERE agent_id = ?", (agent_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM game_stats WHERE agent_id = ?", (agent_id,)).fetchone() is None

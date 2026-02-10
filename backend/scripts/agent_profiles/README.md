@@ -39,7 +39,7 @@ Top-level fields (these map to the Designer V2 UI):
 - `volatility`: Reactivity multiplier. Range `0..3` (higher = bigger swings).
 - `recovery_rate`: Speed of return to baseline. Range `0..1`.
 - `mood_decay_rate`: Speed of mood-weight decay. Range `0..1`.
-- `mood_baseline`: Map of mood → weight. Range `0..10` per mood (clamped by the engine).
+- `mood_baseline`: Map of mood → weight. Range `0..30` per mood (clamped by the engine).
 - `trust_gain_rate`: Trust increase multiplier. Range `0..3`.
 - `trust_loss_rate`: Trust decrease multiplier. Range `0..3`.
 - `trigger_sensitivities`: Map of trigger → multiplier (float). `1.0` is default; values > 1 amplify, values < 1 dampen. Negative values flip direction.

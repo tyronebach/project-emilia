@@ -37,12 +37,16 @@ Run each in a separate terminal:
 
 ## Environment
 
-Backend requires `CLAWDBOT_TOKEN` for LLM features:
+Use repo root `.env` (copy from `.env.example`):
 
 ```bash
-export CLAWDBOT_TOKEN=your_token_here
-./scripts/dev-backend-local.sh
+cp .env.example .env
+# Edit .env and set at least:
+# - CLAWDBOT_TOKEN
+# - ELEVENLABS_API_KEY (if using TTS)
 ```
+
+Both backend launchers (`dev-backend-local.sh` and `dev-backend.sh`) read `.env`.
 
 ## Testing Emotion Engine
 

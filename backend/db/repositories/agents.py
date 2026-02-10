@@ -100,6 +100,20 @@ class AgentRepository:
     @staticmethod
     def delete(agent_id: str) -> int:
         with get_db() as conn:
+            # Explicitly remove session tree first so cleanup is robust
+            # even if a caller uses a connection without FK pragmas.
+            conn.execute(
+                """DELETE FROM messages
+                   WHERE session_id IN (SELECT id FROM sessions WHERE agent_id = ?)""",
+                (agent_id,),
+            )
+            conn.execute(
+                """DELETE FROM session_participants
+                   WHERE session_id IN (SELECT id FROM sessions WHERE agent_id = ?)""",
+                (agent_id,),
+            )
+            conn.execute("DELETE FROM sessions WHERE agent_id = ?", (agent_id,))
+            conn.execute("DELETE FROM user_agents WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM emotional_state WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM emotional_events WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM emotional_events_v2 WHERE agent_id = ?", (agent_id,))
