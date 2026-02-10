@@ -37,12 +37,41 @@ class UserRepository:
             return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
 
     @staticmethod
+    def update(user_id: str, updates: dict) -> dict | None:
+        if not updates:
+            return None
+
+        allowed = {"display_name"}
+        set_clauses = []
+        params = []
+        for key, value in updates.items():
+            if key in allowed:
+                set_clauses.append(f"{key} = ?")
+                params.append(value)
+
+        if not set_clauses:
+            return None
+
+        params.append(user_id)
+        sql = f"UPDATE users SET {', '.join(set_clauses)} WHERE id = ?"
+
+        with get_db() as conn:
+            conn.execute(sql, params)
+            return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+    @staticmethod
     def update_preferences(user_id: str, preferences: str) -> dict | None:
         with get_db() as conn:
             conn.execute(
                 "UPDATE users SET preferences = ? WHERE id = ?", (preferences, user_id)
             )
             return conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+
+    @staticmethod
+    def delete(user_id: str) -> int:
+        with get_db() as conn:
+            cur = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            return cur.rowcount
 
     @staticmethod
     def get_agents(user_id: str) -> list[dict]:
@@ -61,6 +90,15 @@ class UserRepository:
                 "INSERT OR IGNORE INTO user_agents (user_id, agent_id) VALUES (?, ?)",
                 (user_id, agent_id)
             )
+
+    @staticmethod
+    def remove_agent_access(user_id: str, agent_id: str) -> int:
+        with get_db() as conn:
+            cur = conn.execute(
+                "DELETE FROM user_agents WHERE user_id = ? AND agent_id = ?",
+                (user_id, agent_id)
+            )
+            return cur.rowcount
 
     @staticmethod
     def can_access_agent(user_id: str, agent_id: str) -> bool:

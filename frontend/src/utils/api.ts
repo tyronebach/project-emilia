@@ -20,6 +20,8 @@ export interface Agent {
   vrm_model: string;
   voice_id: string | null;
   owners?: string[];
+  workspace?: string | null;
+  created_at?: number;
 }
 
 export interface User {
@@ -118,6 +120,87 @@ export async function getUserAgents(userId: string): Promise<Agent[]> {
   if (!response.ok) throw new Error(`Failed to fetch agents: ${response.status}`);
   const data = await response.json();
   return data.agents || [];
+}
+
+
+// ============ ADMIN API ============
+
+export async function fetchUsers(): Promise<User[]> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/users`);
+  if (!response.ok) throw new Error(`Failed to fetch users: ${response.status}`);
+  const data = await response.json();
+  return data.users || [];
+}
+
+export async function createUser(data: { id: string; display_name: string }): Promise<User> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/users`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Failed to create user: ${response.status}`);
+  return response.json();
+}
+
+export async function updateUser(userId: string, data: { display_name: string }): Promise<User> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/users/${encodeURIComponent(userId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Failed to update user: ${response.status}`);
+  return response.json();
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/users/${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) throw new Error(`Failed to delete user: ${response.status}`);
+}
+
+export async function createAgent(data: {
+  id: string;
+  display_name: string;
+  clawdbot_agent_id: string;
+  vrm_model?: string;
+  voice_id?: string | null;
+  workspace?: string | null;
+}): Promise<Agent> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/agents`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Failed to create agent: ${response.status}`);
+  return response.json();
+}
+
+export async function deleteAgent(agentId: string): Promise<void> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/agents/${encodeURIComponent(agentId)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) throw new Error(`Failed to delete agent: ${response.status}`);
+}
+
+export async function fetchUserAgents(userId: string): Promise<Agent[]> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/users/${encodeURIComponent(userId)}/agents`);
+  if (!response.ok) throw new Error(`Failed to fetch user agents: ${response.status}`);
+  const data = await response.json();
+  return data.agents || [];
+}
+
+export async function addUserAgent(userId: string, agentId: string): Promise<void> {
+  const response = await fetchWithAuth(
+    `${API_URL}/api/manage/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}`,
+    { method: 'POST' }
+  );
+  if (!response.ok) throw new Error(`Failed to add mapping: ${response.status}`);
+}
+
+export async function removeUserAgent(userId: string, agentId: string): Promise<void> {
+  const response = await fetchWithAuth(
+    `${API_URL}/api/manage/users/${encodeURIComponent(userId)}/agents/${encodeURIComponent(agentId)}`,
+    { method: 'DELETE' }
+  );
+  if (!response.ok) throw new Error(`Failed to remove mapping: ${response.status}`);
 }
 
 

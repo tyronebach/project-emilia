@@ -1,8 +1,38 @@
 """Agent repository for database operations."""
+import json
 from db.connection import get_db
 
 
 class AgentRepository:
+
+    DEFAULT_EMOTIONAL_PROFILE = {
+        "mood_decay_rate": 0.3,
+        "mood_baseline": {
+            "supportive": 5.0,
+            "whimsical": 3.0,
+            "zen": 3.0,
+            "bashful": 2.0,
+            "vulnerable": 2.0,
+            "flirty": 2.0,
+            "euphoric": 2.0,
+            "sassy": 1.5,
+            "sarcastic": 1.0,
+            "snarky": 1.0,
+            "melancholic": 1.0,
+            "suspicious": 1.0,
+            "defiant": 0.5,
+            "erratic": 0.5,
+            "seductive": 0.5,
+            "enraged": 0.2,
+        },
+        "trust_gain_multiplier": 1.0,
+        "trust_loss_multiplier": 1.0,
+        "trigger_multipliers": {},
+        "trigger_responses": {},
+        "description": "Generic companion baseline.",
+        "essence_floors": {},
+        "essence_ceilings": {},
+    }
 
     @staticmethod
     def get_all() -> list[dict]:
@@ -23,13 +53,16 @@ class AgentRepository:
         clawdbot_agent_id: str,
         vrm_model: str = "emilia.vrm",
         voice_id: str | None = None,
-        workspace: str | None = None
+        workspace: str | None = None,
+        emotional_profile: str | None = None,
     ) -> dict:
+        if emotional_profile is None:
+            emotional_profile = json.dumps(AgentRepository.DEFAULT_EMOTIONAL_PROFILE)
         with get_db() as conn:
             conn.execute(
-                "INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (agent_id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace)
+                "INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (agent_id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
             )
             return conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
 
@@ -63,3 +96,9 @@ class AgentRepository:
                 JOIN user_agents ua ON u.id = ua.user_id
                 WHERE ua.agent_id = ?
             """, (agent_id,)).fetchall()
+
+    @staticmethod
+    def delete(agent_id: str) -> int:
+        with get_db() as conn:
+            cur = conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
+            return cur.rowcount

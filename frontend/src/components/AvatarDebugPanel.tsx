@@ -5,7 +5,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { RefreshCw, Sliders, Bug } from 'lucide-react';
+import { RefreshCw, Sliders, Bug, Palette } from 'lucide-react';
 import { Accordion } from './ui/accordion';
 import { AvatarRenderer, animationLibrary, animationStateMachine } from '../avatar';
 import { useVrmOptions, type VrmOption } from '../hooks/useVrmOptions';
@@ -172,6 +172,7 @@ function AvatarDebugPanel() {
       <AppTopNav
         onBack={() => navigate({ to: '/manage' })}
         subtitle="Avatar Debug Panel"
+        className="relative z-30"
         rightSlot={(
           <>
             <span className="text-xs text-text-secondary bg-bg-secondary/70 border border-white/10 px-3 py-1 rounded-full max-w-[200px] truncate">
@@ -184,6 +185,13 @@ function AvatarDebugPanel() {
               title="Agent Settings"
             >
               <Sliders className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => navigate({ to: '/designer-v2' })}
+              className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
+              title="Agent Designer"
+            >
+              <Palette className="w-5 h-5" />
             </button>
             <button
               onClick={() => navigate({ to: '/debug' })}

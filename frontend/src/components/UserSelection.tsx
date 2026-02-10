@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Sliders, Bug } from 'lucide-react';
+import { Sliders, Bug, Palette } from 'lucide-react';
 import { getUsers } from '../utils/api';
 import { useUserStore } from '../store/userStore';
 import type { User } from '../types';
@@ -42,6 +42,13 @@ function UserSelection() {
                 title="Agent Settings"
               >
                 <Sliders className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => navigate({ to: '/designer-v2' })}
+                className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
+                title="Agent Designer"
+              >
+                <Palette className="w-5 h-5" />
               </button>
               <button
                 onClick={() => navigate({ to: '/debug' })}

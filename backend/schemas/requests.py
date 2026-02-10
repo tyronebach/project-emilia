@@ -85,6 +85,50 @@ class AgentUpdate(BaseModel):
         return v.strip() if v else None
 
 
+class UserCreate(BaseModel):
+    """Create user."""
+    id: str = Field(..., min_length=1, max_length=100, description="User ID")
+    display_name: str = Field(..., min_length=1, max_length=200, description="User display name")
+
+    @field_validator("id", "display_name")
+    @classmethod
+    def strip_required(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Value cannot be empty")
+        return stripped
+
+
+class UserUpdate(BaseModel):
+    """Update user."""
+    display_name: Optional[str] = Field(None, min_length=1, max_length=200, description="User display name")
+
+    @field_validator("display_name")
+    @classmethod
+    def strip_optional(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Display name cannot be empty")
+        return stripped
+
+
+class AgentCreate(BaseModel):
+    """Create agent."""
+    id: str = Field(..., min_length=1, max_length=100, description="Agent ID")
+    display_name: str = Field(..., min_length=1, max_length=200, description="Agent display name")
+    clawdbot_agent_id: str = Field(..., min_length=1, max_length=200, description="OpenClaw agent ID")
+    vrm_model: str = Field("emilia.vrm", max_length=200, description="VRM model filename")
+    voice_id: Optional[str] = Field(None, max_length=100, description="Voice ID")
+    workspace: Optional[str] = Field(None, max_length=500, description="Workspace path")
+
+    @field_validator("id", "display_name", "clawdbot_agent_id", "vrm_model", "voice_id", "workspace")
+    @classmethod
+    def strip_agent_fields(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() if v else None
+
+
 class UserPreferencesUpdate(BaseModel):
     """Update user preferences."""
     preferences: Dict[str, Any] = Field(default_factory=dict, description="Preferences to merge")
