@@ -11,6 +11,10 @@ import type {
   SimulationRequest,
   SimulationResult,
   MoodGroup,
+  Archetype,
+  DriftSimulationConfig,
+  DriftSimulationResult,
+  DriftComparisonResult,
 } from '../types/designer';
 
 // ============ PERSONALITY (Agent DNA) ============
@@ -138,5 +142,46 @@ export async function simulate(request: SimulationRequest): Promise<SimulationRe
     body: JSON.stringify(request),
   });
   if (!res.ok) throw new Error(`Simulation failed: ${res.status}`);
+  return res.json();
+}
+
+// ============ DRIFT SIMULATION ============
+
+export async function getArchetypes(): Promise<Archetype[]> {
+  const res = await fetchWithAuth('/api/designer/v2/archetypes');
+  if (!res.ok) throw new Error(`Failed to fetch archetypes: ${res.status}`);
+  const data = await res.json();
+  return data.archetypes ?? [];
+}
+
+export async function runDriftSimulation(
+  config: DriftSimulationConfig
+): Promise<DriftSimulationResult> {
+  const res = await fetchWithAuth('/api/designer/v2/drift-simulate', {
+    method: 'POST',
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error(`Drift simulation failed: ${res.status}`);
+  return res.json();
+}
+
+export async function runDriftComparison(
+  agentId: string,
+  archetypes: string[],
+  durationDays: number,
+  sessionsPerDay = 2,
+  messagesPerSession = 20
+): Promise<DriftComparisonResult> {
+  const res = await fetchWithAuth('/api/designer/v2/drift-compare', {
+    method: 'POST',
+    body: JSON.stringify({
+      agent_id: agentId,
+      archetypes,
+      duration_days: durationDays,
+      sessions_per_day: sessionsPerDay,
+      messages_per_session: messagesPerSession,
+    }),
+  });
+  if (!res.ok) throw new Error(`Drift comparison failed: ${res.status}`);
   return res.json();
 }

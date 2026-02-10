@@ -141,6 +141,83 @@ export interface SimulationResult {
   context_block: string;
 }
 
+// ============ DRIFT SIMULATION ============
+
+export interface Archetype {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface DriftSimulationConfig {
+  agent_id: string;
+  user_id?: string;
+  archetype: string;
+  duration_days: number;
+  sessions_per_day: number;
+  messages_per_session: number;
+  session_gap_hours?: number;
+  overnight_gap_hours?: number;
+  seed?: number | null;
+}
+
+export interface TimelinePoint {
+  day: number;
+  session: number;
+  message: number;
+  elapsed_hours: number;
+  trigger: string;
+  intensity: number;
+  outcome: string;
+  state: Record<string, number>;
+  dominant_mood: string;
+}
+
+export interface DaySummary {
+  day: number;
+  avg_valence: number;
+  avg_arousal: number;
+  avg_trust: number;
+  avg_intimacy: number;
+  dominant_moods: string[];
+  trigger_counts: Record<string, number>;
+}
+
+export interface TriggerStat {
+  trigger: string;
+  count: number;
+  avg_intensity: number;
+  avg_valence_delta: number;
+  avg_arousal_delta: number;
+  avg_trust_delta: number;
+}
+
+export interface DriftSignificantEvent {
+  day: number;
+  session?: number;
+  message?: number;
+  event: string;
+  details: string;
+}
+
+export interface DriftSimulationResult {
+  config: DriftSimulationConfig;
+  timeline: TimelinePoint[];
+  daily_summaries: DaySummary[];
+  start_state: Record<string, number>;
+  end_state: Record<string, number>;
+  drift_vector: Record<string, number>;
+  mood_distribution: Record<string, number>;
+  trigger_stats: TriggerStat[];
+  stability_score: number;
+  recovery_rate: number;
+  significant_events: DriftSignificantEvent[];
+}
+
+export interface DriftComparisonResult {
+  comparisons: { archetype: string; result: DriftSimulationResult }[];
+}
+
 // ============ TRIGGER RESPONSE PROFILES ============
 
 export interface TriggerResponseProfile {

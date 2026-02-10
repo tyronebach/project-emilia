@@ -100,5 +100,10 @@ class AgentRepository:
     @staticmethod
     def delete(agent_id: str) -> int:
         with get_db() as conn:
+            conn.execute("DELETE FROM emotional_state WHERE agent_id = ?", (agent_id,))
+            conn.execute("DELETE FROM emotional_events WHERE agent_id = ?", (agent_id,))
+            conn.execute("DELETE FROM emotional_events_v2 WHERE agent_id = ?", (agent_id,))
+            conn.execute("DELETE FROM trigger_counts WHERE agent_id = ?", (agent_id,))
+            conn.execute("DELETE FROM game_stats WHERE agent_id = ?", (agent_id,))
             cur = conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
             return cur.rowcount
