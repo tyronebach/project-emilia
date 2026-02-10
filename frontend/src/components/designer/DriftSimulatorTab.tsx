@@ -32,25 +32,17 @@ function formatNumber(value: number): string {
   return value >= 0 ? `+${value.toFixed(2)}` : value.toFixed(2);
 }
 
-function getTopMoodsFromWeights(
-  moodWeights: Record<string, number> | undefined,
-  topN = 2
-): Array<{ mood: string; weight: number }> {
-  if (!moodWeights) return [];
-  return Object.entries(moodWeights)
-    .filter(([, w]) => typeof w === 'number' && w > 0)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, topN)
-    .map(([mood, weight]) => ({ mood, weight }));
-}
-
-function formatInjectedMoodText(moods: Array<{ mood: string; weight: number }>): string {
-  if (moods.length === 0) return 'emotionally neutral';
-  const primary = moods[0];
+function formatInjectedMoodText(
+  primaryMood: string,
+  secondaryMood: string,
+  moodWeights: Record<string, number> | undefined
+): string {
+  if (!primaryMood || primaryMood === 'neutral') return 'emotionally neutral';
+  const primaryWeight = (moodWeights?.[primaryMood] ?? 0);
   const intensity =
-    primary.weight > 10 ? 'strongly' : primary.weight > 5 ? 'somewhat' : 'slightly';
-  if (moods.length === 1) return `${intensity} ${primary.mood}`;
-  return `${intensity} ${primary.mood}, with hints of ${moods[1].mood}`;
+    primaryWeight > 10 ? 'strongly' : primaryWeight > 5 ? 'somewhat' : 'slightly';
+  if (!secondaryMood) return `${intensity} ${primaryMood}`;
+  return `${intensity} ${primaryMood}, with hints of ${secondaryMood}`;
 }
 
 function DriftSimulatorTab() {
@@ -251,16 +243,14 @@ function DriftSimulatorTab() {
     return Array.from(lastPointByDay.entries())
       .sort((a, b) => a[0] - b[0])
       .map(([day, point]) => {
+        const primary = point.primary_mood || point.dominant_mood || 'neutral';
+        const secondary = point.secondary_mood || '';
+        const moodWeights = (point.state.mood_weights as Record<string, number> | undefined) ?? {};
         return {
           day: day + 1,
-          primary: point.primary_mood || point.dominant_mood || 'neutral',
-          secondary: point.secondary_mood || '',
-          summary: formatInjectedMoodText(
-            getTopMoodsFromWeights(
-              (point.state.mood_weights as Record<string, number> | undefined) ?? {},
-              2
-            )
-          ),
+          primary,
+          secondary,
+          summary: formatInjectedMoodText(primary, secondary, moodWeights),
         };
       });
   }, [result]);

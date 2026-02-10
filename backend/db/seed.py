@@ -2,6 +2,7 @@
 Seed data for database initialization.
 """
 import json
+from db.connection import get_db
 from db.repositories import UserRepository, AgentRepository, MoodRepository, RelationshipTypeRepository
 
 
@@ -171,6 +172,18 @@ def seed_relationship_types():
 
 def seed_data():
     """Seed initial data."""
+    # Always keep reference dictionaries present.
+    seed_moods()
+    seed_relationship_types()
+
+    # Bootstrap users/agents/mappings only on a brand-new DB.
+    with get_db() as conn:
+        users_exist = conn.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
+        agents_exist = conn.execute("SELECT 1 FROM agents LIMIT 1").fetchone() is not None
+        mappings_exist = conn.execute("SELECT 1 FROM user_agents LIMIT 1").fetchone() is not None
+    if users_exist or agents_exist or mappings_exist:
+        return
+
     # Users
     if not UserRepository.get_by_id("thai"):
         UserRepository.create("thai", "Thai", '{"tts_enabled": true, "theme": "dark"}')
@@ -207,7 +220,3 @@ def seed_data():
     UserRepository.add_agent_access("thai", "emilia-thai")
     UserRepository.add_agent_access("thai", "rem")
     UserRepository.add_agent_access("emily", "emilia-emily")
-
-    # Moods and relationship types
-    seed_moods()
-    seed_relationship_types()

@@ -7,6 +7,14 @@ cd "$ROOT_DIR"
 
 echo "=== Emilia Development Servers ==="
 echo ""
+if [ ! -f "$ROOT_DIR/.env" ]; then
+echo "Missing .env. Initialize it first:"
+echo "  cp .env.example .env"
+echo "  # then edit .env and set CLAWDBOT_TOKEN (and ELEVENLABS_API_KEY if needed)"
+echo ""
+fi
+echo "Environment source: .env in repo root"
+echo ""
 echo "Run these in separate terminals:"
 echo ""
 echo "  Backend (port 8080):"

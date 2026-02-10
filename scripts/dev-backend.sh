@@ -4,7 +4,20 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-docker compose down
+# Load .env so we can preflight required vars before compose.
+if [ -f ".env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source ".env"
+  set +a
+fi
+
+if [ -z "${CLAWDBOT_TOKEN:-}" ]; then
+  echo "Error: CLAWDBOT_TOKEN is not set."
+  echo "Set it in $ROOT_DIR/.env (copy from .env.example) or export it in your shell."
+  exit 1
+fi
+
 docker compose up -d --build backend
 
 echo "Waiting for backend health..."

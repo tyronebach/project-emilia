@@ -1236,7 +1236,7 @@ class EmotionEngine:
         for mood, delta in mood_deltas.items():
             effective_delta = delta * self.profile.emotional_volatility
             current = state.mood_weights.get(mood, 0)
-            state.mood_weights[mood] = self._clamp(current + effective_delta, 0, 10)
+            state.mood_weights[mood] = self._clamp(current + effective_delta, 0, 30)
 
     def _update_valence_arousal_from_moods(self, state: EmotionalState) -> None:
         """Derive valence/arousal from mood weights."""
