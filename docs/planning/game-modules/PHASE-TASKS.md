@@ -176,8 +176,8 @@
 - [x] Verify inactive game engines are absent from initial chunk.
 
 ### E4. Next-game pilot
-- [ ] Add chess as first heavy module through lazy loader path.
-- [ ] Validate engine/rule behavior under strict mode.
+- [x] Add chess as first heavy module through lazy loader path.
+- [x] Validate engine/rule behavior under strict mode.
 
 ### E5. Tests
 - [x] Loader success/failure tests.
