@@ -8,6 +8,7 @@ from .game_stats import GameStatsRepository
 from .emotional_state import EmotionalStateRepository
 from .moods import MoodRepository
 from .relationship_types import RelationshipTypeRepository
+from .app_settings import AppSettingsRepository
 
 __all__ = [
     "UserRepository",
@@ -19,4 +20,5 @@ __all__ = [
     "EmotionalStateRepository",
     "MoodRepository",
     "RelationshipTypeRepository",
+    "AppSettingsRepository",
 ]

@@ -57,6 +57,33 @@ function PersonalityCard({ personality }: PersonalityCardProps) {
     });
   };
 
+  const handleApplyBaselineNow = async () => {
+    try {
+      if (hasChanges) {
+        await updateMut.mutateAsync({
+          name: draft.name,
+          description: draft.description,
+          baseline_valence: draft.baseline_valence,
+          baseline_arousal: draft.baseline_arousal,
+          baseline_dominance: draft.baseline_dominance,
+          volatility: draft.volatility,
+          recovery_rate: draft.recovery_rate,
+          mood_decay_rate: draft.mood_decay_rate,
+          mood_baseline: draft.mood_baseline,
+          trust_gain_rate: draft.trust_gain_rate,
+          trust_loss_rate: draft.trust_loss_rate,
+          trigger_sensitivities: draft.trigger_sensitivities,
+          trigger_responses: draft.trigger_responses,
+          essence_floors: draft.essence_floors,
+          essence_ceilings: draft.essence_ceilings,
+        });
+      }
+      await resetMoodMut.mutateAsync();
+    } catch {
+      // Errors are surfaced via mutation state.
+    }
+  };
+
   const handleReset = () => setDraft(personality);
 
   const patch = (updates: Partial<AgentPersonality>) => setDraft({ ...draft, ...updates });
@@ -126,8 +153,8 @@ function PersonalityCard({ personality }: PersonalityCardProps) {
             <p className="text-[11px] text-text-secondary/70 mb-3">Controls emotional reactivity and recovery speed.</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <SliderField label="Volatility" value={draft.volatility} onChange={(v) => patch({ volatility: v })} min={0} max={3} step={0.1} tooltip="How strongly the agent reacts to triggers. Higher = dramatic mood swings, Lower = steady temperament." />
-              <SliderField label="Recovery Rate" value={draft.recovery_rate} onChange={(v) => patch({ recovery_rate: v })} min={0} max={1} tooltip="How quickly emotions fade back to baseline. Higher = bounces back fast, Lower = holds onto feelings." />
-              <SliderField label="Mood Decay Rate" value={draft.mood_decay_rate} onChange={(v) => patch({ mood_decay_rate: v })} min={0} max={1} tooltip="How fast specific moods (happy, sad, etc.) fade over time. Higher = moods are fleeting, Lower = moods linger." />
+              <SliderField label="VAD Recovery Rate" value={draft.recovery_rate} onChange={(v) => patch({ recovery_rate: v })} min={0} max={1} tooltip="How quickly V/A/D fades back to baseline. Higher = bounces back fast, Lower = holds onto feelings." />
+              <SliderField label="Mood Decay Rate" value={draft.mood_decay_rate} onChange={(v) => patch({ mood_decay_rate: v })} min={0} max={1} tooltip="How fast named mood weights (supportive, melancholic, etc.) fade back to baseline over time. Higher = moods are fleeting, Lower = moods linger." />
             </div>
           </div>
 
@@ -165,11 +192,11 @@ function PersonalityCard({ personality }: PersonalityCardProps) {
                   <Button
                     size="sm"
                     className="text-xs gap-1 bg-warning/20 text-warning hover:bg-warning/30 border border-warning/30"
-                    onClick={() => resetMoodMut.mutate()}
-                    disabled={resetMoodMut.isPending}
+                    onClick={handleApplyBaselineNow}
+                    disabled={resetMoodMut.isPending || updateMut.isPending}
                   >
                     <Zap className="w-3 h-3" />
-                    {resetMoodMut.isPending ? 'Resetting...' : 'Apply Baseline Now'}
+                    {resetMoodMut.isPending || updateMut.isPending ? 'Applying...' : 'Apply Baseline Now'}
                   </Button>
                   <span className={`text-[10px] ${resetMoodMut.isSuccess ? 'text-success' : resetMoodMut.isError ? 'text-error' : 'text-text-secondary'}`}>
                     {resetMoodMut.isSuccess ? 'Done — mood state reset to baseline' : resetMoodMut.isError ? 'Failed to reset' : 'Resets your live mood weights + VAD to this baseline'}

@@ -171,6 +171,8 @@ export interface TimelinePoint {
   outcome: string;
   state: Record<string, number>;
   dominant_mood: string;
+  primary_mood?: string;
+  secondary_mood?: string | null;
 }
 
 export interface DaySummary {
@@ -216,6 +218,14 @@ export interface DriftSimulationResult {
 
 export interface DriftComparisonResult {
   comparisons: { archetype: string; result: DriftSimulationResult }[];
+}
+
+export interface MoodInjectionSettings {
+  top_k: number;
+  volatility_threshold: number;
+  min_margin: number;
+  random_strength: number;
+  max_random_chance: number;
 }
 
 // ============ TRIGGER RESPONSE PROFILES ============

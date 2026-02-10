@@ -14,13 +14,13 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from core.exceptions import not_found, bad_request
 
 from db.connection import get_db
-from db.repositories import EmotionalStateRepository, AgentRepository
+from db.repositories import EmotionalStateRepository, AgentRepository, AppSettingsRepository
 from dependencies import verify_token, get_user_id
 from services.emotion_engine import (
     EmotionEngine, EmotionalState, AgentProfile,
     ContextualTriggerCalibration, TriggerCalibration,
     normalize_trigger, ALL_TRIGGERS,
-    MOOD_GROUPS, get_mood_valence_arousal,
+    MOOD_GROUPS, get_mood_valence_arousal, DEFAULT_MOOD_INJECTION_SETTINGS,
 )
 from services.drift_simulator import (
     ARCHETYPES,
@@ -33,6 +33,16 @@ router = APIRouter(
     tags=["designer-v2"],
     dependencies=[Depends(verify_token)],
 )
+
+def _sanitize_mood_injection_settings(raw: dict[str, Any]) -> dict[str, Any]:
+    merged = {**DEFAULT_MOOD_INJECTION_SETTINGS, **(raw or {})}
+    return {
+        "top_k": int(max(1, min(6, merged.get("top_k", 3)))),
+        "volatility_threshold": max(0.0, min(1.0, float(merged.get("volatility_threshold", 0.3)))),
+        "min_margin": max(0.0, min(1.0, float(merged.get("min_margin", 0.15)))),
+        "random_strength": max(0.0, min(2.0, float(merged.get("random_strength", 0.7)))),
+        "max_random_chance": max(0.0, min(1.0, float(merged.get("max_random_chance", 0.85)))),
+    }
 
 
 # ============ Helpers ============
@@ -222,6 +232,19 @@ async def get_mood_groups() -> dict:
             "moods": moods,
         }
     return result
+
+
+@router.get("/mood-injection-settings")
+async def get_mood_injection_settings() -> dict:
+    raw = AppSettingsRepository.get_json("mood_injection_settings", DEFAULT_MOOD_INJECTION_SETTINGS)
+    return _sanitize_mood_injection_settings(raw)
+
+
+@router.put("/mood-injection-settings")
+async def update_mood_injection_settings(body: dict[str, Any]) -> dict:
+    sanitized = _sanitize_mood_injection_settings(body)
+    AppSettingsRepository.set_json("mood_injection_settings", sanitized)
+    return sanitized
 
 
 # ============ BONDS ============

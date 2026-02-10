@@ -80,6 +80,15 @@ def init_db():
             )
         """)
 
+        # Global app settings (JSON values)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at REAL NOT NULL
+            )
+        """)
+
         # User-Agent access (many-to-many)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS user_agents (
