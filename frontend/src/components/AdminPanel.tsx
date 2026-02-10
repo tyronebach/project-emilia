@@ -32,6 +32,7 @@ import {
   type Agent,
   type User,
 } from '../utils/api';
+import { queryClient } from '../lib/queryClient';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
 import { useVrmOptions } from '../hooks/useVrmOptions';
 import AppTopNav from './AppTopNav';
@@ -365,6 +366,7 @@ function AdminPanel() {
         voice_id: agentForm.voice_id.trim() || null,
         workspace: agentForm.workspace.trim() || null,
       });
+      queryClient.invalidateQueries({ queryKey: ['designer-v2', 'personalities'] });
       setSuccess(`Created agent ${agentForm.display_name}`);
       setAgentModalOpen(false);
       await refreshAgents();
@@ -384,6 +386,7 @@ function AdminPanel() {
 
     try {
       await deleteAgent(deleteAgentId);
+      queryClient.invalidateQueries({ queryKey: ['designer-v2', 'personalities'] });
       setSuccess('Agent deleted');
       setDeleteAgentId(null);
       await refreshAgents();

@@ -7,8 +7,9 @@ import PersonalityTab from './PersonalityTab';
 import BondsTab from './BondsTab';
 import CalibrationTab from './CalibrationTab';
 import SimulatorTab from './SimulatorTab';
+import DriftSimulatorTab from './DriftSimulatorTab';
 
-export type DesignerV2Tab = 'personality' | 'bonds' | 'calibration' | 'simulator';
+export type DesignerV2Tab = 'personality' | 'bonds' | 'calibration' | 'simulator' | 'drift';
 
 function DesignerPageV2() {
   const navigate = useNavigate();
@@ -53,6 +54,7 @@ function DesignerPageV2() {
         {activeTab === 'bonds' && <BondsTab />}
         {activeTab === 'calibration' && <CalibrationTab />}
         {activeTab === 'simulator' && <SimulatorTab />}
+        {activeTab === 'drift' && <DriftSimulatorTab />}
       </div>
     </div>
   );

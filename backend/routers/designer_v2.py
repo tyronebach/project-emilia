@@ -22,6 +22,11 @@ from services.emotion_engine import (
     normalize_trigger, ALL_TRIGGERS,
     MOOD_GROUPS, get_mood_valence_arousal,
 )
+from services.drift_simulator import (
+    ARCHETYPES,
+    DriftSimulationConfig,
+    DriftSimulator,
+)
 
 router = APIRouter(
     prefix="/api/designer/v2",
@@ -500,3 +505,126 @@ async def simulate(body: dict[str, Any]) -> dict:
         "mood_shifts": mood_shifts,
         "context_block": context_block,
     }
+
+
+@router.get("/archetypes")
+async def list_archetypes() -> dict:
+    return {
+        "archetypes": [
+            {
+                "id": key,
+                "name": data["name"],
+                "description": data["description"],
+            }
+            for key, data in ARCHETYPES.items()
+        ]
+    }
+
+
+@router.post("/drift-simulate")
+async def drift_simulate(body: dict[str, Any]) -> dict:
+    agent_id = body.get("agent_id")
+    user_id = body.get("user_id", "sim-user")
+    archetype = body.get("archetype")
+
+    duration_days = int(body.get("duration_days", 7))
+    sessions_per_day = int(body.get("sessions_per_day", 2))
+    messages_per_session = int(body.get("messages_per_session", 20))
+    session_gap_hours = float(body.get("session_gap_hours", 8))
+    overnight_gap_hours = float(body.get("overnight_gap_hours", 12))
+    seed = body.get("seed")
+    seed = int(seed) if seed is not None and seed != "" else None
+
+    if not agent_id or not archetype:
+        raise bad_request("agent_id and archetype required")
+
+    if archetype not in ARCHETYPES:
+        raise bad_request("Invalid archetype")
+
+    if duration_days <= 0 or sessions_per_day <= 0 or messages_per_session <= 0:
+        raise bad_request("duration_days, sessions_per_day, messages_per_session must be positive")
+
+    config = DriftSimulationConfig(
+        agent_id=agent_id,
+        user_id=user_id,
+        archetype=archetype,
+        duration_days=duration_days,
+        sessions_per_day=sessions_per_day,
+        messages_per_session=messages_per_session,
+        session_gap_hours=session_gap_hours,
+        overnight_gap_hours=overnight_gap_hours,
+        seed=seed,
+    )
+
+    try:
+        simulator = DriftSimulator(config)
+        result = simulator.run()
+    except ValueError as exc:
+        raise bad_request(str(exc)) from exc
+
+    return {
+        "config": result.config.__dict__,
+        "timeline": [p.__dict__ for p in result.timeline],
+        "daily_summaries": [s.__dict__ for s in result.daily_summaries],
+        "start_state": result.start_state,
+        "end_state": result.end_state,
+        "drift_vector": result.drift_vector,
+        "mood_distribution": result.mood_distribution,
+        "trigger_stats": [t.__dict__ for t in result.trigger_stats],
+        "stability_score": result.stability_score,
+        "recovery_rate": result.recovery_rate,
+        "significant_events": result.significant_events,
+    }
+
+
+@router.post("/drift-compare")
+async def drift_compare(body: dict[str, Any]) -> dict:
+    agent_id = body.get("agent_id")
+    archetypes = body.get("archetypes") or []
+
+    duration_days = int(body.get("duration_days", 7))
+    sessions_per_day = int(body.get("sessions_per_day", 2))
+    messages_per_session = int(body.get("messages_per_session", 20))
+    session_gap_hours = float(body.get("session_gap_hours", 8))
+    overnight_gap_hours = float(body.get("overnight_gap_hours", 12))
+
+    if not agent_id or not archetypes:
+        raise bad_request("agent_id and archetypes required")
+
+    comparisons = []
+    for archetype in archetypes:
+        if archetype not in ARCHETYPES:
+            raise bad_request(f"Invalid archetype: {archetype}")
+
+        config = DriftSimulationConfig(
+            agent_id=agent_id,
+            user_id="sim-user",
+            archetype=archetype,
+            duration_days=duration_days,
+            sessions_per_day=sessions_per_day,
+            messages_per_session=messages_per_session,
+            session_gap_hours=session_gap_hours,
+            overnight_gap_hours=overnight_gap_hours,
+            seed=None,
+        )
+
+        simulator = DriftSimulator(config)
+        result = simulator.run()
+        comparisons.append({
+            "archetype": archetype,
+            "result": {
+                "config": result.config.__dict__,
+                "timeline": [p.__dict__ for p in result.timeline],
+                "daily_summaries": [s.__dict__ for s in result.daily_summaries],
+                "start_state": result.start_state,
+                "end_state": result.end_state,
+                "drift_vector": result.drift_vector,
+                "mood_distribution": result.mood_distribution,
+                "trigger_stats": [t.__dict__ for t in result.trigger_stats],
+                "stability_score": result.stability_score,
+                "recovery_rate": result.recovery_rate,
+                "significant_events": result.significant_events,
+            },
+        })
+
+    return {"comparisons": comparisons}
