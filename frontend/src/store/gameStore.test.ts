@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest';
+import { loadGame } from '../games/registry';
 import { useAppStore } from './index';
 import { useGameStore } from './gameStore';
 import { useUserStore } from './userStore';
@@ -59,7 +60,8 @@ describe('gameStore context hydration', () => {
     resetStores();
   });
 
-  test('does not leak game state across sessions', () => {
+  test('does not leak game state across sessions', async () => {
+    await loadGame('tic-tac-toe');
     setContext('user-a', 'agent-a', 'session-1');
     useGameStore.getState().startGame('tic-tac-toe');
     expect(useGameStore.getState().activeGameId).toBe('tic-tac-toe');

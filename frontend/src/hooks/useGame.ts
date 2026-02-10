@@ -1,7 +1,7 @@
 // # Phase 1.7 COMPLETE - 2026-02-08
 // # Phase 2.5 FIX - 2026-02-07: Move isAvatarThinking to Zustand store
 import { useCallback, useEffect } from 'react';
-import { getGame } from '../games/registry';
+import { getGame, loadGame } from '../games/registry';
 import type { GameConfig, GameContext, GameModule, MoveProviderType } from '../games/types';
 import { useGameStore } from '../store/gameStore';
 import { useGameCatalogStore } from '../store/gameCatalogStore';
@@ -35,6 +35,13 @@ export function useGame() {
   useEffect(() => {
     hydrateForContext();
   }, [hydrateForContext, currentUserId, currentAgentId, sessionId]);
+
+  useEffect(() => {
+    if (!activeGameId || getGame(activeGameId)) return;
+    void loadGame(activeGameId).catch((error) => {
+      console.warn('[useGame] Failed to load game module:', activeGameId, error);
+    });
+  }, [activeGameId]);
 
   const handleAvatarTurn = useCallback(() => {
     const {
@@ -95,10 +102,17 @@ export function useGame() {
     setIsAvatarThinking(false);
   }, [setIsAvatarThinking]);
 
-  const startGame = useCallback((gameId: string, config?: GameConfig) => {
+  const startGame = useCallback(async (gameId: string, config?: GameConfig) => {
     const canGate = catalogHasFetched && currentAgentId && catalogLoadedForAgentId === currentAgentId;
     if (canGate && !catalogGames.some((game) => game.id === gameId)) {
       console.warn('[useGame] Game is not enabled for this agent:', gameId);
+      return;
+    }
+
+    try {
+      await loadGame(gameId);
+    } catch (error) {
+      console.warn('[useGame] Failed to load game module:', gameId, error);
       return;
     }
 

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && npm run check:game-loaders",
+    "check:game-loaders": "node ./scripts/check-game-loaders.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",

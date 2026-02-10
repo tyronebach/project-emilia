@@ -1,6 +1,6 @@
 // # Phase 2.1 COMPLETE - 2026-02-07
-import type { GameRendererProps } from '../types';
-import { cn } from '../../lib/utils';
+import type { GameRendererProps } from '../../types';
+import { cn } from '../../../lib/utils';
 import type { TicTacToeState } from './TicTacToeModule';
 
 const POSITION_LABELS = [
