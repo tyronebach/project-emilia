@@ -11,7 +11,7 @@
 1. Complete phases in order unless explicitly marked parallel-safe.
 2. Do not start game-specific expansion (chess/card) before Phase E.
 3. For each task, commit small vertical slices with tests.
-4. Keep feature-gated behind `GAMES_V2_ENABLED` until Phase E passes.
+4. Keep rollout-gated by agent allowlist until Phase E passes.
 
 ---
 
@@ -87,8 +87,8 @@
 - [x] per-agent toggles/settings.
 
 ### B5. Frontend tests
-- [ ] Add tests for selector filtering and start blocking.
-- [ ] Add tests for catalog refresh on agent switch.
+- [x] Add tests for selector filtering and start blocking.
+- [x] Add tests for catalog refresh on agent switch.
 
 **Exit Criteria**
 - [x] Disabled games are neither selectable nor startable.
@@ -184,8 +184,8 @@
 - [x] Preload-on-hover behavior tests.
 
 **Exit Criteria**
-- [ ] Initial app bundle remains stable while adding new games.
-- [ ] Games load on-demand with acceptable latency.
+- [x] Initial app bundle remains stable while adding new games.
+- [x] Games load on-demand with acceptable latency.
 
 ---
 
@@ -194,7 +194,7 @@
 **Goal:** Safely switch from legacy game runtime to V2 foundation.
 
 ### F1. Feature flag rollout
-- [x] Add `GAMES_V2_ENABLED` checks in frontend + backend.
+- [x] Add rollout checks in frontend + backend.
 - [x] Run internal A/B on selected agents first.
 
 ### F2. Data migration checks
@@ -208,11 +208,11 @@
 ### F4. Final verification
 - [x] Backend tests.
 - [x] Frontend tests.
-- [ ] Manual E2E for agent/game enablement and window behavior.
+- [x] Manual E2E for agent/game enablement and window behavior.
 
 **Exit Criteria**
-- [ ] V2 path is default and stable.
-- [ ] Legacy path can be removed or retained behind kill switch only.
+- [x] V2 path is default and stable.
+- [x] Legacy path removed.
 
 ---
 

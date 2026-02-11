@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import GameSelector from './GameSelector';
 import { useGameCatalogStore } from '../store/gameCatalogStore';
 import { useUserStore } from '../store/userStore';
@@ -36,6 +36,17 @@ const CATALOG_GAME = {
   version: '1.0.0',
 };
 
+const CATALOG_GAME_WITHOUT_LOADER = {
+  id: 'word-duel',
+  display_name: 'Word Duel',
+  category: 'word',
+  description: 'Not wired into loader manifest yet.',
+  module_key: 'word-duel',
+  move_provider_default: 'llm',
+  rule_mode: 'strict',
+  version: '1.0.0',
+};
+
 describe('GameSelector preload behavior', () => {
   beforeEach(() => {
     mockStartGame.mockClear();
@@ -58,13 +69,14 @@ describe('GameSelector preload behavior', () => {
       },
     });
 
+    const refresh = vi.fn().mockResolvedValue(undefined);
     useGameCatalogStore.setState({
       games: [CATALOG_GAME],
       loadedForAgentId: 'agent-1',
       loading: false,
       hasFetched: true,
       error: null,
-      refresh: vi.fn().mockResolvedValue(undefined),
+      refresh,
     });
   });
 
@@ -90,5 +102,56 @@ describe('GameSelector preload behavior', () => {
 
     expect(mockStartGame).toHaveBeenCalledWith('tic-tac-toe');
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('filters out catalog entries that have no frontend loader', () => {
+    mockHasGameLoader.mockImplementation((gameId: string) => gameId !== 'word-duel');
+    useGameCatalogStore.setState({
+      games: [CATALOG_GAME, CATALOG_GAME_WITHOUT_LOADER],
+      loadedForAgentId: 'agent-1',
+      loading: false,
+      hasFetched: true,
+      error: null,
+      refresh: vi.fn().mockResolvedValue(undefined),
+    });
+
+    render(<GameSelector open onClose={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: /tic-tac-toe/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /word duel/i })).not.toBeInTheDocument();
+  });
+
+  it('refreshes catalog when switching agents', async () => {
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    useGameCatalogStore.setState({
+      games: [CATALOG_GAME],
+      loadedForAgentId: 'agent-1',
+      loading: false,
+      hasFetched: true,
+      error: null,
+      refresh,
+    });
+
+    render(<GameSelector open onClose={vi.fn()} />);
+    await waitFor(() => expect(refresh).toHaveBeenCalledWith('agent-1'));
+
+    act(() => {
+      useUserStore.setState({
+        currentUser: {
+          id: 'user-1',
+          display_name: 'User 1',
+          preferences: '{}',
+        },
+        currentAgent: {
+          id: 'agent-2',
+          display_name: 'Agent 2',
+          clawdbot_agent_id: 'agent-2-claw',
+          vrm_model: 'emilia.vrm',
+          voice_id: null,
+        },
+      });
+    });
+
+    await waitFor(() => expect(refresh).toHaveBeenCalledWith('agent-2'));
   });
 });

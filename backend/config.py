@@ -39,8 +39,7 @@ class Settings:
         # Emotion engine
         self.llm_trigger_detection: bool = os.getenv("LLM_TRIGGER_DETECTION", "0") == "1"
 
-        # Feature flags
-        self.games_v2_enabled: bool = os.getenv("GAMES_V2_ENABLED", "1").lower() not in {"0", "false", "no"}
+        # Games rollout cohort
         self.games_v2_agent_allowlist: set[str] = {
             agent_id.strip()
             for agent_id in os.getenv("GAMES_V2_AGENT_ALLOWLIST", "").split(",")
@@ -62,8 +61,6 @@ class Settings:
 
     def is_games_v2_enabled_for_agent(self, agent_id: str | None) -> bool:
         """Return whether Games V2 is enabled for a given agent cohort."""
-        if not self.games_v2_enabled:
-            return False
         if not self.games_v2_agent_allowlist:
             return True
         if not agent_id:

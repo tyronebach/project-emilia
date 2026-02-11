@@ -46,7 +46,6 @@ import { queryClient } from '../lib/queryClient';
 import { useVoiceOptions } from '../hooks/useVoiceOptions';
 import { useVrmOptions } from '../hooks/useVrmOptions';
 import AppTopNav from './AppTopNav';
-import { GAMES_V2_ENABLED } from '../config/features';
 
 type EditableField = 'display_name' | 'voice_id' | 'vrm_model' | 'workspace';
 
@@ -174,12 +173,7 @@ function AdminPanel() {
   useEffect(() => {
     void refreshUsers();
     void refreshAgents();
-    if (GAMES_V2_ENABLED) {
-      void refreshGames();
-    } else {
-      setLoadingGames(false);
-      setGames([]);
-    }
+    void refreshGames();
   }, []);
 
   useEffect(() => {
@@ -191,21 +185,6 @@ function AdminPanel() {
   }, [selectedUserId]);
 
   useEffect(() => {
-    if (!GAMES_V2_ENABLED) {
-      if (activeTab === 'games') {
-        setActiveTab('users');
-      }
-      return;
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (!GAMES_V2_ENABLED) {
-      setSelectedAgentForGames('');
-      setAgentGames([]);
-      return;
-    }
-
     if (!agents.length) {
       setSelectedAgentForGames('');
       setAgentGames([]);
@@ -216,11 +195,6 @@ function AdminPanel() {
   }, [agents]);
 
   useEffect(() => {
-    if (!GAMES_V2_ENABLED) {
-      setAgentGames([]);
-      return;
-    }
-
     if (!selectedAgentForGames) {
       setAgentGames([]);
       return;
@@ -702,20 +676,12 @@ function AdminPanel() {
     }
   };
 
-  const tabs = (
-    GAMES_V2_ENABLED
-      ? [
-          { id: 'users', label: 'Users', icon: Users },
-          { id: 'agents', label: 'Agents', icon: Bot },
-          { id: 'mappings', label: 'Mappings', icon: Link },
-          { id: 'games', label: 'Games', icon: Gamepad2 },
-        ]
-      : [
-          { id: 'users', label: 'Users', icon: Users },
-          { id: 'agents', label: 'Agents', icon: Bot },
-          { id: 'mappings', label: 'Mappings', icon: Link },
-        ]
-  ) as const;
+  const tabs = [
+    { id: 'users', label: 'Users', icon: Users },
+    { id: 'agents', label: 'Agents', icon: Bot },
+    { id: 'mappings', label: 'Mappings', icon: Link },
+    { id: 'games', label: 'Games', icon: Gamepad2 },
+  ] as const;
 
   const selectedUser = users.find((user) => user.id === selectedUserId) || null;
   const deleteUserTarget = deleteUserId ? users.find((user) => user.id === deleteUserId) : null;
