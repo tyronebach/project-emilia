@@ -177,7 +177,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `TTS_CACHE_ENABLED`, `TTS_CACHE_TTL_SECONDS`, `TTS_CACHE_MAX_ENTRIES`.
 - `CHAT_HISTORY_LIMIT`, `LLM_TRIGGER_DETECTION`.
 - `COMPACT_THRESHOLD`, `COMPACT_KEEP_RECENT`, `COMPACT_MODEL`.
-- `GAMES_V2_ENABLED`, `GAMES_V2_AGENT_ALLOWLIST` (agent rollout cohort).
+- `GAMES_V2_AGENT_ALLOWLIST` (optional agent rollout cohort).
 - `CLAWDBOT_AGENTS_DIR` (agent workspaces).
 - `EMILIA_DB_PATH` / fallback for DB.
 

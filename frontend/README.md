@@ -19,10 +19,10 @@ npm install
 npm run dev -- --host
 ```
 
-Optional flag override for local frontend:
+Optional allowlist override for local frontend:
 
 ```bash
-VITE_GAMES_V2_ENABLED=1 npm run dev -- --host
+VITE_GAMES_V2_AGENT_ALLOWLIST=emilia,rem npm run dev -- --host
 ```
 
 ## Build

@@ -61,12 +61,6 @@ async def get_agent_workspace(
     return Path(workspace)
 
 
-async def ensure_games_v2_enabled() -> None:
-    """Gate game V2 routes when the feature flag is disabled."""
-    if not settings.games_v2_enabled:
-        raise HTTPException(status_code=404, detail="Games V2 is disabled")
-
-
 async def ensure_games_v2_enabled_for_agent(
     agent_id: str = Depends(get_agent_id),
 ) -> None:
