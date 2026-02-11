@@ -29,25 +29,14 @@ function RoomChatPage({ userId, roomId }: RoomChatPageProps) {
   const currentUser = useUserStore((state) => state.currentUser);
   const setUser = useUserStore((state) => state.setUser);
 
-  const {
-    messages,
-    agents,
-    streamingByAgent,
-    focusedAgentId,
-    setCurrentRoom,
-    setAgents,
-    setFocusedAgent,
-    clearRoomState,
-  } = useRoomStore((state) => ({
-    messages: state.messages,
-    agents: state.agents,
-    streamingByAgent: state.streamingByAgent,
-    focusedAgentId: state.focusedAgentId,
-    setCurrentRoom: state.setCurrentRoom,
-    setAgents: state.setAgents,
-    setFocusedAgent: state.setFocusedAgent,
-    clearRoomState: state.clearRoomState,
-  }));
+  const messages = useRoomStore((state) => state.messages);
+  const agents = useRoomStore((state) => state.agents);
+  const streamingByAgent = useRoomStore((state) => state.streamingByAgent);
+  const focusedAgentId = useRoomStore((state) => state.focusedAgentId);
+  const setCurrentRoom = useRoomStore((state) => state.setCurrentRoom);
+  const setAgents = useRoomStore((state) => state.setAgents);
+  const setFocusedAgent = useRoomStore((state) => state.setFocusedAgent);
+  const clearRoomState = useRoomStore((state) => state.clearRoomState);
 
   const [input, setInput] = useState('');
   const [mentionAgents, setMentionAgents] = useState<string[]>([]);
