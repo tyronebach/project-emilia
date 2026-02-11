@@ -62,6 +62,19 @@
 - `DELETE /api/sessions/{session_id}`: Deletes session. Response `DeleteResponse`.
 - `GET /api/sessions/{session_id}/history?limit=`: Returns history for session. Response `SessionHistoryResponse`.
 
+**Rooms (Group Chat)** (`backend/routers/rooms.py`)
+- `GET /api/rooms`: Lists rooms for current user. Response `RoomsListResponse`.
+- `POST /api/rooms`: Creates room with 1+ agents. Body `CreateRoomRequest`.
+- `GET /api/rooms/{room_id}`: Room detail with agent and participant lists. Response `RoomDetailResponse`.
+- `PATCH /api/rooms/{room_id}`: Updates room name/settings. Body `UpdateRoomRequest`.
+- `DELETE /api/rooms/{room_id}`: Deletes room. Response `DeleteResponse`.
+- `GET /api/rooms/{room_id}/agents`: Lists agents in room. Response `RoomAgentListResponse`.
+- `POST /api/rooms/{room_id}/agents`: Adds agent. Body `AddRoomAgentRequest`.
+- `PATCH /api/rooms/{room_id}/agents/{agent_id}`: Updates agent role/response mode. Body `UpdateRoomAgentRequest`.
+- `DELETE /api/rooms/{room_id}/agents/{agent_id}`: Removes agent. Response `DeleteResponse`.
+- `GET /api/rooms/{room_id}/history?limit=`: Room message history with sender attribution. Response `RoomHistoryResponse`.
+- `POST /api/rooms/{room_id}/chat?stream=0|1`: Multi-agent room chat. Body `RoomChatRequest`.
+
 **Chat / Media** (`backend/routers/chat.py`)
 - `POST /api/chat?stream=0|1`: Main chat endpoint.
   - Request: `ChatRequest` (`message`, optional `game_context`).
@@ -132,12 +145,14 @@ This includes:
 - `ChatRequest`: `{message, game_context?}`
 - `CreateSessionRequest`: `{agent_id, name?}`
 - `UpdateSessionRequest`: `{name?}`
+- `CreateRoomRequest`, `UpdateRoomRequest`, `AddRoomAgentRequest`, `UpdateRoomAgentRequest`, `RoomChatRequest`
 - `SpeakRequest`: `{text, voice_id?}`
 - `AgentUpdate`: `{display_name?, voice_id?, vrm_model?, workspace?}`
 - `UserPreferencesUpdate`: `{preferences: {...}}`
 
 **Pydantic responses** (`backend/schemas/responses.py`)
 - `UserResponse`, `AgentResponse`, `SessionResponse`, `SessionHistoryResponse`
+- `RoomResponse`, `RoomDetailResponse`, `RoomAgentResponse`, `RoomHistoryResponse`, `RoomChatResponse`
 - `ChatResponse`, `TTSResponse`, `TranscriptionResponse`
 - `UsersListResponse`, `AgentsListResponse`, `SessionsListResponse`
 - `MemoryFilesResponse`, `MemoryContentResponse`, `DeleteResponse`, `AgentDeleteResponse`, `StatusResponse`
@@ -153,6 +168,10 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `sessions`: `id`, `agent_id`, `name`, `created_at`, `last_used`, `message_count`, compaction summary fields
 - `session_participants`: many-to-many
 - `messages`: chat history with LLM metadata and behavior tags
+- `rooms`: group-chat container (`created_by`, settings, activity counters, optional summary)
+- `room_participants`: many-to-many user membership in rooms
+- `room_agents`: many-to-many agent membership + response modes (`mention|always|manual`)
+- `room_messages`: group-chat message log with sender attribution and behavior tags
 - `tts_cache`: TTS caching data
 - `game_stats`: per-session game results
 
@@ -233,6 +252,8 @@ Routes are file-based via TanStack Router.
 - `/user/$userId/chat/new`: `NewChatPage`
 - `/user/$userId/chat/$sessionId`: Main `App` (chat UI)
 - `/user/$userId/chat/initializing/$sessionId`: `InitializingPage`
+- `/user/$userId/rooms`: Room list + room creation
+- `/user/$userId/rooms/$roomId`: Group room chat UI
 - `/manage`: `AdminPanel`
 - `/debug`: `AvatarDebugPanel`
 - `/designer-v2`: `DesignerPageV2`
@@ -242,6 +263,7 @@ Routes are file-based via TanStack Router.
 - `frontend/src/store/index.ts`: App state (status, errors, session, TTS, avatar commands).
 - `frontend/src/store/userStore.ts`: Current user/agent, persisted to localStorage.
 - `frontend/src/store/chatStore.ts`: Messages + streaming content + emotion debug.
+- `frontend/src/store/roomStore.ts`: Group room state (room, agents, messages, per-agent streaming chunks).
 - `frontend/src/store/renderStore.ts`: Render quality, per-user persisted settings.
 - `frontend/src/store/gameStore.ts`: Game session state, persisted to sessionStorage.
 - `frontend/src/store/statsStore.ts`: Latency + state logs for debug HUD.
@@ -251,6 +273,7 @@ Routes are file-based via TanStack Router.
 `frontend/src/utils/api.ts`
 - Adds auth + context headers (`Authorization`, `X-User-Id`, `X-Agent-Id`, `X-Session-Id`).
 - SSE streaming via `streamChat()` for `/api/chat?stream=1`.
+- Room APIs for `/api/rooms/*` plus room SSE parsing via `streamRoomChat()`.
 - Helpers for users, agents, sessions, memory, TTS and history.
 
 ### Major Components

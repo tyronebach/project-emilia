@@ -1,6 +1,6 @@
 # Emilia Web App
 
-Voice + text chat with animated VRM avatar.
+Voice + text chat with animated VRM avatar, including 1:1 sessions and group rooms.
 
 ## Stack
 
@@ -50,6 +50,7 @@ If the backend catalog contains a game but no frontend loader exists, the select
 | Backend | http://localhost:8080 |
 | API Docs | http://localhost:8080/docs |
 | Agent Settings | https://localhost:3443/manage |
+| Group Rooms | https://localhost:3443/user/{userId}/rooms |
 | User Settings | In-app modal (Drawer → User Settings) |
 
 ## Development

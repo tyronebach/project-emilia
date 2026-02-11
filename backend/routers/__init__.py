@@ -6,6 +6,7 @@ from .chat import router as chat_router
 from .memory import router as memory_router
 from .admin import router as admin_router
 from .games import router as games_router
+from .rooms import router as rooms_router
 
 __all__ = [
     "users_router",
@@ -15,4 +16,5 @@ __all__ = [
     "memory_router",
     "admin_router",
     "games_router",
+    "rooms_router",
 ]

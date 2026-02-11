@@ -49,6 +49,83 @@ export interface HistoryMessage {
   timestamp?: string;
 }
 
+export interface RoomAgent {
+  room_id: string;
+  agent_id: string;
+  display_name: string;
+  vrm_model?: string | null;
+  voice_id?: string | null;
+  role: 'participant' | 'moderator' | 'observer' | string;
+  response_mode: 'mention' | 'always' | 'manual' | string;
+  added_at?: number | null;
+  added_by?: string | null;
+}
+
+export interface RoomParticipant {
+  room_id: string;
+  user_id: string;
+  display_name: string;
+  role: 'member' | 'admin' | 'owner' | string;
+  joined_at?: number | null;
+}
+
+export interface Room {
+  id: string;
+  name: string;
+  created_by: string;
+  created_at: number;
+  last_activity: number;
+  message_count: number;
+  room_type: 'group' | 'game_lobby' | 'debate' | string;
+  settings: Record<string, unknown>;
+  agents?: RoomAgent[];
+  participants?: RoomParticipant[];
+}
+
+export interface RoomMessageBehavior {
+  intent?: string | null;
+  mood?: string | null;
+  mood_intensity?: number;
+  energy?: string | null;
+  move?: string | null;
+  game_action?: string | null;
+}
+
+export interface RoomMessage {
+  id: string;
+  room_id: string;
+  sender_type: 'user' | 'agent';
+  sender_id: string;
+  sender_name: string;
+  content: string;
+  timestamp: number;
+  origin?: string | null;
+  model?: string | null;
+  processing_ms?: number | null;
+  usage_prompt_tokens?: number | null;
+  usage_completion_tokens?: number | null;
+  behavior?: RoomMessageBehavior;
+}
+
+export interface RoomChatAgentReply {
+  agent_id: string;
+  agent_name: string;
+  message: RoomMessage;
+  processing_ms: number;
+  model?: string | null;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  } | null;
+}
+
+export interface RoomChatResponsePayload {
+  room_id: string;
+  responses: RoomChatAgentReply[];
+  count: number;
+}
+
 export interface GameCatalogItem {
   id: string;
   display_name: string;
@@ -423,6 +500,134 @@ export async function renameSession(sessionId: string, name: string): Promise<Se
 }
 
 
+// ============ ROOM API ============
+
+export async function getRooms(): Promise<Room[]> {
+  const response = await fetchWithAuth(`${API_URL}/api/rooms`);
+  if (!response.ok) throw new Error(`Failed to fetch rooms: ${response.status}`);
+  const data = await response.json();
+  return data.rooms || [];
+}
+
+export async function createRoom(data: {
+  name: string;
+  agent_ids: string[];
+  settings?: Record<string, unknown>;
+}): Promise<Room> {
+  const response = await fetchWithAuth(`${API_URL}/api/rooms`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Failed to create room: ${response.status}`);
+  return response.json();
+}
+
+export async function getRoom(roomId: string): Promise<Room> {
+  const response = await fetchWithAuth(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}`);
+  if (!response.ok) throw new Error(`Failed to fetch room: ${response.status}`);
+  return response.json();
+}
+
+export async function updateRoom(
+  roomId: string,
+  data: { name?: string; settings?: Record<string, unknown> },
+): Promise<Room> {
+  const response = await fetchWithAuth(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Failed to update room: ${response.status}`);
+  return response.json();
+}
+
+export async function deleteRoom(roomId: string): Promise<void> {
+  const response = await fetchWithAuth(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) throw new Error(`Failed to delete room: ${response.status}`);
+}
+
+export async function getRoomAgents(roomId: string): Promise<RoomAgent[]> {
+  const response = await fetchWithAuth(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/agents`);
+  if (!response.ok) throw new Error(`Failed to fetch room agents: ${response.status}`);
+  const data = await response.json();
+  return data.agents || [];
+}
+
+export async function addRoomAgent(
+  roomId: string,
+  data: {
+    agent_id: string;
+    response_mode?: 'mention' | 'always' | 'manual';
+    role?: 'participant' | 'moderator' | 'observer';
+  },
+): Promise<RoomAgent> {
+  const response = await fetchWithAuth(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/agents`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Failed to add room agent: ${response.status}`);
+  return response.json();
+}
+
+export async function updateRoomAgent(
+  roomId: string,
+  agentId: string,
+  data: {
+    response_mode?: 'mention' | 'always' | 'manual';
+    role?: 'participant' | 'moderator' | 'observer';
+  },
+): Promise<RoomAgent> {
+  const response = await fetchWithAuth(
+    `${API_URL}/api/rooms/${encodeURIComponent(roomId)}/agents/${encodeURIComponent(agentId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    },
+  );
+  if (!response.ok) throw new Error(`Failed to update room agent: ${response.status}`);
+  return response.json();
+}
+
+export async function removeRoomAgent(roomId: string, agentId: string): Promise<void> {
+  const response = await fetchWithAuth(
+    `${API_URL}/api/rooms/${encodeURIComponent(roomId)}/agents/${encodeURIComponent(agentId)}`,
+    {
+      method: 'DELETE',
+    },
+  );
+  if (!response.ok) throw new Error(`Failed to remove room agent: ${response.status}`);
+}
+
+export async function getRoomHistory(
+  roomId: string,
+  limit = 100,
+  includeRuntime = false,
+): Promise<RoomMessage[]> {
+  const response = await fetchWithAuth(
+    `${API_URL}/api/rooms/${encodeURIComponent(roomId)}/history?limit=${limit}&includeRuntime=${includeRuntime ? 'true' : 'false'}`,
+  );
+  if (response.status === 403 || response.status === 404) {
+    return [];
+  }
+  if (!response.ok) throw new Error(`Failed to fetch room history: ${response.status}`);
+  const data = await response.json();
+  return data.messages || [];
+}
+
+export async function sendRoomMessage(
+  roomId: string,
+  data: { message: string; mention_agents?: string[]; game_context?: GameContext | undefined },
+): Promise<RoomChatResponsePayload> {
+  const response = await fetchWithAuth(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/chat?stream=0`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Failed to send room message: ${response.status}`);
+  return response.json();
+}
+
+
 // ============ CHAT API ============
 
 const AVATAR_TAG_REGEX = /\[(?:mood|intent|energy|move|game):[^\]]*\]/gi;
@@ -606,6 +811,138 @@ export async function streamChat(
 }
 
 
+export type RoomStreamEvent =
+  | { type: 'agent_start'; agent_id: string; agent_name: string }
+  | { type: 'content'; agent_id: string; content: string }
+  | {
+      type: 'agent_done';
+      agent_id: string;
+      agent_name: string;
+      behavior?: RoomMessageBehavior;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
+      processing_ms?: number;
+      message: RoomMessage;
+    }
+  | { type: 'agent_error'; agent_id: string; agent_name: string; error: string }
+  | { type: 'done'; room_id: string };
+
+export async function streamRoomChat(
+  roomId: string,
+  data: { message: string; mention_agents?: string[]; game_context?: GameContext | undefined },
+  onEvent: (event: RoomStreamEvent) => void,
+  onError: (error: Error) => void,
+  options?: {
+    signal?: AbortSignal;
+  },
+): Promise<void> {
+  try {
+    const response = await fetchWithAuth(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/chat?stream=1`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      signal: options?.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Room chat API error: ${response.status} - ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let currentEventType: string | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEventType = line.slice(7).trim();
+          continue;
+        }
+
+        if (!line.startsWith('data: ')) continue;
+        const dataStr = line.slice(6).trim();
+        if (!dataStr || dataStr === '[DONE]') {
+          currentEventType = null;
+          continue;
+        }
+
+        try {
+          const parsed = JSON.parse(dataStr);
+          if (parsed.error && currentEventType !== 'agent_error') {
+            throw new Error(parsed.error);
+          }
+
+          if (currentEventType === 'agent_start') {
+            onEvent({
+              type: 'agent_start',
+              agent_id: parsed.agent_id,
+              agent_name: parsed.agent_name,
+            });
+            currentEventType = null;
+            continue;
+          }
+
+          if (currentEventType === 'agent_done') {
+            onEvent({
+              type: 'agent_done',
+              agent_id: parsed.agent_id,
+              agent_name: parsed.agent_name,
+              behavior: parsed.behavior,
+              usage: parsed.usage,
+              processing_ms: parsed.processing_ms,
+              message: parsed.message,
+            });
+            currentEventType = null;
+            continue;
+          }
+
+          if (currentEventType === 'agent_error') {
+            onEvent({
+              type: 'agent_error',
+              agent_id: parsed.agent_id,
+              agent_name: parsed.agent_name,
+              error: parsed.error || 'Room chat failed',
+            });
+            currentEventType = null;
+            continue;
+          }
+
+          if (parsed.done) {
+            onEvent({ type: 'done', room_id: parsed.room_id });
+            currentEventType = null;
+            continue;
+          }
+
+          if (parsed.content && parsed.agent_id) {
+            onEvent({
+              type: 'content',
+              agent_id: parsed.agent_id,
+              content: parsed.content,
+            });
+          }
+        } catch (e) {
+          if ((e as Error).message !== 'Unexpected end of JSON input') {
+            onError(e as Error);
+          }
+        }
+        currentEventType = null;
+      }
+    }
+  } catch (error) {
+    onError(error as Error);
+  }
+}
+
+
 // ============ MEMORY API ============
 
 export async function getMemory(): Promise<string> {
@@ -677,7 +1014,19 @@ export default {
   getSessionHistory,
   deleteSession,
   renameSession,
+  getRooms,
+  createRoom,
+  getRoom,
+  updateRoom,
+  deleteRoom,
+  getRoomAgents,
+  addRoomAgent,
+  updateRoomAgent,
+  removeRoomAgent,
+  getRoomHistory,
+  sendRoomMessage,
   streamChat,
+  streamRoomChat,
   stripAvatarTags,
   stripAvatarTagsStreaming,
   getMemory,

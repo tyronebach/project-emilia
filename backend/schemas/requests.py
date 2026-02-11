@@ -254,3 +254,100 @@ class AgentGameConfigUpdate(BaseModel):
             return None
         stripped = v.strip()
         return stripped if stripped else None
+
+
+class CreateRoomRequest(BaseModel):
+    """Create room request."""
+    name: str = Field(..., min_length=1, max_length=100)
+    agent_ids: list[str] = Field(..., min_length=1, max_length=10)
+    settings: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("name")
+    @classmethod
+    def strip_room_name(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Room name cannot be empty")
+        return stripped
+
+    @field_validator("agent_ids")
+    @classmethod
+    def clean_agent_ids(cls, v: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for agent_id in v:
+            normalized = (agent_id or "").strip()
+            if not normalized:
+                continue
+            if normalized not in cleaned:
+                cleaned.append(normalized)
+        if not cleaned:
+            raise ValueError("agent_ids must include at least one valid agent ID")
+        return cleaned
+
+
+class UpdateRoomRequest(BaseModel):
+    """Update room request."""
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    settings: Optional[Dict[str, Any]] = None
+
+    @field_validator("name")
+    @classmethod
+    def strip_optional_room_name(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Room name cannot be empty")
+        return stripped
+
+
+class AddRoomAgentRequest(BaseModel):
+    """Add agent to room request."""
+    agent_id: str = Field(..., min_length=1, max_length=100)
+    response_mode: Literal["mention", "always", "manual"] = "mention"
+    role: Literal["participant", "moderator", "observer"] = "participant"
+
+    @field_validator("agent_id")
+    @classmethod
+    def strip_room_agent_id(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("agent_id cannot be empty")
+        return stripped
+
+
+class UpdateRoomAgentRequest(BaseModel):
+    """Update room-agent settings request."""
+    response_mode: Optional[Literal["mention", "always", "manual"]] = None
+    role: Optional[Literal["participant", "moderator", "observer"]] = None
+
+
+class RoomChatRequest(BaseModel):
+    """Room chat request."""
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    message: str = Field(..., min_length=1, max_length=10000)
+    mention_agents: list[str] | None = Field(None, max_length=10)
+    game_context: Dict[str, Any] | None = None
+
+    @field_validator("message")
+    @classmethod
+    def strip_room_message(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Message cannot be empty")
+        return stripped
+
+    @field_validator("mention_agents")
+    @classmethod
+    def clean_mention_agents(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+        cleaned: list[str] = []
+        for agent_id in v:
+            normalized = (agent_id or "").strip()
+            if not normalized:
+                continue
+            if normalized not in cleaned:
+                cleaned.append(normalized)
+        return cleaned or None

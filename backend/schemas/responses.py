@@ -131,6 +131,90 @@ class StatusResponse(BaseModel):
     message: str | None = None
 
 
+class RoomAgentResponse(BaseModel):
+    room_id: str
+    agent_id: str
+    display_name: str
+    vrm_model: str | None = None
+    voice_id: str | None = None
+    role: str = "participant"
+    response_mode: str = "mention"
+    added_at: int | None = None
+    added_by: str | None = None
+
+
+class RoomParticipantResponse(BaseModel):
+    room_id: str
+    user_id: str
+    display_name: str
+    role: str = "member"
+    joined_at: int | None = None
+
+
+class RoomResponse(BaseModel):
+    id: str
+    name: str
+    created_by: str
+    created_at: int
+    last_activity: int
+    message_count: int = 0
+    room_type: str = "group"
+    settings: dict = {}
+
+
+class RoomDetailResponse(RoomResponse):
+    agents: list[RoomAgentResponse] = []
+    participants: list[RoomParticipantResponse] = []
+
+
+class RoomsListResponse(BaseModel):
+    rooms: list[RoomResponse]
+    count: int
+
+
+class RoomAgentListResponse(BaseModel):
+    room_id: str
+    agents: list[RoomAgentResponse]
+    count: int
+
+
+class RoomMessageResponse(BaseModel):
+    id: str
+    room_id: str
+    sender_type: str
+    sender_id: str
+    sender_name: str
+    content: str
+    timestamp: float
+    origin: str | None = None
+    model: str | None = None
+    processing_ms: int | None = None
+    usage_prompt_tokens: int | None = None
+    usage_completion_tokens: int | None = None
+    behavior: AvatarBehavior = AvatarBehavior()
+
+
+class RoomHistoryResponse(BaseModel):
+    messages: list[RoomMessageResponse]
+    room_id: str
+    count: int
+
+
+class RoomChatAgentResponse(BaseModel):
+    agent_id: str
+    agent_name: str
+    message: RoomMessageResponse
+    processing_ms: int
+    model: str | None = None
+    usage: dict | None = None
+
+
+class RoomChatResponse(BaseModel):
+    room_id: str
+    responses: list[RoomChatAgentResponse]
+    count: int
+
+
 class GameRegistryItemResponse(BaseModel):
     id: str
     display_name: str

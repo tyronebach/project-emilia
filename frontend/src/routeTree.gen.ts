@@ -18,6 +18,8 @@ import { Route as UserUserIdIndexRouteImport } from './routes/user/$userId/index
 import { Route as UserUserIdChatNewRouteImport } from './routes/user/$userId/chat.new'
 import { Route as UserUserIdChatSessionIdRouteImport } from './routes/user/$userId/chat.$sessionId'
 import { Route as UserUserIdChatInitializingSessionIdRouteImport } from './routes/user/$userId/chat.initializing.$sessionId'
+import { Route as UserUserIdRoomsRouteImport } from './routes/user/$userId/rooms'
+import { Route as UserUserIdRoomsRoomIdRouteImport } from './routes/user/$userId/rooms.$roomId'
 
 const ManageRoute = ManageRouteImport.update({
   id: '/manage',
@@ -65,6 +67,16 @@ const UserUserIdChatInitializingSessionIdRoute =
     path: '/chat/initializing/$sessionId',
     getParentRoute: () => UserUserIdRoute,
   } as any)
+const UserUserIdRoomsRoute = UserUserIdRoomsRouteImport.update({
+  id: '/rooms',
+  path: '/rooms',
+  getParentRoute: () => UserUserIdRoute,
+} as any)
+const UserUserIdRoomsRoomIdRoute = UserUserIdRoomsRoomIdRouteImport.update({
+  id: '/rooms/$roomId',
+  path: '/rooms/$roomId',
+  getParentRoute: () => UserUserIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -76,6 +88,8 @@ export interface FileRoutesByFullPath {
   '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
   '/user/$userId/chat/initializing/$sessionId': typeof UserUserIdChatInitializingSessionIdRoute
+  '/user/$userId/rooms': typeof UserUserIdRoomsRoute
+  '/user/$userId/rooms/$roomId': typeof UserUserIdRoomsRoomIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -86,6 +100,8 @@ export interface FileRoutesByTo {
   '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
   '/user/$userId/chat/initializing/$sessionId': typeof UserUserIdChatInitializingSessionIdRoute
+  '/user/$userId/rooms': typeof UserUserIdRoomsRoute
+  '/user/$userId/rooms/$roomId': typeof UserUserIdRoomsRoomIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -98,6 +114,8 @@ export interface FileRoutesById {
   '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
   '/user/$userId/chat/initializing/$sessionId': typeof UserUserIdChatInitializingSessionIdRoute
+  '/user/$userId/rooms': typeof UserUserIdRoomsRoute
+  '/user/$userId/rooms/$roomId': typeof UserUserIdRoomsRoomIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -111,6 +129,8 @@ export interface FileRouteTypes {
     | '/user/$userId/chat/$sessionId'
     | '/user/$userId/chat/new'
     | '/user/$userId/chat/initializing/$sessionId'
+    | '/user/$userId/rooms'
+    | '/user/$userId/rooms/$roomId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -121,6 +141,8 @@ export interface FileRouteTypes {
     | '/user/$userId/chat/$sessionId'
     | '/user/$userId/chat/new'
     | '/user/$userId/chat/initializing/$sessionId'
+    | '/user/$userId/rooms'
+    | '/user/$userId/rooms/$roomId'
   id:
     | '__root__'
     | '/'
@@ -132,6 +154,8 @@ export interface FileRouteTypes {
     | '/user/$userId/chat/$sessionId'
     | '/user/$userId/chat/new'
     | '/user/$userId/chat/initializing/$sessionId'
+    | '/user/$userId/rooms'
+    | '/user/$userId/rooms/$roomId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -207,6 +231,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UserUserIdChatInitializingSessionIdRouteImport
       parentRoute: typeof UserUserIdRoute
     }
+    '/user/$userId/rooms': {
+      id: '/user/$userId/rooms'
+      path: '/rooms'
+      fullPath: '/user/$userId/rooms'
+      preLoaderRoute: typeof UserUserIdRoomsRouteImport
+      parentRoute: typeof UserUserIdRoute
+    }
+    '/user/$userId/rooms/$roomId': {
+      id: '/user/$userId/rooms/$roomId'
+      path: '/rooms/$roomId'
+      fullPath: '/user/$userId/rooms/$roomId'
+      preLoaderRoute: typeof UserUserIdRoomsRoomIdRouteImport
+      parentRoute: typeof UserUserIdRoute
+    }
   }
 }
 
@@ -215,6 +253,8 @@ interface UserUserIdRouteChildren {
   UserUserIdChatSessionIdRoute: typeof UserUserIdChatSessionIdRoute
   UserUserIdChatNewRoute: typeof UserUserIdChatNewRoute
   UserUserIdChatInitializingSessionIdRoute: typeof UserUserIdChatInitializingSessionIdRoute
+  UserUserIdRoomsRoute: typeof UserUserIdRoomsRoute
+  UserUserIdRoomsRoomIdRoute: typeof UserUserIdRoomsRoomIdRoute
 }
 
 const UserUserIdRouteChildren: UserUserIdRouteChildren = {
@@ -223,6 +263,8 @@ const UserUserIdRouteChildren: UserUserIdRouteChildren = {
   UserUserIdChatNewRoute: UserUserIdChatNewRoute,
   UserUserIdChatInitializingSessionIdRoute:
     UserUserIdChatInitializingSessionIdRoute,
+  UserUserIdRoomsRoute: UserUserIdRoomsRoute,
+  UserUserIdRoomsRoomIdRoute: UserUserIdRoomsRoomIdRoute,
 }
 
 const UserUserIdRouteWithChildren = UserUserIdRoute._addFileChildren(
