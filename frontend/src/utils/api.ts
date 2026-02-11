@@ -5,6 +5,7 @@
 
 import type { AvatarCommand } from '../types';
 import type { GameContext } from '../games/types';
+import type { SoulMoodSnapshot } from '../types/soulWindow';
 import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
 
@@ -681,6 +682,7 @@ interface StreamResponse {
 export interface EmotionDebug {
   triggers: [string, number][];
   context_block: string | null;
+  snapshot?: SoulMoodSnapshot | null;
 }
 
 export type { CompactionInfo, StreamResponse };

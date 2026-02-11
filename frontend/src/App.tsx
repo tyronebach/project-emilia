@@ -17,6 +17,8 @@ import InputControls from './components/InputControls';
 import DebugPanel from './components/DebugPanel';
 import MemoryModal from './components/MemoryModal';
 import UserSettingsModal from './components/UserSettingsModal';
+import BondModal from './components/BondModal';
+import AboutModal from './components/AboutModal';
 import AwakeningOverlay from './components/AwakeningOverlay';
 import GamePanel from './components/GamePanel';
 import { STATUS_COLORS } from './types';
@@ -45,6 +47,8 @@ function App({ userId, sessionId }: AppProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [bondOpen, setBondOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [userSettingsOpen, setUserSettingsOpen] = useState(false);
   const hasValidatedRef = useRef(false);
 
@@ -123,6 +127,10 @@ function App({ userId, sessionId }: AppProps) {
       setDebugOpen={setDebugOpen}
       memoryOpen={memoryOpen}
       setMemoryOpen={setMemoryOpen}
+      bondOpen={bondOpen}
+      setBondOpen={setBondOpen}
+      aboutOpen={aboutOpen}
+      setAboutOpen={setAboutOpen}
       userSettingsOpen={userSettingsOpen}
       setUserSettingsOpen={setUserSettingsOpen}
     />
@@ -140,6 +148,10 @@ function AppContent({
   setDebugOpen,
   memoryOpen,
   setMemoryOpen,
+  bondOpen,
+  setBondOpen,
+  aboutOpen,
+  setAboutOpen,
   userSettingsOpen,
   setUserSettingsOpen,
 }: {
@@ -149,11 +161,16 @@ function AppContent({
   setDebugOpen: (open: boolean) => void;
   memoryOpen: boolean;
   setMemoryOpen: (open: boolean) => void;
+  bondOpen: boolean;
+  setBondOpen: (open: boolean) => void;
+  aboutOpen: boolean;
+  setAboutOpen: (open: boolean) => void;
   userSettingsOpen: boolean;
   setUserSettingsOpen: (open: boolean) => void;
 }) {
   const messages = useChatStore((s) => s.messages);
   const addMessage = useChatStore((s) => s.addMessage);
+  const currentMood = useChatStore((s) => s.currentMood);
   const status = useAppStore((s) => s.status);
   const ttsEnabled = useAppStore((s) => s.ttsEnabled);
   const setTtsEnabled = useAppStore((s) => s.setTtsEnabled);
@@ -310,8 +327,13 @@ function AppContent({
         onMenuClick={() => setDrawerOpen(true)}
         onDebugClick={() => setDebugOpen(!debugOpen)}
         onMemoryClick={() => setMemoryOpen(!memoryOpen)}
+        onBondClick={() => setBondOpen(!bondOpen)}
+        onAboutClick={() => setAboutOpen(!aboutOpen)}
         debugOpen={debugOpen}
         memoryOpen={memoryOpen}
+        bondOpen={bondOpen}
+        aboutOpen={aboutOpen}
+        currentMood={currentMood}
         handsFreeEnabled={handsFreeEnabled}
         voicePermissionWarning={voicePermissionWarning}
       />
@@ -348,6 +370,12 @@ function AppContent({
 
       {/* Memory Modal */}
       <MemoryModal open={memoryOpen} onClose={() => setMemoryOpen(false)} />
+
+      {/* Bond Modal */}
+      <BondModal open={bondOpen} onClose={() => setBondOpen(false)} />
+
+      {/* About Modal */}
+      <AboutModal open={aboutOpen} onClose={() => setAboutOpen(false)} />
 
       {/* User Settings Modal */}
       <UserSettingsModal open={userSettingsOpen} onClose={() => setUserSettingsOpen(false)} />

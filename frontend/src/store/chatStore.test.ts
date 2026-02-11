@@ -7,6 +7,8 @@ describe('chatStore', () => {
     useChatStore.setState({
       messages: [],
       streamingContent: '',
+      lastEmotionDebug: null,
+      currentMood: null,
     });
   });
 
@@ -167,6 +169,25 @@ describe('chatStore', () => {
       expect(messages).toHaveLength(0);
     });
 
+    it('should clear current mood snapshot', () => {
+      const store = useChatStore.getState();
+      store.setCurrentMood({
+        user_id: 'u',
+        agent_id: 'a',
+        dominant_mood: { id: 'supportive', weight: 1, emoji: 'x' },
+        secondary_moods: [],
+        valence: 0,
+        arousal: 0,
+        trust: 0.6,
+        intimacy: 0.3,
+        interaction_count: 1,
+        last_interaction: null,
+      });
+
+      store.clearMessages();
+      expect(useChatStore.getState().currentMood).toBeNull();
+    });
+
     it('should work when already empty', () => {
       const store = useChatStore.getState();
       store.clearMessages();
@@ -198,6 +219,28 @@ describe('chatStore', () => {
       store.setStreamingContent('');
 
       expect(useChatStore.getState().streamingContent).toBe('');
+    });
+  });
+
+  describe('currentMood', () => {
+    it('should set and clear mood snapshot', () => {
+      const store = useChatStore.getState();
+      store.setCurrentMood({
+        user_id: 'u-1',
+        agent_id: 'a-1',
+        dominant_mood: { id: 'zen', weight: 4.2, emoji: ':zen:' },
+        secondary_moods: [{ id: 'supportive', weight: 2.1, emoji: ':supportive:' }],
+        valence: 0.2,
+        arousal: -0.1,
+        trust: 0.7,
+        intimacy: 0.4,
+        interaction_count: 22,
+        last_interaction: '2026-02-11T09:00:00+00:00',
+      });
+      expect(useChatStore.getState().currentMood?.dominant_mood.id).toBe('zen');
+
+      store.setCurrentMood(null);
+      expect(useChatStore.getState().currentMood).toBeNull();
     });
   });
 });

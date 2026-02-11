@@ -1,16 +1,23 @@
-import { Menu, Activity, Brain, MicOff, Volume2 } from 'lucide-react';
+import { Menu, Activity, Brain, MicOff, Volume2, HeartHandshake, BookOpenText } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
 import { STATUS_COLORS } from '../types';
+import type { SoulMoodSnapshot } from '../types/soulWindow';
 import { Button } from './ui/button';
 import { updateUserPreferences } from '../utils/api';
+import MoodIndicator from './MoodIndicator';
 
 interface HeaderProps {
   onMenuClick: () => void;
   onDebugClick: () => void;
   onMemoryClick: () => void;
+  onBondClick: () => void;
+  onAboutClick: () => void;
   debugOpen: boolean;
   memoryOpen: boolean;
+  bondOpen: boolean;
+  aboutOpen: boolean;
+  currentMood: SoulMoodSnapshot | null;
   handsFreeEnabled?: boolean;
   voicePermissionWarning?: string | null;
 }
@@ -19,8 +26,13 @@ function Header({
   onMenuClick,
   onDebugClick,
   onMemoryClick,
+  onBondClick,
+  onAboutClick,
   debugOpen,
   memoryOpen,
+  bondOpen,
+  aboutOpen,
+  currentMood,
   handsFreeEnabled = false,
   voicePermissionWarning,
 }: HeaderProps) {
@@ -70,9 +82,10 @@ function Header({
             className={`w-2 h-2 rounded-full ${STATUS_COLORS[status]}`}
             title={`Status: ${status}`}
           />
+          <MoodIndicator mood={currentMood} onClick={onBondClick} />
         </div>
 
-        {/* Right: TTS + Debug + Memory buttons */}
+        {/* Right: TTS + Bond/About + Debug + Memory buttons */}
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
@@ -83,6 +96,24 @@ function Header({
             title={ttsEnabled ? 'Voice replies on' : 'Voice replies off'}
           >
             <Volume2 className="w-5 h-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onBondClick}
+            className={`text-text-primary hover:bg-white/10 bg-bg-secondary/45 border border-white/10 ${bondOpen ? 'bg-white/15' : ''}`}
+            title="Bond"
+          >
+            <HeartHandshake className="w-5 h-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onAboutClick}
+            className={`text-text-primary hover:bg-white/10 bg-bg-secondary/45 border border-white/10 ${aboutOpen ? 'bg-white/15' : ''}`}
+            title="About"
+          >
+            <BookOpenText className="w-5 h-5" />
           </Button>
           <Button
             variant="ghost"
