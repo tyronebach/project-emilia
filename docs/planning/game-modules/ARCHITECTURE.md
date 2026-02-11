@@ -6,7 +6,7 @@
 
 ## System Overview
 
-The game system is a frontend-first addon layer that plugs into the existing Emilia chat architecture. It introduces no new backend services -- only extends the existing chat flow with game context.
+The game system is a frontend-first addon layer that plugs into the existing Emilia chat architecture. Game logic still runs in the browser, while backend routes provide catalog/config resolution and trusted prompt-context injection.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -42,16 +42,20 @@ The game system is a frontend-first addon layer that plugs into the existing Emi
 │  └───────────────────────────┘                                   │
 └──────────────────────────────┬───────────────────────────────────┘
                                │ POST /api/chat
-                               │ { message, gameContext }
+                               │ { message, game_context, runtime_trigger }
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Backend (FastAPI)                            │
 │                                                                  │
-│  chat.py                                                        │
-│  ├── Receives gameContext in request body                        │
-│  ├── Builds game prompt injection                                │
-│  ├── Appends to user message before sending to Clawdbot         │
-│  └── Extracts [move:x] from response (alongside existing tags)  │
+│  games.py + admin.py                                            │
+│  ├── Resolves per-agent catalog/config                           │
+│  └── Manages game registry and per-agent overrides               │
+│                                                                  │
+│  chat.py                                                         │
+│  ├── Receives typed game_context in request body                 │
+│  ├── Resolves trusted prompt instructions from backend registry  │
+│  ├── Appends context to user message before Clawdbot call        │
+│  └── Extracts [move:x] from response (with existing behavior tags)│
 │                                                                  │
 │  parse_chat.py                                                  │
 │  ├── Existing: [mood:x:y], [intent:x], [energy:x]              │
@@ -72,7 +76,7 @@ The game system is a frontend-first addon layer that plugs into the existing Emi
 │   ---                                                            │
 │   [game: chess]                                                  │
 │                                                                  │
-│   ## Chess — How You Play (Layer 2: promptInstructions)          │
+│   ## Chess — How You Play (Layer 2: trusted backend instructions)│
 │   Your move has already been decided. Narrate as if YOU chose it.│
 │   - Never mention an engine, algorithm, or calculation           │
 │   ...                                                            │
@@ -107,28 +111,38 @@ Full spec in [GAME-INTERFACE-SPEC.md](./GAME-INTERFACE-SPEC.md).
 
 ### 2. Game Registry
 
-A simple TypeScript map that registers available games:
+A loader manifest maps `gameId` to lazy imports, while a runtime cache stores loaded modules:
 
 ```typescript
+// games/loaders/manifest.ts
+export const gameLoaderManifest = {
+  chess: () => import('../modules/chess'),
+  'tic-tac-toe': () => import('../modules/tic-tac-toe'),
+};
+
 // games/registry.ts
-import { ticTacToeModule } from './tic-tac-toe/TicTacToeModule';
-import { chessModule } from './chess/ChessModule';
+const registry = new Map<string, GameModule>();
 
-export const gameRegistry = new Map<string, GameModule>([
-  ['tic-tac-toe', ticTacToeModule],
-  ['chess', chessModule],
-]);
-
-export function getGame(id: string): GameModule | undefined {
-  return gameRegistry.get(id);
+export function hasGameLoader(gameId: string): boolean {
+  return Object.prototype.hasOwnProperty.call(gameLoaderManifest, gameId);
 }
 
-export function listGames(): GameModule[] {
-  return Array.from(gameRegistry.values());
+export async function loadGame(gameId: string): Promise<GameModule> {
+  if (registry.has(gameId)) return registry.get(gameId)!;
+  const loader = gameLoaderManifest[gameId];
+  if (!loader) throw new Error(`No loader configured for "${gameId}"`);
+  const loaded = await loader();
+  const module = await loaded.default.load();
+  registry.set(gameId, module);
+  return module;
+}
+
+export function getGame(gameId: string): GameModule | undefined {
+  return registry.get(gameId);
 }
 ```
 
-No dynamic loading, no webpack magic. Just imports. New games are added by implementing the interface and adding a line to the registry.
+Games are lazy-loaded on demand, so inactive games stay out of the initial bundle. A new game requires module code + loader manifest entry + backend catalog registration.
 
 ### 3. Game Store (Zustand)
 
@@ -153,7 +167,7 @@ interface GameStoreState {
 }
 ```
 
-State is stored in memory per session. When the user navigates away or starts a new session, the game ends. Optionally persisted to `sessionStorage` for page refresh survival.
+State is persisted in `sessionStorage` with context scoping (`userId`, `agentId`, `sessionId`, `gameId`) to prevent cross-session leakage.
 
 ### 4. useGame Hook
 
@@ -174,6 +188,8 @@ function useGame() {
   return { activeGame, gameState, currentTurn, startGame, makeUserMove, getGameContext };
 }
 ```
+
+`useGame` owns game-state orchestration and context payload building. Runtime chat triggers (turn prompts/outcome prompts) are emitted by shared runtime UI flow (`GameWindowManager` + `useChat`), not by individual game modules.
 
 ### 5. Move Provider
 
@@ -242,7 +258,7 @@ The provider is selected per-game via `GameModule.defaultMoveProvider` and can b
    }
        │
 5. Backend receives request:
-   a. Extracts gameContext from body
+   a. Extracts `game_context` from body
    b. Builds game prompt injection (appended to user message)
    c. Sends augmented message to Clawdbot
        │
@@ -268,28 +284,18 @@ The provider is selected per-game via `GameModule.defaultMoveProvider` and can b
 
 | File | Change | Impact |
 |------|--------|--------|
-| `frontend/src/games/types.ts` | Add `promptInstructions` to `GameModule` and `GameContext` interfaces | Low - new required field |
-| `frontend/src/utils/api.ts` | `streamChat()` accepts optional `gameContext` param, sends in request body | Low - additive parameter |
-| `frontend/src/hooks/useChat.ts` | Calls `useGame.getGameContext()` before sending, processes game events from response | Medium - hook composition |
-| `frontend/src/hooks/useGame.ts` | `getGameContext()` includes `promptInstructions` from active GameModule | Low - one extra field |
-| `backend/parse_chat.py` | Add `MOVE_PATTERN` and `GAME_PATTERN` regex for `[move:x]` / `[game:x]` extraction | Low - additive patterns |
-| `backend/routers/chat.py` | Read `gameContext` from request body, inject prompt instructions + state into Clawdbot prompt | Medium - prompt augmentation |
-| `backend/schemas.py` | Extend `ChatRequest` with optional `game_context` field | Low - optional field |
-| `frontend/src/store/index.ts` | No changes needed | None |
-
-### New Files
-
-| File | Purpose |
-|------|---------|
-| `frontend/src/games/types.ts` | GameModule interface (incl. `promptInstructions`), shared types |
-| `frontend/src/games/registry.ts` | Game module map |
-| `frontend/src/games/tic-tac-toe/TicTacToeModule.ts` | First game implementation (logic + prompt instructions) |
-| `frontend/src/games/tic-tac-toe/TicTacToeBoard.tsx` | First game renderer |
-| `frontend/src/store/gameStore.ts` | Game state Zustand store |
-| `frontend/src/hooks/useGame.ts` | Game lifecycle hook |
-| `frontend/src/components/GamePanel.tsx` | Floating game container |
-| `frontend/src/components/GameSelector.tsx` | Game picker |
-| `emilia-thai/skills/games/SKILL.md` | OpenClaw game awareness skill (Layer 1) |
+| `frontend/src/games/loaders/manifest.ts` | Declares `gameId -> dynamic import` mapping | Medium - lazy loading contract |
+| `frontend/src/games/registry.ts` | Loads/caches modules at runtime (`loadGame`, `preloadGame`, `hasGameLoader`) | Medium - runtime module lifecycle |
+| `frontend/src/games/modules/*` | Game packages (logic + renderer + loader contract) | Medium - per-game implementation |
+| `frontend/src/store/gameCatalogStore.ts` | Agent-scoped catalog state + refresh lifecycle | Medium - capability gating |
+| `frontend/src/hooks/useGame.ts` | Runtime orchestration, move handling, context payload building | High - core game flow |
+| `frontend/src/hooks/useChat.ts` | Sends `game_context` / `runtime_trigger`, processes avatar move tags | High - chat bridge |
+| `frontend/src/games/ui/GameWindowManager.tsx` | Shared runtime triggers for turn/outcome messages | Medium - runtime messaging path |
+| `backend/schemas/requests.py` | Typed `GameContextRequest` validation | Medium - contract enforcement |
+| `backend/routers/chat.py` | Trusted prompt resolution + context injection + runtime-origin handling | High - backend bridge |
+| `backend/routers/games.py` | Public catalog endpoints (`/api/games/catalog*`) | Medium - runtime capabilities |
+| `backend/routers/admin.py` | Manage registry/agent config (`/api/manage/games*`) | Medium - operator controls |
+| `backend/db/repositories/games.py` | Registry/config persistence and effective config resolution | Medium - source of truth |
 
 ---
 
@@ -322,68 +328,37 @@ The provider is selected per-game via `GameModule.defaultMoveProvider` and can b
 
 ## Game Context Injection (Backend)
 
-The backend's role is minimal but important: it transforms the game context into a natural language prompt segment that the LLM can understand. This includes both the per-game prompt instructions (Layer 2) and the game state (Layer 3). See [PROMPTING-STRATEGY.md](./PROMPTING-STRATEGY.md) for the full three-layer architecture.
+The backend transforms validated `game_context` into a natural-language prompt segment for the LLM. Prompt instructions are resolved from backend registry/config (trusted source), while state/move context comes from runtime payload. See [PROMPTING-STRATEGY.md](./PROMPTING-STRATEGY.md) for the three-layer model.
 
 ### Request Schema Extension
 
 ```python
 class ChatRequest(BaseModel):
     message: str
-    game_context: dict | None = None  # Optional game context
+    game_context: GameContextRequest | None = None
+    runtime_trigger: bool = False
 ```
 
 ### Prompt Injection Strategy
 
-The game context is appended to the user's message before sending to Clawdbot. It includes the game-specific prompt instructions from the GameModule, followed by the serialized state and turn instructions:
+The game context is appended before the Clawdbot call. The backend first resolves trusted prompt instructions for `agent_id + game_id`, then injects those with state/turn instructions:
 
 ```python
-def inject_game_context(user_message: str, game_context: dict | None) -> str:
-    if not game_context:
-        return user_message
-
-    game_id = game_context.get("gameId", "unknown")
-    prompt_instructions = game_context.get("promptInstructions", "")
-    state = game_context.get("state", "")
-    last_move = game_context.get("lastUserMove", "")
-    avatar_move = game_context.get("avatarMove")
-    valid_moves = game_context.get("validMoves", [])
-    status = game_context.get("status", "in_progress")
-
-    # Start context block
-    context_block = f"\n\n---\n[game: {game_id}]\n"
-
-    # Layer 2: Per-game prompt instructions (from GameModule.promptInstructions)
-    if prompt_instructions:
-        context_block += f"\n{prompt_instructions}\n"
-
-    # Layer 3: Game state (from GameModule.serializeState())
-    context_block += f"\n{state}\n"
-
-    if last_move:
-        context_block += f"The user just played: {last_move}\n"
-
-    if avatar_move:
-        context_block += f"You played: {avatar_move}\nReact to this game state naturally.\n"
-    elif valid_moves:
-        moves_str = ", ".join(str(m) for m in valid_moves[:30])
-        context_block += f"It's your turn. Legal moves: {moves_str}\n"
-        context_block += "Choose a move and include it as [move:your_move] in your response.\n"
-
-    if status == "game_over":
-        context_block += "The game is over. React to the outcome.\n"
-
-    context_block += "---"
-
-    return user_message + context_block
+trusted_prompt = _resolve_trusted_prompt_instructions(agent_id, game_context)
+llm_message = inject_game_context(
+    user_message,
+    game_context,
+    prompt_instructions=trusted_prompt,
+)
 ```
 
 This approach:
 - Keeps the backend stateless regarding game logic
 - Uses natural language the LLM can understand
 - Only sends context when a game is active
-- Includes game-specific personality only for the active game
+- Uses backend-authoritative game prompt instructions (agent overrides supported)
 - Limits valid moves list to prevent token bloat
-- Requires zero backend changes when adding new games (instructions come from frontend)
+- Keeps chat API contract stable as games are added via catalog + loader manifest
 
 ---
 
@@ -477,8 +452,9 @@ This happens. Fallback chain:
 
 ## Performance Considerations
 
-- Game modules are statically imported (no lazy loading needed for small modules)
-- Chess.js is ~30KB gzipped -- acceptable bundle impact
+- Game modules are lazy-loaded through `gameLoaderManifest`, so inactive engines stay out of the initial bundle
+- Build guardrails (`npm run check:game-loaders`) verify chunking assumptions
+- Chess engine code is loaded only when the chess module is requested
 - Game state serialization is cheap (FEN is 60 chars, tic-tac-toe is 9 chars)
 - No additional API calls -- game context piggybacks on existing chat messages
 - Game renders are lightweight DOM (no canvas needed for board games)
