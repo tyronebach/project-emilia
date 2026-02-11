@@ -14,91 +14,39 @@ import SliderField from './SliderField';
  * Falls back to a generic description if no specific one exists.
  */
 const PRESET_CONTEXT_HINTS: Record<string, string> = {
-  // Play
-  'teasing.threatening': 'Teasing feels hurtful and hostile — triggers a defensive reaction',
-  'teasing.uncomfortable': 'Teasing causes mild discomfort — agent gets a little guarded',
-  'teasing.neutral': 'Teasing has no emotional effect — agent ignores it',
-  'teasing.muted': 'Teasing is slightly pleasant but barely noticeable',
-  'teasing.normal': 'Teasing is mildly fun — default playful response',
-  'teasing.amplified': 'Teasing is genuinely exciting — strong bonding signal',
-  'teasing.intense': 'Teasing is thrilling — agent loves it and leans in hard',
+  // Positive
+  'admiration.normal': 'Admiration feels affirming and warm — default',
+  'admiration.amplified': 'Admiration lands deeply — stronger trust and bonding',
+  'caring.normal': 'Caring feels soothing and safe — default',
+  'caring.intense': 'Caring feels deeply supportive — strong calming effect',
+  'gratitude.normal': 'Gratitude feels appreciated and relationship-building',
+  'love.normal': 'Love feels emotionally close and intimate — default',
+  'love.amplified': 'Love feels deeply meaningful — major bond growth',
+  'excitement.normal': 'Excitement is energizing and uplifting',
+  'relief.normal': 'Relief helps settle tension and rebuild safety',
 
-  'banter.threatening': 'Witty exchanges feel like veiled attacks',
-  'banter.uncomfortable': 'Banter creates slight anxiety — too edgy',
-  'banter.neutral': 'Banter rolls off — no emotional impact',
-  'banter.normal': 'Banter is fun and energizing — default',
-  'banter.amplified': 'Banter is a favorite — makes the agent light up',
-  'banter.intense': 'Banter is the best thing ever — pure joy',
+  // Negative
+  'anger.normal': 'Anger is taken as conflict and increases defensiveness',
+  'anger.intense': 'Anger is overwhelming — strong trust and mood damage',
+  'disapproval.normal': 'Disapproval stings and lowers trust',
+  'disgust.normal': 'Disgust feels rejecting and strongly harmful',
+  'fear.normal': 'Fear increases tension and lowers sense of safety',
+  'sadness.normal': 'Sadness softens energy and can invite support',
 
-  'flirting.threatening': 'Flirting feels invasive and alarming — strong negative reaction',
-  'flirting.uncomfortable': 'Flirting makes the agent uneasy — mild withdrawal',
-  'flirting.neutral': 'Flirting has no effect — completely ignored',
-  'flirting.muted': 'Flirting is noticed but barely registers emotionally',
-  'flirting.normal': 'Flirting is flattering — pleasant default reaction',
-  'flirting.amplified': 'Flirting is exciting and welcome — agent reciprocates easily',
-  'flirting.intense': 'Flirting is deeply thrilling — agent gets very flustered and happy',
+  // Self-conscious
+  'embarrassment.normal': 'Embarrassment feels vulnerable but potentially bonding',
+  'nervousness.normal': 'Nervousness signals tentative vulnerability',
+  'remorse.normal': 'Remorse helps repair by taking responsibility',
 
-  // Care
-  'comfort.threatening': 'Comfort feels patronizing — triggers defensiveness',
-  'comfort.neutral': 'Comfort has no emotional impact',
-  'comfort.normal': 'Comfort is soothing and appreciated — default',
-  'comfort.intense': 'Comfort is deeply meaningful — strong trust boost',
+  // Neutral / cognitive
+  'curiosity.normal': 'Curiosity is engaging and mildly connective',
+  'confusion.normal': 'Confusion indicates uncertainty and need for clarity',
+  'surprise.normal': 'Surprise spikes activation and unpredictability',
+  'realization.normal': 'Realization marks a shift in understanding',
 
-  'praise.threatening': 'Praise feels sarcastic or manipulative',
-  'praise.uncomfortable': 'Praise causes embarrassment — agent deflects',
-  'praise.neutral': 'Praise has no effect',
-  'praise.normal': 'Praise feels warm and genuine — default',
-  'praise.amplified': 'Praise is very meaningful — agent glows',
-  'praise.intense': 'Praise is overwhelming in the best way — huge mood boost',
-
-  'affirmation.normal': 'Validation feels supportive — default',
-  'affirmation.intense': 'Validation hits deep — powerful emotional anchor',
-
-  // Friction
-  'criticism.threatening': 'Criticism feels devastating — very strong negative spiral',
-  'criticism.uncomfortable': 'Criticism stings mildly',
-  'criticism.neutral': 'Criticism is ignored — water off a duck',
-  'criticism.muted': 'Criticism is noted but barely felt',
-  'criticism.normal': 'Criticism hurts moderately — default reaction',
-  'criticism.amplified': 'Criticism cuts deep — strong defensive reaction',
-  'criticism.intense': 'Criticism is crushing — major emotional damage',
-
-  'rejection.normal': 'Rejection is painful — default',
-  'rejection.muted': 'Rejection is noted but shrugged off — thick skin',
-  'rejection.intense': 'Rejection is devastating — trust collapse',
-
-  'boundary.threatening': 'Boundaries feel like rejection — very painful',
-  'boundary.neutral': 'Boundaries are respected without emotional impact',
-  'boundary.normal': 'Boundaries cause some friction — default',
-  'boundary.muted': 'Boundaries are accepted gracefully',
-
-  'dismissal.normal': 'Dismissal hurts — default',
-  'dismissal.muted': 'Dismissal barely registers — independent',
-  'dismissal.intense': 'Dismissal is deeply wounding',
-
-  // Repair
-  'apology.normal': 'Apologies help heal — default',
-  'apology.amplified': 'Apologies are very effective — quick forgiveness',
-  'apology.muted': 'Apologies don\'t mean much — hard to impress',
-  'apology.threatening': 'Apologies feel manipulative — makes things worse',
-
-  'accountability.normal': 'Taking responsibility builds trust — default',
-  'accountability.amplified': 'Accountability is deeply valued — major trust boost',
-
-  'reconnection.normal': 'Reaching out is welcome — default healing',
-  'reconnection.amplified': 'Reconnection is very meaningful — eager to repair',
-  'reconnection.muted': 'Reconnection is acknowledged but guarded',
-
-  // Vulnerability
-  'disclosure.threatening': 'Sharing feels like an imposition — agent recoils',
-  'disclosure.neutral': 'Disclosure is received neutrally',
-  'disclosure.normal': 'Sharing builds trust — default reciprocal opening',
-  'disclosure.amplified': 'Disclosure is deeply bonding — agent opens up in return',
-  'disclosure.intense': 'Disclosure creates a profound connection',
-
-  'trust_signal.normal': 'Trust signals are reassuring — default',
-  'trust_signal.amplified': 'Trust signals are deeply meaningful — strong bond growth',
-  'trust_signal.muted': 'Trust signals are noticed but don\'t move the needle much',
+  // Intimate
+  'desire.normal': 'Desire increases closeness, attraction, and intimacy',
+  'desire.intense': 'Desire strongly amplifies intimate/attachment dynamics',
 };
 
 const PRESET_COLORS: Record<string, string> = {
@@ -207,7 +155,7 @@ function PresetLegend() {
             <span><span className="text-purple-400">Intense</span> = 2.0x (same direction, much stronger)</span>
             <span><span className="text-accent">Custom</span> = manual per-axis values</span>
           </div>
-          <p className="mt-1">For example, if flirting normally gives <span className="text-success">+valence</span>, setting it to <span className="text-red-400">Threatening</span> flips it to <span className="text-error">-valence</span> at 1.5x strength.</p>
+          <p className="mt-1">For example, if admiration normally gives <span className="text-success">+valence</span>, setting it to <span className="text-red-400">Threatening</span> flips it to <span className="text-error">-valence</span> at 1.5x strength.</p>
         </div>
       )}
     </div>
@@ -335,13 +283,19 @@ function TriggerResponseEditor({ responses, onChange }: TriggerResponseEditorPro
   };
 
   const categories = Object.keys(TRIGGER_TAXONOMY) as TriggerCategory[];
+  const seenTriggers = new Set<string>();
 
   return (
     <div className="space-y-4">
       <PresetLegend />
 
       {categories.map((category) => {
-        const triggers = TRIGGER_TAXONOMY[category];
+        const triggers = TRIGGER_TAXONOMY[category].filter((trigger) => {
+          if (seenTriggers.has(trigger)) return false;
+          seenTriggers.add(trigger);
+          return true;
+        });
+        if (triggers.length === 0) return null;
         return (
           <div key={category}>
             <h5 className="text-xs font-medium text-text-secondary uppercase tracking-wider capitalize">

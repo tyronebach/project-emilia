@@ -113,7 +113,7 @@ Notes:
 - `essence_floors` / `essence_ceilings` are stored and surfaced in the Designer UI, but are not currently enforced by the engine. They are safe to include for future behavior.
 - `preset` is supported by the backend. If a preset is provided, the engine converts it into numeric axis deltas using preset multipliers. Explicit axis values override preset-derived values on a per-axis basis.
 - `custom` is not a backend multiplier. Use `custom` only when you provide explicit axis values.
-- Legacy trigger aliases (for example `compliment` and `conflict`) are normalized to canonical triggers (`praise`, `boundary`) during processing, and canonical `trigger_responses` will apply to those alias detections.
+- Legacy trigger aliases (for example `compliment` and `conflict`) are normalized to canonical GoEmotions labels (for example `love` and `anger`) during processing, and canonical `trigger_responses` apply to those alias detections.
 
 ## Triggers And Moods
 - Canonical triggers are exposed by `GET /api/designer/v2/trigger-defaults` and used by the UI.
@@ -140,14 +140,14 @@ Canonical mood set (Designer V2 / Emotion Engine):
 ## Tips For AI-Assisted Character Design
 - Start from the example JSON, then describe the character in plain language and let the AI edit the values.
 - Keep baselines subtle; use mood baselines for personality flavor.
-- Use `trigger_responses` if you want specific triggers to feel opposite of default (e.g., flirting feels threatening).
+- Use `trigger_responses` if you want specific triggers to feel opposite of default (for example `desire` feels threatening).
 
 ## Quick Tuning Guide (for LLMs)
 - Want a more reactive character? Increase `volatility` (0.5 → 0.8) and/or reduce `recovery_rate`.
 - Want emotions to linger? Lower `mood_decay_rate` (0.3 → 0.15). Want them to fade fast? Raise it.
 - Want a warmer baseline? Increase `baseline_valence` and boost `supportive` / `whimsical` moods.
 - Want thicker skin? Lower `trust_loss_rate` and set negative triggers to `muted`.
-- Want stronger bonding? Raise `trust_gain_rate` and set `praise`, `affirmation`, `reconnection` to `amplified`.
+- Want stronger bonding? Raise `trust_gain_rate` and set `admiration`, `caring`, `love` to `amplified`.
 
 ### Mood Volatility Note (Prompt Dynamics)
 - `volatility` now influences not only emotional deltas, but also how injected mood labels can vary between close contenders.
@@ -157,13 +157,14 @@ Canonical mood set (Designer V2 / Emotion Engine):
 
 ## Canonical Triggers (Designer V2)
 
-The engine uses 15 canonical triggers grouped into 5 categories:
+The engine uses GoEmotions labels as canonical triggers:
 
-- `play`: `teasing`, `banter`, `flirting`
-- `care`: `comfort`, `praise`, `affirmation`
-- `friction`: `criticism`, `rejection`, `boundary`, `dismissal`
-- `repair`: `apology`, `accountability`, `reconnection`
-- `vulnerability`: `disclosure`, `trust_signal`
+- `positive`: `admiration`, `amusement`, `approval`, `caring`, `excitement`, `gratitude`, `joy`, `love`, `optimism`, `pride`, `relief`
+- `negative`: `anger`, `annoyance`, `disappointment`, `disapproval`, `disgust`, `fear`, `grief`, `sadness`
+- `self_conscious`: `embarrassment`, `nervousness`, `remorse`
+- `neutral`: `confusion`, `curiosity`, `realization`, `surprise`
+- `intimate`: `desire`, `love`, `caring`
+- `neutral` label also exists in defaults but is filtered out by classifier trigger output.
 
 These are the valid keys for `trigger_sensitivities` and `trigger_responses`.
 
@@ -173,36 +174,36 @@ The backend converts presets to numeric deltas using the default trigger deltas 
 If you provide explicit axis values, those override the preset on that axis.
 
 Example trigger (what the LLM should understand):
-- Trigger: `praise` — “Complimenting abilities or character.”
+- Trigger: `admiration` — “Respect, appreciation, or praise toward the agent.”
 
 Preset meanings:
 - `threatening`
   ↓ Valence, ↓ Arousal, ↓ Trust
-  Example: praise feels sarcastic, manipulative, or unsafe.
+  Example: admiration feels manipulative or unsafe.
 - `uncomfortable`
   ↓ Valence, ↘ Arousal, ↓ Trust
-  Example: praise feels awkward or invasive.
+  Example: admiration feels awkward or invasive.
 - `neutral`
   ~ No change
-  Example: praise is acknowledged but not taken personally.
+  Example: admiration is acknowledged but not taken personally.
 - `muted`
   ↗ Valence, ↗ Arousal, ↗ Trust (small)
-  Example: praise lands a little, but the agent stays reserved.
+  Example: admiration lands a little, but the agent stays reserved.
 - `normal`
   ↗ Valence, ↗ Arousal, ↗ Trust (default strength)
-  Example: praise is welcomed in a healthy way.
+  Example: admiration is welcomed in a healthy way.
 - `amplified`
   ↑↑ Valence, ↑ Arousal, ↑↑ Trust
-  Example: praise strongly boosts mood and trust.
+  Example: admiration strongly boosts mood and trust.
 - `intense`
   ↑↑↑ Valence, ↑↑ Arousal, ↑↑ Trust
-  Example: praise is deeply affecting or emotionally significant.
+  Example: admiration is deeply affecting or emotionally significant.
 
 ### Example With Mood Drift (LLM-friendly)
-Trigger: `flirting` — “Romantic or suggestive playfulness.”
+Trigger: `desire` — “Romantic/affectionate attraction and wanting.”
 
 Preset: `threatening`
 - Axes: ↓ Valence, ↓ Arousal, ↓ Trust, ↓ Intimacy
-  “Flirting feels invasive and alarming — strong negative reaction.”
+  “Desire feels invasive and alarming — strong negative reaction.”
 - Mood drift (typical):
   `bashful` ↓, `seductive` ↓, `vulnerable` ↓, `whimsical` ↓

@@ -41,11 +41,11 @@ function getBucketMultiplierBg(value: number): string {
 }
 
 const CATEGORY_BADGE_COLORS: Record<TriggerCategory, string> = {
-  play: 'bg-info/15 text-info border-info/30',
-  care: 'bg-success/15 text-success border-success/30',
-  friction: 'bg-error/15 text-error border-error/30',
-  repair: 'bg-warning/15 text-warning border-warning/30',
-  vulnerability: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
+  positive: 'bg-success/15 text-success border-success/30',
+  negative: 'bg-error/15 text-error border-error/30',
+  self_conscious: 'bg-warning/15 text-warning border-warning/30',
+  neutral: 'bg-info/15 text-info border-info/30',
+  intimate: 'bg-pink-500/15 text-pink-400 border-pink-500/30',
 };
 
 function CalibrationCard({ calibration, onReset }: CalibrationCardProps) {

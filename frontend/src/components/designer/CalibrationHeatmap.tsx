@@ -23,11 +23,11 @@ function getCellStyle(value: number): string {
 }
 
 const CATEGORY_ROW_BORDER: Record<TriggerCategory, string> = {
-  play: 'border-l-info/50',
-  care: 'border-l-success/50',
-  friction: 'border-l-error/50',
-  repair: 'border-l-warning/50',
-  vulnerability: 'border-l-purple-500/50',
+  positive: 'border-l-success/50',
+  negative: 'border-l-error/50',
+  self_conscious: 'border-l-warning/50',
+  neutral: 'border-l-info/50',
+  intimate: 'border-l-pink-500/50',
 };
 
 function CalibrationHeatmap({ calibrations }: CalibrationHeatmapProps) {

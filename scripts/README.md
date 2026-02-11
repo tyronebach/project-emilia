@@ -27,7 +27,7 @@ Run each in a separate terminal:
 | `test-dialogues.py` | Run dialogue fixtures | - |
 | `test-emotion-scenarios.py` | Run emotion scenario fixtures | - |
 | `emotion-lab.py` | Interactive emotion tuning lab | - |
-| `compare-trigger-detection.py` | Compare trigger detection methods | - |
+| `compare-trigger-detection.py` | Compare primary trigger detection vs optional LLM fallback | - |
 
 ## URLs
 

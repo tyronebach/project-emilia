@@ -8,11 +8,11 @@ interface TriggerBadgeProps {
 }
 
 const CATEGORY_COLORS: Record<TriggerCategory, { bg: string; text: string; border: string }> = {
-  play: { bg: 'bg-info/15', text: 'text-info', border: 'border-info/30' },
-  care: { bg: 'bg-success/15', text: 'text-success', border: 'border-success/30' },
-  friction: { bg: 'bg-error/15', text: 'text-error', border: 'border-error/30' },
-  repair: { bg: 'bg-warning/15', text: 'text-warning', border: 'border-warning/30' },
-  vulnerability: { bg: 'bg-purple-500/15', text: 'text-purple-400', border: 'border-purple-500/30' },
+  positive: { bg: 'bg-success/15', text: 'text-success', border: 'border-success/30' },
+  negative: { bg: 'bg-error/15', text: 'text-error', border: 'border-error/30' },
+  self_conscious: { bg: 'bg-warning/15', text: 'text-warning', border: 'border-warning/30' },
+  neutral: { bg: 'bg-info/15', text: 'text-info', border: 'border-info/30' },
+  intimate: { bg: 'bg-pink-500/15', text: 'text-pink-400', border: 'border-pink-500/30' },
 };
 
 function getCategoryForTrigger(trigger: string): TriggerCategory | null {

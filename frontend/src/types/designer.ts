@@ -251,43 +251,90 @@ export const TRIGGER_PRESETS = [
 
 export type TriggerPresetKey = (typeof TRIGGER_PRESETS)[number]['key'];
 
-// ============ CONSOLIDATED TRIGGERS ============
+// ============ GOEMOTIONS TRIGGERS ============
 
 export const TRIGGER_TAXONOMY = {
-  play: ['teasing', 'banter', 'flirting'],
-  care: ['comfort', 'praise', 'affirmation'],
-  friction: ['criticism', 'rejection', 'boundary', 'dismissal'],
-  repair: ['apology', 'accountability', 'reconnection'],
-  vulnerability: ['disclosure', 'trust_signal'],
+  positive: [
+    'admiration',
+    'amusement',
+    'approval',
+    'caring',
+    'excitement',
+    'gratitude',
+    'joy',
+    'love',
+    'optimism',
+    'pride',
+    'relief',
+  ],
+  negative: [
+    'anger',
+    'annoyance',
+    'disappointment',
+    'disapproval',
+    'disgust',
+    'fear',
+    'grief',
+    'sadness',
+  ],
+  self_conscious: [
+    'embarrassment',
+    'nervousness',
+    'remorse',
+  ],
+  neutral: [
+    'confusion',
+    'curiosity',
+    'realization',
+    'surprise',
+  ],
+  intimate: [
+    'desire',
+    'love',
+    'caring',
+  ],
 } as const;
 
 export type TriggerCategory = keyof typeof TRIGGER_TAXONOMY;
 export type TriggerType = (typeof TRIGGER_TAXONOMY)[TriggerCategory][number];
 
 export const CATEGORY_DESCRIPTIONS: Record<TriggerCategory, string> = {
-  play: 'Lighthearted interactions — teasing, banter, flirting',
-  care: 'Supportive interactions — compliments, comfort, encouragement',
-  friction: 'Negative interactions — criticism, rejection, dismissal',
-  repair: 'Making up after conflict — apologies, accountability',
-  vulnerability: 'Sharing something personal — secrets, trust signals',
+  positive: 'Warm, affirming, and pro-social signals that usually build trust and bond',
+  negative: 'Conflict, aversion, and distress signals that usually reduce trust and safety',
+  self_conscious: 'Vulnerability and accountability-oriented emotions tied to social exposure',
+  neutral: 'Cognitive orientation and informational attention signals',
+  intimate: 'Romantic/attachment-oriented signals with stronger closeness effects',
 };
 
 export const TRIGGER_DESCRIPTIONS: Record<string, string> = {
-  teasing: 'Playful poking or light mocking',
-  banter: 'Quick back-and-forth witty exchanges',
-  flirting: 'Romantic or suggestive playfulness',
-  comfort: 'Soothing words during distress',
-  praise: 'Complimenting abilities or character',
-  affirmation: 'Validating feelings or identity',
-  criticism: 'Pointing out flaws or mistakes',
-  rejection: 'Refusing or pushing away',
-  boundary: 'Setting limits on behavior',
-  dismissal: 'Ignoring or belittling feelings',
-  apology: 'Expressing regret for an action',
-  accountability: 'Taking responsibility for mistakes',
-  reconnection: 'Reaching out after a period of silence',
-  disclosure: 'Sharing personal or sensitive information',
-  trust_signal: 'Actions that demonstrate trust',
+  admiration: 'Respect, appreciation, or praise toward the agent',
+  amusement: 'Playful humor, laughter, or light teasing energy',
+  approval: 'Validation, agreement, or endorsement',
+  caring: 'Supportive, soothing, or nurturing tone',
+  excitement: 'High-energy enthusiasm and positive activation',
+  gratitude: 'Thanks or appreciation for help/support',
+  joy: 'General happiness and positive mood expression',
+  love: 'Affection, attachment, and emotional closeness',
+  optimism: 'Hopefulness and positive expectation',
+  pride: 'Achievement-related confidence or satisfaction',
+  relief: 'Release of stress/tension after concern',
+  anger: 'Hostility, irritation, or confrontational tone',
+  annoyance: 'Low-to-mid intensity irritation',
+  disappointment: 'Feeling let down or unmet expectations',
+  disapproval: 'Critique, negative judgment, or disagreement',
+  disgust: 'Strong aversion or repulsion',
+  fear: 'Threat sensitivity, anxiety, or alarm',
+  grief: 'Deep sadness/loss-related distress',
+  sadness: 'Low-energy negative affect',
+  embarrassment: 'Self-conscious social discomfort',
+  nervousness: 'Apprehension, uncertainty, or anxious vulnerability',
+  remorse: 'Regret and responsibility-taking',
+  confusion: 'Lack of clarity or understanding',
+  curiosity: 'Interest and desire to learn more',
+  realization: 'Moment of understanding/insight',
+  surprise: 'Unexpectedness or sudden reaction',
+  desire: 'Romantic/affectionate wanting or attraction',
+  neutral: 'No specific emotional trigger signal',
 };
 
 // ============ MOOD GROUPS ============

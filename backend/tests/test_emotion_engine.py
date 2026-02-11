@@ -1,12 +1,56 @@
 """Tests for the EmotionEngine service."""
 import math
 import pytest
+import services.emotion_engine as emotion_engine_module
 from services.emotion_engine import (
     EmotionEngine, EmotionalState, AgentProfile,
     normalize_trigger, infer_outcome_multisignal,
     TriggerCalibration, ContextualTriggerCalibration, ContextBucket,
     TRIGGER_TAXONOMY, ALL_TRIGGERS, MOOD_GROUPS,
 )
+
+
+class _StubTriggerClassifier:
+    """Deterministic classifier stub for emotion engine tests."""
+
+    confidence_threshold = 0.25
+    low_confidence_threshold = 0.15
+
+    def classify(self, text: str) -> list[tuple[str, float]]:
+        lowered = (text or "").lower()
+        if "amazing" in lowered or "incredible" in lowered:
+            return [("admiration", 0.92)]
+        if "thank you" in lowered or "thanks" in lowered:
+            return [("gratitude", 0.87)]
+        if "haha" in lowered or "hilarious" in lowered:
+            return [("amusement", 0.83)]
+        if "angry" in lowered or "furious" in lowered:
+            return [("anger", 0.91)]
+        if "love" in lowered and "scared" in lowered:
+            return [("love", 0.79), ("fear", 0.68)]
+        if "love" in lowered:
+            return [("love", 0.90)]
+        if "weather" in lowered:
+            return []
+        if "curious" in lowered:
+            return [("curiosity", 0.78)]
+        return []
+
+    def get_max_confidence(self, text: str) -> float:
+        return max((score for _label, score in self.classify(text)), default=0.0)
+
+    def is_low_confidence(self, text: str) -> bool:
+        return self.get_max_confidence(text) < self.low_confidence_threshold
+
+
+@pytest.fixture(autouse=True)
+def _mock_trigger_classifier(monkeypatch):
+    stub = _StubTriggerClassifier()
+    monkeypatch.setattr(emotion_engine_module, "get_trigger_classifier", lambda: stub)
+    from config import settings
+    monkeypatch.setattr(settings, "trigger_classifier_enabled", True, raising=False)
+    monkeypatch.setattr(settings, "trigger_classifier_confidence", 0.25, raising=False)
+    yield
 
 
 class TestEmotionalState:
@@ -111,37 +155,38 @@ class TestEmotionEngineDecay:
 
 
 class TestEmotionEngineTriggerDetection:
-    """Tests for trigger pattern detection."""
+    """Tests for GoEmotions classifier-based trigger detection."""
     
     @pytest.fixture
     def engine(self):
         return EmotionEngine(AgentProfile())
     
-    def test_detect_compliment(self, engine):
+    def test_detect_admiration(self, engine):
         triggers = engine.detect_triggers("You're so amazing!")
         trigger_names = [t[0] for t in triggers]
-        assert 'praise' in trigger_names
+        assert "admiration" in trigger_names
     
     def test_detect_gratitude(self, engine):
         triggers = engine.detect_triggers("Thank you so much")
         trigger_names = [t[0] for t in triggers]
-        assert 'praise' in trigger_names
+        assert "gratitude" in trigger_names
     
-    def test_detect_teasing(self, engine):
+    def test_detect_amusement(self, engine):
         triggers = engine.detect_triggers("haha you're such a dummy")
         trigger_names = [t[0] for t in triggers]
-        assert 'teasing' in trigger_names
+        assert "amusement" in trigger_names
     
-    def test_detect_conflict(self, engine):
+    def test_detect_anger(self, engine):
         triggers = engine.detect_triggers("I'm so angry at you right now")
         trigger_names = [t[0] for t in triggers]
-        assert 'boundary' in trigger_names
+        assert "anger" in trigger_names
     
     def test_detect_multiple_triggers(self, engine):
-        triggers = engine.detect_triggers("Thank you, you're amazing!")
+        triggers = engine.detect_triggers("I love you but I'm scared")
         trigger_names = [t[0] for t in triggers]
-        assert 'praise' in trigger_names
-    
+        assert "love" in trigger_names
+        assert "fear" in trigger_names
+
     def test_no_triggers_in_neutral_text(self, engine):
         triggers = engine.detect_triggers("The weather is nice today")
         assert len(triggers) == 0
@@ -155,6 +200,24 @@ class TestEmotionEngineTriggerDetection:
         triggers2 = engine.detect_triggers("thank you")
         assert len(triggers1) == len(triggers2)
 
+    def test_detect_triggers_returns_valid_goemotions_labels(self, engine):
+        triggers = engine.detect_triggers("You're amazing and thank you")
+        for trigger, intensity in triggers:
+            assert trigger in engine.DEFAULT_TRIGGER_DELTAS
+            assert 0.0 <= intensity <= 1.0
+
+    def test_classifier_integration_positive_emotion_increases_valence(self, engine):
+        state = EmotionalState()
+        for trigger, intensity in engine.detect_triggers("You're amazing!"):
+            engine.apply_trigger(state, trigger, intensity)
+        assert state.valence > 0
+
+    def test_classifier_integration_negative_emotion_decreases_valence(self, engine):
+        state = EmotionalState()
+        for trigger, intensity in engine.detect_triggers("I'm furious right now"):
+            engine.apply_trigger(state, trigger, intensity)
+        assert state.valence < 0
+
 
 class TestEmotionEngineTriggerApplication:
     """Tests for applying triggers to emotional state."""
@@ -163,42 +226,42 @@ class TestEmotionEngineTriggerApplication:
     def engine(self):
         return EmotionEngine(AgentProfile())
     
-    def test_compliment_increases_valence(self, engine):
+    def test_admiration_increases_valence(self, engine):
         state = EmotionalState()
         initial = state.valence
         
-        engine.apply_trigger(state, 'compliment', 0.8)
+        engine.apply_trigger(state, "admiration", 0.8)
         
         assert state.valence > initial
     
-    def test_rejection_decreases_valence(self, engine):
+    def test_disgust_decreases_valence(self, engine):
         state = EmotionalState(valence=0.5)
         initial = state.valence
         
-        engine.apply_trigger(state, 'rejection', 0.8)
+        engine.apply_trigger(state, "disgust", 0.8)
         
         assert state.valence < initial
     
-    def test_conflict_increases_arousal(self, engine):
+    def test_anger_increases_arousal(self, engine):
         state = EmotionalState()
         initial = state.arousal
         
-        engine.apply_trigger(state, 'conflict', 0.8)
+        engine.apply_trigger(state, "anger", 0.8)
         
         assert state.arousal > initial
     
-    def test_comfort_decreases_arousal(self, engine):
+    def test_caring_decreases_arousal(self, engine):
         state = EmotionalState(arousal=0.5)
         initial = state.arousal
         
-        engine.apply_trigger(state, 'comfort', 0.8)
+        engine.apply_trigger(state, "caring", 0.8)
         
         assert state.arousal < initial
     
     def test_trigger_affects_trust(self, engine):
         state = EmotionalState(trust=0.5)
         
-        engine.apply_trigger(state, 'compliment', 0.8)
+        engine.apply_trigger(state, "admiration", 0.8)
         
         # Trust should increase (slowly due to asymmetry)
         assert state.trust > 0.5
@@ -220,12 +283,12 @@ class TestTrustAsymmetry:
     def test_negative_trust_change_larger(self):
         engine = EmotionEngine(AgentProfile())
         
-        # Test with compliment (positive trust) and conflict (negative trust)
+        # Test with admiration (positive trust) and anger (negative trust)
         state_pos = EmotionalState(trust=0.5)
         state_neg = EmotionalState(trust=0.5)
         
-        engine.apply_trigger(state_pos, 'compliment', 0.8)  # +0.02 base
-        engine.apply_trigger(state_neg, 'conflict', 0.8)    # -0.10 base
+        engine.apply_trigger(state_pos, "admiration", 0.8)
+        engine.apply_trigger(state_neg, "anger", 0.8)
         
         positive_delta = state_pos.trust - 0.5
         negative_delta = 0.5 - state_neg.trust
@@ -238,7 +301,7 @@ class TestTrustAsymmetry:
         engine = EmotionEngine(profile)
         state = EmotionalState(trust=0.5)
         
-        engine.apply_trigger(state, 'compliment', 0.8)
+        engine.apply_trigger(state, "admiration", 0.8)
         
         # With 2x multiplier, trust should increase more
         assert state.trust > 0.5
@@ -254,8 +317,8 @@ class TestVolatilityScaling:
         state_low = EmotionalState()
         state_high = EmotionalState()
         
-        EmotionEngine(low_vol).apply_trigger(state_low, 'compliment', 0.8)
-        EmotionEngine(high_vol).apply_trigger(state_high, 'compliment', 0.8)
+        EmotionEngine(low_vol).apply_trigger(state_low, "admiration", 0.8)
+        EmotionEngine(high_vol).apply_trigger(state_high, "admiration", 0.8)
         
         assert state_high.valence > state_low.valence
 
@@ -267,16 +330,16 @@ class TestAsymmetricDeltaBias:
         profile = AgentProfile(
             emotional_volatility=1.0,
             trigger_responses={
-                "praise": {"valence": 0.1},
-                "criticism": {"valence": -0.1},
+                "admiration": {"valence": 0.1},
+                "disapproval": {"valence": -0.1},
             },
         )
         engine = EmotionEngine(profile)
 
         state_pos = EmotionalState()
         state_neg = EmotionalState()
-        engine.apply_trigger(state_pos, "praise", 1.0)
-        engine.apply_trigger(state_neg, "criticism", 1.0)
+        engine.apply_trigger(state_pos, "admiration", 1.0)
+        engine.apply_trigger(state_neg, "disapproval", 1.0)
 
         positive_delta = state_pos.valence
         negative_delta = -state_neg.valence
@@ -296,27 +359,26 @@ class TestAsymmetricDeltaBias:
 
 
 class TestPlayContext:
-    """Tests for play context (teasing behavior)."""
+    """Tests for play context (amusement behavior)."""
     
-    def test_teasing_positive_at_high_trust(self):
+    def test_amusement_positive_at_high_trust(self):
         profile = AgentProfile(play_trust_threshold=0.6)
         engine = EmotionEngine(profile)
         
         state = EmotionalState(trust=0.8, valence=0.0)
-        engine.apply_trigger(state, 'teasing', 0.7)
+        engine.apply_trigger(state, "amusement", 0.7)
         
-        # High trust: teasing should be positive
+        # High trust: amusement should be positive.
         assert state.valence > 0
     
-    def test_teasing_negative_at_low_trust(self):
+    def test_amusement_dampened_at_low_trust(self):
         profile = AgentProfile(play_trust_threshold=0.6)
         engine = EmotionEngine(profile)
         
         state = EmotionalState(trust=0.3, valence=0.0)
-        engine.apply_trigger(state, 'teasing', 0.7)
+        engine.apply_trigger(state, "amusement", 0.7)
         
-        # Low trust: teasing should be slightly negative or neutral
-        # Due to the flipped intensity, effect is reduced
+        # Low trust: effect is dampened by context gating.
         assert state.valence <= 0.05
 
 
@@ -392,7 +454,7 @@ class TestStateBounds:
         
         # Apply many positive triggers
         for _ in range(10):
-            engine.apply_trigger(state, 'compliment', 1.0)
+            engine.apply_trigger(state, "admiration", 1.0)
         
         assert state.valence <= 1.0
     
@@ -402,7 +464,7 @@ class TestStateBounds:
         
         # Apply many negative triggers
         for _ in range(10):
-            engine.apply_trigger(state, 'conflict', 1.0)
+            engine.apply_trigger(state, "anger", 1.0)
         
         assert state.trust >= 0.0
     
@@ -413,7 +475,7 @@ class TestStateBounds:
         
         # Apply triggers that increase attachment
         for _ in range(20):
-            engine.apply_trigger(state, 'shared_joy', 1.0)
+            engine.apply_trigger(state, "excitement", 1.0)
         
         assert state.attachment <= 0.7
 
@@ -430,17 +492,17 @@ class TestNormalizeTrigger:
             assert normalize_trigger(trigger) == trigger
 
     def test_alias_resolves(self):
-        assert normalize_trigger("compliment") == "praise"
-        assert normalize_trigger("insult") == "criticism"
-        assert normalize_trigger("betrayal") == "rejection"
+        assert normalize_trigger("compliment") == "love"
+        assert normalize_trigger("insult") == "disapproval"
+        assert normalize_trigger("betrayal") == "disgust"
 
     def test_unrecognized_returns_none(self):
         assert normalize_trigger("totally_unknown_xyz") is None
 
-    def test_none_valued_aliases_return_none(self):
-        # greeting, farewell, question, curiosity are mapped to None
-        assert normalize_trigger("greeting") is None
-        assert normalize_trigger("farewell") is None
+    def test_social_aliases_resolve(self):
+        assert normalize_trigger("greeting") == "joy"
+        assert normalize_trigger("farewell") == "sadness"
+        assert normalize_trigger("question") == "curiosity"
 
 
 # ============================================================
@@ -451,39 +513,39 @@ class TestTriggerCalibration:
     """Tests for TriggerCalibration Bayesian learning."""
 
     def test_default_multiplier_is_one(self):
-        cal = TriggerCalibration(trigger_type="praise")
+        cal = TriggerCalibration(trigger_type="admiration")
         assert cal.learned_multiplier == 1.0
 
     def test_positive_outcomes_increase_multiplier(self):
-        cal = TriggerCalibration(trigger_type="praise")
+        cal = TriggerCalibration(trigger_type="admiration")
         for _ in range(40):
             cal.update("positive", 0.8)
         assert cal.learned_multiplier > 1.0
 
     def test_negative_outcomes_decrease_multiplier(self):
-        cal = TriggerCalibration(trigger_type="criticism")
+        cal = TriggerCalibration(trigger_type="disapproval")
         for _ in range(40):
             cal.update("negative", 0.8)
         assert cal.learned_multiplier < 1.0
 
     def test_multiplier_bounded(self):
-        cal = TriggerCalibration(trigger_type="praise")
+        cal = TriggerCalibration(trigger_type="admiration")
         for _ in range(200):
             cal.update("positive", 1.0)
         assert 0.75 <= cal.learned_multiplier <= 1.25
 
     def test_roundtrip_to_dict(self):
-        cal = TriggerCalibration(trigger_type="praise")
+        cal = TriggerCalibration(trigger_type="admiration")
         cal.update("positive", 0.9)
         d = cal.to_dict()
         restored = TriggerCalibration.from_dict(d)
-        assert restored.trigger_type == "praise"
+        assert restored.trigger_type == "admiration"
         assert restored.occurrence_count == 1
         assert abs(restored.learned_multiplier - cal.learned_multiplier) < 0.001
 
     def test_confidence_scaling_below_min_samples(self):
         """With few samples, multiplier stays close to 1.0."""
-        cal = TriggerCalibration(trigger_type="praise")
+        cal = TriggerCalibration(trigger_type="admiration")
         cal.update("positive", 0.9)
         # With only 1 sample (below MIN_SAMPLES=30), should be close to 1.0
         assert abs(cal.learned_multiplier - 1.0) < 0.05
@@ -529,14 +591,14 @@ class TestContextualTriggerCalibration:
         return ContextBucket.from_state(EmotionalState(trust=trust, arousal=arousal))
 
     def test_roundtrip(self):
-        cal = ContextualTriggerCalibration(trigger_type="praise")
+        cal = ContextualTriggerCalibration(trigger_type="admiration")
         cal.update(self._bucket(0.8), "positive", 0.8)
         d = cal.to_dict()
         restored = ContextualTriggerCalibration.from_dict(d)
-        assert restored.trigger_type == "praise"
+        assert restored.trigger_type == "admiration"
 
     def test_context_specific_multiplier(self):
-        cal = ContextualTriggerCalibration(trigger_type="praise")
+        cal = ContextualTriggerCalibration(trigger_type="admiration")
         high = self._bucket(0.8)
         low = self._bucket(0.2)
         for _ in range(40):
@@ -647,23 +709,23 @@ class TestComputeEffectiveDelta:
     def test_base_intensity_passthrough(self):
         engine = EmotionEngine(AgentProfile())
         state = EmotionalState(trust=0.5)
-        result = engine.compute_effective_delta("praise", 1.0, state, None)
+        result = engine.compute_effective_delta("admiration", 1.0, state, None)
         assert result > 0
 
     def test_high_trust_amplifies_positive(self):
         engine = EmotionEngine(AgentProfile())
-        low = engine.compute_effective_delta("praise", 1.0, EmotionalState(trust=0.2), None)
-        high = engine.compute_effective_delta("praise", 1.0, EmotionalState(trust=0.9), None)
+        low = engine.compute_effective_delta("admiration", 1.0, EmotionalState(trust=0.2), None)
+        high = engine.compute_effective_delta("admiration", 1.0, EmotionalState(trust=0.9), None)
         assert high > low
 
     def test_calibration_scales_result(self):
         engine = EmotionEngine(AgentProfile())
         state = EmotionalState(trust=0.5)
-        cal = ContextualTriggerCalibration(trigger_type="praise")
+        cal = ContextualTriggerCalibration(trigger_type="admiration")
         # Manually set a high multiplier
         cal.global_cal.learned_multiplier = 1.5
-        result_cal = engine.compute_effective_delta("praise", 1.0, state, cal)
-        result_no_cal = engine.compute_effective_delta("praise", 1.0, state, None)
+        result_cal = engine.compute_effective_delta("admiration", 1.0, state, cal)
+        result_no_cal = engine.compute_effective_delta("admiration", 1.0, state, None)
         assert result_cal > result_no_cal
 
 
@@ -677,14 +739,14 @@ class TestLearnFromOutcome:
     def test_learns_from_positive(self):
         engine = EmotionEngine(AgentProfile())
         state = EmotionalState(trust=0.5)
-        triggers = [("praise", 0.8)]
+        triggers = [("admiration", 0.8)]
         updated = engine.learn_from_outcome(state, triggers, "positive", 0.8)
-        assert "praise" in updated
+        assert "admiration" in updated
 
     def test_skips_low_confidence(self):
         engine = EmotionEngine(AgentProfile())
         state = EmotionalState(trust=0.5)
-        triggers = [("praise", 0.8)]
+        triggers = [("admiration", 0.8)]
         updated = engine.learn_from_outcome(state, triggers, "positive", 0.1)
         assert len(updated) == 0
 
@@ -703,23 +765,23 @@ class TestLearnFromOutcome:
 class TestUpdateRelationshipDimensions:
     """Tests for trust/intimacy/etc dimension updates."""
 
-    def test_praise_positive_increases_trust(self):
+    def test_admiration_positive_increases_trust(self):
         engine = EmotionEngine(AgentProfile())
         state = EmotionalState(trust=0.5)
-        deltas = engine.update_relationship_dimensions(state, [("praise", 0.8)], "positive")
+        deltas = engine.update_relationship_dimensions(state, [("admiration", 0.8)], "positive")
         assert state.trust > 0.5
 
-    def test_rejection_decreases_trust(self):
+    def test_disgust_decreases_trust(self):
         engine = EmotionEngine(AgentProfile())
         state = EmotionalState(trust=0.5)
-        engine.update_relationship_dimensions(state, [("rejection", 0.8)], "negative")
+        engine.update_relationship_dimensions(state, [("disgust", 0.8)], "negative")
         assert state.trust < 0.5
 
     def test_dimensions_clamped(self):
         engine = EmotionEngine(AgentProfile())
         state = EmotionalState(trust=0.99)
         for _ in range(20):
-            engine.update_relationship_dimensions(state, [("praise", 1.0)], "positive")
+            engine.update_relationship_dimensions(state, [("admiration", 1.0)], "positive")
         assert state.trust <= 1.0
 
     def test_unrecognized_trigger_no_effect(self):
@@ -763,14 +825,14 @@ class TestFromDbRow:
 # ============================================================
 
 class TestTrustSpiralPrevention:
-    """Verify teasing at low trust doesn't create negative spiral."""
+    """Verify amusement at low trust doesn't create negative spiral."""
 
-    def test_teasing_at_low_trust_no_negative_effect(self):
+    def test_amusement_at_low_trust_no_negative_effect(self):
         engine = EmotionEngine(AgentProfile(play_trust_threshold=0.6))
         state = EmotionalState(trust=0.2, valence=0.0)
         initial_trust = state.trust
 
-        engine.apply_trigger(state, "teasing", 0.8)
+        engine.apply_trigger(state, "amusement", 0.8)
 
-        # Trust should NOT decrease from teasing at low trust (clamped to 0)
+        # Trust should NOT decrease from amusement at low trust (clamped to 0)
         assert state.trust >= initial_trust - 0.001

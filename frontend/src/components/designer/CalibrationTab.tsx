@@ -76,7 +76,7 @@ function CalibrationTab() {
           <HelpDot tip="The system learns how each user responds to different triggers and adjusts intensity over time." />
         </h2>
         <p className="text-sm text-text-secondary mt-1">
-          The agent learns what works for each user. If teasing always gets a negative reaction, the agent dials it down. If praise consistently lands well, it leans in harder. This page shows the learned multipliers.
+          The agent learns what works for each user. If amusement or banter style signals consistently get a negative reaction, the agent dials them down. If admiration or caring signals consistently land well, it leans in harder. This page shows the learned multipliers.
         </p>
       </div>
 

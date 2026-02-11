@@ -25,11 +25,16 @@ from typing import Optional
 
 # Direct import to avoid dependency chain
 import importlib.util
+BACKEND_DIR = Path(__file__).parent.parent / "backend"
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 _spec = importlib.util.spec_from_file_location(
     "emotion_engine",
-    Path(__file__).parent.parent / "backend" / "services" / "emotion_engine.py"
+    BACKEND_DIR / "services" / "emotion_engine.py"
 )
 _module = importlib.util.module_from_spec(_spec)
+# Python 3.14 dataclasses expects the module to be registered in sys.modules.
+sys.modules[_spec.name] = _module
 _spec.loader.exec_module(_module)
 EmotionEngine = _module.EmotionEngine
 EmotionalState = _module.EmotionalState
