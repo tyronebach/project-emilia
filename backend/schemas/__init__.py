@@ -17,6 +17,7 @@ from .requests import (
     GameRegistryCreate,
     GameRegistryUpdate,
     AgentGameConfigUpdate,
+    SoulWindowEventsRequest,
 )
 from .responses import (
     UserResponse,
@@ -73,6 +74,7 @@ __all__ = [
     "GameRegistryCreate",
     "GameRegistryUpdate",
     "AgentGameConfigUpdate",
+    "SoulWindowEventsRequest",
     "UserResponse",
     "AgentResponse",
     "SessionResponse",

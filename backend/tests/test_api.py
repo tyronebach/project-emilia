@@ -167,6 +167,7 @@ class TestChatEndpoint:
         assert data["behavior"]["intent"] == "playful"
         assert data["behavior"]["mood"] == "happy"
         assert data["usage"]["prompt_tokens"] == 10
+        assert data["emotion_debug"]["snapshot"]["agent_id"] == agent_id
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
@@ -344,6 +345,181 @@ class TestChatEndpoint:
         assert len(stored) == 2
         assert stored[0]["role"] == "user"
         assert stored[0]["origin"] == "user"
+
+    @patch("routers.chat._spawn_background")
+    @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.chat.httpx.AsyncClient")
+    async def test_chat_first_turn_includes_session_facts_block(
+        self,
+        mock_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Facts User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Facts Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "agent:test-claw-id",
+            "choices": [{"message": {"content": "Hello from first turn."}}],
+            "usage": {"prompt_tokens": 7, "completion_tokens": 4},
+        }
+
+        captured_payload: dict = {}
+
+        async def _capture_post(*args, **kwargs):
+            captured_payload.update(kwargs.get("json") or {})
+            return mock_response
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(side_effect=_capture_post)
+        mock_client_class.return_value = mock_client
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        response = await test_client.post(
+            "/api/chat?stream=0",
+            json={"message": "Hi"},
+            headers=headers,
+        )
+
+        assert response.status_code == 200
+        assert captured_payload.get("messages")
+        injected_message = captured_payload["messages"][-1]["content"]
+        assert "Session facts (UTC):" in injected_message
+        assert "time_of_day_utc:" in injected_message
+
+
+# ========================================
+# Soul Window Endpoint Tests
+# ========================================
+
+class TestSoulWindowEndpoints:
+
+    async def test_soul_window_mood_requires_auth(self, test_client):
+        response = await test_client.get("/api/soul-window/mood")
+        assert response.status_code == 401
+
+    async def test_soul_window_mood_returns_snapshot(self, test_client, auth_headers):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Soul User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Soul Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        response = await test_client.get("/api/soul-window/mood", headers=headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user_id"] == user_id
+        assert data["agent_id"] == agent_id
+        assert "dominant_mood" in data
+        assert "trust" in data
+        assert "intimacy" in data
+
+    async def test_soul_window_events_round_trip(self, test_client, auth_headers, tmp_path):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+        workspace = tmp_path / f"workspace-{agent_id}"
+        workspace.mkdir(parents=True, exist_ok=True)
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Soul User"),
+            )
+            conn.execute(
+                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Soul Agent", "test-claw-id", "emilia.vrm", None, str(workspace), "{}"),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+
+        initial_resp = await test_client.get("/api/soul-window/events", headers=headers)
+        assert initial_resp.status_code == 200
+        assert initial_resp.json()["upcoming_events"] == []
+
+        add_resp = await test_client.post(
+            "/api/soul-window/events",
+            headers=headers,
+            json={
+                "action": "add_event",
+                "item": {
+                    "id": "birthday-2026",
+                    "type": "birthday",
+                    "date": "2026-03-15",
+                    "note": "User birthday",
+                    "source": "user",
+                },
+            },
+        )
+        assert add_resp.status_code == 200
+        added = add_resp.json()
+        assert added["ok"] is True
+        assert any(item["id"] == "birthday-2026" for item in added["events"]["upcoming_events"])
+
+        remove_resp = await test_client.post(
+            "/api/soul-window/events",
+            headers=headers,
+            json={
+                "action": "remove_event",
+                "id": "birthday-2026",
+            },
+        )
+        assert remove_resp.status_code == 200
+        removed = remove_resp.json()
+        assert all(item["id"] != "birthday-2026" for item in removed["events"]["upcoming_events"])
 
 
 # ========================================

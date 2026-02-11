@@ -12,6 +12,14 @@ React + TypeScript + Vite frontend for the Emilia VRM avatar chat app (1:1 sessi
 - Three.js + @pixiv/three-vrm for VRM rendering
 - Tailwind CSS v4 + Radix UI
 
+## Soul Window UI
+
+- `Header` includes a live mood indicator sourced from SSE `emotion.snapshot`.
+- `BondModal` fetches user-agent relationship state from `/api/soul-window/bond`.
+- `AboutModal` fetches parsed `SOUL.md` sections from `/api/soul-window/about`.
+- Timeline/event operations use `/api/soul-window/events`.
+- API wrappers live in `src/utils/soulWindowApi.ts` and payload types in `src/types/soulWindow.ts`.
+
 ## Development
 
 ```bash
@@ -59,6 +67,6 @@ src/
 ├── routes/       # TanStack Router pages
 ├── services/     # Voice service + VAD
 ├── store/        # Zustand stores (app, chat, room, render, game, stats)
-├── types/        # TypeScript types
-└── utils/        # API client, helpers, schemas
+├── types/        # TypeScript types (+ soulWindow payload types)
+└── utils/        # API client, helpers, schemas (+ soulWindowApi)
 ```

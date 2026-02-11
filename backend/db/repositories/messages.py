@@ -97,6 +97,20 @@ class MessageRepository:
             result = conn.execute("DELETE FROM messages WHERE id = ?", (msg_id,))
             return result.rowcount > 0
 
+    @staticmethod
+    def get_conversation_count(session_id: str) -> int:
+        """Count non-runtime user/assistant messages for first-turn gating."""
+        with get_db() as conn:
+            row = conn.execute(
+                """SELECT COUNT(*) AS cnt
+                   FROM messages
+                   WHERE session_id = ?
+                     AND role IN ('user', 'assistant')
+                     AND COALESCE(origin, '') != 'game_runtime'""",
+                (session_id,),
+            ).fetchone()
+            return int(row["cnt"]) if row else 0
+
     # --- Session compaction (Phase 3.1) ---
 
     @staticmethod

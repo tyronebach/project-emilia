@@ -6,6 +6,7 @@
 - VRM viewer + animation system (Three.js + VRM + animation graph, lip sync, post-processing).
 - LLM chat interface + game extensions (prompt injection + move parsing).
 - LLM-driven emotion engine (state persistence, trigger detection, calibration).
+- Soul Window relationship visibility (mood snapshot, bond state, SOUL profile parsing, timeline events).
 - Debug panels for VRM display, voice pipeline, and LLM/emotion interactions.
 
 ---
@@ -35,7 +36,7 @@
 - `backend/dependencies.py`: Auth + header dependencies.
 - `backend/routers/`: API endpoints.
 - `backend/schemas/`: Pydantic request/response models.
-- `backend/services/`: ElevenLabs client, emotion engine, drift simulator, room chat orchestration, compaction.
+- `backend/services/`: ElevenLabs client, emotion engine, drift simulator, room chat orchestration, compaction, Soul Window helpers.
 - `backend/db/`: SQLite connection + repositories.
 - `backend/core/exceptions.py`: Exception helpers.
 
@@ -77,11 +78,11 @@
 
 **Chat / Media** (`backend/routers/chat.py`)
 - `POST /api/chat?stream=0|1`: Main chat endpoint.
-  - Request: `ChatRequest` (`message`, optional `game_context`).
+  - Request: `ChatRequest` (`message`, optional `game_context`, optional `runtime_trigger`).
   - Headers: `Authorization`, `X-User-Id`, `X-Agent-Id`, optional `X-Session-Id`.
-  - Logic: builds message list (summary + recent history + emotion context + game context), calls Clawdbot `/v1/chat/completions`, parses behavior tags, stores messages, triggers emotion updates, runs compaction.
+  - Logic: builds message list (summary + recent history + emotion context + first-turn UTC facts + game context), calls Clawdbot `/v1/chat/completions`, parses behavior tags, stores messages, triggers emotion updates, runs compaction, and emits mood snapshot data.
   - Non-stream response: `{response, session_id, processing_ms, model, behavior, usage, emotion_debug?}`.
-  - Stream response: SSE data chunks plus `event: avatar` and `event: emotion`.
+  - Stream response: SSE data chunks plus `event: avatar` and `event: emotion` (`emotion.snapshot` carries structured mood telemetry for UI).
 - `POST /api/transcribe`: Multipart audio upload, forwards to STT service, returns transcription JSON.
 - `POST /api/speak`: TTS via ElevenLabs REST with alignment data, returns `{audio_base64, alignment, voice_id, duration_estimate}`.
 
@@ -89,6 +90,13 @@
 - `GET /api/memory?agent_id=`: Returns `MEMORY.md` from agent workspace as `text/markdown`.
 - `GET /api/memory/list?agent_id=`: Lists memory files. Response `MemoryFilesResponse`.
 - `GET /api/memory/{filename}?agent_id=`: Returns specific memory file. Response `MemoryContentResponse`.
+
+**Soul Window** (`backend/routers/soul_window.py`)
+- `GET /api/soul-window/mood`: User-scoped mood snapshot (dominant mood, secondaries, trust/intimacy, valence/arousal).
+- `GET /api/soul-window/bond`: User-scoped relationship snapshot (dimensions, labels, inferred relationship type, milestones).
+- `GET /api/soul-window/about`: Parsed `SOUL.md` sections from agent workspace.
+- `GET /api/soul-window/events`: Workspace-backed timeline (`{workspace}/user_data/{user_id}/events.json`).
+- `POST /api/soul-window/events`: Idempotent timeline mutations (`add_milestone`, `add_event`, `remove_event`).
 
 **Admin / Manage** (`backend/routers/admin.py`)
 - `GET /api/manage/sessions`: Lists all sessions.
@@ -142,13 +150,14 @@ This includes:
 ### Data Models
 
 **Pydantic requests** (`backend/schemas/requests.py`)
-- `ChatRequest`: `{message, game_context?}`
+- `ChatRequest`: `{message, game_context?, runtime_trigger?}`
 - `CreateSessionRequest`: `{agent_id, name?}`
 - `UpdateSessionRequest`: `{name?}`
 - `CreateRoomRequest`, `UpdateRoomRequest`, `AddRoomAgentRequest`, `UpdateRoomAgentRequest`, `RoomChatRequest`
 - `SpeakRequest`: `{text, voice_id?}`
 - `AgentUpdate`: `{display_name?, voice_id?, vrm_model?, workspace?}`
 - `UserPreferencesUpdate`: `{preferences: {...}}`
+- `SoulWindowEventsRequest`: `{action, id?, item?}`
 
 **Pydantic responses** (`backend/schemas/responses.py`)
 - `UserResponse`, `AgentResponse`, `SessionResponse`, `SessionHistoryResponse`
@@ -239,6 +248,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `frontend/src/games/`: Game modules and registry.
 - `frontend/src/store/`: Zustand stores.
 - `frontend/src/utils/`: API wrapper, helpers, schemas.
+- `frontend/src/types/soulWindow.ts`: Soul Window API payload types.
 - `frontend/src/hooks/`: Chat, voice, session, room, game, and logout hooks.
 - `frontend/public/`: VRM + animation assets and manifests.
 
@@ -260,7 +270,7 @@ Routes are file-based via TanStack Router.
 
 - `frontend/src/store/index.ts`: App state (status, errors, session, TTS, avatar commands).
 - `frontend/src/store/userStore.ts`: Current user/agent, persisted to localStorage.
-- `frontend/src/store/chatStore.ts`: Messages + streaming content + emotion debug.
+- `frontend/src/store/chatStore.ts`: Messages + streaming content + emotion debug + `currentMood` snapshot.
 - `frontend/src/store/roomStore.ts`: Group room state (room, agents, messages, per-agent streaming chunks).
 - `frontend/src/store/renderStore.ts`: Render quality, per-user persisted settings.
 - `frontend/src/store/gameStore.ts`: Game session state, persisted to sessionStorage.
@@ -274,6 +284,10 @@ Routes are file-based via TanStack Router.
 - SSE streaming via `streamChat()` for `/api/chat?stream=1`.
 - Room APIs for `/api/rooms/*` plus room SSE parsing via `streamRoomChat()`.
 - Helpers for users, agents, sessions, memory, TTS and history.
+- `EmotionDebug` includes optional structured `snapshot` payload from backend `event: emotion`.
+
+`frontend/src/utils/soulWindowApi.ts`
+- Wrappers for `/api/soul-window/{mood,bond,about,events}`.
 
 ### Major Components
 
@@ -283,6 +297,8 @@ Routes are file-based via TanStack Router.
 - `InputControls`: Text input, voice toggle, send controls.
 - `GamePanel` + `GameSelector`: Game UX and move flow.
 - `Drawer`: Sessions list + settings entry points.
+- `Header` + `MoodIndicator`: status + current mood display.
+- `BondModal` + `AboutModal`: Soul Window relationship/personality modals.
 - `UserSelection`, `AgentSelection`: Login-like selection flow.
 
 **Debug & Admin**
@@ -356,10 +372,17 @@ Assets
 
 **Chat Flow**
 - Frontend `useChat` → `streamChat()` → `POST /api/chat?stream=1`.
-- Backend builds context: summary + recent DB messages + emotion context + game context.
+- Backend builds context: summary + recent DB messages + emotion context + first-turn UTC facts + game context.
 - Backend calls Clawdbot gateway `/v1/chat/completions` with `model: agent:{clawdbot_agent_id}`.
 - Backend parses `[MOOD]`, `[INTENT]`, `[ENERGY]`, `[MOVE]`, `[GAME]` tags for avatar behavior.
 - SSE emits text chunks + `avatar` events + `emotion` events.
+- `emotion` event includes optional `snapshot` used by frontend mood indicator + bond modal entry.
+
+**Soul Window Flow**
+- Header mood indicator reflects `chatStore.currentMood` from SSE `emotion.snapshot`.
+- Bond/About modals load from `/api/soul-window/bond` and `/api/soul-window/about`.
+- Events timeline reads/writes via `/api/soul-window/events`.
+- Workspace events file is `{workspace}/user_data/{user_id}/events.json` with atomic writes and idempotent IDs.
 
 **Emotion Flow**
 - Pre-LLM: load state, decay, detect triggers, apply deltas, generate context block.
@@ -396,6 +419,8 @@ Assets
 - API calls use `fetchWithAuth()` and header-based context IDs.
 - Chat responses embed avatar tags parsed by `backend/parse_chat.py` and stripped on frontend.
 - Emotion engine updates are serialized per `(user_id, agent_id)` via lock-protected sections in `chat.py` (5s timeout + warning on contention).
+- First non-runtime turn in a session gets deterministic UTC context facts from backend.
+- Soul Window events are file-backed and supplemental; relationship dimensions remain canonical in DB.
 - Session compaction is best-effort and run in background.
 - Zustand stores are the single source of truth for UI state; React Query is used for server state in some components.
 
@@ -407,6 +432,8 @@ Assets
 - `docs/animation/*`: VRM/animation research and pipeline notes.
 - `docs/archive/*`: older plans/specs and previous API docs.
 - `docs/planning/*`: implementation plans for game modules and emotion engine.
+- `docs/planning/P006-soul-window.md`: canonical Soul Window plan.
+- `docs/planning/P006-soul-window-dev-guide.md`: implementation/extension guide for future devs.
 
 ---
 
@@ -415,10 +442,17 @@ Assets
 - `backend/main.py`: app entry + router registration.
 - `backend/routers/`: API surface.
 - `backend/services/emotion_engine.py`: core emotion engine.
+- `backend/services/soul_window_service.py`: Soul Window read-model helpers.
+- `backend/services/workspace_events.py`: workspace events timeline service.
+- `backend/services/soul_parser.py`: SOUL markdown parser.
 - `backend/db/connection.py`: schema + migrations.
 - `frontend/src/App.tsx`: main chat UI.
+- `frontend/src/components/MoodIndicator.tsx`: compact mood chip in header.
+- `frontend/src/components/BondModal.tsx`: relationship modal.
+- `frontend/src/components/AboutModal.tsx`: SOUL profile modal.
 - `frontend/src/avatar/AvatarRenderer.ts`: VRM renderer.
 - `frontend/src/utils/api.ts`: API client + SSE.
+- `frontend/src/utils/soulWindowApi.ts`: Soul Window API wrappers.
 - `frontend/src/routes/*`: routing map.
 - `frontend/public/vrm/vrm-manifest.json`: VRM model list.
 - `frontend/public/animations/animation-manifest.json`: animation list.

@@ -16,6 +16,7 @@ from routers import (
     admin_router,
     games_router,
     rooms_router,
+    soul_window_router,
 )
 from routers.emotional import router as emotional_router
 from routers.designer_v2 import router as designer_v2_router
@@ -40,6 +41,7 @@ app.include_router(memory_router)
 app.include_router(admin_router)
 app.include_router(games_router)
 app.include_router(rooms_router)
+app.include_router(soul_window_router)
 app.include_router(emotional_router)
 app.include_router(designer_v2_router)
 

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Message, MessageMeta } from '../types';
 import type { EmotionDebug } from '../utils/api';
+import type { SoulMoodSnapshot } from '../types/soulWindow';
 
 let _nextMessageId = 1;
 
@@ -14,6 +15,8 @@ interface ChatState {
   setStreamingContent: (content: string) => void;
   lastEmotionDebug: EmotionDebug | null;
   setLastEmotionDebug: (data: EmotionDebug | null) => void;
+  currentMood: SoulMoodSnapshot | null;
+  setCurrentMood: (snapshot: SoulMoodSnapshot | null) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -44,11 +47,14 @@ export const useChatStore = create<ChatState>((set) => ({
   
   setMessages: (messages) => set({ messages }),
   
-  clearMessages: () => set({ messages: [] }),
+  clearMessages: () => set({ messages: [], currentMood: null }),
   
   streamingContent: '',
   setStreamingContent: (content) => set({ streamingContent: content }),
 
   lastEmotionDebug: null,
   setLastEmotionDebug: (data) => set({ lastEmotionDebug: data }),
+
+  currentMood: null,
+  setCurrentMood: (snapshot) => set({ currentMood: snapshot }),
 }));

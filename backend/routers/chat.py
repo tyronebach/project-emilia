@@ -4,6 +4,8 @@ import time
 import json
 import logging
 import threading
+from datetime import datetime, timezone
+from pathlib import Path
 import httpx
 from fastapi import APIRouter, UploadFile, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -25,6 +27,8 @@ from services.emotion_engine import (
     normalize_trigger, ContextualTriggerCalibration,
     infer_outcome_multisignal, CalibrationRecovery, CONFIDENCE_THRESHOLD,
 )
+from services.soul_window_service import get_mood_snapshot
+from services.workspace_events import WorkspaceEventsService
 
 logger = logging.getLogger(__name__)
 
@@ -389,12 +393,106 @@ def inject_game_context(
     return message + context_block
 
 
+def _time_of_day_bucket_utc(now_utc: datetime) -> str:
+    hour = now_utc.hour
+    if 5 <= hour < 12:
+        return "morning"
+    if 12 <= hour < 17:
+        return "afternoon"
+    if 17 <= hour < 22:
+        return "evening"
+    return "night"
+
+
+def _build_first_turn_context(
+    user_id: str,
+    agent_id: str,
+    *,
+    agent_workspace: str | None,
+) -> str | None:
+    """Build deterministic first-turn facts block in UTC."""
+    now_utc = datetime.now(timezone.utc)
+    lines = [
+        "Session facts (UTC):",
+        f"- now_utc: {now_utc.isoformat()}",
+        f"- time_of_day_utc: {_time_of_day_bucket_utc(now_utc)}",
+    ]
+
+    try:
+        prior_state = EmotionalStateRepository.get(user_id, agent_id)
+        last_interaction = prior_state.get("last_interaction") if prior_state else None
+        if isinstance(last_interaction, (int, float)):
+            days_since = max(0, int((now_utc.timestamp() - float(last_interaction)) // 86400))
+            lines.append(f"- days_since_last_interaction: {days_since}")
+    except Exception:
+        logger.exception("Failed building first-turn interaction facts for %s/%s", user_id, agent_id)
+
+    if agent_workspace:
+        try:
+            upcoming = WorkspaceEventsService.get_upcoming(
+                Path(agent_workspace),
+                user_id,
+                agent_id,
+                days=7,
+                now_utc=now_utc,
+            )
+            if upcoming:
+                lines.append("- upcoming_events_next_7_days:")
+                for event in upcoming[:3]:
+                    event_type = str(event.get("type") or "event")
+                    event_date = str(event.get("date") or "")
+                    event_note = str(event.get("note") or "").strip()
+                    if event_note:
+                        lines.append(f"  - {event_type} on {event_date}: {event_note}")
+                    else:
+                        lines.append(f"  - {event_type} on {event_date}")
+        except Exception:
+            logger.exception("Failed loading first-turn upcoming events for %s/%s", user_id, agent_id)
+
+    if len(lines) <= 1:
+        return None
+    return "\n".join(lines)
+
+
+def _ensure_workspace_milestones(
+    *,
+    agent_workspace: str,
+    user_id: str,
+    agent_id: str,
+    interaction_count: int,
+    runtime_trigger: bool,
+    game_id: str | None,
+) -> None:
+    """Best-effort auto milestone persistence to workspace events file."""
+    try:
+        WorkspaceEventsService.ensure_auto_milestones(
+            Path(agent_workspace),
+            user_id,
+            agent_id,
+            interaction_count=interaction_count,
+            runtime_trigger=runtime_trigger,
+            game_id=game_id,
+        )
+    except Exception:
+        logger.exception("Failed writing auto milestones for %s/%s", user_id, agent_id)
+
+
+def _safe_get_mood_snapshot(user_id: str, agent_id: str) -> dict | None:
+    """Best-effort mood snapshot for debug/UI payloads."""
+    try:
+        return get_mood_snapshot(user_id, agent_id)
+    except Exception:
+        logger.exception("Failed loading mood snapshot for %s/%s", user_id, agent_id)
+        return None
+
+
 def _build_llm_messages(
     session_id: str,
     current_msg: str,
     game_context,
     emotional_context: str | None = None,
     trusted_game_prompt: str = "",
+    first_turn_context: str | None = None,
 ) -> list[dict]:
     """Build the messages array for the LLM: [summary] + recent history + current message."""
     messages: list[dict] = []
@@ -416,6 +514,10 @@ def _build_llm_messages(
     # Inject emotional context first (affects tone)
     if emotional_context:
         current_content = emotional_context + "\n\n" + current_content
+
+    # Deterministic first-turn facts (UTC), no stylistic instructions.
+    if first_turn_context:
+        current_content = first_turn_context + "\n\n" + current_content
     
     # Then game context (specific to game state)
     current_content = inject_game_context(
@@ -504,6 +606,7 @@ async def chat(
         raise not_found("Agent")
 
     clawdbot_agent_id = agent["clawdbot_agent_id"]
+    agent_workspace = agent.get("workspace")
 
     if session_id:
         session = SessionRepository.get_by_id(session_id)
@@ -516,7 +619,15 @@ async def chat(
 
     if stream == 1:
         return StreamingResponse(
-            _stream_chat_sse(request, start_time, clawdbot_agent_id, sid, user_id, agent_id),
+            _stream_chat_sse(
+                request,
+                start_time,
+                clawdbot_agent_id,
+                sid,
+                user_id,
+                agent_id,
+                agent_workspace=agent_workspace,
+            ),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -533,11 +644,22 @@ async def chat(
         if not games_v2_enabled_for_agent and (request.runtime_trigger or request.game_context):
             logger.info("[Chat] Ignoring game payload because Games V2 rollout is disabled for agent %s", agent_id)
         emotion_input_message = "" if runtime_trigger else request.message
+        is_first_turn = (not runtime_trigger) and (MessageRepository.get_conversation_count(sid) == 0)
+        first_turn_context = (
+            _build_first_turn_context(
+                user_id,
+                agent_id,
+                agent_workspace=agent_workspace if isinstance(agent_workspace, str) else None,
+            )
+            if is_first_turn
+            else None
+        )
 
         # Process emotional state before LLM (detect triggers, apply decay)
         emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
             user_id, agent_id, emotion_input_message, sid
         )
+        emotion_snapshot = _safe_get_mood_snapshot(user_id, agent_id)
         trusted_game_prompt = _resolve_trusted_prompt_instructions(agent_id, game_context)
 
         # Build messages array: raw history + current message with contexts
@@ -547,6 +669,7 @@ async def chat(
             game_context,
             emotional_context,
             trusted_game_prompt=trusted_game_prompt,
+            first_turn_context=first_turn_context,
         )
 
         # Store user/runtime trigger message BEFORE calling LLM (cleaned up on failure).
@@ -604,6 +727,21 @@ async def chat(
         SessionRepository.update_last_used(sid)
         SessionRepository.increment_message_count(sid)
 
+        if isinstance(agent_workspace, str) and agent_workspace.strip():
+            state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
+            interaction_count = int(state_row.get("interaction_count") or 0)
+            game_id_value = _ctx_value(game_context, "game_id", "gameId")
+            game_id = game_id_value.strip() if isinstance(game_id_value, str) and game_id_value.strip() else None
+            _spawn_background(asyncio.to_thread(
+                _ensure_workspace_milestones,
+                agent_workspace=agent_workspace,
+                user_id=user_id,
+                agent_id=agent_id,
+                interaction_count=interaction_count,
+                runtime_trigger=runtime_trigger,
+                game_id=game_id,
+            ))
+
         # Process emotional state after LLM in background thread (M1 fix: avoid blocking event loop)
         _spawn_background(asyncio.to_thread(
             _process_emotion_post_llm,
@@ -623,10 +761,11 @@ async def chat(
             "usage": result.get("usage"),
         }
 
-        if emotional_context or pre_llm_triggers:
+        if emotional_context or pre_llm_triggers or emotion_snapshot:
             resp["emotion_debug"] = {
                 "triggers": [[t, round(i, 3)] for t, i in pre_llm_triggers],
                 "context_block": emotional_context,
+                "snapshot": emotion_snapshot,
             }
 
         return resp
@@ -643,7 +782,8 @@ async def _stream_chat_sse(
     clawdbot_agent_id: str,
     session_id: str,
     user_id: str,
-    agent_id: str
+    agent_id: str,
+    agent_workspace: str | None = None,
 ):
     """SSE streaming chat"""
     try:
@@ -653,11 +793,22 @@ async def _stream_chat_sse(
         if not games_v2_enabled_for_agent and (request.runtime_trigger or request.game_context):
             logger.info("[SSE] Ignoring game payload because Games V2 rollout is disabled for agent %s", agent_id)
         emotion_input_message = "" if runtime_trigger else request.message
+        is_first_turn = (not runtime_trigger) and (MessageRepository.get_conversation_count(session_id) == 0)
+        first_turn_context = (
+            _build_first_turn_context(
+                user_id,
+                agent_id,
+                agent_workspace=agent_workspace if isinstance(agent_workspace, str) else None,
+            )
+            if is_first_turn
+            else None
+        )
 
         # Process emotional state before LLM (detect triggers, apply decay)
         emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
             user_id, agent_id, emotion_input_message, session_id
         )
+        emotion_snapshot = _safe_get_mood_snapshot(user_id, agent_id)
         trusted_game_prompt = _resolve_trusted_prompt_instructions(agent_id, game_context)
 
         # Build messages array: raw history + current message with contexts
@@ -667,6 +818,7 @@ async def _stream_chat_sse(
             game_context,
             emotional_context,
             trusted_game_prompt=trusted_game_prompt,
+            first_turn_context=first_turn_context,
         )
 
         # Store user/runtime trigger message BEFORE calling LLM (cleaned up on failure).
@@ -770,16 +922,36 @@ async def _stream_chat_sse(
                     if avatar_data:
                         yield f"event: avatar\ndata: {json.dumps(avatar_data)}\n\n"
 
-                    # Emit emotion debug info (triggers + context block)
-                    if emotional_context or pre_llm_triggers:
+                    # Emit emotion debug info (triggers + context block + structured snapshot).
+                    if emotional_context or pre_llm_triggers or emotion_snapshot:
                         emotion_debug = {
                             "triggers": [[t, round(i, 3)] for t, i in pre_llm_triggers],
                             "context_block": emotional_context,
+                            "snapshot": emotion_snapshot,
                         }
                         yield f"event: emotion\ndata: {json.dumps(emotion_debug)}\n\n"
 
                     SessionRepository.update_last_used(session_id)
                     SessionRepository.increment_message_count(session_id)
+
+                    if isinstance(agent_workspace, str) and agent_workspace.strip():
+                        state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
+                        interaction_count = int(state_row.get("interaction_count") or 0)
+                        game_id_value = _ctx_value(game_context, "game_id", "gameId")
+                        game_id = (
+                            game_id_value.strip()
+                            if isinstance(game_id_value, str) and game_id_value.strip()
+                            else None
+                        )
+                        _spawn_background(asyncio.to_thread(
+                            _ensure_workspace_milestones,
+                            agent_workspace=agent_workspace,
+                            user_id=user_id,
+                            agent_id=agent_id,
+                            interaction_count=interaction_count,
+                            runtime_trigger=runtime_trigger,
+                            game_id=game_id,
+                        ))
 
                     # Process emotional state after LLM in background thread (M1 fix)
                     _spawn_background(asyncio.to_thread(

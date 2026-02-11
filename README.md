@@ -15,6 +15,17 @@ Current backend app version: `5.6.3`.
 | STT | Faster Whisper (remote service) |
 | LLM | Clawdbot Gateway (OpenClaw) |
 
+## Core Features
+
+- 1:1 chat sessions with streaming SSE responses and avatar behavior tags.
+- Group rooms with multi-agent participation.
+- Emotion engine with per user-agent persistent state and calibration.
+- Soul Window UX:
+  - Header mood indicator (live from SSE `emotion.snapshot`).
+  - Bond modal (`/api/soul-window/bond`).
+  - About modal from workspace `SOUL.md` (`/api/soul-window/about`).
+  - Events timeline (`/api/soul-window/events`).
+
 ## Quick Start
 
 ```bash
@@ -85,6 +96,8 @@ npm run build         # Production build
 | `AGENTS.md` | Guide for coding agents |
 | `CHANGELOG.md` | Version history |
 | `DOCUMENTATION.md` | LLM-focused repo map |
+| `docs/planning/P006-soul-window.md` | Soul Window canonical plan |
+| `docs/planning/P006-soul-window-dev-guide.md` | Soul Window implementation and extension guide |
 | `docs/animation/` | VRM/animation pipeline notes |
 
 ## Avatar Assets

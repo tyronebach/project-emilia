@@ -256,6 +256,34 @@ class AgentGameConfigUpdate(BaseModel):
         return stripped if stripped else None
 
 
+class SoulWindowEventsRequest(BaseModel):
+    """Events mutation request for user-facing Soul Window endpoints."""
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["add_milestone", "add_event", "remove_event"]
+    id: Optional[str] = Field(None, min_length=1, max_length=120)
+    item: Optional[Dict[str, Any]] = None
+
+    @field_validator("id")
+    @classmethod
+    def strip_optional_id(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        stripped = v.strip()
+        if not stripped:
+            return None
+        return stripped
+
+    @field_validator("item")
+    @classmethod
+    def validate_optional_item(cls, v: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if v is None:
+            return None
+        if not isinstance(v, dict):
+            raise ValueError("item must be an object")
+        return v
+
+
 class CreateRoomRequest(BaseModel):
     """Create room request."""
     name: str = Field(..., min_length=1, max_length=100)

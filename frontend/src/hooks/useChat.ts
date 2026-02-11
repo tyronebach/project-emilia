@@ -259,7 +259,11 @@ export function useChat() {
             }
           },
           onEmotion: (data: EmotionDebug) => {
-            useChatStore.getState().setLastEmotionDebug(data);
+            const store = useChatStore.getState();
+            store.setLastEmotionDebug(data);
+            if (data.snapshot) {
+              store.setCurrentMood(data.snapshot);
+            }
           },
         }
       );
