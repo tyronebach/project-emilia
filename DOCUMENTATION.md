@@ -177,6 +177,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `TTS_CACHE_ENABLED`, `TTS_CACHE_TTL_SECONDS`, `TTS_CACHE_MAX_ENTRIES`.
 - `CHAT_HISTORY_LIMIT`, `LLM_TRIGGER_DETECTION`.
 - `COMPACT_THRESHOLD`, `COMPACT_KEEP_RECENT`, `COMPACT_MODEL`.
+- `GAMES_V2_ENABLED`, `GAMES_V2_AGENT_ALLOWLIST` (agent rollout cohort).
 - `CLAWDBOT_AGENTS_DIR` (agent workspaces).
 - `EMILIA_DB_PATH` / fallback for DB.
 
@@ -283,10 +284,21 @@ Assets
 
 ### Games System
 
-- Registry: `frontend/src/games/registry.ts`.
+- Loader manifest: `frontend/src/games/loaders/manifest.ts` (`gameId -> dynamic import`).
+- Runtime registry/loader: `frontend/src/games/registry.ts`.
 - Module interface: `frontend/src/games/types.ts`.
-- Current module: Tic Tac Toe (`frontend/src/games/tic-tac-toe/`).
-- Game context injected into LLM prompt (`game_context` field in `/api/chat`).
+- Current modules: `frontend/src/games/modules/tic-tac-toe/`, `frontend/src/games/modules/chess/`.
+- Backend catalog APIs: `GET /api/games/catalog`, `GET /api/games/catalog/{game_id}`.
+- Manage APIs: `/api/manage/games` + `/api/manage/agents/{agent_id}/games/{game_id}`.
+- Selector behavior: only games present in backend catalog *and* frontend loader manifest are shown (`GameSelector` filters via `hasGameLoader`).
+- Game context is injected into LLM prompt through `game_context` in `/api/chat`.
+
+**Add-a-game flow**
+1. Implement frontend module package under `frontend/src/games/modules/<game-id>/`.
+2. Add `<game-id>` to `frontend/src/games/loaders/manifest.ts`.
+3. Register metadata via `/manage` Games tab (or `/api/manage/games`) using matching IDs.
+4. Enable per-agent config in `/manage`.
+5. Confirm rollout flags/allowlists include the target agent.
 
 ### Voice Pipeline
 
