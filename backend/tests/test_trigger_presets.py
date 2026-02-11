@@ -14,9 +14,9 @@ def test_trigger_preset_to_deltas_with_override():
     rejection = profile.get_trigger_deltas("rejection")
     comfort = profile.get_trigger_deltas("comfort")
 
-    base_praise = EmotionEngine.DEFAULT_TRIGGER_DELTAS["praise"]
-    base_rejection = EmotionEngine.DEFAULT_TRIGGER_DELTAS["rejection"]
-    base_comfort = EmotionEngine.DEFAULT_TRIGGER_DELTAS["comfort"]
+    base_praise = EmotionEngine.DEFAULT_TRIGGER_DELTAS["admiration"]
+    base_rejection = EmotionEngine.DEFAULT_TRIGGER_DELTAS["disgust"]
+    base_comfort = EmotionEngine.DEFAULT_TRIGGER_DELTAS["caring"]
 
     assert praise["valence"] == base_praise["valence"] * 1.5
     assert praise["arousal"] == base_praise["arousal"] * 1.5
@@ -31,15 +31,15 @@ def test_trigger_preset_to_deltas_with_override():
     assert comfort["trust"] == base_comfort["trust"] * 0.5
 
 
-def test_canonical_preset_applies_to_legacy_alias_trigger():
+def test_legacy_response_applies_when_detected_trigger_is_canonical():
     profile = AgentProfile(
         trigger_responses={
             "praise": {"preset": "uncomfortable"},
         }
     )
 
-    canonical = profile.get_trigger_deltas("praise")
-    alias = profile.get_trigger_deltas("compliment")
+    canonical = profile.get_trigger_deltas("admiration")
+    alias = profile.get_trigger_deltas("praise")
 
     assert canonical == alias
     assert canonical["valence"] < 0

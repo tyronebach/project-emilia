@@ -178,7 +178,9 @@ class TestChatEndpoint:
         mock_spawn_background,
         test_client,
         auth_headers,
+        monkeypatch,
     ):
+        monkeypatch.setattr(settings, "games_v2_agent_allowlist", set())
         user_id = f"user-{uuid.uuid4().hex[:8]}"
         agent_id = f"agent-{uuid.uuid4().hex[:8]}"
 
@@ -679,7 +681,8 @@ class TestManageEndpoints:
         response = await test_client.get("/api/manage/agents")
         assert response.status_code == 401
 
-    async def test_manage_games_and_agent_config_affect_catalog(self, test_client, auth_headers):
+    async def test_manage_games_and_agent_config_affect_catalog(self, test_client, auth_headers, monkeypatch):
+        monkeypatch.setattr(settings, "games_v2_agent_allowlist", set())
         user_id = f"user-{uuid.uuid4().hex[:8]}"
         agent_id = f"agent-{uuid.uuid4().hex[:8]}"
         game_id = f"game-{uuid.uuid4().hex[:8]}"
@@ -748,7 +751,8 @@ class TestManageEndpoints:
         assert catalog_after_delete_cfg.status_code == 200
         assert any(g["id"] == game_id for g in catalog_after_delete_cfg.json()["games"])
 
-    async def test_catalog_uses_registry_fallback_when_agent_has_no_game_config(self, test_client, auth_headers):
+    async def test_catalog_uses_registry_fallback_when_agent_has_no_game_config(self, test_client, auth_headers, monkeypatch):
+        monkeypatch.setattr(settings, "games_v2_agent_allowlist", set())
         user_id = f"user-{uuid.uuid4().hex[:8]}"
         agent_id = f"agent-{uuid.uuid4().hex[:8]}"
         game_id = f"game-{uuid.uuid4().hex[:8]}"

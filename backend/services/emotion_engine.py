@@ -242,21 +242,33 @@ class AgentProfile:
         2. trigger_multipliers[trigger] → scale DEFAULT_TRIGGER_DELTAS
         3. DEFAULT_TRIGGER_DELTAS as-is (multiplier = 1.0)
         """
-        from services.emotion_engine import EmotionEngine, normalize_trigger
+        from services.emotion_engine import EmotionEngine, LEGACY_TRIGGER_ALIASES, normalize_trigger
 
         # Support canonical fallback so legacy runtime triggers map to
         # GoEmotions labels (for example compliment -> love).
         canonical = normalize_trigger(trigger)
-        lookup_order = [trigger]
-        if canonical and canonical not in lookup_order:
-            lookup_order.append(canonical)
+        lookup_order: list[str] = []
+        for key in (trigger, canonical):
+            if key and key not in lookup_order:
+                lookup_order.append(key)
+
+        # Also check any legacy aliases that map to the canonical trigger.
+        # This keeps older agent profiles working even when classifier output
+        # is now canonical GoEmotions labels.
+        if canonical:
+            for legacy, mapped in LEGACY_TRIGGER_ALIASES.items():
+                if mapped == canonical and legacy not in lookup_order:
+                    lookup_order.append(legacy)
 
         response_key = next((k for k in lookup_order if k in self.trigger_responses), None)
         if response_key:
             response = self.trigger_responses[response_key]
             preset = response.get("preset") if isinstance(response, dict) else None
+            response_canonical = normalize_trigger(response_key)
             base = (
                 EmotionEngine.DEFAULT_TRIGGER_DELTAS.get(response_key)
+                or EmotionEngine.DEFAULT_TRIGGER_DELTAS.get(response_canonical or "")
+                or EmotionEngine.DEFAULT_TRIGGER_DELTAS.get(canonical or "")
                 or EmotionEngine.DEFAULT_TRIGGER_DELTAS.get(trigger, {})
             )
 
