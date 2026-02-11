@@ -28,7 +28,21 @@ Open `https://localhost:3443`.
 ## Feature Flags
 
 - `GAMES_V2_ENABLED` (backend, docker-compose default: `1`)
+- `GAMES_V2_AGENT_ALLOWLIST` (backend; optional comma-separated agent IDs for staged rollout)
 - `VITE_GAMES_V2_ENABLED` (frontend, default: `1`)
+- `VITE_GAMES_V2_AGENT_ALLOWLIST` (frontend; optional comma-separated agent IDs mirroring backend allowlist)
+
+## Adding A New Game
+
+`/manage` (Games tab) handles backend catalog/config only. A game appears in the player UI only when both backend and frontend are wired.
+
+1. Build frontend game module under `frontend/src/games/modules/<game-id>/` (module + renderer + loader contract export).
+2. Add dynamic loader manifest entry in `frontend/src/games/loaders/manifest.ts` with the same `gameId`.
+3. Register game metadata in `/manage` (or `POST /api/manage/games`) using the same `id`/`module_key`.
+4. Enable the game for target agents in `/manage` (`agent_game_config` path).
+5. Ensure rollout flags allow that agent (`GAMES_V2_ENABLED` and allowlist vars when used).
+
+If the backend catalog contains a game but no frontend loader exists, the selector intentionally filters it out.
 
 ## URLs
 

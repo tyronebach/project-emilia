@@ -17,6 +17,17 @@ A plugin architecture that enables LLM avatars to play games with users. Games r
 - `GAMES_V2_ENABLED`: global on/off switch for game-runtime V2 paths.
 - `GAMES_V2_AGENT_ALLOWLIST`: optional comma-separated agent IDs for staged rollout. Empty means all agents are eligible when V2 is enabled.
 
+## Registering New Games (Current Runtime)
+
+Backend registration and frontend implementation are both required:
+
+1. Implement a frontend game module package under `frontend/src/games/modules/<game-id>/` that exports a valid loader contract.
+2. Add the module to `frontend/src/games/loaders/manifest.ts` using the same `gameId`.
+3. Register the game in backend catalog (`/manage` Games tab or `POST /api/manage/games`).
+4. Enable it for target agents (`/manage` per-agent game config).
+
+Important: `/manage` creates catalog metadata and agent config, but does not generate frontend code. If a catalog game is missing from the loader manifest, `GameSelector` filters it out by design.
+
 ---
 
 ## Documentation Map
