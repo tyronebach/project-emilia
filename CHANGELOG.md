@@ -18,9 +18,15 @@ All notable changes to Emilia Web App will be documented in this file.
 - **Tests** - Added backend room API tests (`backend/tests/test_rooms.py`) covering CRUD, access control, agent management, and routing/attribution.
 - **Docs sync** - Updated `README.md`, `DOCUMENTATION.md`, `frontend/README.md`, and `docs/planning/P005-group-chat.md` to reflect shipped behavior and deferred items.
 
-### Notes
+### Changed - Code Review Cleanup / Simplification
 
-- Backend health endpoint version string remains `5.5.3` in `backend/main.py`; changelog entries track delivered features.
+- **Dead code removal (backend)** - Removed unused config fields, unused imports, dead room repository method, orphaned emotion-engine LLM trigger code, and legacy `emotional_events` (V1) table/migrations.
+- **Deduped backend helpers** - Consolidated mood-weight parsing (`EmotionalStateRepository.parse_mood_weights`), profile parsing (`AgentRepository.parse_profile`), room behavior extraction, and mood injection settings clamping.
+- **Dead code removal (frontend)** - Deleted unused `useTTS` hook and duplicate Tic-Tac-Toe position labels.
+- **Frontend consistency** - Standardized Designer V2 query keys, extracted shared designer trigger/category helper + constants, and tightened room agent API types.
+- **Validation + resilience** - Aligned room max-agent validation with repository defaults, normalized chat service error factory usage, and added timeout-backed emotion lock acquisition.
+- **Architecture cleanup** - Split `AdminPanel` into tab components and added `useLogout` hook for shared user-switch/logout state cleanup.
+- **TTS preference source of truth** - Removed frontend `localStorage` mirror (`emilia-tts-enabled`); UI now relies on backend user preferences sync.
 
 ---
 

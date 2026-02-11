@@ -55,8 +55,8 @@ export interface RoomAgent {
   display_name: string;
   vrm_model?: string | null;
   voice_id?: string | null;
-  role: 'participant' | 'moderator' | 'observer' | string;
-  response_mode: 'mention' | 'always' | 'manual' | string;
+  role: 'participant' | 'moderator' | 'observer';
+  response_mode: 'mention' | 'always' | 'manual';
   added_at?: number | null;
   added_by?: string | null;
 }

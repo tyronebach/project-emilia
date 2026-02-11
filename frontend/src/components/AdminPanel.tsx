@@ -8,17 +8,16 @@ import {
   Gamepad2,
   Link,
   Palette,
-  Pencil,
-  Plus,
-  RotateCcw,
-  Save,
   Sliders,
-  Trash2,
   Users,
 } from 'lucide-react';
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
 import DeleteConfirmDialog from './designer/DeleteConfirmDialog';
+import AgentsTab from './admin/AgentsTab';
+import GamesTab from './admin/GamesTab';
+import SessionsTab from './admin/SessionsTab';
+import UsersTab from './admin/UsersTab';
 import {
   addUserAgent,
   createAgent,
@@ -757,457 +756,65 @@ function AdminPanel() {
         )}
 
         {activeTab === 'users' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="font-display text-xl">Users</h2>
-                <p className="text-sm text-text-secondary">Manage user accounts and display names.</p>
-              </div>
-              <Button onClick={openCreateUser} className="gap-2">
-                <Plus className="w-4 h-4" />
-                Add User
-              </Button>
-            </div>
-
-            {loadingUsers ? (
-              <div className="text-center py-8 text-text-secondary">Loading users...</div>
-            ) : users.length === 0 ? (
-              <div className="text-center py-8 text-text-secondary">No users found.</div>
-            ) : (
-              <div className="bg-bg-secondary/70 border border-white/10 rounded-2xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-bg-tertiary/70 text-text-secondary text-xs uppercase">
-                    <tr>
-                      <th className="text-left px-4 py-3">ID</th>
-                      <th className="text-left px-4 py-3">Display Name</th>
-                      <th className="text-left px-4 py-3">Agent Count</th>
-                      <th className="text-right px-4 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((user) => (
-                      <tr key={user.id} className="border-t border-white/10">
-                        <td className="px-4 py-3 font-mono text-xs text-text-secondary">{user.id}</td>
-                        <td className="px-4 py-3">{user.display_name}</td>
-                        <td className="px-4 py-3">{user.avatar_count ?? 0}</td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="gap-1"
-                              onClick={() => openEditUser(user)}
-                            >
-                              <Pencil className="w-4 h-4" />
-                              Edit
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="gap-1 text-error hover:text-error"
-                              onClick={() => setDeleteUserId(user.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              Delete
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <UsersTab
+            loadingUsers={loadingUsers}
+            users={users}
+            onOpenCreateUser={openCreateUser}
+            onOpenEditUser={openEditUser}
+            onDeleteUser={(userId) => setDeleteUserId(userId)}
+          />
         )}
 
         {activeTab === 'agents' && (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-display text-xl">Agents</h2>
-                <p className="text-sm text-text-secondary">Create, update, or remove agents.</p>
-              </div>
-              <Button onClick={openCreateAgent} className="gap-2">
-                <Plus className="w-4 h-4" />
-                New Agent
-              </Button>
-            </div>
-
-            {loadingAgents ? (
-              <div className="text-center py-8 text-text-secondary">Loading agents...</div>
-            ) : agents.length === 0 ? (
-              <div className="text-center py-8 text-text-secondary">No agents found.</div>
-            ) : (
-              <div className="space-y-6">
-                {agents.map((agent) => {
-                  const changed = hasChanges(agent);
-                  return (
-                    <div
-                      key={agent.id}
-                      className={`bg-bg-secondary/70 border rounded-2xl p-5 ${changed ? 'border-accent/50' : 'border-white/10'} shadow-[0_20px_40px_-30px_rgba(0,0,0,0.6)]`}
-                    >
-                      <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
-                        <div>
-                          <h3 className="font-display text-lg">{agent.display_name}</h3>
-                          <span className="text-xs text-text-secondary font-mono">{agent.id}</span>
-                        </div>
-                        <div className="text-xs text-text-secondary">
-                          Clawdbot: <span className="font-mono">{agent.clawdbot_agent_id}</span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <Field
-                          label="Display Name"
-                          value={agent.display_name}
-                          onChange={(v) => handleFieldChange(agent.id, 'display_name', v)}
-                          placeholder="Agent display name"
-                          tooltip="Human-friendly agent name shown in the UI."
-                        />
-                        <div>
-                          <label className="block text-xs text-text-secondary mb-1" title="ElevenLabs voice ID override for this agent.">
-                            Voice (ElevenLabs)
-                          </label>
-                          <select
-                            value={agent.voice_id || ''}
-                            onChange={(e) => handleVoiceChange(agent, e.target.value)}
-                            disabled={savingAgentId === agent.id}
-                            title="Optional voice ID override. Leave blank to use the global default."
-                            className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-                          >
-                            <option value="">
-                              {voicesLoading ? 'Loading voices...' : 'Default (global)'}
-                            </option>
-                            {!voicesLoading && agent.voice_id && !voiceOptions.some((voice) => voice.id === agent.voice_id) && (
-                              <option value={agent.voice_id}>
-                                Custom ({agent.voice_id})
-                              </option>
-                            )}
-                            {voiceOptions.map((voice) => (
-                              <option key={voice.id} value={voice.id}>
-                                {voice.name} ({voice.id})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs text-text-secondary mb-1" title="VRM filename used by the avatar renderer.">
-                            VRM Model
-                          </label>
-                          <select
-                            value={agent.vrm_model || ''}
-                            onChange={(e) => handleFieldChange(agent.id, 'vrm_model', e.target.value)}
-                            disabled={savingAgentId === agent.id}
-                            title="Select a VRM model file. Default is emilia.vrm."
-                            className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-                          >
-                            <option value="">
-                              {vrmLoading ? 'Loading models...' : 'Default (emilia.vrm)'}
-                            </option>
-                            {!vrmLoading && agent.vrm_model && !vrmOptions.some((model) => model.id === agent.vrm_model) && (
-                              <option value={agent.vrm_model}>
-                                Custom ({agent.vrm_model})
-                              </option>
-                            )}
-                            {vrmOptions.map((model) => (
-                              <option key={model.id} value={model.id}>
-                                {model.name} ({model.id})
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <Field
-                          label="Workspace Path"
-                          value={agent.workspace}
-                          onChange={(v) => handleFieldChange(agent.id, 'workspace', v)}
-                          placeholder="/home/user/agent-workspace"
-                          mono
-                          tooltip="Filesystem path used by tools/memory for this agent."
-                        />
-                      </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-bg-tertiary">
-                        <div className="text-xs text-text-secondary">
-                          {changed && <span className="text-accent">Unsaved changes</span>}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="gap-1 text-error hover:text-error"
-                            onClick={() => setDeleteAgentId(agent.id)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            Delete
-                          </Button>
-                          {changed && (
-                            <Button
-                              onClick={() => handleReset(agent.id)}
-                              variant="ghost"
-                              size="sm"
-                              className="gap-1"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                              Reset
-                            </Button>
-                          )}
-                          <Button
-                            onClick={() => handleSave(agent)}
-                            disabled={savingAgentId === agent.id || !changed}
-                            size="sm"
-                            className="gap-1"
-                          >
-                            <Save className="w-4 h-4" />
-                            {savingAgentId === agent.id ? 'Saving...' : 'Save'}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <AgentsTab
+            loadingAgents={loadingAgents}
+            agents={agents}
+            savingAgentId={savingAgentId}
+            voicesLoading={voicesLoading}
+            voiceOptions={voiceOptions}
+            vrmLoading={vrmLoading}
+            vrmOptions={vrmOptions}
+            onOpenCreateAgent={openCreateAgent}
+            onFieldChange={handleFieldChange}
+            onVoiceChange={handleVoiceChange}
+            onReset={handleReset}
+            onSave={handleSave}
+            onDeleteAgent={(agentId) => setDeleteAgentId(agentId)}
+            hasChanges={hasChanges}
+          />
         )}
 
         {activeTab === 'mappings' && (
-          <div className="space-y-5">
-            <div>
-              <h2 className="font-display text-xl">User-Agent Mappings</h2>
-              <p className="text-sm text-text-secondary">Grant or revoke access to agents per user.</p>
-            </div>
-
-            {loadingUsers ? (
-              <div className="text-center py-8 text-text-secondary">Loading users...</div>
-            ) : users.length === 0 ? (
-              <div className="text-center py-8 text-text-secondary">Create a user to manage mappings.</div>
-            ) : (
-              <div className="space-y-4">
-                <div className="bg-bg-secondary/70 border border-white/10 rounded-2xl p-4">
-                  <label className="block text-xs text-text-secondary mb-2">Select user</label>
-                  <select
-                    value={selectedUserId}
-                    onChange={(e) => setSelectedUserId(e.target.value)}
-                    title="Select which user to manage agent access for."
-                    className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-                  >
-                    <option value="">Choose a user...</option>
-                    {users.map((user) => (
-                      <option key={user.id} value={user.id}>
-                        {user.display_name} ({user.id})
-                      </option>
-                    ))}
-                  </select>
-                  {selectedUser && (
-                    <div className="mt-2 text-xs text-text-secondary">
-                      Managing access for <span className="text-text-primary">{selectedUser.display_name}</span>
-                    </div>
-                  )}
-                </div>
-
-                {!selectedUserId ? (
-                  <div className="text-center py-8 text-text-secondary">Select a user to view access.</div>
-                ) : loadingMappings ? (
-                  <div className="text-center py-8 text-text-secondary">Loading mappings...</div>
-                ) : agents.length === 0 ? (
-                  <div className="text-center py-8 text-text-secondary">No agents available.</div>
-                ) : (
-                  <div className="bg-bg-secondary/70 border border-white/10 rounded-2xl p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {agents.map((agent) => {
-                        const checked = userAgentIds.has(agent.id);
-                        const busy = mappingBusy.has(agent.id);
-                        return (
-                          <label
-                            key={agent.id}
-                            className={`flex items-center justify-between gap-3 px-3 py-2 rounded-xl border ${checked ? 'border-accent/40 bg-bg-tertiary/70' : 'border-white/10'} transition-colors`}
-                          >
-                            <div>
-                              <div className="text-sm">{agent.display_name}</div>
-                              <div className="text-xs text-text-secondary font-mono">{agent.id}</div>
-                            </div>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              disabled={busy}
-                              onChange={(e) => toggleUserAgent(agent.id, e.target.checked)}
-                              title={checked ? 'Click to revoke access' : 'Click to grant access'}
-                              className="h-4 w-4 accent-accent"
-                            />
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          <SessionsTab
+            loadingUsers={loadingUsers}
+            users={users}
+            selectedUserId={selectedUserId}
+            selectedUser={selectedUser}
+            loadingMappings={loadingMappings}
+            agents={agents}
+            userAgentIds={userAgentIds}
+            mappingBusy={mappingBusy}
+            onSelectUserId={setSelectedUserId}
+            onToggleUserAgent={toggleUserAgent}
+          />
         )}
 
         {activeTab === 'games' && (
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="font-display text-xl">Games</h2>
-                <p className="text-sm text-text-secondary">Manage global game registry and per-agent availability.</p>
-              </div>
-              <Button onClick={openCreateGame} className="gap-2">
-                <Plus className="w-4 h-4" />
-                Add Game
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              <div className="bg-bg-secondary/70 border border-white/10 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-display text-lg">Registry</h3>
-                  <span className="text-xs text-text-secondary">{games.length} total</span>
-                </div>
-
-                {loadingGames ? (
-                  <div className="text-sm text-text-secondary py-6 text-center">Loading games...</div>
-                ) : games.length === 0 ? (
-                  <div className="text-sm text-text-secondary py-6 text-center">No games registered.</div>
-                ) : (
-                  <div className="space-y-2 max-h-[540px] overflow-y-auto pr-1">
-                    {games.map((game) => (
-                      <div
-                        key={game.id}
-                        className="rounded-xl border border-white/10 bg-bg-tertiary/50 p-3 space-y-2"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm text-text-primary">{game.display_name}</div>
-                            <div className="text-xs text-text-secondary font-mono">{game.id}</div>
-                          </div>
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full border ${game.active
-                              ? 'border-success/40 text-success'
-                              : 'border-white/20 text-text-secondary'
-                            }`}
-                          >
-                            {game.active ? 'active' : 'inactive'}
-                          </span>
-                        </div>
-                        <div className="text-xs text-text-secondary">
-                          {game.category} · {game.move_provider_default} · {game.rule_mode} · v{game.version}
-                        </div>
-                        <div className="text-xs text-text-secondary/80">{game.description}</div>
-                        <div className="text-[11px] text-text-secondary font-mono">module: {game.module_key}</div>
-                        <div className="flex items-center justify-end gap-2 pt-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="gap-1"
-                            onClick={() => openEditGame(game)}
-                          >
-                            <Pencil className="w-4 h-4" />
-                            Edit
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="gap-1 text-error hover:text-error"
-                            onClick={() => setDeleteGameId(game.id)}
-                            disabled={!game.active}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            Deactivate
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-bg-secondary/70 border border-white/10 rounded-2xl p-4 space-y-4">
-                <div>
-                  <h3 className="font-display text-lg">Agent Availability</h3>
-                  <p className="text-xs text-text-secondary">Enable or disable games per agent.</p>
-                </div>
-
-                {agents.length === 0 ? (
-                  <div className="text-sm text-text-secondary py-6 text-center">Create an agent first.</div>
-                ) : (
-                  <>
-                    <div>
-                      <label className="block text-xs text-text-secondary mb-2">Select agent</label>
-                      <select
-                        value={selectedAgentForGames}
-                        onChange={(e) => setSelectedAgentForGames(e.target.value)}
-                        className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
-                      >
-                        {agents.map((agent) => (
-                          <option key={agent.id} value={agent.id}>
-                            {agent.display_name} ({agent.id})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {loadingAgentGames ? (
-                      <div className="text-sm text-text-secondary py-6 text-center">Loading agent game config...</div>
-                    ) : agentGames.length === 0 ? (
-                      <div className="text-sm text-text-secondary py-6 text-center">No games available for this agent.</div>
-                    ) : (
-                      <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
-                        {agentGames.map((game) => {
-                          const busy = agentGameBusy.has(game.id);
-                          const active = Boolean(game.active);
-                          const effectiveEnabled = Boolean(game.effective_enabled ?? true);
-                          const hasOverride = game.config_enabled !== null && game.config_enabled !== undefined;
-                          return (
-                            <div
-                              key={game.id}
-                              className={`rounded-xl border p-3 ${effectiveEnabled ? 'border-accent/30 bg-bg-tertiary/60' : 'border-white/10 bg-bg-tertiary/40'}`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <div className="text-sm">{game.display_name}</div>
-                                  <div className="text-[11px] font-mono text-text-secondary">{game.id}</div>
-                                </div>
-                                <label className="flex items-center gap-2 text-xs text-text-secondary">
-                                  <input
-                                    type="checkbox"
-                                    checked={effectiveEnabled}
-                                    disabled={busy || !active}
-                                    onChange={(e) => void setAgentGameEnabled(game.id, e.target.checked)}
-                                    className="h-4 w-4 accent-accent"
-                                  />
-                                  enabled
-                                </label>
-                              </div>
-                              <div className="mt-2 text-xs text-text-secondary">
-                                {active ? `Effective mode: ${game.effective_mode ?? game.rule_mode}` : 'Globally inactive'}
-                              </div>
-                              <div className="mt-1 text-[11px] text-text-secondary/80">
-                                {hasOverride
-                                  ? `Override set (${game.config_enabled ? 'enabled' : 'disabled'})`
-                                  : 'Inherited from global default'}
-                              </div>
-                              <div className="mt-2 flex justify-end">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => void clearAgentGameOverride(game.id)}
-                                  disabled={busy || !hasOverride}
-                                >
-                                  Use Default
-                                </Button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
+          <GamesTab
+            loadingGames={loadingGames}
+            games={games}
+            agents={agents}
+            selectedAgentForGames={selectedAgentForGames}
+            loadingAgentGames={loadingAgentGames}
+            agentGames={agentGames}
+            agentGameBusy={agentGameBusy}
+            onOpenCreateGame={openCreateGame}
+            onOpenEditGame={openEditGame}
+            onDeactivateGame={(gameId) => setDeleteGameId(gameId)}
+            onSelectAgentForGames={setSelectedAgentForGames}
+            onSetAgentGameEnabled={setAgentGameEnabled}
+            onClearAgentGameOverride={clearAgentGameOverride}
+          />
         )}
       </div>
 

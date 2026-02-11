@@ -10,6 +10,7 @@ interface UserState {
   currentAgent: Agent | null;
   setUser: (user: User | null) => void;
   setAgent: (agent: Agent | null) => void;
+  clearUser: () => void;
   updatePreferences: (preferences: string) => void;
   logout: () => void;
 }
@@ -33,6 +34,11 @@ export const useUserStore = create<UserState>()(
         useChatStore.getState().clearMessages();
         set({ currentAgent: agent });
       },
+      clearUser: () => {
+        // Reset to default render settings when user context is removed.
+        useRenderStore.getState().setCurrentUser(null);
+        set({ currentUser: null, currentAgent: null });
+      },
       updatePreferences: (preferences) => {
         set((state) => ({
           currentUser: state.currentUser
@@ -41,10 +47,6 @@ export const useUserStore = create<UserState>()(
         }));
       },
       logout: () => {
-        // Clear sessionId and messages on logout
-        useAppStore.getState().clearSessionId();
-        useChatStore.getState().clearMessages();
-        // Reset to default render settings
         useRenderStore.getState().setCurrentUser(null);
         set({ currentUser: null, currentAgent: null });
       },

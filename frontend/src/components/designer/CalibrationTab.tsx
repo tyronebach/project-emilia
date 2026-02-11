@@ -16,13 +16,13 @@ function CalibrationTab() {
 
   // Fetch agent list
   const { data: agents, isLoading: agentsLoading } = useQuery({
-    queryKey: ['designer', 'v2', 'personalities'],
+    queryKey: ['designer-v2', 'personalities'],
     queryFn: getPersonalities,
   });
 
   // Fetch bonds (users) for selected agent
   const { data: bonds, isLoading: bondsLoading } = useQuery({
-    queryKey: ['designer', 'v2', 'bonds', selectedAgentId],
+    queryKey: ['designer-v2', 'bonds', selectedAgentId],
     queryFn: () => getBonds(selectedAgentId),
     enabled: !!selectedAgentId,
   });
@@ -39,7 +39,7 @@ function CalibrationTab() {
     isLoading: calibrationLoading,
     error: calibrationError,
   } = useQuery({
-    queryKey: ['designer', 'v2', 'calibration', selectedUserId, selectedAgentId],
+    queryKey: ['designer-v2', 'calibration', selectedUserId, selectedAgentId],
     queryFn: () => getCalibration(selectedUserId, selectedAgentId),
     enabled: !!selectedUserId && !!selectedAgentId,
   });
@@ -49,7 +49,7 @@ function CalibrationTab() {
     mutationFn: (triggerType: string) => resetCalibration(selectedUserId, selectedAgentId, triggerType),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['designer', 'v2', 'calibration', selectedUserId, selectedAgentId],
+        queryKey: ['designer-v2', 'calibration', selectedUserId, selectedAgentId],
       });
     },
   });
@@ -59,7 +59,7 @@ function CalibrationTab() {
     mutationFn: () => resetCalibration(selectedUserId, selectedAgentId),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ['designer', 'v2', 'calibration', selectedUserId, selectedAgentId],
+        queryKey: ['designer-v2', 'calibration', selectedUserId, selectedAgentId],
       });
       setConfirmResetAll(false);
     },

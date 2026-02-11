@@ -41,6 +41,17 @@ class AgentRepository:
     }
 
     @staticmethod
+    def parse_profile(raw: str | None) -> dict:
+        """Parse emotional_profile JSON safely."""
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    @staticmethod
     def get_all() -> list[dict]:
         with get_db() as conn:
             return conn.execute("SELECT * FROM agents ORDER BY display_name").fetchall()
@@ -121,7 +132,6 @@ class AgentRepository:
             conn.execute("DELETE FROM sessions WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM user_agents WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM emotional_state WHERE agent_id = ?", (agent_id,))
-            conn.execute("DELETE FROM emotional_events WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM emotional_events_v2 WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM trigger_counts WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM game_stats WHERE agent_id = ?", (agent_id,))

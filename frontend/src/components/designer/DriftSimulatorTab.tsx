@@ -17,6 +17,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { Button } from '../ui/button';
+import { DESIGNER_CONFIG } from '../../constants/designer';
 import {
   getArchetypes,
   getPersonality,
@@ -48,9 +49,9 @@ function formatInjectedMoodText(
 function DriftSimulatorTab() {
   const [selectedAgent, setSelectedAgent] = useState<string>('');
   const [selectedArchetype, setSelectedArchetype] = useState<string>('aggressive');
-  const [durationDays, setDurationDays] = useState(7);
-  const [sessionsPerDay, setSessionsPerDay] = useState(2);
-  const [messagesPerSession, setMessagesPerSession] = useState(20);
+  const [durationDays, setDurationDays] = useState(DESIGNER_CONFIG.DEFAULT_DRIFT_DURATION_DAYS);
+  const [sessionsPerDay, setSessionsPerDay] = useState(DESIGNER_CONFIG.DEFAULT_SESSIONS_PER_DAY);
+  const [messagesPerSession, setMessagesPerSession] = useState(DESIGNER_CONFIG.DEFAULT_MESSAGES_PER_SESSION);
   const [seed, setSeed] = useState('');
   const [compareMode, setCompareMode] = useState(false);
   const [compareArchetypes, setCompareArchetypes] = useState<string[]>([]);

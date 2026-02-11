@@ -81,15 +81,34 @@ def _serialize_participant(participant: dict) -> RoomParticipantResponse:
     return RoomParticipantResponse(**participant)
 
 
-def _message_behavior(message: dict) -> dict:
+def _extract_behavior_dict(
+    *,
+    intent: str | None = None,
+    mood: str | None = None,
+    mood_intensity: float | None = None,
+    energy: str | None = None,
+    move: str | None = None,
+    game_action: str | None = None,
+) -> dict:
     return {
-        "intent": message.get("behavior_intent"),
-        "mood": message.get("behavior_mood"),
-        "mood_intensity": message.get("behavior_mood_intensity") or 1.0,
-        "energy": message.get("behavior_energy"),
-        "move": message.get("behavior_move"),
-        "game_action": message.get("behavior_game_action"),
+        "intent": intent,
+        "mood": mood,
+        "mood_intensity": mood_intensity if mood_intensity is not None else 1.0,
+        "energy": energy,
+        "move": move,
+        "game_action": game_action,
     }
+
+
+def _message_behavior(message: dict) -> dict:
+    return _extract_behavior_dict(
+        intent=message.get("behavior_intent"),
+        mood=message.get("behavior_mood"),
+        mood_intensity=message.get("behavior_mood_intensity"),
+        energy=message.get("behavior_energy"),
+        move=message.get("behavior_move"),
+        game_action=message.get("behavior_game_action"),
+    )
 
 
 def _serialize_room_message(message: dict) -> RoomMessageResponse:
@@ -160,6 +179,14 @@ def _room_message_row(
     behavior: dict | None,
 ) -> dict:
     behavior = behavior or {}
+    behavior_values = _extract_behavior_dict(
+        intent=behavior.get("intent"),
+        mood=behavior.get("mood"),
+        mood_intensity=behavior.get("mood_intensity"),
+        energy=behavior.get("energy"),
+        move=behavior.get("move"),
+        game_action=behavior.get("game_action"),
+    )
     return {
         "id": "",
         "room_id": room_id,
@@ -173,12 +200,12 @@ def _room_message_row(
         "processing_ms": processing_ms,
         "usage_prompt_tokens": usage_prompt_tokens,
         "usage_completion_tokens": usage_completion_tokens,
-        "behavior_intent": behavior.get("intent"),
-        "behavior_mood": behavior.get("mood"),
-        "behavior_mood_intensity": behavior.get("mood_intensity"),
-        "behavior_energy": behavior.get("energy"),
-        "behavior_move": behavior.get("move"),
-        "behavior_game_action": behavior.get("game_action"),
+        "behavior_intent": behavior_values["intent"],
+        "behavior_mood": behavior_values["mood"],
+        "behavior_mood_intensity": behavior_values["mood_intensity"],
+        "behavior_energy": behavior_values["energy"],
+        "behavior_move": behavior_values["move"],
+        "behavior_game_action": behavior_values["game_action"],
     }
 
 

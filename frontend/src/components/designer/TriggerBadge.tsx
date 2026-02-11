@@ -1,4 +1,5 @@
-import { TRIGGER_TAXONOMY, type TriggerCategory } from '../../types/designer';
+import type { TriggerCategory } from '../../types/designer';
+import { getCategoryForTrigger } from '../../utils/designer-helpers';
 
 interface TriggerBadgeProps {
   trigger: string;
@@ -14,15 +15,6 @@ const CATEGORY_COLORS: Record<TriggerCategory, { bg: string; text: string; borde
   neutral: { bg: 'bg-info/15', text: 'text-info', border: 'border-info/30' },
   intimate: { bg: 'bg-pink-500/15', text: 'text-pink-400', border: 'border-pink-500/30' },
 };
-
-function getCategoryForTrigger(trigger: string): TriggerCategory | null {
-  for (const [category, triggers] of Object.entries(TRIGGER_TAXONOMY)) {
-    if ((triggers as readonly string[]).includes(trigger)) {
-      return category as TriggerCategory;
-    }
-  }
-  return null;
-}
 
 function TriggerBadge({ trigger, intensity, multiplier, size = 'md' }: TriggerBadgeProps) {
   const category = getCategoryForTrigger(trigger);

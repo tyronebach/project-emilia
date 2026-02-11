@@ -1,18 +1,6 @@
 import type { GameRendererProps } from '../../types';
 import { cn } from '../../../lib/utils';
-import type { TicTacToeState } from './TicTacToeModule';
-
-const POSITION_LABELS = [
-  'top-left',
-  'top-middle',
-  'top-right',
-  'middle-left',
-  'center',
-  'middle-right',
-  'bottom-left',
-  'bottom-middle',
-  'bottom-right',
-];
+import { POSITION_LABELS, type TicTacToeState } from './TicTacToeModule';
 
 function TicTacToeBoard({
   state,

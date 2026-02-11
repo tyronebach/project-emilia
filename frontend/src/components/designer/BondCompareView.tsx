@@ -1,4 +1,5 @@
 import type { UserAgentBond } from '../../types/designer';
+import { DESIGNER_CONFIG } from '../../constants/designer';
 
 interface BondCompareViewProps {
   bonds: UserAgentBond[];
@@ -54,8 +55,8 @@ function computeDivergence(bonds: UserAgentBond[]): number {
 }
 
 function getDivergenceLabel(score: number): { text: string; color: string } {
-  if (score < 0.15) return { text: 'Similar', color: 'text-green-400' };
-  if (score <= 0.4) return { text: 'Diverging', color: 'text-yellow-400' };
+  if (score < DESIGNER_CONFIG.DIVERGENCE_THRESHOLD_SIMILAR) return { text: 'Similar', color: 'text-green-400' };
+  if (score <= DESIGNER_CONFIG.DIVERGENCE_THRESHOLD_DIVERGING) return { text: 'Diverging', color: 'text-yellow-400' };
   return { text: 'Very Different', color: 'text-red-400' };
 }
 
@@ -128,7 +129,11 @@ function BondCompareView({ bonds, agentName }: BondCompareViewProps) {
         <div className="mt-1.5 w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-300 ${
-              divergence < 0.15 ? 'bg-green-400' : divergence <= 0.4 ? 'bg-yellow-400' : 'bg-red-400'
+              divergence < DESIGNER_CONFIG.DIVERGENCE_THRESHOLD_SIMILAR
+                ? 'bg-green-400'
+                : divergence <= DESIGNER_CONFIG.DIVERGENCE_THRESHOLD_DIVERGING
+                  ? 'bg-yellow-400'
+                  : 'bg-red-400'
             }`}
             style={{ width: `${Math.min(100, divergence * 100)}%` }}
           />

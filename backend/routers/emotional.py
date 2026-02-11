@@ -24,7 +24,8 @@ async def get_emotional_state(
     profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
     agent = AgentRepository.get_by_id(agent_id)
 
-    state = EmotionalState.from_db_row(state_row)
+    mood_weights = EmotionalStateRepository.parse_mood_weights(state_row)
+    state = EmotionalState.from_db_row(state_row, mood_weights=mood_weights)
 
     levers = None
     if agent:
@@ -65,7 +66,8 @@ async def apply_trigger(
     profile = AgentProfile.from_db(agent, profile_data)
 
     engine = EmotionEngine(profile)
-    state = EmotionalState.from_db_row(state_row)
+    mood_weights = EmotionalStateRepository.parse_mood_weights(state_row)
+    state = EmotionalState.from_db_row(state_row, mood_weights=mood_weights)
 
     state_before = state.to_dict()
     deltas = engine.apply_trigger(state, trigger, intensity)
@@ -192,7 +194,8 @@ async def apply_decay(
     profile = AgentProfile.from_db(agent, profile_data)
 
     engine = EmotionEngine(profile)
-    state = EmotionalState.from_db_row(state_row)
+    mood_weights = EmotionalStateRepository.parse_mood_weights(state_row)
+    state = EmotionalState.from_db_row(state_row, mood_weights=mood_weights)
 
     state_before = state.to_dict()
     state = engine.apply_decay(state, seconds)

@@ -35,7 +35,7 @@
 - `backend/dependencies.py`: Auth + header dependencies.
 - `backend/routers/`: API endpoints.
 - `backend/schemas/`: Pydantic request/response models.
-- `backend/services/`: External services (Clawdbot, ElevenLabs), emotion engine, compaction.
+- `backend/services/`: ElevenLabs client, emotion engine, drift simulator, room chat orchestration, compaction.
 - `backend/db/`: SQLite connection + repositories.
 - `backend/core/exceptions.py`: Exception helpers.
 
@@ -177,7 +177,6 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 
 **Emotion engine tables**
 - `emotional_state`: persistent state per user-agent, relationship dimensions, calibration JSON
-- `emotional_events`: legacy event log
 - `emotional_events_v2`: v2 events with outcomes + calibration updates
 - `trigger_counts`: trigger novelty tracking
 - `moods`: mood definitions (valence/arousal)
@@ -195,12 +194,12 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`.
 - `TTS_CACHE_ENABLED`, `TTS_CACHE_TTL_SECONDS`, `TTS_CACHE_MAX_ENTRIES`.
 - `CHAT_HISTORY_LIMIT`.
-- `TRIGGER_CLASSIFIER_ENABLED`, `TRIGGER_CLASSIFIER_CONFIDENCE`.
-- `LLM_TRIGGER_DETECTION` (optional LLM trigger fallback; default disabled).
 - `COMPACT_THRESHOLD`, `COMPACT_KEEP_RECENT`, `COMPACT_MODEL`.
 - `GAMES_V2_AGENT_ALLOWLIST` (optional agent rollout cohort).
-- `CLAWDBOT_AGENTS_DIR` (agent workspaces).
 - `EMILIA_DB_PATH` / fallback for DB.
+- Emotion-engine classifier tuning env vars are read directly in `backend/services/emotion_engine.py`:
+  - `TRIGGER_CLASSIFIER_ENABLED`
+  - `TRIGGER_CLASSIFIER_CONFIDENCE`
 
 **Auth & Security**
 - All endpoints require `Authorization: Bearer {token}` via `verify_token`.
@@ -211,7 +210,6 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 
 **Emotion Engine** (`backend/services/emotion_engine.py`)
 - Detects triggers with a local GoEmotions classifier (`SamLowe/roberta-base-go_emotions`).
-- Supports optional LLM trigger fallback (off by default).
 - Normalizes legacy trigger aliases to canonical GoEmotions labels for backward compatibility.
 - Maintains emotional state (V/A/D + relationship dimensions + mood weights).
 - Supports per-trigger calibration and outcome-driven learning.
@@ -241,7 +239,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `frontend/src/games/`: Game modules and registry.
 - `frontend/src/store/`: Zustand stores.
 - `frontend/src/utils/`: API wrapper, helpers, schemas.
-- `frontend/src/hooks/`: Chat, voice, session, game hooks.
+- `frontend/src/hooks/`: Chat, voice, session, room, game, and logout hooks.
 - `frontend/public/`: VRM + animation assets and manifests.
 
 ### Routing
@@ -267,6 +265,7 @@ Routes are file-based via TanStack Router.
 - `frontend/src/store/renderStore.ts`: Render quality, per-user persisted settings.
 - `frontend/src/store/gameStore.ts`: Game session state, persisted to sessionStorage.
 - `frontend/src/store/statsStore.ts`: Latency + state logs for debug HUD.
+- `ttsEnabled` no longer mirrors localStorage; it is synced from backend `users.preferences`.
 
 ### API Integration
 
@@ -396,23 +395,18 @@ Assets
 
 - API calls use `fetchWithAuth()` and header-based context IDs.
 - Chat responses embed avatar tags parsed by `backend/parse_chat.py` and stripped on frontend.
-- Emotion engine updates are serialized per `(user_id, agent_id)` via locks in `chat.py`.
+- Emotion engine updates are serialized per `(user_id, agent_id)` via lock-protected sections in `chat.py` (5s timeout + warning on contention).
 - Session compaction is best-effort and run in background.
 - Zustand stores are the single source of truth for UI state; React Query is used for server state in some components.
 
 ---
 
-## Existing Docs & Discrepancies
+## Existing Docs
 
 **Docs present**
 - `docs/animation/*`: VRM/animation research and pipeline notes.
 - `docs/archive/*`: older plans/specs and previous API docs.
 - `docs/planning/*`: implementation plans for game modules and emotion engine.
-
-**Discrepancies / Outdated references**
-- `README.md` references `docs/API.md` and `docs/DESIGN.md` which are not present.
-- `README.md` mentions ElevenLabs WebSocket API, but backend uses REST `/with-timestamps`.
-- `README.md` lists version 5.5.4, `backend/main.py` reports 5.5.3, and `CHANGELOG.md` includes 5.6.x entries.
 
 ---
 

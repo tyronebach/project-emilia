@@ -27,7 +27,7 @@ Run each in a separate terminal:
 | `test-dialogues.py` | Run dialogue fixtures | - |
 | `test-emotion-scenarios.py` | Run emotion scenario fixtures | - |
 | `emotion-lab.py` | Interactive emotion tuning lab | - |
-| `compare-trigger-detection.py` | Compare primary trigger detection vs optional LLM fallback | - |
+| `compare-trigger-detection.py` | Legacy trigger-detection comparison utility (may require adaptation) | - |
 
 ## URLs
 
@@ -52,11 +52,11 @@ Both backend launchers (`dev-backend-local.sh` and `dev-backend.sh`) read `.env`
 
 ```bash
 # Run unit tests
-cd backend && python -m pytest tests/test_emotion_engine.py -v
+cd backend && .venv/bin/python -m pytest tests/test_emotion_engine.py -v
 
 # Run dialogue scenarios
 ./scripts/test-scenarios.sh
 
 # Interactive tuning lab
-cd backend && python ../scripts/emotion-lab.py
+cd backend && .venv/bin/python ../scripts/emotion-lab.py
 ```

@@ -127,8 +127,8 @@ export interface SimulationTriggerDetail {
   trigger: string;
   raw_intensity: number;
   effective_intensity: number;
-  dna_sensitivity: number;
-  calibration_multiplier: number;
+  dna_sensitivity?: number;
+  calibration_multiplier?: number;
   axis_deltas?: Record<string, number>;
 }
 

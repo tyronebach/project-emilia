@@ -91,6 +91,20 @@ class EmotionalStateRepository:
             ).fetchone()
 
     @staticmethod
+    def parse_mood_weights(state_row: dict | None) -> dict:
+        """Parse mood_weights_json from an emotional_state row safely."""
+        if not state_row:
+            return {}
+        raw_mw = state_row.get("mood_weights_json")
+        if not raw_mw:
+            return {}
+        try:
+            parsed = json.loads(raw_mw) if isinstance(raw_mw, str) else raw_mw
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    @staticmethod
     def update(user_id: str, agent_id: str, mood_weights: dict | None = None,
                increment_interaction: bool = True, **changes) -> dict:
         """Update emotional state axes. Clamps values to valid ranges."""

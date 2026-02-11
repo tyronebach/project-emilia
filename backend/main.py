@@ -20,7 +20,7 @@ from routers import (
 from routers.emotional import router as emotional_router
 from routers.designer_v2 import router as designer_v2_router
 
-VERSION = "5.5.3"
+VERSION = "5.6.3"
 
 app = FastAPI(title="Emilia API", version=VERSION)
 
