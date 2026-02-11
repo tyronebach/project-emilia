@@ -11,6 +11,7 @@ from .moods import MoodRepository
 from .relationship_types import RelationshipTypeRepository
 from .app_settings import AppSettingsRepository
 from .games import GameRepository
+from .archetype_repository import ArchetypeRepository
 
 __all__ = [
     "UserRepository",
@@ -26,4 +27,5 @@ __all__ = [
     "RelationshipTypeRepository",
     "AppSettingsRepository",
     "GameRepository",
+    "ArchetypeRepository",
 ]

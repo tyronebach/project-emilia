@@ -5,7 +5,7 @@ Apply them directly through backend API route:
 `POST /api/designer/v2/personalities/apply`
 Default response is compact (`ok`, `agent_id`, `name`) for low-token clients.
 Use `?full=true` if you need the complete personality object.
-Add `simulate_archetype=<id>` to run apply + drift summary in one call.
+Add `simulate_archetype=<id>` to run apply + drift summary in one call (archetypes are global records managed via `/api/designer/v2/archetypes*`).
 
 ## Files
 - `rem_rezero_profile.json` — full example profile for Rem (Re:Zero)
@@ -56,12 +56,22 @@ When using `simulate_archetype`, you can tune simulation from query params:
 - `simulate_duration_days` (default `7`)
 - `simulate_sessions_per_day` (default `2`)
 - `simulate_messages_per_session` (default `20`)
+- `simulate_session_gap_hours` (default `8`)
+- `simulate_overnight_gap_hours` (default `12`)
 - `simulate_seed` (optional deterministic run)
+- `simulate_replay_mode=sequential|random` (default `sequential`)
 - `simulate_include_config=true` (include resolved config in `simulation_summary`)
 
-## Archetype Quick Picks (LLM)
+## Archetype IDs (LLM)
 
-Use these ids for `simulate_archetype`:
+Query current ids from the API:
+
+```bash
+curl -sS "http://localhost:8080/api/designer/v2/archetypes" \
+  -H "Authorization: Bearer ${AUTH_TOKEN}"
+```
+
+Default seeded ids (editable/replaceable in DB):
 - `neutral`: baseline stability checks
 - `aggressive`: trust loss + conflict resilience
 - `supportive`: trust/intimacy gain behavior

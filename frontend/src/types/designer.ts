@@ -147,6 +147,15 @@ export interface Archetype {
   id: string;
   name: string;
   description: string;
+  sample_count?: number | null;
+  source_filename?: string | null;
+  created_at?: number;
+  updated_at?: number;
+}
+
+export interface ArchetypeDetail extends Archetype {
+  message_triggers: Array<Array<[string, number]>>;
+  outcome_weights: Record<string, number>;
 }
 
 export interface DriftSimulationConfig {
@@ -159,6 +168,7 @@ export interface DriftSimulationConfig {
   session_gap_hours?: number;
   overnight_gap_hours?: number;
   seed?: number | null;
+  replay_mode?: 'sequential' | 'random';
 }
 
 export interface TimelinePoint {
@@ -173,6 +183,7 @@ export interface TimelinePoint {
   dominant_mood: string;
   primary_mood?: string;
   secondary_mood?: string | null;
+  triggers?: Array<{ trigger: string; intensity: number }>;
 }
 
 export interface DaySummary {

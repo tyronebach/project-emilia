@@ -12,6 +12,7 @@ import type {
   SimulationResult,
   MoodGroup,
   Archetype,
+  ArchetypeDetail,
   DriftSimulationConfig,
   DriftSimulationResult,
   DriftComparisonResult,
@@ -155,6 +156,94 @@ export async function getArchetypes(): Promise<Archetype[]> {
   return data.archetypes ?? [];
 }
 
+export async function getArchetype(id: string): Promise<ArchetypeDetail> {
+  const res = await fetchWithAuth(`/api/designer/v2/archetypes/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(`Failed to fetch archetype: ${res.status}`);
+  return res.json();
+}
+
+export async function createArchetype(payload: {
+  id: string;
+  name: string;
+  description: string;
+  message_triggers: Array<Array<[string, number]>>;
+  outcome_weights: Record<string, number>;
+}): Promise<ArchetypeDetail> {
+  const res = await fetchWithAuth('/api/designer/v2/archetypes', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(detail || `Failed to create archetype: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function generateArchetype(payload: {
+  file: File;
+  id: string;
+  name: string;
+  description: string;
+  outcome_weights?: Record<string, number>;
+}): Promise<{
+  id: string;
+  name: string;
+  description: string;
+  sample_count: number;
+  trigger_distribution: Record<string, number>;
+}> {
+  const formData = new FormData();
+  formData.append('file', payload.file);
+  formData.append('id', payload.id);
+  formData.append('name', payload.name);
+  formData.append('description', payload.description);
+  if (payload.outcome_weights) {
+    formData.append('outcome_weights', JSON.stringify(payload.outcome_weights));
+  }
+
+  const res = await fetchWithAuth('/api/designer/v2/archetypes/generate', {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(detail || `Failed to generate archetype: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function updateArchetype(
+  id: string,
+  updates: Partial<{
+    name: string;
+    description: string;
+    message_triggers: Array<Array<[string, number]>>;
+    outcome_weights: Record<string, number>;
+    sample_count: number;
+  }>
+): Promise<ArchetypeDetail> {
+  const res = await fetchWithAuth(`/api/designer/v2/archetypes/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(detail || `Failed to update archetype: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deleteArchetype(id: string): Promise<void> {
+  const res = await fetchWithAuth(`/api/designer/v2/archetypes/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(detail || `Failed to delete archetype: ${res.status}`);
+  }
+}
+
 export async function runDriftSimulation(
   config: DriftSimulationConfig
 ): Promise<DriftSimulationResult> {
@@ -171,7 +260,9 @@ export async function runDriftComparison(
   archetypes: string[],
   durationDays: number,
   sessionsPerDay = 2,
-  messagesPerSession = 20
+  messagesPerSession = 20,
+  replayMode: 'sequential' | 'random' = 'sequential',
+  seed?: number | null,
 ): Promise<DriftComparisonResult> {
   const res = await fetchWithAuth('/api/designer/v2/drift-compare', {
     method: 'POST',
@@ -181,6 +272,8 @@ export async function runDriftComparison(
       duration_days: durationDays,
       sessions_per_day: sessionsPerDay,
       messages_per_session: messagesPerSession,
+      replay_mode: replayMode,
+      seed,
     }),
   });
   if (!res.ok) throw new Error(`Drift comparison failed: ${res.status}`);

@@ -1,244 +1,16 @@
 """Drift Simulator — deterministic long-horizon simulation using EmotionEngine math."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from random import Random
-from typing import Any
+from typing import Any, Literal
 import statistics
 
-from db.repositories import AgentRepository, EmotionalStateRepository
-from services.emotion_engine import EmotionEngine, EmotionalState, AgentProfile, ALL_TRIGGERS
+from db.repositories import AgentRepository, ArchetypeRepository, EmotionalStateRepository
+from services.emotion_engine import EmotionEngine, EmotionalState, AgentProfile, normalize_trigger
 
 
-ARCHETYPES: dict[str, dict[str, Any]] = {
-    "aggressive": {
-        "name": "Aggressive",
-        "description": "Demanding, critical, impatient user",
-        "trigger_weights": {
-            "disapproval": 0.28,
-            "fear": 0.22,
-            "disappointment": 0.18,
-            "disgust": 0.14,
-            "annoyance": 0.08,
-            "admiration": 0.05,
-            "approval": 0.05,
-        },
-        "outcome_weights": {
-            "negative": 0.60,
-            "neutral": 0.30,
-            "positive": 0.10,
-        },
-    },
-    "supportive": {
-        "name": "Supportive",
-        "description": "Encouraging, grateful, empathetic user",
-        "trigger_weights": {
-            "admiration": 0.30,
-            "approval": 0.25,
-            "caring": 0.20,
-            "love": 0.10,
-            "relief": 0.07,
-            "amusement": 0.05,
-            "nervousness": 0.03,
-        },
-        "outcome_weights": {
-            "positive": 0.70,
-            "neutral": 0.25,
-            "negative": 0.05,
-        },
-    },
-    "playful": {
-        "name": "Playful",
-        "description": "Joking, teasing, game-oriented user",
-        "trigger_weights": {
-            "amusement": 0.60,
-            "desire": 0.15,
-            "approval": 0.10,
-            "admiration": 0.07,
-            "nervousness": 0.05,
-            "love": 0.03,
-        },
-        "outcome_weights": {
-            "positive": 0.50,
-            "neutral": 0.40,
-            "negative": 0.10,
-        },
-    },
-    "flirty": {
-        "name": "Flirty",
-        "description": "Romantic, intimate, affectionate user",
-        "trigger_weights": {
-            "desire": 0.30,
-            "admiration": 0.22,
-            "nervousness": 0.16,
-            "love": 0.12,
-            "amusement": 0.10,
-            "approval": 0.10,
-        },
-        "outcome_weights": {
-            "positive": 0.55,
-            "neutral": 0.35,
-            "negative": 0.10,
-        },
-    },
-    "neutral": {
-        "name": "Neutral",
-        "description": "Everyday conversation, tasks, small talk",
-        "trigger_weights": {
-            "approval": 0.22,
-            "admiration": 0.18,
-            "caring": 0.15,
-            "nervousness": 0.12,
-            "love": 0.10,
-            "amusement": 0.16,
-            "relief": 0.07,
-        },
-        "outcome_weights": {
-            "neutral": 0.60,
-            "positive": 0.30,
-            "negative": 0.10,
-        },
-    },
-    "random": {
-        "name": "Random",
-        "description": "Unpredictable mix of all behaviors",
-        "trigger_weights": "uniform",
-        "outcome_weights": {
-            "positive": 0.33,
-            "neutral": 0.34,
-            "negative": 0.33,
-        },
-    },
-    "rough_day_then_recover": {
-        "name": "Rough Day → Recovery",
-        "description": "Starts critical and tense, then settles into neutral recovery.",
-        "cycle_days": 7,
-        "phases": [
-            {
-                "days": 2,
-                "trigger_weights": {
-                    "disapproval": 0.30,
-                    "fear": 0.25,
-                    "disappointment": 0.20,
-                    "disgust": 0.15,
-                    "annoyance": 0.05,
-                    "admiration": 0.05,
-                },
-                "outcome_weights": {
-                    "negative": 0.65,
-                    "neutral": 0.25,
-                    "positive": 0.10,
-                },
-            },
-            {
-                "days": 5,
-                "trigger_weights": {
-                    "approval": 0.24,
-                    "admiration": 0.18,
-                    "caring": 0.16,
-                    "amusement": 0.22,
-                    "nervousness": 0.10,
-                    "love": 0.10,
-                },
-                "outcome_weights": {
-                    "neutral": 0.55,
-                    "positive": 0.35,
-                    "negative": 0.10,
-                },
-            },
-        ],
-    },
-    "lonely_then_playful": {
-        "name": "Lonely → Playful",
-        "description": "Starts vulnerable/withdrawn, then becomes playful and warm.",
-        "cycle_days": 7,
-        "phases": [
-            {
-                "days": 3,
-                "trigger_weights": {
-                    "nervousness": 0.28,
-                    "love": 0.18,
-                    "caring": 0.18,
-                    "relief": 0.14,
-                    "admiration": 0.12,
-                    "approval": 0.10,
-                },
-                "outcome_weights": {
-                    "neutral": 0.50,
-                    "positive": 0.35,
-                    "negative": 0.15,
-                },
-            },
-            {
-                "days": 5,
-                "trigger_weights": {
-                    "amusement": 0.52,
-                    "desire": 0.16,
-                    "admiration": 0.12,
-                    "approval": 0.10,
-                    "love": 0.10,
-                },
-                "outcome_weights": {
-                    "positive": 0.55,
-                    "neutral": 0.35,
-                    "negative": 0.10,
-                },
-            },
-        ],
-    },
-    "moody_week": {
-        "name": "Moody Week",
-        "description": "Swings between negative, neutral, and positive days.",
-        "cycle_days": 7,
-        "phases": [
-            {
-                "days": 2,
-                "trigger_weights": {
-                    "disapproval": 0.25,
-                    "disappointment": 0.22,
-                    "fear": 0.18,
-                    "disgust": 0.15,
-                    "amusement": 0.20,
-                },
-                "outcome_weights": {
-                    "negative": 0.60,
-                    "neutral": 0.30,
-                    "positive": 0.10,
-                },
-            },
-            {
-                "days": 2,
-                "trigger_weights": {
-                    "approval": 0.22,
-                    "admiration": 0.20,
-                    "caring": 0.16,
-                    "amusement": 0.28,
-                    "relief": 0.14,
-                },
-                "outcome_weights": {
-                    "neutral": 0.55,
-                    "positive": 0.35,
-                    "negative": 0.10,
-                },
-            },
-            {
-                "days": 3,
-                "trigger_weights": {
-                    "amusement": 0.48,
-                    "desire": 0.16,
-                    "admiration": 0.14,
-                    "approval": 0.12,
-                    "love": 0.10,
-                },
-                "outcome_weights": {
-                    "positive": 0.55,
-                    "neutral": 0.35,
-                    "negative": 0.10,
-                },
-            },
-        ],
-    },
-}
+VALID_REPLAY_MODES = {"sequential", "random"}
 
 
 @dataclass
@@ -252,6 +24,7 @@ class DriftSimulationConfig:
     session_gap_hours: float = 8.0
     overnight_gap_hours: float = 12.0
     seed: int | None = None
+    replay_mode: Literal["sequential", "random"] = "sequential"
 
 
 @dataclass
@@ -267,6 +40,7 @@ class TimelinePoint:
     dominant_mood: str
     primary_mood: str
     secondary_mood: str | None
+    triggers: list[dict[str, str | float]] = field(default_factory=list)
 
 
 @dataclass
@@ -310,10 +84,22 @@ class DriftSimulator:
         self.config = config
         self.rng = Random(config.seed)
 
-        if config.archetype not in ARCHETYPES:
+        if config.replay_mode not in VALID_REPLAY_MODES:
+            raise ValueError(f"Invalid replay_mode: {config.replay_mode}")
+
+        archetype = ArchetypeRepository.get(config.archetype)
+        if not archetype:
             raise ValueError(f"Unknown archetype: {config.archetype}")
 
-        self.archetype = ARCHETYPES[config.archetype]
+        self.archetype = archetype
+        self.message_triggers = self._normalize_message_triggers(archetype.get("message_triggers"))
+        if not self.message_triggers:
+            raise ValueError(f"Archetype '{config.archetype}' has no replay data")
+
+        self.outcome_weights = ArchetypeRepository.normalize_outcome_weights(
+            archetype.get("outcome_weights")
+        )
+        self._message_index = 0
 
         agent = AgentRepository.get_by_id(config.agent_id)
         if not agent:
@@ -355,37 +141,47 @@ class DriftSimulator:
                     elapsed_hours += gap
 
                 for msg in range(self.config.messages_per_session):
-                    trigger = self._sample_trigger(day)
-                    intensity = self.rng.uniform(0.3, 1.0)
+                    trigger_set = self._get_next_trigger_set()
 
-                    deltas = self.engine.apply_trigger(self.state, trigger, intensity)
-                    mood_deltas = self.engine.calculate_mood_deltas_from_va({
-                        "valence": deltas.get("valence", 0.0),
-                        "arousal": deltas.get("arousal", 0.0),
-                    })
-                    if mood_deltas:
-                        self.engine.apply_mood_deltas(self.state, mood_deltas)
-                    self._track_trigger(trigger_agg, trigger, intensity, deltas)
+                    total_va_delta = {"valence": 0.0, "arousal": 0.0}
+                    for trigger, intensity in trigger_set:
+                        deltas = self.engine.apply_trigger(self.state, trigger, intensity)
+                        total_va_delta["valence"] += deltas.get("valence", 0.0)
+                        total_va_delta["arousal"] += deltas.get("arousal", 0.0)
+                        self._track_trigger(trigger_agg, trigger, intensity, deltas)
 
-                    outcome = self._sample_outcome(day)
+                    if trigger_set:
+                        mood_deltas = self.engine.calculate_mood_deltas_from_va(total_va_delta)
+                        if mood_deltas:
+                            self.engine.apply_mood_deltas(self.state, mood_deltas)
+
+                    outcome = self._sample_outcome()
                     self._apply_outcome(outcome)
 
                     injected = self.engine.get_injected_moods(self.state, top_n=2)
                     primary_mood = injected[0][0] if injected else "neutral"
                     secondary_mood = injected[1][0] if len(injected) > 1 else None
 
+                    trigger_rows = [
+                        {"trigger": trigger, "intensity": float(f"{intensity:.4f}")}
+                        for trigger, intensity in trigger_set
+                    ]
+                    legacy_trigger = trigger_rows[0]["trigger"] if trigger_rows else "none"
+                    legacy_intensity = float(trigger_rows[0]["intensity"]) if trigger_rows else 0.0
+
                     point = TimelinePoint(
                         day=day,
                         session=session,
                         message=msg,
                         elapsed_hours=elapsed_hours,
-                        trigger=trigger,
-                        intensity=float(f"{intensity:.4f}"),
+                        trigger=str(legacy_trigger),
+                        intensity=float(f"{legacy_intensity:.4f}"),
                         outcome=outcome,
                         state=self._snapshot_state(),
                         dominant_mood=primary_mood,
                         primary_mood=primary_mood,
                         secondary_mood=secondary_mood,
+                        triggers=trigger_rows,
                     )
                     timeline.append(point)
                     day_points.append(point)
@@ -406,17 +202,18 @@ class DriftSimulator:
             significant_events=self._find_significant_events(timeline),
         )
 
-    def _sample_trigger(self, day: int) -> str:
-        weights = self._get_phase_weights(day, "trigger_weights")
-        if weights == "uniform":
-            return self.rng.choice(ALL_TRIGGERS)
+    def _get_next_trigger_set(self) -> list[tuple[str, float]]:
+        if self.config.replay_mode == "random":
+            selected = self.rng.choice(self.message_triggers)
+            return [(trigger, intensity) for trigger, intensity in selected]
 
-        triggers, probs = zip(*weights.items())
-        return self.rng.choices(triggers, weights=probs, k=1)[0]
+        idx = self._message_index % len(self.message_triggers)
+        self._message_index += 1
+        selected = self.message_triggers[idx]
+        return [(trigger, intensity) for trigger, intensity in selected]
 
-    def _sample_outcome(self, day: int) -> str:
-        weights = self._get_phase_weights(day, "outcome_weights")
-        outcomes, probs = zip(*weights.items())
+    def _sample_outcome(self) -> str:
+        outcomes, probs = zip(*self.outcome_weights.items())
         return self.rng.choices(outcomes, weights=probs, k=1)[0]
 
     def _apply_outcome(self, outcome: str) -> None:
@@ -431,23 +228,6 @@ class DriftSimulator:
         if session == 0 and day > 0:
             return self.config.overnight_gap_hours
         return self.config.session_gap_hours
-
-    def _get_phase_weights(self, day: int, key: str) -> Any:
-        if "phases" not in self.archetype:
-            return self.archetype[key]
-
-        phases = self.archetype["phases"]
-        cycle_days = int(self.archetype.get("cycle_days", 0))
-        remaining = day
-        if cycle_days > 0:
-            remaining = remaining % cycle_days
-        for phase in phases:
-            span = int(phase.get("days", 0))
-            if remaining < span:
-                return phase[key]
-            remaining -= span
-
-        return phases[-1][key]
 
     def _snapshot_state(self) -> dict:
         snapshot = self.state.to_dict()
@@ -474,9 +254,15 @@ class DriftSimulator:
 
         trigger_counts: dict[str, int] = {}
         mood_counts: dict[str, int] = {}
-        for p in points:
-            trigger_counts[p.trigger] = trigger_counts.get(p.trigger, 0) + 1
-            mood_counts[p.dominant_mood] = mood_counts.get(p.dominant_mood, 0) + 1
+        for point in points:
+            if point.triggers:
+                for trigger_row in point.triggers:
+                    trigger = str(trigger_row.get("trigger") or "").strip()
+                    if trigger:
+                        trigger_counts[trigger] = trigger_counts.get(trigger, 0) + 1
+            elif point.trigger and point.trigger != "none":
+                trigger_counts[point.trigger] = trigger_counts.get(point.trigger, 0) + 1
+            mood_counts[point.dominant_mood] = mood_counts.get(point.dominant_mood, 0) + 1
 
         dominant_moods = [m for m, _ in sorted(mood_counts.items(), key=lambda x: x[1], reverse=True)[:3]]
 
@@ -674,3 +460,34 @@ class DriftSimulator:
             last_valence = valence
 
         return events
+
+    @staticmethod
+    def _normalize_message_triggers(raw: Any) -> list[list[tuple[str, float]]]:
+        if not isinstance(raw, list):
+            return []
+
+        normalized: list[list[tuple[str, float]]] = []
+        for item in raw:
+            if not isinstance(item, list):
+                continue
+
+            trigger_map: dict[str, float] = {}
+            for pair in item:
+                if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                    continue
+                trigger_raw, intensity_raw = pair
+                trigger = normalize_trigger(str(trigger_raw).strip().lower()) or str(trigger_raw).strip().lower()
+                if trigger not in EmotionEngine.DEFAULT_TRIGGER_DELTAS:
+                    continue
+                try:
+                    intensity = float(intensity_raw)
+                except (TypeError, ValueError):
+                    continue
+                intensity = max(0.0, min(1.0, intensity))
+                if trigger not in trigger_map or intensity > trigger_map[trigger]:
+                    trigger_map[trigger] = intensity
+
+            ordered = sorted(trigger_map.items(), key=lambda x: x[1], reverse=True)
+            normalized.append([(trigger, float(f"{intensity:.4f}")) for trigger, intensity in ordered])
+
+        return normalized

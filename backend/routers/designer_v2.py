@@ -7,24 +7,29 @@ Operates on the same DB tables as V1 but exposes V2-specific views:
 - Simulation = dry-run trigger detection + state computation
 """
 import json
+import re
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
 from core.exceptions import not_found, bad_request
 
 from db.connection import get_db
-from db.repositories import EmotionalStateRepository, AgentRepository, AppSettingsRepository
-from dependencies import verify_token, get_user_id
+from db.repositories import (
+    EmotionalStateRepository,
+    AgentRepository,
+    AppSettingsRepository,
+    ArchetypeRepository,
+)
+from dependencies import verify_token
 from services.emotion_engine import (
     EmotionEngine, EmotionalState, AgentProfile,
-    ContextualTriggerCalibration, TriggerCalibration,
+    ContextualTriggerCalibration,
     normalize_trigger, ALL_TRIGGERS,
     MOOD_GROUPS, get_mood_valence_arousal, DEFAULT_MOOD_INJECTION_SETTINGS,
     clamp_injection_settings,
 )
 from services.drift_simulator import (
-    ARCHETYPES,
     DriftSimulationConfig,
     DriftSimulator,
 )
@@ -34,6 +39,70 @@ router = APIRouter(
     tags=["designer-v2"],
     dependencies=[Depends(verify_token)],
 )
+
+ARCHETYPE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
+MAX_GENERATE_FILE_BYTES = 2 * 1024 * 1024
+MAX_GENERATE_LINES = 2000
+MAX_GENERATE_LINE_CHARS = 300
+
+
+def _validate_archetype_id(archetype_id: str) -> str:
+    normalized = (archetype_id or "").strip().lower()
+    if not normalized or not ARCHETYPE_ID_RE.fullmatch(normalized):
+        raise bad_request("Invalid archetype id. Use lowercase letters, numbers, hyphen, underscore.")
+    return normalized
+
+
+def _parse_outcome_weights(raw: Any) -> dict[str, float]:
+    if raw is None or raw == "":
+        return ArchetypeRepository.normalize_outcome_weights(None)
+
+    data = raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise bad_request("Invalid outcome_weights JSON") from exc
+
+    if not isinstance(data, dict):
+        raise bad_request("outcome_weights must be a JSON object")
+    return ArchetypeRepository.normalize_outcome_weights(data)
+
+
+def _normalize_message_triggers(raw: Any) -> list[list[list[str | float]]]:
+    if not isinstance(raw, list):
+        raise bad_request("message_triggers must be an array")
+
+    normalized: list[list[list[str | float]]] = []
+    for idx, item in enumerate(raw):
+        if not isinstance(item, list):
+            raise bad_request(f"message_triggers[{idx}] must be an array")
+
+        trigger_map: dict[str, float] = {}
+        for pair in item:
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                raise bad_request("Each trigger entry must be [trigger, intensity]")
+
+            trigger_raw, intensity_raw = pair
+            trigger = normalize_trigger(str(trigger_raw).strip().lower()) or str(trigger_raw).strip().lower()
+            if trigger not in EmotionEngine.DEFAULT_TRIGGER_DELTAS:
+                raise bad_request(f"Unknown trigger in message_triggers: {trigger_raw}")
+
+            try:
+                intensity = float(intensity_raw)
+            except (TypeError, ValueError) as exc:
+                raise bad_request(f"Invalid intensity for trigger '{trigger}'") from exc
+
+            if intensity < 0.0 or intensity > 1.0:
+                raise bad_request(f"Intensity must be between 0.0 and 1.0 for trigger '{trigger}'")
+
+            if trigger not in trigger_map or intensity > trigger_map[trigger]:
+                trigger_map[trigger] = intensity
+
+        ordered = sorted(trigger_map.items(), key=lambda item: item[1], reverse=True)
+        normalized.append([[trigger, float(f"{confidence:.4f}")] for trigger, confidence in ordered])
+
+    return normalized
 
 def _build_drift_result_payload(result) -> dict:
     """Serialize full drift simulation payload (legacy/UI format)."""
@@ -137,15 +206,17 @@ def _run_drift_simulation(
     session_gap_hours: float = 8.0,
     overnight_gap_hours: float = 12.0,
     seed: int | None = None,
+    replay_mode: str = "sequential",
 ):
     if not agent_id or not archetype:
         raise bad_request("agent_id and archetype required")
 
-    if archetype not in ARCHETYPES:
-        raise bad_request("Invalid archetype")
-
     if duration_days <= 0 or sessions_per_day <= 0 or messages_per_session <= 0:
         raise bad_request("duration_days, sessions_per_day, messages_per_session must be positive")
+
+    replay_mode = (replay_mode or "sequential").strip().lower()
+    if replay_mode not in {"sequential", "random"}:
+        raise bad_request("replay_mode must be 'sequential' or 'random'")
 
     config = DriftSimulationConfig(
         agent_id=agent_id,
@@ -157,6 +228,7 @@ def _run_drift_simulation(
         session_gap_hours=session_gap_hours,
         overnight_gap_hours=overnight_gap_hours,
         seed=seed,
+        replay_mode=replay_mode,  # type: ignore[arg-type]
     )
 
     try:
@@ -351,6 +423,7 @@ async def apply_personality(
     simulate_session_gap_hours: float = Query(8.0, description="Simulation intra-day gap in hours when simulate_archetype is set."),
     simulate_overnight_gap_hours: float = Query(12.0, description="Simulation overnight gap in hours when simulate_archetype is set."),
     simulate_seed: int | None = Query(None, description="Optional deterministic seed when simulate_archetype is set."),
+    simulate_replay_mode: str = Query("sequential", description="Simulation replay mode when simulate_archetype is set."),
     simulate_include_config: bool = Query(False, description="Include resolved simulation config in simulation_summary."),
 ) -> dict:
     """Apply a personality payload that includes `agent_id` (or `id`).
@@ -373,6 +446,7 @@ async def apply_personality(
             session_gap_hours=simulate_session_gap_hours,
             overnight_gap_hours=simulate_overnight_gap_hours,
             seed=simulate_seed,
+            replay_mode=simulate_replay_mode,
         )
         response = {
             "ok": True,
@@ -720,16 +794,149 @@ async def simulate(body: dict[str, Any]) -> dict:
 
 @router.get("/archetypes")
 async def list_archetypes() -> dict:
-    return {
-        "archetypes": [
+    rows = ArchetypeRepository.list_all()
+    return {"archetypes": rows}
+
+
+@router.get("/archetypes/{archetype_id}")
+async def get_archetype(archetype_id: str) -> dict:
+    archetype = ArchetypeRepository.get(archetype_id)
+    if not archetype:
+        raise not_found(f"Archetype {archetype_id}")
+    return archetype
+
+
+@router.post("/archetypes")
+async def create_archetype(body: dict[str, Any]) -> dict:
+    archetype_id = _validate_archetype_id(str(body.get("id") or ""))
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise bad_request("name is required")
+
+    message_triggers = _normalize_message_triggers(body.get("message_triggers"))
+    if not message_triggers:
+        raise bad_request("message_triggers cannot be empty")
+
+    outcome_weights = _parse_outcome_weights(body.get("outcome_weights"))
+
+    try:
+        created = ArchetypeRepository.create(
             {
-                "id": key,
-                "name": data["name"],
-                "description": data["description"],
+                "id": archetype_id,
+                "name": name,
+                "description": (body.get("description") or "").strip(),
+                "message_triggers": message_triggers,
+                "outcome_weights": outcome_weights,
+                "sample_count": int(body.get("sample_count") or len(message_triggers)),
+                "source_filename": body.get("source_filename"),
             }
-            for key, data in ARCHETYPES.items()
-        ]
+        )
+    except ValueError as exc:
+        raise bad_request(str(exc)) from exc
+
+    return created
+
+
+@router.post("/archetypes/generate")
+async def generate_archetype(
+    file: UploadFile = File(...),
+    id: str = Form(...),
+    name: str = Form(...),
+    description: str = Form(""),
+    outcome_weights: str | None = Form(None),
+) -> dict:
+    archetype_id = _validate_archetype_id(id)
+    normalized_name = (name or "").strip()
+    if not normalized_name:
+        raise bad_request("name is required")
+
+    payload = await file.read(MAX_GENERATE_FILE_BYTES + 1)
+    if len(payload) > MAX_GENERATE_FILE_BYTES:
+        raise bad_request(f"File exceeds max size ({MAX_GENERATE_FILE_BYTES} bytes)")
+
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise bad_request("File must be UTF-8 text") from exc
+
+    messages: list[str] = []
+    for line in text.splitlines():
+        normalized = line.strip()
+        if not normalized:
+            continue
+        if len(normalized) > MAX_GENERATE_LINE_CHARS:
+            raise bad_request(
+                f"Line exceeds max length ({MAX_GENERATE_LINE_CHARS} chars)"
+            )
+        messages.append(normalized)
+        if len(messages) > MAX_GENERATE_LINES:
+            raise bad_request(f"File exceeds max non-empty lines ({MAX_GENERATE_LINES})")
+
+    if not messages:
+        raise bad_request("No messages found in file")
+
+    parsed_outcomes = _parse_outcome_weights(outcome_weights)
+
+    try:
+        created = ArchetypeRepository.generate_from_messages(
+            archetype_id=archetype_id,
+            name=normalized_name,
+            description=(description or "").strip(),
+            messages=messages,
+            source_filename=file.filename,
+            outcome_weights=parsed_outcomes,
+        )
+    except ValueError as exc:
+        raise bad_request(str(exc)) from exc
+
+    return {
+        "id": created["id"],
+        "name": created["name"],
+        "description": created.get("description") or "",
+        "sample_count": created.get("sample_count") or len(messages),
+        "trigger_distribution": created.get("trigger_distribution", {}),
     }
+
+
+@router.put("/archetypes/{archetype_id}")
+async def update_archetype(archetype_id: str, body: dict[str, Any]) -> dict:
+    updates: dict[str, Any] = {}
+
+    if "name" in body:
+        name = (body.get("name") or "").strip()
+        if not name:
+            raise bad_request("name cannot be empty")
+        updates["name"] = name
+
+    if "description" in body:
+        updates["description"] = (body.get("description") or "").strip()
+
+    if "outcome_weights" in body:
+        updates["outcome_weights"] = _parse_outcome_weights(body.get("outcome_weights"))
+
+    if "message_triggers" in body:
+        message_triggers = _normalize_message_triggers(body.get("message_triggers"))
+        updates["message_triggers"] = message_triggers
+        updates["sample_count"] = int(body.get("sample_count") or len(message_triggers))
+
+    if not updates:
+        existing = ArchetypeRepository.get(archetype_id)
+        if not existing:
+            raise not_found(f"Archetype {archetype_id}")
+        return existing
+
+    updated = ArchetypeRepository.update(archetype_id, updates)
+    if not updated:
+        raise not_found(f"Archetype {archetype_id}")
+    return updated
+
+
+@router.delete("/archetypes/{archetype_id}")
+async def delete_archetype(archetype_id: str) -> dict:
+    deleted = ArchetypeRepository.delete(archetype_id)
+    if not deleted:
+        raise not_found(f"Archetype {archetype_id}")
+    return {"deleted": True, "id": archetype_id}
 
 
 @router.post("/drift-simulate")
@@ -737,6 +944,7 @@ async def drift_simulate(body: dict[str, Any]) -> dict:
     agent_id = body.get("agent_id")
     user_id = body.get("user_id", "sim-user")
     archetype = body.get("archetype")
+    replay_mode = str(body.get("replay_mode", "sequential"))
 
     duration_days = int(body.get("duration_days", 7))
     sessions_per_day = int(body.get("sessions_per_day", 2))
@@ -756,6 +964,7 @@ async def drift_simulate(body: dict[str, Any]) -> dict:
         session_gap_hours=session_gap_hours,
         overnight_gap_hours=overnight_gap_hours,
         seed=seed,
+        replay_mode=replay_mode,
     )
 
     return _build_drift_result_payload(result)
@@ -770,6 +979,7 @@ async def drift_simulate_summary(
     agent_id = body.get("agent_id")
     user_id = body.get("user_id", "sim-user")
     archetype = body.get("archetype")
+    replay_mode = str(body.get("replay_mode", "sequential"))
 
     duration_days = int(body.get("duration_days", 7))
     sessions_per_day = int(body.get("sessions_per_day", 2))
@@ -789,6 +999,7 @@ async def drift_simulate_summary(
         session_gap_hours=session_gap_hours,
         overnight_gap_hours=overnight_gap_hours,
         seed=seed,
+        replay_mode=replay_mode,
     )
 
     return _build_drift_summary(result, include_config=include_config)
@@ -798,22 +1009,22 @@ async def drift_simulate_summary(
 async def drift_compare(body: dict[str, Any]) -> dict:
     agent_id = body.get("agent_id")
     archetypes = body.get("archetypes") or []
+    replay_mode = str(body.get("replay_mode", "sequential"))
 
     duration_days = int(body.get("duration_days", 7))
     sessions_per_day = int(body.get("sessions_per_day", 2))
     messages_per_session = int(body.get("messages_per_session", 20))
     session_gap_hours = float(body.get("session_gap_hours", 8))
     overnight_gap_hours = float(body.get("overnight_gap_hours", 12))
+    seed = body.get("seed")
+    seed = int(seed) if seed is not None and seed != "" else None
 
     if not agent_id or not archetypes:
         raise bad_request("agent_id and archetypes required")
 
     comparisons = []
     for archetype in archetypes:
-        if archetype not in ARCHETYPES:
-            raise bad_request(f"Invalid archetype: {archetype}")
-
-        config = DriftSimulationConfig(
+        result = _run_drift_simulation(
             agent_id=agent_id,
             user_id="sim-user",
             archetype=archetype,
@@ -822,11 +1033,9 @@ async def drift_compare(body: dict[str, Any]) -> dict:
             messages_per_session=messages_per_session,
             session_gap_hours=session_gap_hours,
             overnight_gap_hours=overnight_gap_hours,
-            seed=None,
+            seed=seed,
+            replay_mode=replay_mode,
         )
-
-        simulator = DriftSimulator(config)
-        result = simulator.run()
         comparisons.append({
             "archetype": archetype,
             "result": _build_drift_result_payload(result),

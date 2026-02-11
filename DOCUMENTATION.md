@@ -119,9 +119,11 @@
 - `GET /api/designer/v2/personalities`: List agent personality configs.
 - `GET /api/designer/v2/personalities/{agent_id}`: Personality detail.
 - `PUT /api/designer/v2/personalities/{agent_id}`: Update agent personality (columns + profile JSON).
-- `POST /api/designer/v2/personalities/apply`: One-shot apply using `agent_id`/`id` in JSON body (compact response by default, `?full=true` for full object). Optional one-step eval: add `simulate_archetype` query to return `simulation_summary` in same response.
+- `POST /api/designer/v2/personalities/apply`: One-shot apply using `agent_id`/`id` in JSON body (compact response by default, `?full=true` for full object). Optional one-step eval: add `simulate_archetype` query to return `simulation_summary` in same response (supports `simulate_*` knobs including `simulate_replay_mode`).
 - `GET /api/designer/v2/trigger-defaults`: Default trigger delta map.
 - `GET /api/designer/v2/mood-groups`: Mood groups + valence/arousal mapping.
+- `GET /api/designer/v2/mood-injection-settings`: Read global mood injection settings.
+- `PUT /api/designer/v2/mood-injection-settings`: Update global mood injection settings.
 - `GET /api/designer/v2/bonds?agent_id=`: Relationship summaries (user-agent).
 - `GET /api/designer/v2/bonds/{user_id}/{agent_id}`: Full bond detail.
 - `POST /api/designer/v2/bonds/compare`: Compare multiple user bonds.
@@ -131,19 +133,26 @@
 - `DELETE /api/designer/v2/calibration/{user_id}/{agent_id}`: Reset all calibration.
 - `DELETE /api/designer/v2/calibration/{user_id}/{agent_id}/{trigger_type}`: Reset one trigger.
 - `POST /api/designer/v2/simulate`: Dry-run trigger detection + state evolution.
-- `GET /api/designer/v2/archetypes`: List available drift user archetypes.
-- `POST /api/designer/v2/drift-simulate`: Run a single long-horizon drift simulation.
-- `POST /api/designer/v2/drift-simulate-summary`: Run same simulation with compact scorecard output for automation/LLM loops (`config` omitted by default, `?include_config=true` to include).
-- `POST /api/designer/v2/drift-compare`: Run side-by-side drift simulations across archetypes.
+- `GET /api/designer/v2/archetypes`: List global drift archetypes (DB-backed replay datasets).
+- `GET /api/designer/v2/archetypes/{archetype_id}`: Fetch one archetype (full replay payload).
+- `POST /api/designer/v2/archetypes`: Create archetype from explicit `message_triggers`.
+- `POST /api/designer/v2/archetypes/generate`: Generate archetype from uploaded UTF-8 text file.
+- `PUT /api/designer/v2/archetypes/{archetype_id}`: Update archetype metadata/replay data.
+- `DELETE /api/designer/v2/archetypes/{archetype_id}`: Delete archetype.
+- `POST /api/designer/v2/drift-simulate`: Run a single long-horizon drift simulation (`replay_mode: sequential|random`).
+- `POST /api/designer/v2/drift-simulate-summary`: Run same simulation with compact scorecard output (`?include_config=true` includes resolved config).
+- `POST /api/designer/v2/drift-compare`: Run side-by-side drift simulations across archetypes (`replay_mode: sequential|random`).
 
 ### Drift API (Used By `/designer-v2` Drift Tab)
 
 Detailed drift endpoint contract is documented in:
-- `docs/DRIFT-API.md`
+- `docs/planning/archive/DRIFT-API.md`
 
 This includes:
 - Frontend request flow for the Drift tab
 - Exact request bodies for `drift-simulate`, `drift-simulate-summary`, and `drift-compare`
+- Archetype CRUD + generate contract (`/archetypes*`)
+- Replay mode behavior (`sequential` vs `random`) and one-step apply simulation knobs
 - Backend defaults, validation behavior, and typical errors
 - Full and compact response shapes and field notes
 
@@ -183,6 +192,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `room_messages`: group-chat message log with sender attribution and behavior tags
 - `tts_cache`: TTS caching data
 - `game_stats`: per-session game results
+- `drift_archetypes`: global drift replay datasets used by Designer V2 simulation
 
 **Emotion engine tables**
 - `emotional_state`: persistent state per user-agent, relationship dimensions, calibration JSON
@@ -307,7 +317,7 @@ Routes are file-based via TanStack Router.
 - `AvatarDebugPanel`: VRM rendering + animation debugging tools.
 
 **Designer V2**
-- `components/designer/*`: Personality, bonds, calibration, simulation, trigger editors.
+- `components/designer/*`: Personality, bonds, calibration, drift simulation, archetype management, trigger editors.
 
 ### VRM / Animation System
 
@@ -432,8 +442,9 @@ Assets
 - `docs/animation/*`: VRM/animation research and pipeline notes.
 - `docs/archive/*`: older plans/specs and previous API docs.
 - `docs/planning/*`: implementation plans for game modules and emotion engine.
-- `docs/planning/P006-soul-window.md`: canonical Soul Window plan.
-- `docs/planning/P006-soul-window-dev-guide.md`: implementation/extension guide for future devs.
+- `docs/planning/archive/P006-soul-window.md`: canonical Soul Window plan.
+- `docs/P006-soul-window-dev-guide.md`: implementation/extension guide for future devs.
+- `docs/planning/archive/DRIFT-API.md`: drift simulator endpoint contract.
 
 ---
 

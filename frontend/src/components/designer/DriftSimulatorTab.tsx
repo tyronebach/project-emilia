@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertCircle, Loader2, Play } from 'lucide-react';
+import { AlertCircle, Loader2, Play, Settings2 } from 'lucide-react';
 import {
   Bar,
   BarChart,
@@ -26,6 +26,7 @@ import {
   runDriftSimulation,
 } from '../../utils/designerApiV2';
 import type { DriftComparisonResult, DriftSimulationConfig, DriftSimulationResult } from '../../types/designer';
+import ArchetypeManagerDialog from './ArchetypeManagerDialog';
 
 const COLORS = ['#60a5fa', '#f59e0b', '#34d399', '#f472b6', '#a78bfa', '#fb7185'];
 
@@ -53,8 +54,10 @@ function DriftSimulatorTab() {
   const [sessionsPerDay, setSessionsPerDay] = useState(DESIGNER_CONFIG.DEFAULT_SESSIONS_PER_DAY);
   const [messagesPerSession, setMessagesPerSession] = useState(DESIGNER_CONFIG.DEFAULT_MESSAGES_PER_SESSION);
   const [seed, setSeed] = useState('');
+  const [replayMode, setReplayMode] = useState<'sequential' | 'random'>('sequential');
   const [compareMode, setCompareMode] = useState(false);
   const [compareArchetypes, setCompareArchetypes] = useState<string[]>([]);
+  const [managerOpen, setManagerOpen] = useState(false);
 
   const [result, setResult] = useState<DriftSimulationResult | null>(null);
   const [comparison, setComparison] = useState<DriftComparisonResult | null>(null);
@@ -90,13 +93,17 @@ function DriftSimulatorTab() {
       durationDays: number;
       sessionsPerDay: number;
       messagesPerSession: number;
+      replayMode: 'sequential' | 'random';
+      seed?: number;
     }) =>
       runDriftComparison(
         payload.agentId,
         payload.archetypes,
         payload.durationDays,
         payload.sessionsPerDay,
-        payload.messagesPerSession
+        payload.messagesPerSession,
+        payload.replayMode,
+        payload.seed
       ),
     onSuccess: (data) => {
       setComparison(data);
@@ -114,17 +121,20 @@ function DriftSimulatorTab() {
         durationDays,
         sessionsPerDay,
         messagesPerSession,
+        replayMode,
+        seed: seed ? Number(seed) : undefined,
       });
       return;
     }
 
     const config: DriftSimulationConfig = {
       agent_id: selectedAgent,
-      archetype: selectedArchetype,
+      archetype: effectiveSelectedArchetype,
       duration_days: durationDays,
       sessions_per_day: sessionsPerDay,
       messages_per_session: messagesPerSession,
       seed: seed ? Number(seed) : undefined,
+      replay_mode: replayMode,
     };
     simMutation.mutate(config);
   };
@@ -281,19 +291,28 @@ function DriftSimulatorTab() {
   }, [comparison]);
 
   const archetypeOptions = archetypes ?? [];
+  const effectiveSelectedArchetype = archetypeOptions.some((item) => item.id === selectedArchetype)
+    ? selectedArchetype
+    : (archetypeOptions[0]?.id ?? '');
+
   const isBusy = simMutation.isPending || compareMutation.isPending;
   const canRun =
     selectedAgent &&
-    (compareMode ? compareArchetypes.length > 0 : !!selectedArchetype);
+    (compareMode ? compareArchetypes.length > 0 : !!effectiveSelectedArchetype);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-display text-text-primary">Drift Simulator</h2>
-        <p className="text-sm text-text-secondary mt-1">
-          Simulate long-term emotional drift using the emotion engine math. Choose a user archetype and
-          run multi-day sessions to see how the agent evolves over time.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-display text-text-primary">Drift Simulator</h2>
+          <p className="text-sm text-text-secondary mt-1">
+            Simulate long-term emotional drift using replayed multi-trigger archetype data.
+          </p>
+        </div>
+        <Button size="sm" variant="ghost" onClick={() => setManagerOpen(true)}>
+          <Settings2 className="w-4 h-4" />
+          Manage Archetypes
+        </Button>
       </div>
 
       <div className="bg-bg-secondary/70 border border-white/10 rounded-2xl p-4 space-y-4">
@@ -322,7 +341,7 @@ function DriftSimulatorTab() {
           <div>
             <label className="block text-xs text-text-secondary mb-1">User Archetype</label>
             <select
-              value={selectedArchetype}
+              value={effectiveSelectedArchetype}
               onChange={(e) => setSelectedArchetype(e.target.value)}
               disabled={archetypesLoading || compareMode}
               className="w-full bg-bg-tertiary border border-white/10 rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
@@ -391,6 +410,17 @@ function DriftSimulatorTab() {
           </label>
           <div className="flex-1" />
           <div className="w-full md:w-48">
+            <label className="block text-xs text-text-secondary mb-1">Replay mode</label>
+            <select
+              value={replayMode}
+              onChange={(e) => setReplayMode((e.target.value as 'sequential' | 'random'))}
+              className="w-full bg-bg-tertiary border border-white/10 rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="sequential">Sequential</option>
+              <option value="random">Random</option>
+            </select>
+          </div>
+          <div className="w-full md:w-48">
             <label className="block text-xs text-text-secondary mb-1">Seed (optional)</label>
             <input
               type="number"
@@ -432,7 +462,7 @@ function DriftSimulatorTab() {
           <div className="text-xs text-text-secondary">
             {compareMode
               ? 'Runs each archetype with the same config for side-by-side comparison.'
-              : 'Single run uses deterministic sampling with optional seed.'}
+              : 'Single run replays per-message trigger sets from the selected archetype.'}
           </div>
           <Button size="sm" onClick={handleRun} disabled={!canRun || isBusy}>
             {isBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
@@ -747,6 +777,13 @@ function DriftSimulatorTab() {
           </div>
         </div>
       )}
+
+      <ArchetypeManagerDialog
+        open={managerOpen}
+        onOpenChange={setManagerOpen}
+        archetypes={archetypeOptions}
+        onArchetypeSelected={(id) => setSelectedArchetype(id)}
+      />
     </div>
   );
 }
