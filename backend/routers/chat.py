@@ -133,12 +133,12 @@ async def _process_emotion_pre_llm(
             # Async trigger detection with batching (no blocking on LLM)
             normalized_user_message = (user_message or "").strip()
             pending_triggers = EmotionalStateRepository.pop_pending_triggers(user_id, agent_id)
-            regex_triggers = engine.detect_triggers(normalized_user_message) if normalized_user_message else []
+            classifier_triggers = engine.detect_triggers(normalized_user_message) if normalized_user_message else []
 
-            # Combine pending (from LLM batch) + regex (instant), normalized to
+            # Combine pending (from LLM batch) + classifier (instant), normalized to
             # canonical trigger keys so designer presets always apply.
             trigger_map = {}
-            for trigger, intensity in pending_triggers + regex_triggers:
+            for trigger, intensity in pending_triggers + classifier_triggers:
                 canonical = normalize_trigger(trigger) or trigger
                 if canonical not in trigger_map or intensity > trigger_map[canonical]:
                     trigger_map[canonical] = intensity
@@ -251,11 +251,11 @@ def _process_emotion_post_llm(
             # 1. Apply mood self-report trigger (existing behavior)
             mood = behavior.get('mood')
             mood_to_trigger = {
-                'happy': ('shared_joy', 0.3),
-                'sad': ('empathy_needed', 0.3),
-                'angry': ('conflict', 0.2),
-                'embarrassed': ('vulnerability', 0.2),
-                'excited': ('shared_joy', 0.4),
+                'happy': ('joy', 0.3),
+                'sad': ('sadness', 0.3),
+                'angry': ('anger', 0.2),
+                'embarrassed': ('embarrassment', 0.2),
+                'excited': ('excitement', 0.4),
             }
 
             if mood and mood in mood_to_trigger:
