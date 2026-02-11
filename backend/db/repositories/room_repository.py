@@ -15,7 +15,6 @@ DEFAULT_ROOM_SETTINGS = {
 
 _VALID_AGENT_ROLES = {"participant", "moderator", "observer"}
 _VALID_RESPONSE_MODES = {"mention", "always", "manual"}
-_VALID_PARTICIPANT_ROLES = {"member", "admin", "owner"}
 
 
 def _normalize_settings(settings: dict | None) -> dict:
@@ -179,17 +178,6 @@ class RoomRepository:
                    ORDER BY rp.joined_at ASC, u.display_name ASC""",
                 (room_id,),
             ).fetchall()
-
-    @staticmethod
-    def add_participant(room_id: str, user_id: str, role: str = "member") -> None:
-        participant_role = role if role in _VALID_PARTICIPANT_ROLES else "member"
-        now = int(time.time())
-        with get_db() as conn:
-            conn.execute(
-                """INSERT OR IGNORE INTO room_participants (room_id, user_id, joined_at, role)
-                   VALUES (?, ?, ?, ?)""",
-                (room_id, user_id, now, participant_role),
-            )
 
     @staticmethod
     def add_agent(

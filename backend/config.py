@@ -1,6 +1,5 @@
 """Application configuration from environment variables."""
 import os
-from pathlib import Path
 
 
 class Settings:
@@ -37,12 +36,6 @@ class Settings:
         self.chat_history_limit: int = int(os.getenv("CHAT_HISTORY_LIMIT", "20"))
 
         # Emotion engine
-        self.trigger_classifier_enabled: bool = os.getenv(
-            "TRIGGER_CLASSIFIER_ENABLED", "1"
-        ) == "1"
-        self.trigger_classifier_confidence: float = float(
-            os.getenv("TRIGGER_CLASSIFIER_CONFIDENCE", "0.25")
-        )
         self.trigger_classifier_llm_fallback: bool = os.getenv(
             "LLM_TRIGGER_DETECTION", "0"
         ) == "1"
@@ -60,10 +53,6 @@ class Settings:
         self.compact_threshold: int = int(os.getenv("COMPACT_THRESHOLD", "25"))
         self.compact_keep_recent: int = int(os.getenv("COMPACT_KEEP_RECENT", "10"))
         self.compact_model: str = os.getenv("COMPACT_MODEL", "openai/gpt-4o-mini")
-
-        # Paths
-        agents_dir_str = os.getenv("CLAWDBOT_AGENTS_DIR", "/home/tbach/.openclaw/agents")
-        self.clawdbot_agents_dir: Path = Path(agents_dir_str)
 
         # Validation
         if not self.clawdbot_token:

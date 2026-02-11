@@ -259,7 +259,7 @@ class AgentGameConfigUpdate(BaseModel):
 class CreateRoomRequest(BaseModel):
     """Create room request."""
     name: str = Field(..., min_length=1, max_length=100)
-    agent_ids: list[str] = Field(..., min_length=1, max_length=10)
+    agent_ids: list[str] = Field(..., min_length=1, max_length=5)
     settings: Dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("name")

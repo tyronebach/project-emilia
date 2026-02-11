@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { X, Plus, MessageSquare, User, Sparkles, Users2, MoreVertical, Pencil, Trash2, Settings } from 'lucide-react';
 import { useSession } from '../hooks/useSession';
+import { useLogout } from '../hooks/useLogout';
 import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
 import { renameSession as renameSessionApi } from '../utils/api';
@@ -21,7 +22,7 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
   const { sessions, sessionId, fetchSessions, deleteSession, isLoading } = useSession();
   const currentUser = useUserStore((state) => state.currentUser);
   const currentAgent = useUserStore((state) => state.currentAgent);
-  const logout = useUserStore((state) => state.logout);
+  const logout = useLogout();
 
   // Menu state
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);

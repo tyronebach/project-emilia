@@ -60,11 +60,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearErrors: () => set({ errors: [] }),
 
   // TTS
-  ttsEnabled: localStorage.getItem('emilia-tts-enabled') === 'true',
-  setTtsEnabled: (enabled) => {
-    localStorage.setItem('emilia-tts-enabled', String(enabled));
-    set({ ttsEnabled: enabled });
-  },
+  ttsEnabled: false,
+  setTtsEnabled: (enabled) => set({ ttsEnabled: enabled }),
   ttsVoiceId: '',
   setTtsVoiceId: (voiceId) => set({ ttsVoiceId: voiceId }),
 

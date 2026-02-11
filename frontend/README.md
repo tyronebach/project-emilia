@@ -40,8 +40,13 @@ npm run build
 ## Tests
 
 ```bash
-npm test
+npx vitest run
 ```
+
+## Preferences Notes
+
+- `tts_enabled` is sourced from backend `users.preferences` (no frontend localStorage mirror).
+- `hands_free_enabled` remains locally persisted for client UX.
 
 ## Structure
 
@@ -50,7 +55,7 @@ src/
 ├── avatar/       # VRM rendering, animation, lip-sync, behaviors
 ├── components/   # UI components + debug panels (incl. rooms/)
 ├── games/        # Game modules + registry
-├── hooks/        # useChat, useVoiceChat, useGame, useSession, useRoomChat
+├── hooks/        # useChat, useVoiceChat, useGame, useSession, useRoomChat, useLogout
 ├── routes/       # TanStack Router pages
 ├── services/     # Voice service + VAD
 ├── store/        # Zustand stores (app, chat, room, render, game, stats)

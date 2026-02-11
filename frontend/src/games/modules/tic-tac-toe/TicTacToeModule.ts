@@ -23,7 +23,7 @@ const WINNING_LINES: number[][] = [
   [2, 4, 6],
 ];
 
-const POSITION_LABELS = [
+export const POSITION_LABELS = [
   'top-left',
   'top-middle',
   'top-right',

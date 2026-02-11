@@ -2,20 +2,13 @@ import { useState } from 'react';
 import { ChevronDown, RotateCcw } from 'lucide-react';
 import { Button } from '../ui/button';
 import TriggerBadge from './TriggerBadge';
-import { TRIGGER_TAXONOMY, type TriggerCategory, type ContextualCalibration } from '../../types/designer';
+import { DESIGNER_CONFIG } from '../../constants/designer';
+import { getCategoryForTrigger } from '../../utils/designer-helpers';
+import type { TriggerCategory, ContextualCalibration } from '../../types/designer';
 
 interface CalibrationCardProps {
   calibration: ContextualCalibration;
   onReset?: (triggerType: string) => void;
-}
-
-function getCategoryForTrigger(trigger: string): TriggerCategory | null {
-  for (const [category, triggers] of Object.entries(TRIGGER_TAXONOMY)) {
-    if ((triggers as readonly string[]).includes(trigger)) {
-      return category as TriggerCategory;
-    }
-  }
-  return null;
 }
 
 function getMultiplierColor(value: number): string {
@@ -57,7 +50,7 @@ function CalibrationCard({ calibration, onReset }: CalibrationCardProps) {
     ? CATEGORY_BADGE_COLORS[category]
     : 'bg-white/10 text-text-secondary border-white/20';
 
-  const isLowConfidence = g.occurrence_count < 30;
+  const isLowConfidence = g.occurrence_count < DESIGNER_CONFIG.CONFIDENCE_SAMPLE_THRESHOLD;
 
   // Normalize multiplier to a bar percentage (0.5 -> 0%, 1.5 -> 100%, 1.0 -> 50%)
   const barPct = Math.max(0, Math.min(100, ((g.learned_multiplier - 0.5) / 1.0) * 100));
@@ -122,9 +115,9 @@ function CalibrationCard({ calibration, onReset }: CalibrationCardProps) {
 
           {/* Confidence */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-text-secondary" title="Calibration is more reliable with more data points. 30+ samples = confident.">Confidence:</span>
+            <span className="text-xs text-text-secondary" title={`Calibration is more reliable with more data points. ${DESIGNER_CONFIG.CONFIDENCE_SAMPLE_THRESHOLD}+ samples = confident.`}>Confidence:</span>
             {isLowConfidence ? (
-              <span className="text-xs font-medium text-warning">Low confidence ({g.occurrence_count}/30 samples)</span>
+              <span className="text-xs font-medium text-warning">Low confidence ({g.occurrence_count}/{DESIGNER_CONFIG.CONFIDENCE_SAMPLE_THRESHOLD} samples)</span>
             ) : (
               <span className="text-xs font-medium text-success">Confident ({g.occurrence_count} samples)</span>
             )}

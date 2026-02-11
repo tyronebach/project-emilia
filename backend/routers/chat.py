@@ -5,12 +5,12 @@ import json
 import logging
 import threading
 import httpx
-from fastapi import APIRouter, File, UploadFile, HTTPException, Depends, Query
+from fastapi import APIRouter, UploadFile, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from dependencies import verify_token, get_user_id, get_agent_id, get_optional_agent_id, get_session_id
 from schemas import ChatRequest, SpeakRequest
 from config import settings
-from core.exceptions import TTSError, not_found, forbidden, bad_request, service_unavailable, timeout_error
+from core.exceptions import TTSError, not_found, forbidden, service_unavailable, timeout_error
 from parse_chat import parse_chat_completion, extract_avatar_commands
 from db.repositories import (
     UserRepository,
@@ -43,27 +43,6 @@ def _get_emotion_lock(user_id: str, agent_id: str) -> threading.Lock:
     return _emotion_locks[key]
 
 
-async def _run_llm_trigger_batch(
-    user_id: str, 
-    agent_id: str, 
-    messages: list[str],
-    engine: EmotionEngine
-) -> None:
-    """
-    Background task: Run LLM trigger classification on batched messages.
-    
-    Results are stored in pending_triggers for the next turn.
-    This runs async and doesn't block the chat response.
-    """
-    try:
-        triggers = await engine.detect_triggers_llm_batch(messages)
-        if triggers:
-            EmotionalStateRepository.set_pending_triggers(user_id, agent_id, triggers)
-            logger.info("[EmotionBatch] Stored %d pending triggers for next turn", len(triggers))
-    except Exception:
-        logger.exception("[EmotionBatch] Background trigger detection failed")
-
-
 async def _process_emotion_pre_llm(
     user_id: str, agent_id: str, user_message: str, session_id: str | None = None
 ) -> tuple[str | None, list[tuple[str, float]]]:
@@ -80,7 +59,10 @@ async def _process_emotion_pre_llm(
     """
     try:
         lock = _get_emotion_lock(user_id, agent_id)
-        with lock:
+        if not lock.acquire(timeout=5.0):
+            logger.warning("Emotion lock timeout for %s", (user_id, agent_id))
+            return None, []
+        try:
             # Load state and profile
             state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
             profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
@@ -97,9 +79,7 @@ async def _process_emotion_pre_llm(
 
             # Convert DB row to EmotionalState
             # Load persisted mood_weights from DB, or initialize from agent's mood_baseline
-            mood_weights = {}
-            if state_row.get('mood_weights_json'):
-                mood_weights = json.loads(state_row['mood_weights_json'])
+            mood_weights = EmotionalStateRepository.parse_mood_weights(state_row)
 
             # FIX: Initialize mood_weights from mood_baseline if empty (Bug #1)
             if not mood_weights:
@@ -130,32 +110,17 @@ async def _process_emotion_pre_llm(
                 state = engine.apply_decay(state, elapsed)
                 engine.apply_mood_decay(state, elapsed)
 
-            # Async trigger detection with batching (no blocking on LLM)
+            # Classifier-based trigger detection
             normalized_user_message = (user_message or "").strip()
-            pending_triggers = EmotionalStateRepository.pop_pending_triggers(user_id, agent_id)
             classifier_triggers = engine.detect_triggers(normalized_user_message) if normalized_user_message else []
 
-            # Combine pending (from LLM batch) + classifier (instant), normalized to
-            # canonical trigger keys so designer presets always apply.
+            # Normalize to canonical trigger keys so designer presets always apply.
             trigger_map = {}
-            for trigger, intensity in pending_triggers + classifier_triggers:
+            for trigger, intensity in classifier_triggers:
                 canonical = normalize_trigger(trigger) or trigger
                 if canonical not in trigger_map or intensity > trigger_map[canonical]:
                     trigger_map[canonical] = intensity
             triggers = list(trigger_map.items())
-
-            # Buffer message for async LLM batch classification
-            if settings.llm_trigger_detection and normalized_user_message:
-                buffer = EmotionalStateRepository.append_to_buffer(
-                    user_id, agent_id, normalized_user_message, max_size=4
-                )
-
-                # Fire background LLM batch when buffer is full
-                if len(buffer) >= 4:
-                    _spawn_background(_run_llm_trigger_batch(
-                        user_id, agent_id, buffer.copy(), engine
-                    ))
-                    EmotionalStateRepository.clear_buffer(user_id, agent_id)
 
             # Snapshot state before triggers for V2 event logging
             state_before_dict = state.to_dict()
@@ -193,6 +158,8 @@ async def _process_emotion_pre_llm(
             context = engine.generate_context_block(state)
             logger.info("[Emotion] Pre-LLM context for %s/%s:\n%s", user_id, agent_id, context)
             return context, triggers
+        finally:
+            lock.release()
 
     except Exception:
         logger.exception("Emotion engine error (pre-LLM), continuing without emotional context")
@@ -220,7 +187,10 @@ def _process_emotion_post_llm(
             return
 
         lock = _get_emotion_lock(user_id, agent_id)
-        with lock:
+        if not lock.acquire(timeout=5.0):
+            logger.warning("Emotion lock timeout for %s", (user_id, agent_id))
+            return
+        try:
             state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
             profile_data = EmotionalStateRepository.get_agent_profile(agent_id)
             agent = AgentRepository.get_by_id(agent_id)
@@ -316,6 +286,8 @@ def _process_emotion_post_llm(
                 outcome=outcome,
                 calibration_updates=calibration_updates or None,
             )
+        finally:
+            lock.release()
 
     except Exception:
         logger.exception("Emotion engine error (post-LLM), ignoring")
@@ -599,7 +571,7 @@ async def chat(
                 )
 
                 if response.status_code != 200:
-                    raise HTTPException(status_code=response.status_code, detail="Chat service error")
+                    raise service_unavailable("Chat")
         except Exception:
             # LLM failed — remove orphaned user message
             if user_msg_id:
@@ -849,7 +821,7 @@ async def _stream_chat_sse(
 
 @router.post("/transcribe")
 async def transcribe(
-    audio: UploadFile = File(...),
+    audio: UploadFile,
     token: str = Depends(verify_token)
 ):
     """Transcribe audio via STT service"""
@@ -901,7 +873,7 @@ async def speak(
 
     text = request.text.strip()
     if not text:
-        raise bad_request("Empty text")
+        raise HTTPException(status_code=400, detail="Empty text")
 
     try:
         result = await ElevenLabsService.synthesize(text, voice_id)

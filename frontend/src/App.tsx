@@ -7,6 +7,7 @@ import { useRenderStore } from './store/renderStore';
 import { fetchWithAuth } from './utils/api';
 import { useVoiceChat } from './hooks/useVoiceChat';
 import { useChat } from './hooks/useChat';
+import { useLogout } from './hooks/useLogout';
 import type { VoiceDebugEntry } from './components/VoiceDebugTimeline';
 import Header from './components/Header';
 import Drawer from './components/Drawer';
@@ -49,7 +50,7 @@ function App({ userId, sessionId }: AppProps) {
 
   const setSessionId = useAppStore((state) => state.setSessionId);
   const currentUser = useUserStore((state) => state.currentUser);
-  const clearMessages = useChatStore((state) => state.clearMessages);
+  const logout = useLogout();
 
   // Sync render settings with current user on mount (handles page refresh with persisted user)
   useEffect(() => {
@@ -110,9 +111,9 @@ function App({ userId, sessionId }: AppProps) {
   // Verify user matches route
   useEffect(() => {
     if (currentUser && currentUser.id !== userId) {
-      clearMessages();
+      logout();
     }
-  }, [userId, currentUser, clearMessages]);
+  }, [userId, currentUser, logout]);
 
   return (
     <AppContent

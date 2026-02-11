@@ -1,7 +1,7 @@
 # Game Modules System - Emilia Project
 
 **Date:** 2026-02-07
-**Status:** Architecture Design (pre-implementation)
+**Status:** Implemented in production (Games V2). This document is now primarily historical architecture context.
 **Builds on:** [GAME-MODULES-RESEARCH.md](../GAME-MODULES-RESEARCH.md)
 
 ---
@@ -11,6 +11,15 @@
 A plugin architecture that enables LLM avatars to play games with users. Games run as frontend modules with a common interface, the LLM participates through structured context injection and action parsing, and the avatar reacts emotionally to game events.
 
 **Core Principle:** The game engine is authoritative. The LLM is a personality layer, not a game logic layer. Games are fun social experiences, not AI benchmarks.
+
+Current runtime/source of truth:
+- Frontend module loaders: `frontend/src/games/loaders/manifest.ts`
+- Runtime registry contract: `frontend/src/games/registry.ts`
+- Backend game catalog + agent config APIs: `backend/routers/games.py`, `backend/routers/admin.py`
+- Developer-facing summary: `README.md`, `DOCUMENTATION.md`
+
+Historical note:
+- The phased roadmap below documents the original implementation plan and rationale.
 
 ## Rollout Flags
 

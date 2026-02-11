@@ -890,12 +890,6 @@ class TestManageEndpoints:
                 (str(uuid.uuid4()), user_id, agent_id, now),
             )
             conn.execute(
-                """INSERT INTO emotional_events
-                   (id, user_id, agent_id, session_id, timestamp, trigger_type)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (str(uuid.uuid4()), user_id, agent_id, session_id, now, "greeting"),
-            )
-            conn.execute(
                 """INSERT INTO emotional_events_v2
                    (id, user_id, agent_id, session_id, timestamp)
                    VALUES (?, ?, ?, ?, ?)""",
@@ -928,7 +922,6 @@ class TestManageEndpoints:
             assert conn.execute("SELECT 1 FROM session_participants WHERE session_id = ?", (session_id,)).fetchone() is None
             assert conn.execute("SELECT 1 FROM user_agents WHERE agent_id = ?", (agent_id,)).fetchone() is None
             assert conn.execute("SELECT 1 FROM emotional_state WHERE agent_id = ?", (agent_id,)).fetchone() is None
-            assert conn.execute("SELECT 1 FROM emotional_events WHERE agent_id = ?", (agent_id,)).fetchone() is None
             assert conn.execute("SELECT 1 FROM emotional_events_v2 WHERE agent_id = ?", (agent_id,)).fetchone() is None
             assert conn.execute("SELECT 1 FROM trigger_counts WHERE agent_id = ?", (agent_id,)).fetchone() is None
             assert conn.execute("SELECT 1 FROM game_stats WHERE agent_id = ?", (agent_id,)).fetchone() is None

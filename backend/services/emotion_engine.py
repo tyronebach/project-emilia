@@ -15,12 +15,6 @@ import random
 import threading
 import time as _time
 
-# Lazy import httpx - only needed for LLM trigger detection
-try:
-    import httpx
-except ImportError:
-    httpx = None  # type: ignore
-
 logger = logging.getLogger(__name__)
 
 
@@ -373,6 +367,50 @@ DEFAULT_MOOD_INJECTION_SETTINGS = {
     "max_random_chance": 0.85,
 }
 
+
+def clamp_injection_settings(raw: dict | None) -> dict:
+    """Clamp mood injection settings to safe runtime bounds."""
+    merged = {**DEFAULT_MOOD_INJECTION_SETTINGS, **(raw or {})}
+
+    def _clamp(value: float, low: float, high: float) -> float:
+        return max(low, min(high, value))
+
+    def _as_int(value, default: int) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def _as_float(value, default: float) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        "top_k": int(max(1, min(6, _as_int(merged.get("top_k"), DEFAULT_MOOD_INJECTION_SETTINGS["top_k"])))),
+        "volatility_threshold": _clamp(
+            _as_float(merged.get("volatility_threshold"), DEFAULT_MOOD_INJECTION_SETTINGS["volatility_threshold"]),
+            0.0,
+            1.0,
+        ),
+        "min_margin": _clamp(
+            _as_float(merged.get("min_margin"), DEFAULT_MOOD_INJECTION_SETTINGS["min_margin"]),
+            0.0,
+            1.0,
+        ),
+        "random_strength": _clamp(
+            _as_float(merged.get("random_strength"), DEFAULT_MOOD_INJECTION_SETTINGS["random_strength"]),
+            0.0,
+            2.0,
+        ),
+        "max_random_chance": _clamp(
+            _as_float(merged.get("max_random_chance"), DEFAULT_MOOD_INJECTION_SETTINGS["max_random_chance"]),
+            0.0,
+            1.0,
+        ),
+    }
+
 # ============================================================
 # Mood groups for UI organization + dot product projection
 # ============================================================
@@ -710,45 +748,6 @@ class CalibrationRecovery:
         )
 
 
-# ============================================================
-# V2: Relationship dimension update rules
-# ============================================================
-
-DIMENSION_UPDATES: dict[str, dict[tuple[str, str], float]] = {
-    "trust": {
-        ("admiration", "positive"):    +0.02,
-        ("approval", "positive"):      +0.02,
-        ("remorse", "positive"):       +0.04,
-        ("nervousness", "positive"):   +0.03,
-        ("disgust", "any"):            -0.08,
-        ("disappointment", "any"):     -0.05,
-        ("fear", "negative"):          -0.06,
-    },
-    "intimacy": {
-        ("nervousness", "positive"):   +0.05,
-        ("caring", "positive"):        +0.02,
-        ("love", "positive"):          +0.03,
-        ("nervousness", "negative"):   -0.04,
-        ("disgust", "any"):            -0.03,
-    },
-    "playfulness_safety": {
-        ("amusement", "positive"):     +0.04,
-        ("surprise", "positive"):      +0.03,
-        ("desire", "positive"):        +0.02,
-        ("amusement", "negative"):     -0.06,
-        ("surprise", "negative"):      -0.04,
-        ("desire", "negative"):        -0.03,
-    },
-    "conflict_tolerance": {
-        ("remorse", "positive"):       +0.04,
-        ("relief", "positive"):        +0.05,
-        ("disapproval", "any"):        -0.03,
-        ("fear", "any"):               -0.04,
-        ("disgust", "any"):            -0.05,
-    },
-}
-
-
 class EmotionEngine:
     """
     Core emotional processing engine.
@@ -944,14 +943,7 @@ class EmotionEngine:
             "mood_injection_settings",
             DEFAULT_MOOD_INJECTION_SETTINGS,
         )
-        merged = {**DEFAULT_MOOD_INJECTION_SETTINGS, **raw}
-        return {
-            "top_k": int(max(1, min(6, merged.get("top_k", 3)))),
-            "volatility_threshold": self._clamp(float(merged.get("volatility_threshold", 0.3)), 0.0, 1.0),
-            "min_margin": self._clamp(float(merged.get("min_margin", 0.15)), 0.0, 1.0),
-            "random_strength": self._clamp(float(merged.get("random_strength", 0.7)), 0.0, 2.0),
-            "max_random_chance": self._clamp(float(merged.get("max_random_chance", 0.85)), 0.0, 1.0),
-        }
+        return clamp_injection_settings(raw)
     
     def apply_decay(self, state: EmotionalState, elapsed_seconds: float) -> EmotionalState:
         """
@@ -1021,163 +1013,6 @@ class EmotionEngine:
                 trigger_map[canonical] = confidence
 
         return sorted(trigger_map.items(), key=lambda x: -x[1])
-
-    async def detect_triggers_llm(self, text: str) -> list[tuple[str, float]]:
-        """
-        Detect emotional triggers using LLM classification (optional fallback path).
-
-        Sends the user message to the LLM with a structured prompt asking it
-        to identify GoEmotions triggers and their intensities. Falls back to
-        classifier-based detection on any failure.
-
-        Returns list of (trigger_name, intensity) tuples.
-        """
-        if not text or not text.strip():
-            return []
-
-        from config import settings
-
-        valid_triggers = [t for t in self.DEFAULT_TRIGGER_DELTAS.keys() if t != "neutral"]
-
-        prompt = (
-            "Classify the emotional triggers in this user message using the "
-            "GoEmotions taxonomy. "
-            f"Valid triggers: {', '.join(valid_triggers)}. "
-            "Return a JSON array of objects with 'trigger' (string) and "
-            "'intensity' (float 0.0-1.0). Return [] if no triggers found. "
-            "Only return the JSON array, nothing else."
-        )
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    f"{settings.clawdbot_url}/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.clawdbot_token}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": settings.compact_model,
-                        "messages": [
-                            {"role": "system", "content": prompt},
-                            {"role": "user", "content": text},
-                        ],
-                        "temperature": 0.0,
-                        "max_tokens": 256,
-                    },
-                )
-                response.raise_for_status()
-
-            result = response.json()
-            content = result["choices"][0]["message"]["content"].strip()
-
-            # Strip markdown code fences if present
-            if content.startswith("```"):
-                content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-
-            parsed = json.loads(content)
-
-            if not isinstance(parsed, list):
-                logger.warning("[EmotionLLM] Expected list, got %s", type(parsed).__name__)
-                return self.detect_triggers(text)
-
-            triggers = []
-            for item in parsed:
-                trigger = normalize_trigger(item.get("trigger", "")) or item.get("trigger", "")
-                intensity = float(item.get("intensity", 0.7))
-                if trigger in self.DEFAULT_TRIGGER_DELTAS:
-                    intensity = max(0.0, min(1.0, intensity))
-                    triggers.append((trigger, intensity))
-                else:
-                    logger.debug("[EmotionLLM] Ignoring unknown trigger: %s", trigger)
-
-            logger.info("[EmotionLLM] Detected triggers: %s", triggers)
-            return triggers
-
-        except Exception:
-            logger.exception("[EmotionLLM] LLM trigger detection failed, falling back to classifier")
-            return self.detect_triggers(text)
-
-    async def detect_triggers_llm_batch(self, messages: list[str]) -> list[tuple[str, float]]:
-        """
-        Detect emotional triggers from multiple messages in a single LLM call.
-        
-        More efficient than calling detect_triggers_llm for each message.
-        Returns combined list of (trigger_name, intensity) tuples.
-        """
-        if not messages:
-            return []
-
-        # Filter empty messages
-        messages = [m for m in messages if m and m.strip()]
-        if not messages:
-            return []
-
-        from config import settings
-
-        valid_triggers = [t for t in self.DEFAULT_TRIGGER_DELTAS.keys() if t != "neutral"]
-        
-        # Format messages with numbers for clarity
-        numbered_messages = "\n".join(f"{i+1}. {m}" for i, m in enumerate(messages))
-
-        prompt = (
-            "Classify the emotional triggers in these user messages using the "
-            "GoEmotions taxonomy. "
-            f"Valid triggers: {', '.join(valid_triggers)}. "
-            "Return a JSON array of objects with 'trigger' (string) and "
-            "'intensity' (float 0.0-1.0). Combine triggers across all messages. "
-            "If the same trigger appears multiple times, average the intensities. "
-            "Return [] if no triggers found. Only return the JSON array."
-        )
-
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.post(
-                    f"{settings.clawdbot_url}/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.clawdbot_token}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": settings.compact_model,
-                        "messages": [
-                            {"role": "system", "content": prompt},
-                            {"role": "user", "content": numbered_messages},
-                        ],
-                        "temperature": 0.0,
-                        "max_tokens": 512,
-                    },
-                )
-                response.raise_for_status()
-
-            result = response.json()
-            content = result["choices"][0]["message"]["content"].strip()
-
-            # Strip markdown code fences if present
-            if content.startswith("```"):
-                content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-
-            parsed = json.loads(content)
-
-            if not isinstance(parsed, list):
-                logger.warning("[EmotionLLM-Batch] Expected list, got %s", type(parsed).__name__)
-                return []
-
-            triggers = []
-            for item in parsed:
-                trigger = normalize_trigger(item.get("trigger", "")) or item.get("trigger", "")
-                intensity = float(item.get("intensity", 0.7))
-                if trigger in self.DEFAULT_TRIGGER_DELTAS:
-                    intensity = max(0.0, min(1.0, intensity))
-                    triggers.append((trigger, intensity))
-
-            logger.info("[EmotionLLM-Batch] Detected triggers from %d messages: %s", 
-                       len(messages), triggers)
-            return triggers
-
-        except Exception:
-            logger.exception("[EmotionLLM-Batch] Batch trigger detection failed")
-            return []
 
     def apply_trigger(self, state: EmotionalState, trigger: str, intensity: float = 0.7) -> dict[str, float]:
         """
@@ -1344,6 +1179,39 @@ class EmotionEngine:
         outcome: str,
     ) -> dict[str, float]:
         """Update relationship dimensions with crisp trigger-based rules."""
+        dimension_updates: dict[str, dict[tuple[str, str], float]] = {
+            "trust": {
+                ("admiration", "positive"): +0.02,
+                ("approval", "positive"): +0.02,
+                ("remorse", "positive"): +0.04,
+                ("nervousness", "positive"): +0.03,
+                ("disgust", "any"): -0.08,
+                ("disappointment", "any"): -0.05,
+                ("fear", "negative"): -0.06,
+            },
+            "intimacy": {
+                ("nervousness", "positive"): +0.05,
+                ("caring", "positive"): +0.02,
+                ("love", "positive"): +0.03,
+                ("nervousness", "negative"): -0.04,
+                ("disgust", "any"): -0.03,
+            },
+            "playfulness_safety": {
+                ("amusement", "positive"): +0.04,
+                ("surprise", "positive"): +0.03,
+                ("desire", "positive"): +0.02,
+                ("amusement", "negative"): -0.06,
+                ("surprise", "negative"): -0.04,
+                ("desire", "negative"): -0.03,
+            },
+            "conflict_tolerance": {
+                ("remorse", "positive"): +0.04,
+                ("relief", "positive"): +0.05,
+                ("disapproval", "any"): -0.03,
+                ("fear", "any"): -0.04,
+                ("disgust", "any"): -0.05,
+            },
+        }
         deltas: dict[str, float] = {}
 
         for trigger, intensity in triggers:
@@ -1351,7 +1219,7 @@ class EmotionEngine:
             if not canonical:
                 continue
 
-            for dimension, rules in DIMENSION_UPDATES.items():
+            for dimension, rules in dimension_updates.items():
                 key = (canonical, outcome)
                 if key in rules:
                     delta = rules[key] * intensity

@@ -2,6 +2,8 @@
 
 Voice + text chat with animated VRM avatar, including 1:1 sessions and group rooms.
 
+Current backend app version: `5.6.3`.
+
 ## Stack
 
 | Layer | Tech |
@@ -65,14 +67,14 @@ If the backend catalog contains a game but no frontend loader exists, the select
 
 # Backend
 cd backend && source .venv/bin/activate
-python main.py         # Dev server :8080
-pytest -q              # Backend tests
+.venv/bin/python main.py         # Dev server :8080
+.venv/bin/python -m pytest -q    # Backend tests
 ./scripts/run-tests.sh # Backend tests (prefers docker)
 
 # Frontend
 cd frontend
 npm run dev -- --host # Dev server :3443
-npm test              # Vitest
+npx vitest run        # Vitest
 npm run build         # Production build
 ```
 

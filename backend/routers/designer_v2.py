@@ -21,6 +21,7 @@ from services.emotion_engine import (
     ContextualTriggerCalibration, TriggerCalibration,
     normalize_trigger, ALL_TRIGGERS,
     MOOD_GROUPS, get_mood_valence_arousal, DEFAULT_MOOD_INJECTION_SETTINGS,
+    clamp_injection_settings,
 )
 from services.drift_simulator import (
     ARCHETYPES,
@@ -33,17 +34,6 @@ router = APIRouter(
     tags=["designer-v2"],
     dependencies=[Depends(verify_token)],
 )
-
-def _sanitize_mood_injection_settings(raw: dict[str, Any]) -> dict[str, Any]:
-    merged = {**DEFAULT_MOOD_INJECTION_SETTINGS, **(raw or {})}
-    return {
-        "top_k": int(max(1, min(6, merged.get("top_k", 3)))),
-        "volatility_threshold": max(0.0, min(1.0, float(merged.get("volatility_threshold", 0.3)))),
-        "min_margin": max(0.0, min(1.0, float(merged.get("min_margin", 0.15)))),
-        "random_strength": max(0.0, min(2.0, float(merged.get("random_strength", 0.7)))),
-        "max_random_chance": max(0.0, min(1.0, float(merged.get("max_random_chance", 0.85)))),
-    }
-
 
 def _build_drift_result_payload(result) -> dict:
     """Serialize full drift simulation payload (legacy/UI format)."""
@@ -178,17 +168,8 @@ def _run_drift_simulation(
 
 # ============ Helpers ============
 
-def _parse_profile(raw: str | None) -> dict:
-    if not raw:
-        return {}
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return {}
-
-
 def _agent_to_personality(row: dict) -> dict:
-    profile = _parse_profile(row.get("emotional_profile"))
+    profile = AgentRepository.parse_profile(row.get("emotional_profile"))
     return {
         "id": row["id"],
         "name": row.get("display_name") or row["id"],
@@ -236,13 +217,7 @@ def _extract_agent_id(config: dict[str, Any]) -> str | None:
 
 def _bond_from_row(state_row: dict, agent_name: str) -> dict:
     """Build a full bond dict from an emotional_state row."""
-    mood_weights = {}
-    raw_mw = state_row.get("mood_weights_json")
-    if raw_mw:
-        try:
-            mood_weights = json.loads(raw_mw) if isinstance(raw_mw, str) else raw_mw
-        except (json.JSONDecodeError, TypeError):
-            pass
+    mood_weights = EmotionalStateRepository.parse_mood_weights(state_row)
 
     # Top 3 moods
     sorted_moods = sorted(mood_weights.items(), key=lambda x: x[1], reverse=True)
@@ -308,7 +283,7 @@ async def update_personality(agent_id: str, config: dict[str, Any]) -> dict:
             raise not_found(f"Agent {agent_id}")
         row = dict(row)
 
-        profile = _parse_profile(row.get("emotional_profile"))
+        profile = AgentRepository.parse_profile(row.get("emotional_profile"))
 
         # Column-level updates
         col_updates = []
@@ -450,12 +425,12 @@ async def get_mood_groups() -> dict:
 @router.get("/mood-injection-settings")
 async def get_mood_injection_settings() -> dict:
     raw = AppSettingsRepository.get_json("mood_injection_settings", DEFAULT_MOOD_INJECTION_SETTINGS)
-    return _sanitize_mood_injection_settings(raw)
+    return clamp_injection_settings(raw)
 
 
 @router.put("/mood-injection-settings")
 async def update_mood_injection_settings(body: dict[str, Any]) -> dict:
-    sanitized = _sanitize_mood_injection_settings(body)
+    sanitized = clamp_injection_settings(body)
     AppSettingsRepository.set_json("mood_injection_settings", sanitized)
     return sanitized
 
@@ -533,7 +508,7 @@ async def reset_bond(user_id: str, agent_id: str) -> dict:
     baseline_d = agent.get("baseline_dominance") or 0.0
 
     # Load mood_baseline from agent profile so mood_weights resets to it
-    profile = _parse_profile(agent.get("emotional_profile"))
+    profile = AgentRepository.parse_profile(agent.get("emotional_profile"))
     mood_baseline = profile.get("mood_baseline") or {}
 
     EmotionalStateRepository.update(
@@ -559,7 +534,7 @@ async def reset_mood_state(agent_id: str) -> dict:
     if not agent:
         raise not_found("Agent")
 
-    profile = _parse_profile(agent.get("emotional_profile"))
+    profile = AgentRepository.parse_profile(agent.get("emotional_profile"))
     mood_baseline = profile.get("mood_baseline") or {}
 
     baseline_v = agent.get("baseline_valence") or 0.0
@@ -691,7 +666,7 @@ async def simulate(body: dict[str, Any]) -> dict:
         except (json.JSONDecodeError, TypeError):
             pass
 
-    mood_weights = json.loads(state_row["mood_weights_json"]) if state_row.get("mood_weights_json") else {}
+    mood_weights = EmotionalStateRepository.parse_mood_weights(state_row)
     state = EmotionalState.from_db_row(state_row, calibrations=calibrations, mood_weights=mood_weights)
 
     state_before = state.to_dict()

@@ -47,9 +47,6 @@ class _StubTriggerClassifier:
 def _mock_trigger_classifier(monkeypatch):
     stub = _StubTriggerClassifier()
     monkeypatch.setattr(emotion_engine_module, "get_trigger_classifier", lambda: stub)
-    from config import settings
-    monkeypatch.setattr(settings, "trigger_classifier_enabled", True, raising=False)
-    monkeypatch.setattr(settings, "trigger_classifier_confidence", 0.25, raising=False)
     yield
 
 

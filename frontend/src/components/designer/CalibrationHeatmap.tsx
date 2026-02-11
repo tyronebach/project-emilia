@@ -1,17 +1,9 @@
 import { useMemo } from 'react';
-import { TRIGGER_TAXONOMY, type TriggerCategory, type ContextualCalibration } from '../../types/designer';
+import { getCategoryForTrigger } from '../../utils/designer-helpers';
+import type { TriggerCategory, ContextualCalibration } from '../../types/designer';
 
 interface CalibrationHeatmapProps {
   calibrations: ContextualCalibration[];
-}
-
-function getCategoryForTrigger(trigger: string): TriggerCategory | null {
-  for (const [category, triggers] of Object.entries(TRIGGER_TAXONOMY)) {
-    if ((triggers as readonly string[]).includes(trigger)) {
-      return category as TriggerCategory;
-    }
-  }
-  return null;
 }
 
 function getCellStyle(value: number): string {

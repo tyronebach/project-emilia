@@ -268,26 +268,6 @@ def init_db():
             )
         """)
 
-        # Emotional events log (for debugging/tuning)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS emotional_events (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                agent_id TEXT NOT NULL,
-                session_id TEXT,
-                timestamp REAL NOT NULL,
-                trigger_type TEXT NOT NULL,
-                trigger_value TEXT,
-                delta_valence REAL,
-                delta_arousal REAL,
-                delta_dominance REAL,
-                delta_trust REAL,
-                delta_attachment REAL,
-                state_after_json TEXT,
-                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL
-            )
-        """)
-
         # Emotional events V2 (for learning + relationship tracking)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS emotional_events_v2 (
@@ -348,15 +328,6 @@ def init_db():
                 audio_base64 TEXT
             )
         """)
-
-        # Inferred user state columns on emotional_state
-        _add_column(cur, "emotional_state", "inferred_user_valence", "REAL DEFAULT 0.0")
-        _add_column(cur, "emotional_state", "inferred_user_arousal", "REAL DEFAULT 0.0")
-
-        # Relationship columns on emotional_state
-        _add_column(cur, "emotional_state", "relationship_type", "TEXT DEFAULT 'companion'")
-        _add_column(cur, "emotional_state", "relationship_config", "TEXT")
-        _add_column(cur, "emotional_state", "relationship_started_at", "REAL")
 
         # Mood weights (JSON dict of mood->weight)
         _add_column(cur, "emotional_state", "mood_weights_json", "TEXT")
@@ -440,7 +411,6 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_game_stats_user ON game_stats(user_id, agent_id, game_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_game_registry_active ON game_registry(active)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_agent_game_config_agent ON agent_game_config(agent_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_emotional_events_user ON emotional_events(user_id, agent_id, timestamp)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_events_v2_user_agent ON emotional_events_v2(user_id, agent_id, timestamp DESC)")
 
         # Baseline game registry seed for rollout compatibility.

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { Send, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { simulate, getPersonalities, getBonds } from '../../utils/designerApiV2';
+import { DESIGNER_CONFIG } from '../../constants/designer';
 import TriggerBadge from './TriggerBadge';
 import SimulationHistory from './SimulationHistory';
 import type { SimulationResult, SimulationTriggerDetail } from '../../types/designer';
@@ -22,7 +23,7 @@ function formatDim(value: number): string {
 
 function AxisDeltaArrows({ deltas }: { deltas?: Record<string, number> }) {
   if (!deltas) return null;
-  const entries = Object.entries(deltas).filter(([, v]) => Math.abs(v) >= 0.001);
+  const entries = Object.entries(deltas).filter(([, v]) => Math.abs(v) >= DESIGNER_CONFIG.NUMERIC_EPSILON);
   if (entries.length === 0) return null;
   return (
     <span className="inline-flex gap-0.5">
@@ -40,7 +41,7 @@ function AxisDeltaArrows({ deltas }: { deltas?: Record<string, number> }) {
 }
 
 function DeltaSpan({ value }: { value: number }) {
-  if (Math.abs(value) < 0.001) return null;
+  if (Math.abs(value) < DESIGNER_CONFIG.NUMERIC_EPSILON) return null;
   const color = value > 0 ? 'text-success' : 'text-error';
   return <span className={`font-mono ${color}`}>({formatDim(value)})</span>;
 }
@@ -89,7 +90,7 @@ function SimulatorTab() {
 
   const changedDimensions = result
     ? Object.keys(result.state_after).filter(
-        (k) => Math.abs((result.state_after[k] ?? 0) - (result.state_before[k] ?? 0)) >= 0.001
+        (k) => Math.abs((result.state_after[k] ?? 0) - (result.state_before[k] ?? 0)) >= DESIGNER_CONFIG.NUMERIC_EPSILON
       )
     : [];
 
@@ -218,10 +219,10 @@ function SimulatorTab() {
                           {t.raw_intensity.toFixed(3)}
                         </td>
                         <td className="px-4 py-2 text-right font-mono text-text-secondary">
-                          x{t.dna_sensitivity.toFixed(2)}
+                          {t.dna_sensitivity !== undefined ? `x${t.dna_sensitivity.toFixed(2)}` : '-'}
                         </td>
                         <td className="px-4 py-2 text-right font-mono text-text-secondary">
-                          x{t.calibration_multiplier.toFixed(2)}
+                          {t.calibration_multiplier !== undefined ? `x${t.calibration_multiplier.toFixed(2)}` : '-'}
                         </td>
                         <td className="px-4 py-2 text-right font-mono text-text-primary font-medium">
                           {t.effective_intensity.toFixed(3)}
