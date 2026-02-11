@@ -96,8 +96,9 @@ npm run build         # Production build
 | `AGENTS.md` | Guide for coding agents |
 | `CHANGELOG.md` | Version history |
 | `DOCUMENTATION.md` | LLM-focused repo map |
-| `docs/planning/P006-soul-window.md` | Soul Window canonical plan |
-| `docs/planning/P006-soul-window-dev-guide.md` | Soul Window implementation and extension guide |
+| `docs/planning/archive/P006-soul-window.md` | Soul Window canonical plan |
+| `docs/P006-soul-window-dev-guide.md` | Soul Window implementation and extension guide |
+| `docs/planning/archive/DRIFT-API.md` | Drift Simulator API contract |
 | `docs/animation/` | VRM/animation pipeline notes |
 
 ## Avatar Assets

@@ -1,644 +1,274 @@
-# P007: Drift Simulator Accuracy — Data-Driven Archetypes
+# P007: Drift Simulator Accuracy - V2 Global Archetypes
 
 **Date:** 2026-02-11  
-**Status:** Proposed  
-**Scope:** Align drift simulator with live chat behavior. UI-driven archetype management via Designer V2.
+**Status:** Revised (Decision-Locked)  
+**Scope:** Align drift simulator behavior with live chat trigger/mood flow using global, editable v2 archetypes in Designer V2.
 
 ---
 
-## 1. Problem Statement
+## 1. Locked Decisions
 
-The drift simulator is used to test agent personas during design. However, it does not accurately mirror live chat behavior:
+These decisions are final for this plan revision:
 
-| Aspect | Live Chat | Current Drift Simulator |
-|--------|-----------|-------------------------|
-| Triggers per message | **Multiple** (all above threshold) | **One** (sampled from probability) |
-| Intensity source | Classifier confidence (0.0-1.0) | Random `uniform(0.3, 1.0)` |
-| Trigger selection | Deterministic (classifier output) | Probabilistic (weighted random) |
-| Archetype definition | N/A (real user) | Hand-crafted probability weights |
-
-**Result:** Simulator tests a simplified approximation, not actual emotion engine behavior. Personas tuned in simulator may behave differently in production.
+1. **No v1 compatibility requirement**. We are replacing legacy archetype behavior, not preserving it.
+2. **No user-scoped archetypes**. Archetypes are global assets.
+3. **No calibration/bond coupling in simulator**. We do not run user-specific calibration logic or bond-context scaling.
+4. **Keep current Designer V2 router style** (`dict[str, Any]` payloads in `designer_v2.py`) for consistency.
+5. **Do not add a new top-level Designer tab**. Archetype management lives inside the existing Drift tab.
+6. **Keep complexity low**. Use synchronous generation with strict input limits (no new async job system).
 
 ---
 
-## 2. Goals
+## 2. Problem Statement
 
-1. Drift simulator applies **multiple triggers per message** (like live chat)
-2. Trigger intensities come from **real classifier confidence scores**
-3. Archetypes managed via **Designer V2 UI** (no CLI required)
-4. Users can **upload .txt files** to generate archetypes
-5. Full **CRUD for archetypes** in Designer
-6. Simulator behavior matches live chat's `_process_emotion_pre_llm()` exactly
-7. Backward compatible — built-in system archetypes still available
+Current drift simulation diverges from live pre-LLM trigger flow:
 
----
+| Aspect | Live Chat Pre-LLM | Current Drift Simulator |
+|---|---|---|
+| Triggers per message | Multiple | Single sampled trigger |
+| Intensity source | Classifier confidence | Random `uniform(0.3, 1.0)` |
+| Mood projection | One projection after total V/A accumulation | Projection per trigger |
+| Archetype source | Real messages -> classifier | Hand-authored weight maps |
 
-## 3. Architecture Overview
-
-### 3.1 Data Flow
-
-```
-Designer V2 UI
-    │
-    ├── Upload .txt file ──► POST /api/designer/v2/archetypes/generate
-    │                              │
-    │                              ▼
-    │                        TriggerClassifier.classify() per line
-    │                              │
-    │                              ▼
-    │                        Save to drift_archetypes table
-    │
-    ├── CRUD archetypes ──► GET/POST/PUT/DELETE /api/designer/v2/archetypes
-    │
-    └── Run Drift Sim ──► Simulator loads archetypes from DB
-                               │
-                               ▼
-                         Replay trigger sets (like live chat)
-```
-
-### 3.2 Live Chat Flow (Reference)
-
-```python
-# In _process_emotion_pre_llm()
-triggers = engine.detect_triggers(user_message)  # Returns [(trigger, confidence), ...]
-
-for trigger, intensity in triggers:
-    deltas = engine.apply_trigger_calibrated(state, trigger, intensity, calibration)
-    total_va_delta[axis] += deltas.get(axis, 0.0)
-
-# Then project V/A deltas onto moods
-mood_deltas = engine.calculate_mood_deltas_from_va(total_va_delta)
-engine.apply_mood_deltas(state, mood_deltas)
-```
-
-**Key behaviors simulator must match:**
-- Multiple triggers per message
-- Each trigger has classifier-derived intensity
-- V/A deltas accumulated across all triggers
-- Single mood projection after all triggers applied
+Result: simulator outputs are less representative for persona tuning.
 
 ---
 
-## 4. Database Schema
+## 3. Goals
 
-### 4.1 New Table: `drift_archetypes`
+1. Drift simulator applies **multiple triggers per message**.
+2. Trigger intensity comes from **classifier confidence** captured in archetype data.
+3. Simulator uses **v2 replay archetypes only** (global, editable).
+4. Users can **upload `.txt` files** to generate archetypes in Designer.
+5. Drift simulation behavior matches live structure for:
+   - multi-trigger loop
+   - V/A accumulation
+   - single mood projection per message
+6. Existing drift endpoints remain stable from frontend perspective.
+
+---
+
+## 4. Non-Goals
+
+1. No user-personalized calibration in drift simulation.
+2. No bond-state replay from specific real users.
+3. No background queue/worker architecture for file generation in this phase.
+4. No new Designer top-level tab.
+
+---
+
+## 5. Target Simulation Behavior
+
+### 5.1 Parity Definition (Structural)
+
+For each simulated message:
+
+1. Get trigger set from archetype replay data (`[(trigger, intensity), ...]`).
+2. For each trigger: apply `engine.apply_trigger(...)`.
+3. Accumulate total `valence` and `arousal` deltas across all triggers.
+4. Run `calculate_mood_deltas_from_va(total_va_delta)` once.
+5. Apply mood deltas once.
+6. Apply outcome effect (`positive/neutral/negative`) as today.
+
+### 5.2 Explicit Exclusion
+
+Do **not** call `apply_trigger_calibrated` in drift simulator for this plan, because this plan excludes user-specific calibration and bond-context scaling.
+
+---
+
+## 6. Data Model
+
+### 6.1 New Table: `drift_archetypes`
 
 ```sql
 CREATE TABLE IF NOT EXISTS drift_archetypes (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT DEFAULT '',
-    version TEXT DEFAULT '2',
-    message_triggers TEXT NOT NULL,      -- JSON: [[["trigger", intensity], ...], ...]
-    outcome_weights TEXT DEFAULT '{}',   -- JSON: {"positive": 0.33, ...}
+    message_triggers TEXT NOT NULL,      -- JSON: [[ ["trigger", 0.82], ... ], ...]
+    outcome_weights TEXT DEFAULT '{}',   -- JSON: {"positive":0.3,"neutral":0.4,"negative":0.3}
     sample_count INTEGER DEFAULT 0,
-    source_filename TEXT,                -- Original uploaded filename
+    source_filename TEXT,
     created_at INTEGER DEFAULT (strftime('%s', 'now')),
-    updated_at INTEGER DEFAULT (strftime('%s', 'now')),
-    created_by TEXT,                     -- user_id who created
-    is_system INTEGER DEFAULT 0          -- 1 = built-in, 0 = user-created
+    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_drift_archetypes_system ON drift_archetypes(is_system);
+CREATE INDEX IF NOT EXISTS idx_drift_archetypes_updated_at ON drift_archetypes(updated_at DESC);
 ```
 
-### 4.2 Data Format
+### 6.2 Notes
 
-**message_triggers (JSON array):**
-```json
-[
-  [["annoyance", 0.72], ["disapproval", 0.65]],
-  [["disappointment", 0.58]],
-  [["annoyance", 0.81], ["anger", 0.45]],
-  [],
-  [["disapproval", 0.91]]
-]
-```
+1. No `version` field needed (this is v2-only).
+2. No `is_system` or `created_by` (global model).
+3. All archetypes are editable/deletable.
 
-Each inner array = triggers detected for one message (can be empty).
+### 6.3 Bootstrap Strategy
 
-**outcome_weights (JSON object):**
-```json
-{
-  "positive": 0.10,
-  "neutral": 0.30,
-  "negative": 0.60
-}
-```
-
-### 4.3 System Archetypes Seed
-
-On DB init, seed built-in archetypes with `is_system = 1`:
-- aggressive, supportive, playful, flirty, neutral, random
-- These use legacy v1 format (probability weights) for backward compat
-- Users cannot delete system archetypes
+1. On first migration, seed global archetypes (`aggressive`, `supportive`, `playful`, `flirty`, `neutral`, `random`, `rough_day_then_recover`, `lonely_then_playful`, `moody_week`) as replay datasets.
+2. After seed is in DB, drift runtime reads from DB only (no in-memory archetype source of truth).
 
 ---
 
-## 5. Backend API
+## 7. Backend API (Designer V2)
 
-### 5.1 Endpoints
+All endpoints remain under `/api/designer/v2` in `backend/routers/designer_v2.py`, with existing auth dependency.
 
-**List Archetypes**
-```
-GET /api/designer/v2/archetypes
-```
-Response:
-```json
-{
-  "archetypes": [
-    {
-      "id": "aggressive",
-      "name": "Aggressive",
-      "description": "Demanding, critical user",
-      "version": "1",
-      "sample_count": null,
-      "is_system": true,
-      "created_at": 1707600000
-    },
-    {
-      "id": "my-custom-archetype",
-      "name": "Frustrated Customer",
-      "description": "Derived from 150 support messages",
-      "version": "2",
-      "sample_count": 150,
-      "is_system": false,
-      "created_at": 1707650000
-    }
-  ]
-}
-```
+### 7.1 Endpoints
 
-**Get Archetype Detail**
-```
-GET /api/designer/v2/archetypes/{id}
-```
-Response includes full `message_triggers` and `outcome_weights`.
+1. `GET /archetypes`
+   - Returns list metadata: `id`, `name`, `description`, `sample_count`, `updated_at`.
+2. `GET /archetypes/{id}`
+   - Returns full archetype: includes `message_triggers`, `outcome_weights`.
+3. `POST /archetypes`
+   - Create manual archetype.
+4. `POST /archetypes/generate` (`multipart/form-data`)
+   - Input: `file`, `id`, `name`, `description`, optional `outcome_weights` JSON.
+   - Process lines through classifier, store replay data.
+5. `PUT /archetypes/{id}`
+   - Update `name`, `description`, `outcome_weights`, optional full `message_triggers` replacement.
+6. `DELETE /archetypes/{id}`
+   - Hard delete (global archetypes are editable and deletable).
 
-**Create Archetype (Manual)**
-```
-POST /api/designer/v2/archetypes
-```
-Body:
-```json
-{
-  "id": "my-archetype",
-  "name": "My Archetype",
-  "description": "Custom archetype",
-  "message_triggers": [...],
-  "outcome_weights": {...}
-}
-```
+### 7.2 Validation
 
-**Generate Archetype from File**
-```
-POST /api/designer/v2/archetypes/generate
-Content-Type: multipart/form-data
+1. `id` slug validation (`[a-z0-9-_]`, length cap).
+2. `outcome_weights` must be non-negative and normalized (or normalized server-side).
+3. `message_triggers` entries must use canonical triggers and confidence range `[0.0, 1.0]`.
 
-file: <messages.txt>
-id: "frustrated-customer"
-name: "Frustrated Customer"
-description: "Support ticket messages"
-```
-
-Process:
-1. Read uploaded .txt file
-2. For each non-empty line: `TriggerClassifier.classify(line)`
-3. Build `message_triggers` array
-4. Save to DB with `version = "2"`
-
-Response:
-```json
-{
-  "id": "frustrated-customer",
-  "name": "Frustrated Customer",
-  "sample_count": 150,
-  "trigger_distribution": {
-    "annoyance": 0.28,
-    "disappointment": 0.22,
-    ...
-  }
-}
-```
-
-**Update Archetype**
-```
-PUT /api/designer/v2/archetypes/{id}
-```
-Body (partial update):
-```json
-{
-  "name": "Updated Name",
-  "description": "Updated description",
-  "outcome_weights": {"positive": 0.2, "neutral": 0.4, "negative": 0.4}
-}
-```
-Note: `message_triggers` not editable directly (regenerate via file upload).
-
-**Delete Archetype**
-```
-DELETE /api/designer/v2/archetypes/{id}
-```
-- Only allowed for user-created archetypes (`is_system = 0`)
-- Returns 403 for system archetypes
-
-### 5.2 Repository
+### 7.3 Repository
 
 **File:** `backend/db/repositories/archetype_repository.py`
 
-```python
-class ArchetypeRepository:
-    @staticmethod
-    def get_all() -> list[dict]:
-        """Get all archetypes (system + user)."""
-    
-    @staticmethod
-    def get_by_id(archetype_id: str) -> dict | None:
-        """Get archetype by ID with full data."""
-    
-    @staticmethod
-    def create(data: dict) -> dict:
-        """Create new archetype."""
-    
-    @staticmethod
-    def update(archetype_id: str, data: dict) -> dict | None:
-        """Update archetype fields."""
-    
-    @staticmethod
-    def delete(archetype_id: str) -> bool:
-        """Delete archetype (user-created only)."""
-    
-    @staticmethod
-    def generate_from_messages(
-        archetype_id: str,
-        name: str,
-        description: str,
-        messages: list[str],
-        created_by: str | None = None
-    ) -> dict:
-        """Classify messages and create v2 archetype."""
-```
+Methods:
+
+1. `list_all()`
+2. `get(archetype_id)`
+3. `create(payload)`
+4. `update(archetype_id, payload)`
+5. `delete(archetype_id)`
+6. `generate_from_messages(...)`
 
 ---
 
-## 6. Drift Simulator Refactor
+## 8. Drift Simulator Refactor
 
-### 6.1 Load Archetypes from DB
+### 8.1 Source of Truth
+
+1. Remove runtime dependency on `ARCHETYPES` as authoritative drift data.
+2. Load archetype definition from repository at simulation execution time.
+3. Update route-level validation to use repository existence checks (not in-memory map checks).
+
+### 8.2 Config Update
+
+Add replay mode to config and request parsing:
 
 ```python
-# In drift_simulator.py
-
-from db.repositories import ArchetypeRepository
-
-def load_archetypes() -> dict:
-    """Load all archetypes from database."""
-    rows = ArchetypeRepository.get_all()
-    archetypes = {}
-    for row in rows:
-        archetype_id = row["id"]
-        archetypes[archetype_id] = {
-            "name": row["name"],
-            "description": row["description"],
-            "version": row["version"],
-            "message_triggers": json.loads(row["message_triggers"]) if row["message_triggers"] else [],
-            "outcome_weights": json.loads(row["outcome_weights"]) if row["outcome_weights"] else {},
-            "sample_count": row["sample_count"],
-        }
-    return archetypes
-
-# Called at simulation start, not module load
-# (allows DB changes to be picked up)
+replay_mode: Literal["sequential", "random"] = "sequential"
 ```
 
-### 6.2 Refactored Message Processing
+### 8.3 Message Loop Update
 
-```python
-def run(self) -> DriftSimulationResult:
-    # ... setup ...
-    
-    for day in range(self.config.duration_days):
-        for session in range(self.config.sessions_per_day):
-            # Apply decay (unchanged)
-            if day > 0 or session > 0:
-                gap = self._calculate_gap(day, session)
-                self.state = self.engine.apply_decay(self.state, gap * 3600)
-                self.engine.apply_mood_decay(self.state, gap * 3600)
-                elapsed_hours += gap
+1. Replace single trigger sampling with trigger-set replay.
+2. Use per-message V/A accumulation then single mood projection.
+3. Keep existing outcome sampling and decay behavior.
 
-            for msg in range(self.config.messages_per_session):
-                # === NEW: Multi-trigger processing (like live chat) ===
-                trigger_set = self._get_next_trigger_set(day)
-                
-                # Accumulate V/A deltas across all triggers
-                total_va_delta = {'valence': 0.0, 'arousal': 0.0}
-                
-                for trigger, intensity in trigger_set:
-                    deltas = self.engine.apply_trigger(self.state, trigger, intensity)
-                    total_va_delta['valence'] += deltas.get('valence', 0.0)
-                    total_va_delta['arousal'] += deltas.get('arousal', 0.0)
-                    self._track_trigger(trigger_agg, trigger, intensity, deltas)
-                
-                # Single mood projection after all triggers (like live chat)
-                if trigger_set:
-                    mood_deltas = self.engine.calculate_mood_deltas_from_va(total_va_delta)
-                    if mood_deltas:
-                        self.engine.apply_mood_deltas(self.state, mood_deltas)
-                # === END NEW ===
-                
-                # Outcome (unchanged)
-                outcome = self._sample_outcome(day)
-                self._apply_outcome(outcome)
-                
-                # Record point (unchanged)
-                ...
-```
+### 8.4 Timeline Contract
 
-### 6.3 Trigger Set Selection
+To avoid frontend breakage while supporting multi-trigger visibility:
 
-```python
-def _get_next_trigger_set(self, day: int) -> list[tuple[str, float]]:
-    """Get trigger set for current message."""
-    version = self.archetype.get("version", "1")
-    
-    if version == "2":
-        # V2: Replay from classified messages
-        message_triggers = self._get_phase_message_triggers(day)
-        if not message_triggers:
-            return []
-        
-        if self.config.replay_mode == "sequential":
-            idx = self._message_index % len(message_triggers)
-            self._message_index += 1
-            return [(t, i) for t, i in message_triggers[idx]]
-        else:  # "random"
-            selected = self.rng.choice(message_triggers)
-            return [(t, i) for t, i in selected]
-    
-    else:
-        # V1 Legacy: Probability sampling (backward compat)
-        trigger = self._sample_trigger_legacy(day)
-        intensity = self.rng.uniform(0.3, 1.0)
-        return [(trigger, intensity)]
-```
+1. Keep existing fields: `trigger`, `intensity`.
+2. Add new field: `triggers: list[dict[str, float | str]]`.
+3. Populate legacy fields from first trigger when available; empty defaults otherwise.
 
 ---
 
-## 7. Frontend — Designer V2 Archetypes Tab
+## 9. Frontend Integration (Drift Tab Only)
 
-### 7.1 New Components
+### 9.1 No New Top-Level Tab
 
-**File:** `frontend/src/components/designer/ArchetypesTab.tsx`
+Keep `DesignerTabsV2` unchanged. Add archetype management UI inside `DriftSimulatorTab`.
 
-**Sections:**
-1. **Archetype List** — Table showing all archetypes (system badge, sample count, actions)
-2. **Create Modal** — Upload .txt file, set name/description
-3. **Edit Modal** — Update name, description, outcome_weights
-4. **Detail View** — Show trigger distribution chart, sample triggers
+### 9.2 Drift Tab Additions
 
-### 7.2 UI Mockup
+1. "Manage Archetypes" button opens modal/drawer.
+2. CRUD list in modal.
+3. Upload flow (`.txt`) -> generate endpoint.
+4. Replay mode selector (`sequential` / `random`) in simulation controls.
+5. Refresh archetype query after create/update/delete.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ Archetypes                                    [+ New Archetype] │
-├─────────────────────────────────────────────────────────────────┤
-│ Name                │ Type   │ Samples │ Created    │ Actions  │
-├─────────────────────┼────────┼─────────┼────────────┼──────────┤
-│ Aggressive          │ System │ —       │ Built-in   │ View     │
-│ Supportive          │ System │ —       │ Built-in   │ View     │
-│ Playful             │ System │ —       │ Built-in   │ View     │
-│ Frustrated Customer │ Custom │ 150     │ 2 hours ago│ Edit Del │
-│ Happy User          │ Custom │ 80      │ Yesterday  │ Edit Del │
-└─────────────────────────────────────────────────────────────────┘
-```
+### 9.3 Types/API Client
 
-### 7.3 Create Archetype Flow
-
-1. Click "+ New Archetype"
-2. Modal opens:
-   - ID field (slug, auto-generated from name)
-   - Name field
-   - Description field
-   - File upload (drag & drop .txt)
-   - Outcome weights sliders (positive/neutral/negative)
-3. Click "Generate"
-4. Backend classifies → saves → returns stats
-5. Modal shows: "Created archetype with 150 messages, 8 unique triggers"
-6. Close modal, list refreshes
-
-### 7.4 API Client
-
-**File:** `frontend/src/utils/designerApiV2.ts`
-
-```typescript
-// Add to existing file
-
-export async function getArchetypes(): Promise<Archetype[]> {
-  const res = await fetchWithAuth('/api/designer/v2/archetypes');
-  const data = await res.json();
-  return data.archetypes;
-}
-
-export async function getArchetype(id: string): Promise<ArchetypeDetail> {
-  const res = await fetchWithAuth(`/api/designer/v2/archetypes/${id}`);
-  return res.json();
-}
-
-export async function generateArchetype(
-  file: File,
-  id: string,
-  name: string,
-  description: string
-): Promise<ArchetypeDetail> {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('id', id);
-  formData.append('name', name);
-  formData.append('description', description);
-  
-  const res = await fetchWithAuth('/api/designer/v2/archetypes/generate', {
-    method: 'POST',
-    body: formData,
-  });
-  return res.json();
-}
-
-export async function updateArchetype(
-  id: string,
-  data: Partial<Archetype>
-): Promise<ArchetypeDetail> {
-  const res = await fetchWithAuth(`/api/designer/v2/archetypes/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  });
-  return res.json();
-}
-
-export async function deleteArchetype(id: string): Promise<void> {
-  await fetchWithAuth(`/api/designer/v2/archetypes/${id}`, {
-    method: 'DELETE',
-  });
-}
-```
-
-### 7.5 Update DriftSimulatorTab
-
-- Archetype dropdown fetches from `/api/designer/v2/archetypes`
-- Shows badge for v1 (legacy) vs v2 (data-driven)
-- Adds replay mode selector for v2 archetypes (sequential/random)
+1. Extend `Archetype` type with metadata fields.
+2. Add `ArchetypeDetail` type.
+3. Add generate/update/delete/detail API helpers in `designerApiV2.ts`.
+4. Extend `DriftSimulationConfig` with `replay_mode`.
 
 ---
 
-## 8. Implementation Phases
+## 10. Complexity Guardrails
 
-### Phase 1: Database & Repository (Est: 2 hours)
+For `POST /archetypes/generate`:
 
-**Files:**
-- [ ] `backend/db/connection.py` — Add `drift_archetypes` table
-- [ ] `backend/db/repositories/archetype_repository.py` — NEW
-- [ ] `backend/db/repositories/__init__.py` — Export
-
-**Acceptance:**
-- [ ] Table created on startup
-- [ ] System archetypes seeded (v1 format)
-- [ ] Repository CRUD methods work
-
-### Phase 2: Backend API (Est: 3 hours)
-
-**Files:**
-- [ ] `backend/routers/designer_v2.py` — Add archetype endpoints
-- [ ] `backend/schemas/requests.py` — Add request models
-- [ ] `backend/schemas/responses.py` — Add response models
-
-**Acceptance:**
-- [ ] All CRUD endpoints work
-- [ ] File upload + classification works
-- [ ] System archetypes protected from delete
-
-### Phase 3: Refactor Drift Simulator (Est: 3-4 hours)
-
-**Files:**
-- [ ] `backend/services/drift_simulator.py` — Major refactor
-
-**Changes:**
-- [ ] Load archetypes from DB (not hardcoded)
-- [ ] Multi-trigger processing per message
-- [ ] V/A accumulation before mood projection
-- [ ] Support v1 (legacy) and v2 (message_triggers) formats
-- [ ] Replay mode (sequential/random)
-
-**Acceptance:**
-- [ ] V2 archetypes replay real trigger sets
-- [ ] V1 archetypes still work (backward compat)
-- [ ] Math matches live chat flow
-
-### Phase 4: Frontend — Archetypes Tab (Est: 4-5 hours)
-
-**Files:**
-- [ ] `frontend/src/components/designer/ArchetypesTab.tsx` — NEW
-- [ ] `frontend/src/components/designer/ArchetypeCreateModal.tsx` — NEW
-- [ ] `frontend/src/components/designer/ArchetypeDetailModal.tsx` — NEW
-- [ ] `frontend/src/components/designer/DesignerTabsV2.tsx` — Add tab
-- [ ] `frontend/src/utils/designerApiV2.ts` — Add API methods
-- [ ] `frontend/src/types/designer.ts` — Add types
-
-**Acceptance:**
-- [ ] Archetypes tab shows list
-- [ ] Can create archetype via file upload
-- [ ] Can edit/delete user-created archetypes
-- [ ] Detail view shows trigger distribution
-
-### Phase 5: Update Drift Simulator Tab (Est: 1-2 hours)
-
-**Files:**
-- [ ] `frontend/src/components/designer/DriftSimulatorTab.tsx`
-
-**Changes:**
-- [ ] Fetch archetypes from API (not hardcoded)
-- [ ] Show v1/v2 badge
-- [ ] Add replay mode selector for v2
-
-**Acceptance:**
-- [ ] Dropdown shows DB archetypes
-- [ ] New archetypes appear after creation
-- [ ] Replay mode works
+1. Max file size: **2 MB**.
+2. Max non-empty lines: **2000**.
+3. Max line length: **300 chars** (truncate or reject; choose one and document it).
+4. Ignore blank lines.
+5. Normalize trigger labels via existing canonical mapping.
+6. Keep synchronous request model; return clear 4xx errors for limits.
 
 ---
 
-## 9. Testing
+## 11. Testing Plan
 
-### Backend Tests
+### 11.1 Backend
 
-**File:** `backend/tests/test_archetypes.py`
+1. `test_archetypes_crud_global`
+2. `test_archetype_generate_from_file_success`
+3. `test_archetype_generate_limits_enforced`
+4. `test_drift_multi_trigger_replay_sequential`
+5. `test_drift_multi_trigger_replay_random`
+6. `test_drift_va_accumulation_single_mood_projection`
+7. `test_drift_routes_validate_against_db_archetypes`
 
-| Test | Description |
-|------|-------------|
-| `test_create_archetype` | Create user archetype |
-| `test_generate_from_file` | Upload .txt, verify classification |
-| `test_delete_user_archetype` | Delete allowed |
-| `test_delete_system_archetype` | Delete blocked (403) |
-| `test_list_archetypes` | Returns system + user |
+### 11.2 Frontend
 
-**File:** `backend/tests/test_drift_simulator_v2.py`
+1. Drift tab archetype management modal render + CRUD actions.
+2. Upload flow happy path + validation error handling.
+3. Replay mode selector sends `replay_mode` in request.
 
-| Test | Description |
-|------|-------------|
-| `test_v2_multi_trigger` | Multiple triggers applied per message |
-| `test_va_accumulation` | V/A deltas accumulate correctly |
-| `test_v1_backward_compat` | Legacy archetypes still work |
-| `test_replay_sequential` | Sequential mode cycles correctly |
-| `test_replay_random` | Random mode samples from pool |
+### 11.3 Test Cleanup
 
-### Frontend Tests
-
-| Test | Description |
-|------|-------------|
-| `ArchetypesTab.test.tsx` | List renders, CRUD actions work |
-| `ArchetypeCreateModal.test.tsx` | File upload flow |
+Replace legacy phase/`ARCHETYPES`-coupled tests with DB-backed archetype tests.
 
 ---
 
-## 10. File Changes Summary
+## 12. File Change Summary
 
-### New Files
-- `backend/db/repositories/archetype_repository.py`
-- `backend/tests/test_archetypes.py`
-- `backend/tests/test_drift_simulator_v2.py`
-- `frontend/src/components/designer/ArchetypesTab.tsx`
-- `frontend/src/components/designer/ArchetypeCreateModal.tsx`
-- `frontend/src/components/designer/ArchetypeDetailModal.tsx`
+### New
 
-### Modified Files
-- `backend/db/connection.py` — Add table + seed
-- `backend/db/repositories/__init__.py` — Export
-- `backend/routers/designer_v2.py` — Add endpoints
-- `backend/schemas/requests.py` — Add models
-- `backend/schemas/responses.py` — Add models
-- `backend/services/drift_simulator.py` — Major refactor
-- `frontend/src/components/designer/DesignerTabsV2.tsx` — Add tab
-- `frontend/src/components/designer/DriftSimulatorTab.tsx` — Use API
-- `frontend/src/utils/designerApiV2.ts` — Add methods
-- `frontend/src/types/designer.ts` — Add types
+1. `backend/db/repositories/archetype_repository.py`
+2. `backend/tests/test_archetypes.py`
+3. `backend/tests/test_drift_simulator_v2.py`
+
+### Modified
+
+1. `backend/db/connection.py` (table + seed)
+2. `backend/db/repositories/__init__.py`
+3. `backend/routers/designer_v2.py` (CRUD + generate + DB-backed validation)
+4. `backend/services/drift_simulator.py` (replay model)
+5. `frontend/src/components/designer/DriftSimulatorTab.tsx`
+6. `frontend/src/utils/designerApiV2.ts`
+7. `frontend/src/types/designer.ts`
+8. `DOCUMENTATION.md` (fix drift API doc path and v2 archetype notes)
 
 ---
 
-## 11. Definition of Done
+## 13. Definition of Done
 
-1. [ ] Archetypes stored in database with CRUD API
-2. [ ] Users can upload .txt and generate archetype via Designer UI
-3. [ ] System archetypes seeded and protected from deletion
-4. [ ] Drift simulator applies multiple triggers per message (like live chat)
-5. [ ] V/A deltas accumulate correctly before mood projection
-6. [ ] V1 (legacy) archetypes still work
-7. [ ] Designer UI shows archetypes tab with full CRUD
-8. [ ] Drift simulator dropdown fetches from API
-9. [ ] Tests cover API, simulator refactor, and backward compat
-
----
-
-## 12. Future Extensions (Out of Scope)
-
-- **Outcome derivation:** Auto-derive outcome_weights from sentiment analysis
-- **Archetype sharing:** Export/import archetype JSON
-- **Phased archetypes v2:** Upload multiple files for multi-phase archetypes
-- **Live capture:** Record production conversations as archetype source
-- **A/B comparison:** Compare persona behavior across archetype versions
+1. Drift simulator runs from DB-backed v2 global archetypes only.
+2. Multi-trigger replay and V/A accumulation behavior implemented.
+3. Archetypes are fully manageable (create/generate/update/delete) from Drift tab UX.
+4. Replay mode (`sequential`/`random`) works end-to-end.
+5. Drift routes validate archetype IDs against DB, not in-memory constants.
+6. Input guardrails prevent expensive uploads without adding job-system complexity.
+7. Backend + frontend tests added/updated and passing.

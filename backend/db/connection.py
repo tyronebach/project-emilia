@@ -2,6 +2,8 @@
 Database connection and initialization.
 """
 import os
+import json
+import time
 import sqlite3
 from pathlib import Path
 from contextlib import contextmanager
@@ -329,6 +331,21 @@ def init_db():
             )
         """)
 
+        # Drift archetypes (global replay datasets for Drift Simulator V2)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS drift_archetypes (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                message_triggers TEXT NOT NULL,
+                outcome_weights TEXT DEFAULT '{}',
+                sample_count INTEGER DEFAULT 0,
+                source_filename TEXT,
+                created_at INTEGER DEFAULT (strftime('%s', 'now')),
+                updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+            )
+        """)
+
         # Mood weights (JSON dict of mood->weight)
         _add_column(cur, "emotional_state", "mood_weights_json", "TEXT")
 
@@ -412,6 +429,7 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_game_registry_active ON game_registry(active)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_agent_game_config_agent ON agent_game_config(agent_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_events_v2_user_agent ON emotional_events_v2(user_id, agent_id, timestamp DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_drift_archetypes_updated_at ON drift_archetypes(updated_at DESC)")
 
         # Baseline game registry seed for rollout compatibility.
         # Keep tic-tac-toe and chess registered for all environments.
@@ -477,6 +495,35 @@ def init_db():
             """INSERT OR IGNORE INTO agent_game_config (agent_id, game_id, enabled, workspace_required)
                SELECT id, 'chess', 1, 0 FROM agents"""
         )
+
+        # Seed global drift archetypes once for V2 replay mode.
+        drift_count = conn.execute(
+            "SELECT COUNT(*) as count FROM drift_archetypes"
+        ).fetchone()["count"]
+        if int(drift_count or 0) == 0:
+            from services.drift_archetype_seed import get_default_drift_archetypes
+
+            now = int(time.time())
+            for archetype in get_default_drift_archetypes():
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO drift_archetypes (
+                        id, name, description, message_triggers, outcome_weights,
+                        sample_count, source_filename, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        archetype["id"],
+                        archetype["name"],
+                        archetype.get("description", ""),
+                        json.dumps(archetype.get("message_triggers", [])),
+                        json.dumps(archetype.get("outcome_weights", {})),
+                        int(archetype.get("sample_count", 0)),
+                        archetype.get("source_filename"),
+                        now,
+                        now,
+                    ),
+                )
 
         conn.commit()
 
