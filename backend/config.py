@@ -37,7 +37,17 @@ class Settings:
         self.chat_history_limit: int = int(os.getenv("CHAT_HISTORY_LIMIT", "20"))
 
         # Emotion engine
-        self.llm_trigger_detection: bool = os.getenv("LLM_TRIGGER_DETECTION", "0") == "1"
+        self.trigger_classifier_enabled: bool = os.getenv(
+            "TRIGGER_CLASSIFIER_ENABLED", "1"
+        ) == "1"
+        self.trigger_classifier_confidence: float = float(
+            os.getenv("TRIGGER_CLASSIFIER_CONFIDENCE", "0.25")
+        )
+        self.trigger_classifier_llm_fallback: bool = os.getenv(
+            "LLM_TRIGGER_DETECTION", "0"
+        ) == "1"
+        # Backward-compatible alias used in existing router paths.
+        self.llm_trigger_detection: bool = self.trigger_classifier_llm_fallback
 
         # Games rollout cohort
         self.games_v2_agent_allowlist: set[str] = {

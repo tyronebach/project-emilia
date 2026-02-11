@@ -6,12 +6,12 @@ Processes triggers, applies decay, and computes behavior levers for LLM injectio
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import ClassVar, Optional
+from typing import ClassVar
 import json
 import logging
 import math
+import os
 import random
-import re
 import threading
 import time as _time
 
@@ -22,6 +22,36 @@ except ImportError:
     httpx = None  # type: ignore
 
 logger = logging.getLogger(__name__)
+
+
+def get_trigger_classifier():
+    """
+    Resolve trigger classifier singleton for both package and direct-file imports.
+
+    scripts/emotion-lab.py loads this module via importlib from file path, so
+    absolute package imports may be unavailable in that execution mode.
+    """
+    try:
+        from services.trigger_classifier import get_trigger_classifier as getter
+        return getter()
+    except Exception:
+        try:
+            from trigger_classifier import get_trigger_classifier as getter  # type: ignore
+            return getter()
+        except Exception:
+            import importlib.util
+            from pathlib import Path
+
+            module_path = Path(__file__).with_name("trigger_classifier.py")
+            spec = importlib.util.spec_from_file_location(
+                "trigger_classifier_fallback",
+                module_path,
+            )
+            if not spec or not spec.loader:
+                raise RuntimeError("Failed to load trigger_classifier.py")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module.get_trigger_classifier()
 
 def _load_moods_from_db() -> tuple[list[str], dict[str, tuple[float, float]]]:
     """Load mood list and valence/arousal map from the moods DB table."""
@@ -214,8 +244,8 @@ class AgentProfile:
         """
         from services.emotion_engine import EmotionEngine, normalize_trigger
 
-        # Support canonical fallback so legacy runtime triggers like "compliment"
-        # pick up canonical designer settings such as "praise".
+        # Support canonical fallback so legacy runtime triggers map to
+        # GoEmotions labels (for example compliment -> love).
         canonical = normalize_trigger(trigger)
         lookup_order = [trigger]
         if canonical and canonical not in lookup_order:
@@ -249,27 +279,68 @@ class AgentProfile:
 
         multiplier_key = next((k for k in lookup_order if k in self.trigger_multipliers), None)
         mult = self.trigger_multipliers.get(multiplier_key, 1.0) if multiplier_key else 1.0
-        base_key = multiplier_key or trigger
+        base_key = multiplier_key or canonical or trigger
         base = (
             EmotionEngine.DEFAULT_TRIGGER_DELTAS.get(base_key)
+            or EmotionEngine.DEFAULT_TRIGGER_DELTAS.get(canonical or "", {})
             or EmotionEngine.DEFAULT_TRIGGER_DELTAS.get(trigger, {})
         )
         return {axis: delta * mult for axis, delta in base.items()}
 
 
 # ============================================================
-# V2: Consolidated trigger taxonomy (15 triggers in 5 categories)
+# GoEmotions trigger taxonomy
 # ============================================================
 
 TRIGGER_TAXONOMY = {
-    "play": ["teasing", "banter", "flirting"],
-    "care": ["comfort", "praise", "affirmation"],
-    "friction": ["criticism", "rejection", "boundary", "dismissal"],
-    "repair": ["apology", "accountability", "reconnection"],
-    "vulnerability": ["disclosure", "trust_signal"],
+    "positive": [
+        "admiration",
+        "amusement",
+        "approval",
+        "caring",
+        "excitement",
+        "gratitude",
+        "joy",
+        "love",
+        "optimism",
+        "pride",
+        "relief",
+    ],
+    "negative": [
+        "anger",
+        "annoyance",
+        "disappointment",
+        "disapproval",
+        "disgust",
+        "fear",
+        "grief",
+        "sadness",
+    ],
+    "self_conscious": [
+        "embarrassment",
+        "nervousness",
+        "remorse",
+    ],
+    "neutral": [
+        "confusion",
+        "curiosity",
+        "realization",
+        "surprise",
+    ],
+    "intimate": [
+        "desire",
+        "love",
+        "caring",
+    ],
 }
 
-ALL_TRIGGERS = [t for triggers in TRIGGER_TAXONOMY.values() for t in triggers]
+ALL_TRIGGERS: list[str] = []
+for _group in TRIGGER_TAXONOMY.values():
+    for _trigger in _group:
+        if _trigger not in ALL_TRIGGERS:
+            ALL_TRIGGERS.append(_trigger)
+if "neutral" not in ALL_TRIGGERS:
+    ALL_TRIGGERS.append("neutral")
 
 # Preset multipliers for trigger responses (matches frontend presets)
 TRIGGER_PRESET_MULTIPLIERS = {
@@ -324,34 +395,54 @@ def _get_normalized_mood_vectors() -> dict[str, tuple[float, float]]:
     _normalized_mood_vectors = result
     return result
 
-TRIGGER_ALIASES = {
-    "compliment": "praise",
-    "gratitude": "praise",
-    "insult": "criticism",
-    "conflict": "boundary",
-    "betrayal": "rejection",
-    "abandonment": "rejection",
-    "argument": "boundary",
-    "accusation": "criticism",
-    "explanation": "accountability",
-    "repair": "reconnection",
-    "vulnerability": "disclosure",
-    "confession": "disclosure",
-    "secret": "disclosure",
-    "shared_joy": "affirmation",
-    "greeting": None,
-    "farewell": None,
-    "question": None,
-    "curiosity": None,
-    "empathy_needed": None,
+LEGACY_TRIGGER_ALIASES = {
+    # Plan-defined legacy mappings
+    "praise": "admiration",
+    "compliment": "love",
+    "gratitude": "gratitude",
+    "affirmation": "approval",
+    "comfort": "caring",
+    "teasing": "amusement",
+    "banter": "amusement",
+    "flirting": "desire",
+    "criticism": "disapproval",
+    "rejection": "disgust",
+    "boundary": "fear",
+    "dismissal": "disappointment",
+    "conflict": "anger",
+    "apology": "remorse",
+    "accountability": "remorse",
+    "reconnection": "relief",
+    "disclosure": "nervousness",
+    "trust_signal": "love",
+    "vulnerability": "embarrassment",
+    "greeting": "joy",
+    "farewell": "sadness",
+    "curiosity": "curiosity",
+    "shared_joy": "excitement",
+    # Additional backward-compatible aliases used in legacy profiles/tests
+    "insult": "disapproval",
+    "betrayal": "disgust",
+    "abandonment": "disgust",
+    "argument": "anger",
+    "accusation": "disapproval",
+    "explanation": "realization",
+    "repair": "relief",
+    "confession": "nervousness",
+    "secret": "nervousness",
+    "question": "curiosity",
+    "empathy_needed": "sadness",
 }
 
 
 def normalize_trigger(trigger: str) -> str | None:
-    """Convert legacy trigger to consolidated taxonomy. Returns None for unrecognized."""
-    if trigger in ALL_TRIGGERS:
-        return trigger
-    return TRIGGER_ALIASES.get(trigger)
+    """Normalize trigger names to GoEmotions labels."""
+    normalized = (trigger or "").strip().lower()
+    if not normalized:
+        return None
+    if normalized in ALL_TRIGGERS:
+        return normalized
+    return LEGACY_TRIGGER_ALIASES.get(normalized)
 
 
 # ============================================================
@@ -613,36 +704,35 @@ class CalibrationRecovery:
 
 DIMENSION_UPDATES: dict[str, dict[tuple[str, str], float]] = {
     "trust": {
-        ("praise", "positive"):       +0.02,
-        ("affirmation", "positive"):  +0.02,
-        ("accountability", "positive"): +0.04,
-        ("disclosure", "positive"):   +0.03,
-        ("rejection", "any"):         -0.08,
-        ("dismissal", "any"):         -0.05,
-        ("boundary", "negative"):     -0.06,
+        ("admiration", "positive"):    +0.02,
+        ("approval", "positive"):      +0.02,
+        ("remorse", "positive"):       +0.04,
+        ("nervousness", "positive"):   +0.03,
+        ("disgust", "any"):            -0.08,
+        ("disappointment", "any"):     -0.05,
+        ("fear", "negative"):          -0.06,
     },
     "intimacy": {
-        ("disclosure", "positive"):   +0.05,
-        ("comfort", "positive"):      +0.02,
-        ("trust_signal", "positive"): +0.03,
-        ("disclosure", "negative"):   -0.04,
-        ("rejection", "any"):         -0.03,
+        ("nervousness", "positive"):   +0.05,
+        ("caring", "positive"):        +0.02,
+        ("love", "positive"):          +0.03,
+        ("nervousness", "negative"):   -0.04,
+        ("disgust", "any"):            -0.03,
     },
     "playfulness_safety": {
-        ("teasing", "positive"):      +0.04,
-        ("banter", "positive"):       +0.03,
-        ("flirting", "positive"):     +0.02,
-        ("teasing", "negative"):      -0.06,
-        ("banter", "negative"):       -0.04,
-        ("flirting", "negative"):     -0.03,
+        ("amusement", "positive"):     +0.04,
+        ("surprise", "positive"):      +0.03,
+        ("desire", "positive"):        +0.02,
+        ("amusement", "negative"):     -0.06,
+        ("surprise", "negative"):      -0.04,
+        ("desire", "negative"):        -0.03,
     },
     "conflict_tolerance": {
-        ("apology", "positive"):      +0.03,
-        ("accountability", "positive"): +0.04,
-        ("reconnection", "positive"): +0.05,
-        ("criticism", "any"):         -0.03,
-        ("boundary", "any"):          -0.04,
-        ("rejection", "any"):         -0.05,
+        ("remorse", "positive"):       +0.04,
+        ("relief", "positive"):        +0.05,
+        ("disapproval", "any"):        -0.03,
+        ("fear", "any"):               -0.04,
+        ("disgust", "any"):            -0.05,
     },
 }
 
@@ -654,188 +744,186 @@ class EmotionEngine:
     Handles trigger detection, delta application, decay, and behavior lever computation.
     """
     
-    # Default trigger -> delta mappings.
-    # Tuned for a more even positive/negative distribution on canonical triggers,
-    # while preserving clear directional character and trust asymmetry.
+    # Canonical GoEmotions trigger -> delta mappings.
     DEFAULT_TRIGGER_DELTAS: dict[str, dict[str, float]] = {
-        # Legacy keys (kept for compatibility; normalized where possible)
-        'compliment': {'valence': 0.10, 'arousal': 0.04, 'trust': 0.02},
-        'gratitude': {'valence': 0.08, 'arousal': 0.02, 'trust': 0.02},
-        'conflict': {'valence': -0.18, 'arousal': 0.24, 'trust': -0.08},
-        'repair': {'valence': 0.06, 'arousal': -0.02, 'trust': 0.02},
-        'vulnerability': {'valence': 0.02, 'arousal': 0.07, 'trust': 0.03, 'attachment': 0.02},
-        'curiosity': {'valence': 0.03, 'arousal': 0.06, 'trust': 0.005},
-        'shared_joy': {'valence': 0.12, 'arousal': 0.12, 'trust': 0.03, 'attachment': 0.01},
-        'greeting': {'valence': 0.03, 'arousal': 0.02, 'trust': 0.005},
-        'farewell': {'valence': 0.0, 'arousal': -0.03, 'attachment': 0.005},
-
-        # V2 taxonomy triggers (complete coverage)
-        'teasing': {'valence': 0.03, 'arousal': 0.08, 'trust': 0.01},
-        'banter': {'valence': 0.05, 'arousal': 0.10, 'trust': 0.015},
-        'flirting': {'valence': 0.07, 'arousal': 0.12, 'trust': 0.015, 'intimacy': 0.025},
-        'comfort': {'valence': 0.12, 'arousal': -0.12, 'trust': 0.04},
-        'praise': {'valence': 0.10, 'arousal': 0.04, 'trust': 0.02},
-        'affirmation': {'valence': 0.07, 'arousal': 0.02, 'trust': 0.025},
-        'criticism': {'valence': -0.14, 'arousal': 0.10, 'trust': -0.035},
-        'rejection': {'valence': -0.22, 'arousal': 0.14, 'trust': -0.06},
-        'boundary': {'valence': -0.14, 'arousal': 0.12, 'trust': -0.05},
-        'dismissal': {'valence': -0.12, 'arousal': -0.03, 'trust': -0.03},
-        'apology': {'valence': 0.04, 'arousal': -0.06, 'trust': 0.03},
-        'accountability': {'valence': 0.02, 'arousal': -0.04, 'trust': 0.05},
-        'reconnection': {'valence': 0.06, 'arousal': -0.04, 'trust': 0.025},
-        'trust_signal': {'valence': 0.03, 'arousal': -0.03, 'trust': 0.06, 'intimacy': 0.02},
-        'disclosure': {'valence': 0.01, 'arousal': 0.05, 'trust': 0.05, 'attachment': 0.025},
+        # Positive
+        "admiration": {
+            "valence": 0.12,
+            "arousal": 0.06,
+            "trust": 0.03,
+            "attachment": 0.01,
+        },
+        "amusement": {
+            "valence": 0.08,
+            "arousal": 0.10,
+            "trust": 0.015,
+        },
+        "approval": {
+            "valence": 0.07,
+            "arousal": 0.02,
+            "trust": 0.025,
+        },
+        "caring": {
+            "valence": 0.12,
+            "arousal": -0.10,
+            "trust": 0.04,
+            "intimacy": 0.02,
+        },
+        "excitement": {
+            "valence": 0.14,
+            "arousal": 0.16,
+            "trust": 0.02,
+            "attachment": 0.01,
+        },
+        "gratitude": {
+            "valence": 0.10,
+            "arousal": 0.02,
+            "trust": 0.04,
+            "attachment": 0.015,
+        },
+        "joy": {
+            "valence": 0.12,
+            "arousal": 0.08,
+            "trust": 0.02,
+        },
+        "love": {
+            "valence": 0.15,
+            "arousal": 0.06,
+            "trust": 0.05,
+            "attachment": 0.03,
+            "intimacy": 0.04,
+        },
+        "optimism": {
+            "valence": 0.08,
+            "arousal": 0.04,
+            "trust": 0.02,
+        },
+        "pride": {
+            "valence": 0.10,
+            "arousal": 0.08,
+            "trust": 0.02,
+            "dominance": 0.03,
+        },
+        "relief": {
+            "valence": 0.08,
+            "arousal": -0.12,
+            "trust": 0.02,
+        },
+        # Negative
+        "anger": {
+            "valence": -0.20,
+            "arousal": 0.22,
+            "trust": -0.08,
+            "dominance": 0.05,
+        },
+        "annoyance": {
+            "valence": -0.10,
+            "arousal": 0.08,
+            "trust": -0.03,
+        },
+        "disappointment": {
+            "valence": -0.14,
+            "arousal": -0.06,
+            "trust": -0.04,
+            "attachment": -0.01,
+        },
+        "disapproval": {
+            "valence": -0.12,
+            "arousal": 0.06,
+            "trust": -0.035,
+        },
+        "disgust": {
+            "valence": -0.18,
+            "arousal": 0.10,
+            "trust": -0.06,
+        },
+        "fear": {
+            "valence": -0.16,
+            "arousal": 0.20,
+            "trust": -0.05,
+            "dominance": -0.08,
+        },
+        "grief": {
+            "valence": -0.22,
+            "arousal": -0.10,
+            "trust": 0.0,
+            "attachment": 0.02,
+        },
+        "sadness": {
+            "valence": -0.14,
+            "arousal": -0.08,
+            "trust": 0.0,
+            "attachment": 0.01,
+        },
+        # Self-conscious
+        "embarrassment": {
+            "valence": -0.08,
+            "arousal": 0.12,
+            "trust": 0.02,
+            "dominance": -0.06,
+            "intimacy": 0.015,
+        },
+        "nervousness": {
+            "valence": -0.06,
+            "arousal": 0.14,
+            "trust": 0.03,
+            "intimacy": 0.02,
+        },
+        "remorse": {
+            "valence": -0.08,
+            "arousal": -0.04,
+            "trust": 0.04,
+            "dominance": -0.04,
+        },
+        # Neutral/cognitive
+        "confusion": {
+            "valence": -0.02,
+            "arousal": 0.06,
+            "trust": 0.0,
+        },
+        "curiosity": {
+            "valence": 0.04,
+            "arousal": 0.08,
+            "trust": 0.01,
+            "intimacy": 0.01,
+        },
+        "realization": {
+            "valence": 0.03,
+            "arousal": 0.10,
+            "trust": 0.005,
+        },
+        "surprise": {
+            "valence": 0.02,
+            "arousal": 0.14,
+            "trust": 0.0,
+        },
+        # Intimate (already represented in other categories except desire)
+        "desire": {
+            "valence": 0.10,
+            "arousal": 0.14,
+            "trust": 0.02,
+            "intimacy": 0.04,
+            "attachment": 0.02,
+        },
+        # Neutral label kept for completeness; classifier filters it out.
+        "neutral": {
+            "valence": 0.0,
+            "arousal": 0.0,
+            "trust": 0.0,
+        },
     }
-    
-    # Pattern-based trigger detection
-    TRIGGER_PATTERNS: dict[str, list[str]] = {
-        # Care
-        'praise': [
-            r'\b(amazing|wonderful|incredible|fantastic|impressive|well done|good job)\b',
-            r'\b(proud of you|you did great|that was great)\b',
-            r'\b(you.re|you are) (so |really )?(smart|kind|sweet|beautiful|cute|talented)\b',
-        ],
-        'compliment': [
-            r'\b(best|favorite)\b.{0,20}\b(ever|always)\b',
-            r'\b(love you|adore you)\b',
-        ],
-        'gratitude': [
-            r'\b(thank you|thanks|thx|ty|appreciate it|i appreciate you)\b',
-            r'\b(grateful|thankful)\b',
-        ],
-        'affirmation': [
-            r'\b(you.re right|you are right|exactly|that makes sense|fair point)\b',
-            r'\b(i hear you|i get you|valid point|totally fair)\b',
-        ],
-        'comfort': [
-            r'\b(it.s okay|it.s ok|it.s alright|you.re okay|it will be okay)\b',
-            r'\b(i.m here|here for you|i got you|take your time|breathe)\b',
-            r'\b(you.re safe|it makes sense you feel that way)\b',
-        ],
-
-        # Play
-        'teasing': [
-            r'\b(just kidding|jk|kidding|teasing)\b',
-            r'\b(you goof|goofball|dummy|dork|nerd)\b',
-            r'\b(lol|lmao|haha|hehe)\b',
-        ],
-        'banter': [
-            r'\b(nice try|you wish|touch[eé]|well played|i.ll allow it)\b',
-            r'\b(oh really\?|bold claim|sure you did)\b',
-        ],
-        'flirting': [
-            r'\b(cute|handsome|gorgeous|hot)\b',
-            r'\b(kiss me|miss you|you make me blush|heart eyes)\b',
-            r'\b(date me|take me out|flirting)\b',
-        ],
-
-        # Friction
-        'criticism': [
-            r'\b(not what i asked|wrong|incorrect|mistake)\b',
-            r'\b(you (always|never)|that.s not|that wasn.t)\b',
-            r'\b(disappointed|let me down|could.ve been better)\b',
-            r'\b(unhelpful|pointless|useless|you missed the point)\b',
-        ],
-        'boundary': [
-            r'\b(stop (that|it)|don.t do that|too far|not okay with that)\b',
-            r'\b(i need space|back off|respect my boundary|not comfortable)\b',
-            r'\b(that crossed a line|don.t call me that)\b',
-        ],
-        'dismissal': [
-            r'\b(whatever|never mind|forget it|doesn.t matter)\b',
-            r'\b(not now|later maybe|i.m busy|i.ll handle it)\b',
-            r'\b(i don.t need this|drop it)\b',
-        ],
-        'rejection': [
-            r'\b(go away|leave me alone|shut up|don.t talk to me)\b',
-            r'\b(i don.t care|i.m done with this|not interested)\b',
-            r'\b(stay away from me|get lost)\b',
-        ],
-        'conflict': [
-            r'\b(i.m|i am) (so |really )?(angry|furious|upset|mad)\b',
-            r'\b(i hate this|can.t stand this)\b',
-            r'\b(how could you|what.s wrong with you|why would you do that)\b',
-        ],
-
-        # Repair
-        'apology': [
-            r'\b(i.m sorry|my bad|my fault|i apologize|apologies)\b',
-            r'\b(forgive me|i was out of line)\b',
-        ],
-        'accountability': [
-            r'\b(you.re right|that.s on me|i was wrong|i take responsibility)\b',
-            r'\b(i own that|that was my mistake)\b',
-        ],
-        'reconnection': [
-            r'\b(can we reset|start over|can we talk this through)\b',
-            r'\b(i want to fix this|let.s make this right|are we okay)\b',
-            r'\b(i miss talking to you|come back)\b',
-        ],
-        'repair': [
-            r'\b(we can work this out|let me explain|hold on)\b',
-        ],
-
-        # Vulnerability
-        'disclosure': [
-            r'\b(can i be honest|truth is|i need to tell you something)\b',
-            r'\b(i.ve never told anyone|this is hard to admit)\b',
-            r'\b(i.m scared|i feel insecure|i feel exposed)\b',
-        ],
-        'trust_signal': [
-            r'\b(i trust you|between us|keep this between us)\b',
-            r'\b(you.re the only one i can tell|i feel safe with you)\b',
-        ],
-        'vulnerability': [
-            r'\b(please don.t judge me|be gentle with me)\b',
-        ],
-
-        # Low-intensity social signals
-        'greeting': [
-            r'^(hi|hey|hello|yo|sup|hiya|good morning|good evening)\b',
-        ],
-        'farewell': [
-            r'\b(bye|goodbye|good night|see you|talk later|gotta go)\b',
-        ],
-        'curiosity': [
-            r'\b(tell me about|what.s your take|how do you feel|what do you think)\b',
-            r'\b(i.m curious|i wonder|interested to hear)\b',
-        ],
-    }
-
-    # Base intensity by trigger before text-level modulation.
-    TRIGGER_BASE_INTENSITY: dict[str, float] = {
-        'praise': 0.62,
-        'compliment': 0.62,
-        'gratitude': 0.58,
-        'affirmation': 0.58,
-        'comfort': 0.66,
-        'teasing': 0.58,
-        'banter': 0.56,
-        'flirting': 0.60,
-        'criticism': 0.72,
-        'boundary': 0.74,
-        'dismissal': 0.70,
-        'rejection': 0.80,
-        'conflict': 0.82,
-        'apology': 0.62,
-        'accountability': 0.64,
-        'reconnection': 0.64,
-        'repair': 0.62,
-        'disclosure': 0.60,
-        'trust_signal': 0.62,
-        'vulnerability': 0.60,
-        'greeting': 0.35,
-        'farewell': 0.35,
-        'curiosity': 0.48,
-    }
-    
-    # Compile patterns for efficiency
-    _compiled_patterns: dict[str, list[re.Pattern]] = {}
     
     def __init__(self, profile: AgentProfile):
         self.profile = profile
         self.mood_injection_settings = self._load_mood_injection_settings()
-        self._compile_patterns()
+        self._trigger_classifier_enabled = os.getenv(
+            "TRIGGER_CLASSIFIER_ENABLED", "1"
+        ) == "1"
+        self._trigger_classifier = None
+        if self._trigger_classifier_enabled:
+            self._trigger_classifier = get_trigger_classifier()
+            configured_threshold = float(os.getenv("TRIGGER_CLASSIFIER_CONFIDENCE", "0.25"))
+            self._trigger_classifier.confidence_threshold = self._clamp(configured_threshold, 0.0, 1.0)
 
     def _load_mood_injection_settings(self) -> dict:
         from db.repositories import AppSettingsRepository
@@ -852,14 +940,6 @@ class EmotionEngine:
             "random_strength": self._clamp(float(merged.get("random_strength", 0.7)), 0.0, 2.0),
             "max_random_chance": self._clamp(float(merged.get("max_random_chance", 0.85)), 0.0, 1.0),
         }
-    
-    def _compile_patterns(self) -> None:
-        """Compile regex patterns once."""
-        if not EmotionEngine._compiled_patterns:
-            for trigger, patterns in self.TRIGGER_PATTERNS.items():
-                EmotionEngine._compiled_patterns[trigger] = [
-                    re.compile(p, re.IGNORECASE) for p in patterns
-                ]
     
     def apply_decay(self, state: EmotionalState, elapsed_seconds: float) -> EmotionalState:
         """
@@ -908,69 +988,35 @@ class EmotionEngine:
     
     def detect_triggers(self, text: str) -> list[tuple[str, float]]:
         """
-        Detect emotional triggers from text.
+        Detect emotional triggers from text using GoEmotions classifier.
         
         Returns list of (trigger_name, intensity) tuples.
         """
-        if not text:
+        if not text or not text.strip():
             return []
-        
+
+        if not self._trigger_classifier_enabled or not self._trigger_classifier:
+            return []
+
         trigger_map: dict[str, float] = {}
-        text_lower = text.lower()
-        
-        for trigger, patterns in EmotionEngine._compiled_patterns.items():
-            for pattern in patterns:
-                match = pattern.search(text_lower)
-                if match:
-                    intensity = self._estimate_trigger_intensity(
-                        trigger=trigger,
-                        text=text,
-                        text_lower=text_lower,
-                        matched_text=match.group(0),
-                    )
-                    canonical = normalize_trigger(trigger) or trigger
-                    if canonical not in trigger_map or intensity > trigger_map[canonical]:
-                        trigger_map[canonical] = intensity
-                    break  # One match per trigger type
-        
-        return list(trigger_map.items())
+        for trigger, confidence in self._trigger_classifier.classify(text):
+            canonical = normalize_trigger(trigger) or trigger
+            if canonical not in self.DEFAULT_TRIGGER_DELTAS:
+                continue
+            if canonical == "neutral":
+                continue
+            if canonical not in trigger_map or confidence > trigger_map[canonical]:
+                trigger_map[canonical] = confidence
 
-    def _estimate_trigger_intensity(
-        self,
-        trigger: str,
-        text: str,
-        text_lower: str,
-        matched_text: str,
-    ) -> float:
-        """Estimate trigger intensity from lexical and punctuation cues."""
-        intensity = self.TRIGGER_BASE_INTENSITY.get(trigger, 0.65)
-
-        if re.search(r'[!?]{2,}', text):
-            intensity += 0.08
-        if re.search(r'\b(very|really|so|extremely|super|absolutely|totally|deeply)\b', text_lower):
-            intensity += 0.06
-        if re.search(r'\b(kind of|kinda|sort of|slightly|a bit|maybe|perhaps)\b', text_lower):
-            intensity -= 0.07
-
-        if trigger in {'rejection', 'conflict', 'boundary', 'dismissal', 'criticism'}:
-            if re.search(r'\b(stop|never|always|enough|seriously)\b', text_lower):
-                intensity += 0.05
-        if trigger in {'comfort', 'apology', 'accountability', 'reconnection'}:
-            if re.search(r'\b(truly|honestly|sincerely)\b', text_lower):
-                intensity += 0.04
-
-        if matched_text and matched_text.isupper() and len(matched_text) >= 4:
-            intensity += 0.05
-
-        return float(f"{self._clamp(intensity, 0.25, 1.0):.3f}")
+        return sorted(trigger_map.items(), key=lambda x: -x[1])
 
     async def detect_triggers_llm(self, text: str) -> list[tuple[str, float]]:
         """
-        Detect emotional triggers using LLM classification.
+        Detect emotional triggers using LLM classification (optional fallback path).
 
         Sends the user message to the LLM with a structured prompt asking it
-        to identify emotional triggers and their intensities. Falls back to
-        regex-based detection on any failure.
+        to identify GoEmotions triggers and their intensities. Falls back to
+        classifier-based detection on any failure.
 
         Returns list of (trigger_name, intensity) tuples.
         """
@@ -979,10 +1025,11 @@ class EmotionEngine:
 
         from config import settings
 
-        valid_triggers = list(self.DEFAULT_TRIGGER_DELTAS.keys())
+        valid_triggers = [t for t in self.DEFAULT_TRIGGER_DELTAS.keys() if t != "neutral"]
 
         prompt = (
-            "Classify the emotional triggers in this user message. "
+            "Classify the emotional triggers in this user message using the "
+            "GoEmotions taxonomy. "
             f"Valid triggers: {', '.join(valid_triggers)}. "
             "Return a JSON array of objects with 'trigger' (string) and "
             "'intensity' (float 0.0-1.0). Return [] if no triggers found. "
@@ -1024,7 +1071,7 @@ class EmotionEngine:
 
             triggers = []
             for item in parsed:
-                trigger = item.get("trigger", "")
+                trigger = normalize_trigger(item.get("trigger", "")) or item.get("trigger", "")
                 intensity = float(item.get("intensity", 0.7))
                 if trigger in self.DEFAULT_TRIGGER_DELTAS:
                     intensity = max(0.0, min(1.0, intensity))
@@ -1036,7 +1083,7 @@ class EmotionEngine:
             return triggers
 
         except Exception:
-            logger.exception("[EmotionLLM] LLM trigger detection failed, falling back to regex")
+            logger.exception("[EmotionLLM] LLM trigger detection failed, falling back to classifier")
             return self.detect_triggers(text)
 
     async def detect_triggers_llm_batch(self, messages: list[str]) -> list[tuple[str, float]]:
@@ -1056,13 +1103,14 @@ class EmotionEngine:
 
         from config import settings
 
-        valid_triggers = list(self.DEFAULT_TRIGGER_DELTAS.keys())
+        valid_triggers = [t for t in self.DEFAULT_TRIGGER_DELTAS.keys() if t != "neutral"]
         
         # Format messages with numbers for clarity
         numbered_messages = "\n".join(f"{i+1}. {m}" for i, m in enumerate(messages))
 
         prompt = (
-            "Classify the emotional triggers in these user messages. "
+            "Classify the emotional triggers in these user messages using the "
+            "GoEmotions taxonomy. "
             f"Valid triggers: {', '.join(valid_triggers)}. "
             "Return a JSON array of objects with 'trigger' (string) and "
             "'intensity' (float 0.0-1.0). Combine triggers across all messages. "
@@ -1105,7 +1153,7 @@ class EmotionEngine:
 
             triggers = []
             for item in parsed:
-                trigger = item.get("trigger", "")
+                trigger = normalize_trigger(item.get("trigger", "")) or item.get("trigger", "")
                 intensity = float(item.get("intensity", 0.7))
                 if trigger in self.DEFAULT_TRIGGER_DELTAS:
                     intensity = max(0.0, min(1.0, intensity))
@@ -1201,8 +1249,8 @@ class EmotionEngine:
         else:
             bond_mod = 1.3 - (state.trust * 0.6)  # 1.3 to 0.7
 
-        # Intimacy amplifies vulnerability triggers
-        if trigger in ("disclosure", "comfort", "trust_signal"):
+        # Intimacy amplifies vulnerable/intimate triggers.
+        if trigger in ("nervousness", "embarrassment", "caring", "love", "disclosure", "comfort", "trust_signal"):
             intimacy = getattr(state, 'intimacy', 0.2)
             bond_mod *= 0.8 + (intimacy * 0.4)
 
@@ -1346,8 +1394,8 @@ class EmotionEngine:
         Play triggers: trust-gated modulation.
         Vulnerability triggers: intimacy-gated modulation.
         """
-        # Play triggers: trust-gated (clamped to >= 0 to prevent negative spiral)
-        if trigger in ('teasing', 'banter', 'flirting'):
+        # Play-like triggers: trust-gated (clamped to >= 0 to prevent negative spiral)
+        if trigger in ('teasing', 'banter', 'flirting', 'amusement', 'surprise', 'desire'):
             if state.trust >= self.profile.play_trust_threshold:
                 return abs(intensity) * 0.8   # safe: bonding
             elif state.trust >= 0.4:
@@ -1355,8 +1403,8 @@ class EmotionEngine:
             else:
                 return 0.0  # too risky: suppress entirely (prevents trust spiral)
 
-        # Vulnerability triggers: intimacy-gated
-        if trigger in ('disclosure', 'trust_signal'):
+        # Vulnerability/intimacy triggers: intimacy-gated
+        if trigger in ('disclosure', 'trust_signal', 'nervousness', 'embarrassment', 'love'):
             intimacy = getattr(state, 'intimacy', 0.2)
             if intimacy > 0.6:
                 return abs(intensity) * 1.2   # safe to be vulnerable

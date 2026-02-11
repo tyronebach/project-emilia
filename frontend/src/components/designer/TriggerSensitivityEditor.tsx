@@ -20,11 +20,17 @@ function TriggerSensitivityEditor({ sensitivities, onChange }: TriggerSensitivit
   };
 
   const categories = Object.keys(TRIGGER_TAXONOMY) as TriggerCategory[];
+  const seenTriggers = new Set<string>();
 
   return (
     <div className="space-y-4">
       {categories.map((category) => {
-        const triggers = TRIGGER_TAXONOMY[category];
+        const triggers = TRIGGER_TAXONOMY[category].filter((trigger) => {
+          if (seenTriggers.has(trigger)) return false;
+          seenTriggers.add(trigger);
+          return true;
+        });
+        if (triggers.length === 0) return null;
         return (
           <div key={category}>
             <h5 className="text-xs font-medium text-text-secondary uppercase tracking-wider capitalize">

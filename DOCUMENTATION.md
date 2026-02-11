@@ -167,7 +167,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 ### Dependencies & Config
 
 **Runtime libraries**
-- FastAPI, Uvicorn, HTTPX, python-multipart (see `backend/requirements.txt`).
+- FastAPI, Uvicorn, HTTPX, python-multipart, Transformers, Torch (see `backend/requirements.txt`).
 
 **Environment variables** (`backend/config.py`)
 - `CLAWDBOT_TOKEN` (required), `CLAWDBOT_URL`, `STT_SERVICE_URL`.
@@ -175,7 +175,9 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `ALLOWED_ORIGINS` for CORS.
 - `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`.
 - `TTS_CACHE_ENABLED`, `TTS_CACHE_TTL_SECONDS`, `TTS_CACHE_MAX_ENTRIES`.
-- `CHAT_HISTORY_LIMIT`, `LLM_TRIGGER_DETECTION`.
+- `CHAT_HISTORY_LIMIT`.
+- `TRIGGER_CLASSIFIER_ENABLED`, `TRIGGER_CLASSIFIER_CONFIDENCE`.
+- `LLM_TRIGGER_DETECTION` (optional LLM trigger fallback; default disabled).
 - `COMPACT_THRESHOLD`, `COMPACT_KEEP_RECENT`, `COMPACT_MODEL`.
 - `GAMES_V2_AGENT_ALLOWLIST` (optional agent rollout cohort).
 - `CLAWDBOT_AGENTS_DIR` (agent workspaces).
@@ -189,7 +191,9 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 ### Services & Logic
 
 **Emotion Engine** (`backend/services/emotion_engine.py`)
-- Detects triggers via regex or optional LLM classification (Clawdbot).
+- Detects triggers with a local GoEmotions classifier (`SamLowe/roberta-base-go_emotions`).
+- Supports optional LLM trigger fallback (off by default).
+- Normalizes legacy trigger aliases to canonical GoEmotions labels for backward compatibility.
 - Maintains emotional state (V/A/D + relationship dimensions + mood weights).
 - Supports per-trigger calibration and outcome-driven learning.
 - Produces prompt context blocks for injection.
