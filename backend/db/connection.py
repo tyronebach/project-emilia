@@ -119,6 +119,70 @@ def init_db():
             )
         """)
 
+        # Rooms table (group chats)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS rooms (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at INTEGER DEFAULT (strftime('%s', 'now')),
+                last_activity INTEGER DEFAULT (strftime('%s', 'now')),
+                message_count INTEGER DEFAULT 0,
+                room_type TEXT DEFAULT 'group',
+                settings TEXT DEFAULT '{}',
+                summary TEXT,
+                summary_updated_at INTEGER,
+                compaction_count INTEGER DEFAULT 0
+            )
+        """)
+
+        # Room participants (many-to-many for users)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS room_participants (
+                room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                joined_at INTEGER DEFAULT (strftime('%s', 'now')),
+                role TEXT DEFAULT 'member',
+                PRIMARY KEY (room_id, user_id)
+            )
+        """)
+
+        # Room agents (many-to-many for agents)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS room_agents (
+                room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                added_at INTEGER DEFAULT (strftime('%s', 'now')),
+                added_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+                role TEXT DEFAULT 'participant',
+                response_mode TEXT DEFAULT 'mention',
+                PRIMARY KEY (room_id, agent_id)
+            )
+        """)
+
+        # Room messages (separate from session messages)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS room_messages (
+                id TEXT PRIMARY KEY,
+                room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                sender_type TEXT NOT NULL CHECK (sender_type IN ('user', 'agent')),
+                sender_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp REAL NOT NULL,
+                origin TEXT DEFAULT 'chat',
+                model TEXT,
+                processing_ms INTEGER,
+                usage_prompt_tokens INTEGER,
+                usage_completion_tokens INTEGER,
+                behavior_intent TEXT,
+                behavior_mood TEXT,
+                behavior_mood_intensity REAL,
+                behavior_energy TEXT,
+                behavior_move TEXT,
+                behavior_game_action TEXT
+            )
+        """)
+
         # TTS cache
         cur.execute("""
             CREATE TABLE IF NOT EXISTS tts_cache (
@@ -363,6 +427,12 @@ def init_db():
         # Indexes for common queries
         cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_used ON sessions(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_session_participants_user ON session_participants(user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_rooms_last_activity ON rooms(last_activity DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_rooms_created_by ON rooms(created_by)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_room_participants_user ON room_participants(user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_room_agents_agent ON room_agents(agent_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_room_messages_room ON room_messages(room_id, timestamp)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_room_messages_sender ON room_messages(sender_type, sender_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_last_used ON tts_cache(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_created_at ON tts_cache(created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp)")

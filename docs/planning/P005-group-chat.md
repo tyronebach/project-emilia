@@ -1,8 +1,24 @@
 # P005: Group Chat — Multi-Agent Conversations
 
 **Date:** 2026-02-10  
-**Status:** Proposed  
+**Status:** Implemented (V1, text-first UI + multi-agent backend)  
 **Scope:** Enable group chat rooms with multiple agents, shared conversation history, and optional VRM display.
+
+### Validation Update (2026-02-11)
+
+This plan is now implemented with a pragmatic V1 scope that preserves backwards compatibility:
+
+- `rooms` are a separate entity from `sessions` (no migration risk to 1:1 chat).
+- Room chat and history are stored in dedicated `room_messages` with sender attribution (`sender_type`, `sender_id`).
+- Agent routing supports explicit mention list, in-text `@mentions`, and `response_mode='always'`; if nothing matches, the first room agent is used as fallback to avoid dead-end UX.
+- Room chat supports both non-streaming responses and SSE with per-agent events (`agent_start`, chunk `content`, `agent_done`, `agent_error`).
+- Frontend room list/create/chat routes are implemented and wired into navigation.
+- VRM behavior is optional and hidden by default in room UI; focused-agent selection is implemented as a lightweight placeholder panel in V1.
+
+Intentionally deferred from this V1:
+
+- Full multi-avatar VRM renderer in room chat.
+- Dedicated room compaction service and room-game session tables.
 
 ---
 
@@ -999,16 +1015,16 @@ GET    /api/rooms/{room_id}/history         → RoomHistoryResponse
 
 ## 14. Definition of Done
 
-1. [ ] Users can create rooms with 2+ agents
-2. [ ] Messages display with correct agent attribution
-3. [ ] @mention routing works (only mentioned agents respond)
-4. [ ] VRM display toggles per agent on click
-5. [ ] Emotion engine works independently per agent
-6. [ ] Room history persists and loads correctly
-7. [ ] Streaming responses work with per-agent events
-8. [ ] Mobile layout is usable
-9. [ ] Test coverage for critical paths
-10. [ ] No regression to existing 1:1 sessions
+1. [x] Users can create rooms with 2+ agents
+2. [x] Messages display with correct agent attribution
+3. [x] @mention routing works (only mentioned agents respond)
+4. [ ] VRM display toggles per agent on click (focused-agent panel shipped; full room multi-VRM renderer deferred)
+5. [x] Emotion engine works independently per agent
+6. [x] Room history persists and loads correctly
+7. [x] Streaming responses work with per-agent events
+8. [x] Mobile layout is usable
+9. [x] Test coverage for critical paths (backend room CRUD/access/routing/attribution)
+10. [x] No regression to existing 1:1 sessions
 
 ---
 

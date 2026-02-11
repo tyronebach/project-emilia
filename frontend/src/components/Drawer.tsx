@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { X, Plus, MessageSquare, User, Sparkles, MoreVertical, Pencil, Trash2, Settings } from 'lucide-react';
+import { X, Plus, MessageSquare, User, Sparkles, Users2, MoreVertical, Pencil, Trash2, Settings } from 'lucide-react';
 import { useSession } from '../hooks/useSession';
 import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
@@ -114,6 +114,13 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
     setMenuOpenFor(null);
   };
 
+  const handleOpenRooms = () => {
+    if (currentUser?.id) {
+      navigate({ to: '/user/$userId/rooms', params: { userId: currentUser.id } });
+    }
+    onClose();
+  };
+
   const handleConfirmDelete = async () => {
     if (!deleteSessionId) return;
     try {
@@ -192,6 +199,15 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
           >
             <Sparkles className="w-4 h-4" />
             Select Character
+          </Button>
+
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10"
+            onClick={handleOpenRooms}
+          >
+            <Users2 className="w-4 h-4" />
+            Group Rooms
           </Button>
 
         </div>

@@ -4,6 +4,26 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.6.3] - 2026-02-11
+
+### Added - Group Rooms (V1)
+
+- **Backend room model + APIs** - Added `rooms`, `room_participants`, `room_agents`, `room_messages` with new `/api/rooms/*` router.
+- **Multi-agent room chat** - Added mention-based routing (`mention_agents`, `@name`, `response_mode`) with sender attribution in persisted history.
+- **Room SSE streaming** - Added per-agent stream events (`agent_start`, content chunks, `agent_done`, `agent_error`) for group chat responses.
+- **Frontend room flows** - Added room list/create and room chat routes:
+  - `/user/$userId/rooms`
+  - `/user/$userId/rooms/$roomId`
+- **Client room state/hooks** - Added `roomStore` + `useRoomChat` + room API client methods.
+- **Tests** - Added backend room API tests (`backend/tests/test_rooms.py`) covering CRUD, access control, agent management, and routing/attribution.
+- **Docs sync** - Updated `README.md`, `DOCUMENTATION.md`, `frontend/README.md`, and `docs/planning/P005-group-chat.md` to reflect shipped behavior and deferred items.
+
+### Notes
+
+- Backend health endpoint version string remains `5.5.3` in `backend/main.py`; changelog entries track delivered features.
+
+---
+
 ## [5.6.2] - 2026-02-10
 
 ### Added - Drift + Mood Injection Tuning

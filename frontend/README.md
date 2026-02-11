@@ -1,6 +1,6 @@
 # Emilia Webapp — Frontend
 
-React + TypeScript + Vite frontend for the Emilia VRM avatar chat app.
+React + TypeScript + Vite frontend for the Emilia VRM avatar chat app (1:1 sessions + group rooms).
 
 ## Stack
 
@@ -25,6 +25,12 @@ Optional allowlist override for local frontend:
 VITE_GAMES_V2_AGENT_ALLOWLIST=emilia,rem npm run dev -- --host
 ```
 
+## Group Rooms
+
+- Room list: `/user/:userId/rooms`
+- Room chat: `/user/:userId/rooms/:roomId`
+- APIs used: `/api/rooms/*` (`getRooms`, `createRoom`, `getRoomHistory`, `streamRoomChat`)
+
 ## Build
 
 ```bash
@@ -42,12 +48,12 @@ npm test
 ```
 src/
 ├── avatar/       # VRM rendering, animation, lip-sync, behaviors
-├── components/   # UI components + debug panels
+├── components/   # UI components + debug panels (incl. rooms/)
 ├── games/        # Game modules + registry
-├── hooks/        # useChat, useVoiceChat, useGame, useSession
+├── hooks/        # useChat, useVoiceChat, useGame, useSession, useRoomChat
 ├── routes/       # TanStack Router pages
 ├── services/     # Voice service + VAD
-├── store/        # Zustand stores (app, chat, render, game, stats)
+├── store/        # Zustand stores (app, chat, room, render, game, stats)
 ├── types/        # TypeScript types
 └── utils/        # API client, helpers, schemas
 ```
