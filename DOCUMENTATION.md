@@ -36,7 +36,7 @@
 - `backend/dependencies.py`: Auth + header dependencies.
 - `backend/routers/`: API endpoints.
 - `backend/schemas/`: Pydantic request/response models.
-- `backend/services/`: ElevenLabs client, emotion engine, drift simulator, room chat orchestration, compaction, Soul Window helpers, SOUL simulator helpers.
+- `backend/services/`: ElevenLabs client, emotion engine, drift simulator, room chat orchestration, compaction, Soul Window helpers, SOUL simulator helpers, direct LLM client, direct tool runtime, memory bridge.
 - `backend/db/`: SQLite connection + repositories.
 - `backend/core/exceptions.py`: Exception helpers.
 
@@ -85,7 +85,7 @@
   - Headers: `Authorization`, `X-User-Id`, `X-Agent-Id`, optional `X-Session-Id`.
   - Logic: builds message list (summary + recent history + emotion context + first-turn UTC facts + game context), then routes by `agents.chat_mode`:
     - `openclaw`: gateway `/v1/chat/completions`
-    - `direct`: OpenAI-compatible `/chat/completions` (`OPENAI_API_BASE`, `OPENAI_API_KEY`, model from agent override or default)
+    - `direct`: OpenAI-compatible `/chat/completions` via `run_tool_loop()` with memory tools (`memory_search`, `memory_read`, `memory_write`). The tool loop runs non-stream internally; streaming callers receive final content as a single SSE chunk.
   - Direct mode optionally prepends `workspace/SOUL.md` as the first system message when present.
   - On LLM failure, user-message rollback semantics are preserved (orphaned user message cleanup).
   - Non-stream response: `{response, session_id, processing_ms, model, behavior, usage, emotion_debug?}`.
@@ -214,7 +214,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 ### Dependencies & Config
 
 **Runtime libraries**
-- FastAPI, Uvicorn, HTTPX, python-multipart, Transformers, Torch (see `backend/requirements.txt`).
+- FastAPI, Uvicorn, HTTPX, python-multipart, Transformers, Torch, sqlite-vec (see `backend/requirements.txt`).
 
 **Environment variables** (`backend/config.py`)
 - `CLAWDBOT_TOKEN` (required), `CLAWDBOT_URL`, `STT_SERVICE_URL`.
@@ -226,6 +226,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `COMPACT_THRESHOLD`, `COMPACT_KEEP_RECENT`, `COMPACT_MODEL`.
 - `SOUL_SIM_PERSONA_MODEL`, `SOUL_SIM_MAX_TURNS`.
 - `OPENAI_API_KEY`, `OPENAI_API_BASE`, `DIRECT_DEFAULT_MODEL` (used when agent `chat_mode=direct`).
+- `OPENCLAW_MEMORY_DIR` (default `~/.openclaw/memory`), `DIRECT_TOOL_MAX_STEPS` (default 6), `GEMINI_API_KEY` (for memory search embeddings).
 - `GAMES_V2_AGENT_ALLOWLIST` (optional agent rollout cohort).
 - `EMILIA_DB_PATH` / fallback for DB.
 - Emotion-engine classifier tuning env vars are read directly in `backend/services/emotion_engine.py`:
@@ -261,6 +262,17 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 **SOUL Simulator** (`backend/services/soul_simulator.py`)
 - Runs a ping-pong exchange (archetype user vs SOUL persona) and returns judge-scored consistency hints.
 - Used by `POST /api/designer/v2/soul/simulate`.
+
+**Direct LLM + Tool Runtime** (`backend/services/direct_llm.py`, `backend/services/direct_tool_runtime.py`)
+- `DirectLLMClient`: OpenAI-compatible chat completion (non-stream + stream), with optional `tools` param.
+- `normalize_messages_for_direct()`: shared message normalization used by both `chat.py` and `rooms.py`.
+- `run_tool_loop()`: bounded tool loop (max steps configurable via `DIRECT_TOOL_MAX_STEPS`) that calls `chat_completion` with `MEMORY_TOOLS`, executes tool calls via memory bridge, and returns final content.
+
+**Memory Bridge** (`backend/services/memory_bridge.py`)
+- Reads OpenClaw's SQLite memory index directly (`~/.openclaw/memory/<claw_agent_id>.sqlite`).
+- Hybrid search: vector similarity via `sqlite-vec` (cosine distance) + FTS5 BM25, weighted merge (0.7/0.3). Falls back to FTS-only when vector search unavailable.
+- Gemini embedding API for query vectors (`gemini-embedding-001`).
+- File read/write for `MEMORY.md` and `memory/*.md` with path validation (rejects traversal).
 
 **TTS** (`backend/services/elevenlabs.py`)
 - ElevenLabs REST `/with-timestamps` for alignment data.
@@ -408,7 +420,9 @@ Assets
 **Chat Flow**
 - Frontend `useChat` → `streamChat()` → `POST /api/chat?stream=1`.
 - Backend builds context: summary + recent DB messages + emotion context + first-turn UTC facts + game context.
-- Backend calls Clawdbot gateway `/v1/chat/completions` with `model: agent:{clawdbot_agent_id}`.
+- Backend routes by `agents.chat_mode`:
+  - `openclaw`: Clawdbot gateway `/v1/chat/completions` with `model: agent:{clawdbot_agent_id}`.
+  - `direct`: `run_tool_loop()` with memory tools → OpenAI-compatible `/chat/completions`. Tool loop runs non-stream; final content emitted as single SSE chunk.
 - Backend parses `[MOOD]`, `[INTENT]`, `[ENERGY]`, `[MOVE]`, `[GAME]` tags for avatar behavior.
 - SSE emits text chunks + `avatar` events + `emotion` events.
 - `emotion` event includes optional `snapshot` used by frontend mood indicator + bond modal entry.
@@ -432,6 +446,7 @@ Assets
 
 **Memory Access**
 - Memory modal reads `MEMORY.md` and `memory/*.md` from agent workspace via backend.
+- Direct-mode agents access memory via tool loop: `memory_search` (hybrid vector+FTS), `memory_read`, `memory_write` — all reading/writing agent workspace files through `memory_bridge.py`.
 
 ---
 
@@ -464,12 +479,15 @@ Assets
 ## Existing Docs
 
 **Docs present**
+- `docs/IMPL-DIRECT-MODE.md`: Direct mode V1+V2 implementation doc (toggle, tool loop, memory bridge).
+- `docs/CODE-REVIEW-GROUP-CHAT.md`: Group chat (rooms) code review and gap analysis.
+- `docs/SOUL-SIMULATOR-API.md`: SOUL simulator endpoint contract.
+- `docs/P006-soul-window-dev-guide.md`: Soul Window implementation/extension guide.
+- `docs/planning/P010-direct-mode-v2-checklist.md`: Direct mode V2 implementation checklist (completed).
+- `docs/planning/archive/P006-soul-window.md`: canonical Soul Window plan.
+- `docs/planning/archive/DRIFT-API.md`: drift simulator endpoint contract.
 - `docs/animation/*`: VRM/animation research and pipeline notes.
 - `docs/archive/*`: older plans/specs and previous API docs.
-- `docs/planning/*`: implementation plans for game modules and emotion engine.
-- `docs/planning/archive/P006-soul-window.md`: canonical Soul Window plan.
-- `docs/P006-soul-window-dev-guide.md`: implementation/extension guide for future devs.
-- `docs/planning/archive/DRIFT-API.md`: drift simulator endpoint contract.
 
 ---
 
@@ -478,6 +496,9 @@ Assets
 - `backend/main.py`: app entry + router registration.
 - `backend/routers/`: API surface.
 - `backend/services/emotion_engine.py`: core emotion engine.
+- `backend/services/direct_llm.py`: direct LLM client + shared message normalization.
+- `backend/services/direct_tool_runtime.py`: bounded tool loop with memory tools.
+- `backend/services/memory_bridge.py`: memory search/read/write via OpenClaw SQLite index.
 - `backend/services/soul_window_service.py`: Soul Window read-model helpers.
 - `backend/services/workspace_events.py`: workspace events timeline service.
 - `backend/services/soul_parser.py`: SOUL markdown parser.
