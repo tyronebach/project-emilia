@@ -425,13 +425,14 @@ class TestRoomChat:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        async def _fake_stream():
-            yield {"choices": [{"delta": {"content": "Room "}}]}
-            yield {"choices": [{"delta": {"content": "direct"}, "finish_reason": "stop"}]}
-            yield {"usage": {"prompt_tokens": 5, "completion_tokens": 2}}
-
         mock_direct = MagicMock()
-        mock_direct.stream_chat_completion = MagicMock(return_value=_fake_stream())
+        mock_direct.chat_completion = AsyncMock(
+            return_value={
+                "model": "gpt-room-direct",
+                "choices": [{"message": {"content": "Room direct"}}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 2},
+            }
+        )
         mock_direct_client_class.return_value = mock_direct
 
         sent = await test_client.post(
@@ -444,5 +445,5 @@ class TestRoomChat:
         body = sent.text
         assert "event: agent_done" in body
         assert '"content": "Room direct"' in body
-        mock_direct.stream_chat_completion.assert_called_once()
+        mock_direct.chat_completion.assert_awaited_once()
         mock_client_class.assert_not_called()

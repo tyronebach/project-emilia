@@ -1,5 +1,6 @@
 """Application configuration from environment variables."""
 import os
+from pathlib import Path
 
 
 class Settings:
@@ -68,6 +69,13 @@ class Settings:
         self.openai_api_base: str = os.getenv(
             "OPENAI_API_BASE", "https://api.openai.com/v1"
         )
+
+        # Direct mode V2: memory tools
+        self.openclaw_memory_dir: Path = Path(
+            os.getenv("OPENCLAW_MEMORY_DIR", str(Path.home() / ".openclaw" / "memory"))
+        )
+        self.direct_tool_max_steps: int = int(os.getenv("DIRECT_TOOL_MAX_STEPS", "6"))
+        self.gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
 
         # Validation
         if not self.clawdbot_token:

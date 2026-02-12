@@ -52,10 +52,12 @@ from services.room_chat import build_room_llm_messages, determine_responding_age
 from services.direct_llm import (
     DirectLLMClient,
     normalize_chat_mode,
+    normalize_messages_for_direct,
     prepend_workspace_soul,
     resolve_direct_api_base,
     resolve_direct_model,
 )
+from services.direct_tool_runtime import run_tool_loop
 
 logger = logging.getLogger(__name__)
 
@@ -150,18 +152,6 @@ def _inject_game_context_if_present(
     return messages
 
 
-def _normalize_messages_for_direct(messages: list[dict]) -> list[dict[str, str]]:
-    normalized: list[dict[str, str]] = []
-    for message in messages:
-        role = message.get("role")
-        content = message.get("content")
-        if role not in {"system", "user", "assistant"}:
-            continue
-        if not isinstance(content, str):
-            continue
-        normalized.append({"role": role, "content": content})
-    return normalized
-
 
 async def _call_llm_non_stream(agent: dict, messages: list[dict], room_id: str) -> dict:
     agent_id = str(agent.get("agent_id") or "")
@@ -172,13 +162,18 @@ async def _call_llm_non_stream(agent: dict, messages: list[dict], room_id: str) 
         direct_client = DirectLLMClient(
             api_base=resolve_direct_api_base(agent_config),
         )
+        workspace = (agent_config or {}).get("workspace")
         direct_messages = prepend_workspace_soul(
-            _normalize_messages_for_direct(messages),
-            (agent_config or {}).get("workspace"),
+            normalize_messages_for_direct(messages),
+            workspace,
         )
-        return await direct_client.chat_completion(
+        claw_id = (agent_config or {}).get("clawdbot_agent_id") or ""
+        return await run_tool_loop(
+            client=direct_client,
             model=resolve_direct_model(agent_config),
             messages=direct_messages,
+            workspace=workspace,
+            claw_agent_id=claw_id,
             user_tag=f"emilia:room:{room_id}",
             timeout_s=60.0,
         )
@@ -617,32 +612,29 @@ async def _stream_room_chat_sse(
                 direct_client = DirectLLMClient(
                     api_base=resolve_direct_api_base(agent_config),
                 )
+                workspace = agent_config.get("workspace")
                 direct_messages = prepend_workspace_soul(
-                    _normalize_messages_for_direct(llm_messages),
-                    agent_config.get("workspace"),
+                    normalize_messages_for_direct(llm_messages),
+                    workspace,
                 )
+                claw_id = agent_config.get("clawdbot_agent_id") or ""
                 try:
-                    async for data in direct_client.stream_chat_completion(
+                    tool_result = await run_tool_loop(
+                        client=direct_client,
                         model=resolve_direct_model(agent_config),
                         messages=direct_messages,
+                        workspace=workspace,
+                        claw_agent_id=claw_id,
                         user_tag=f"emilia:room:{room_id}",
                         timeout_s=120.0,
-                    ):
-                        if "usage" in data:
-                            usage = data["usage"]
-
-                        choices = data.get("choices") or []
-                        if not choices:
-                            continue
-
-                        delta = choices[0].get("delta") or {}
-                        chunk = delta.get("content") or ""
-                        if chunk:
-                            full_content += chunk
-                            yield f"data: {json.dumps({'content': chunk, 'agent_id': agent_id})}\n\n"
-
-                        if choices[0].get("finish_reason"):
-                            break
+                    )
+                    usage = tool_result.get("usage")
+                    choices = tool_result.get("choices", [])
+                    if choices:
+                        content = (choices[0].get("message") or {}).get("content", "")
+                        if content:
+                            full_content = content
+                            yield f"data: {json.dumps({'content': content, 'agent_id': agent_id})}\n\n"
                 except ValueError as exc:
                     payload = {
                         "agent_id": agent_id,

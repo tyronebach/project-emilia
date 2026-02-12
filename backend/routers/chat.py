@@ -30,10 +30,12 @@ from services.emotion_engine import (
 from services.direct_llm import (
     DirectLLMClient,
     normalize_chat_mode,
+    normalize_messages_for_direct,
     prepend_workspace_soul,
     resolve_direct_api_base,
     resolve_direct_model,
 )
+from services.direct_tool_runtime import run_tool_loop
 from services.soul_window_service import get_mood_snapshot
 from services.workspace_events import WorkspaceEventsService
 
@@ -505,19 +507,6 @@ def _safe_get_mood_snapshot(user_id: str, agent_id: str) -> dict | None:
         return None
 
 
-def _normalize_messages_for_direct(messages: list[dict]) -> list[dict[str, str]]:
-    """Filter and normalize message rows for OpenAI-compatible payloads."""
-    normalized: list[dict[str, str]] = []
-    for message in messages:
-        role = message.get("role")
-        content = message.get("content")
-        if role not in {"system", "user", "assistant"}:
-            continue
-        if not isinstance(content, str):
-            continue
-        normalized.append({"role": role, "content": content})
-    return normalized
-
 
 def _build_llm_messages(
     session_id: str,
@@ -718,12 +707,15 @@ async def chat(
                     api_base=resolve_direct_api_base(agent),
                 )
                 direct_messages = prepend_workspace_soul(
-                    _normalize_messages_for_direct(messages),
+                    normalize_messages_for_direct(messages),
                     agent_workspace if isinstance(agent_workspace, str) else None,
                 )
-                result = await direct_client.chat_completion(
+                result = await run_tool_loop(
+                    client=direct_client,
                     model=resolve_direct_model(agent),
                     messages=direct_messages,
+                    workspace=agent_workspace if isinstance(agent_workspace, str) else None,
+                    claw_agent_id=clawdbot_agent_id,
                     user_tag=f"emilia:{sid}",
                     timeout_s=60.0,
                 )
@@ -896,35 +888,27 @@ async def _stream_chat_sse(
                     api_base=resolve_direct_api_base(agent),
                 )
                 direct_messages = prepend_workspace_soul(
-                    _normalize_messages_for_direct(messages),
+                    normalize_messages_for_direct(messages),
                     agent_workspace if isinstance(agent_workspace, str) else None,
                 )
 
                 try:
-                    async for data in direct_client.stream_chat_completion(
+                    tool_result = await run_tool_loop(
+                        client=direct_client,
                         model=resolve_direct_model(agent),
                         messages=direct_messages,
+                        workspace=agent_workspace if isinstance(agent_workspace, str) else None,
+                        claw_agent_id=clawdbot_agent_id,
                         user_tag=f"emilia:{session_id}",
                         timeout_s=120.0,
-                    ):
-                        if "usage" in data:
-                            usage = data["usage"]
-
-                        choices = data.get("choices", [])
-                        if not choices:
-                            continue
-
-                        delta = choices[0].get("delta", {})
-                        chunk = delta.get("content", "")
-                        if chunk:
-                            full_content += chunk
-                            if len(full_content) > max_response_chars:
-                                logger.warning("[SSE] Response exceeded %d chars, truncating", max_response_chars)
-                                break
-                            yield f"data: {json.dumps({'content': chunk})}\n\n"
-
-                        if choices[0].get("finish_reason"):
-                            break
+                    )
+                    usage = tool_result.get("usage")
+                    choices = tool_result.get("choices", [])
+                    if choices:
+                        content = (choices[0].get("message") or {}).get("content", "")
+                        if content:
+                            full_content = content
+                            yield f"data: {json.dumps({'content': content})}\n\n"
                 except ValueError as exc:
                     if user_msg_id:
                         MessageRepository.delete_by_id(user_msg_id)

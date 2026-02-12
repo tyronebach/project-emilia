@@ -72,6 +72,20 @@ def prepend_workspace_soul(
     return [{"role": "system", "content": soul_md}, *messages]
 
 
+def normalize_messages_for_direct(messages: list[dict]) -> list[dict[str, str]]:
+    """Filter and normalize message rows for OpenAI-compatible payloads."""
+    normalized: list[dict[str, str]] = []
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content")
+        if role not in {"system", "user", "assistant"}:
+            continue
+        if not isinstance(content, str):
+            continue
+        normalized.append({"role": role, "content": content})
+    return normalized
+
+
 class DirectLLMClient:
     """Minimal OpenAI-compatible chat client for direct mode."""
 
@@ -96,11 +110,12 @@ class DirectLLMClient:
         self,
         *,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict],
         user_tag: str | None = None,
         temperature: float | None = None,
         timeout_s: float = 60.0,
         max_tokens: int | None = None,
+        tools: list[dict] | None = None,
     ) -> dict[str, Any]:
         """Run a non-stream direct completion and return response JSON."""
         payload: dict[str, Any] = {
@@ -114,6 +129,8 @@ class DirectLLMClient:
             payload["temperature"] = float(temperature)
         if max_tokens is not None:
             payload["max_tokens"] = int(max_tokens)
+        if tools:
+            payload["tools"] = tools
 
         async with httpx.AsyncClient(timeout=timeout_s) as client:
             response = await client.post(

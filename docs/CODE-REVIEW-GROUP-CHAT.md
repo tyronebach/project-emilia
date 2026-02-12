@@ -429,12 +429,12 @@ The schema has `compaction_count` on `rooms` and `RoomRepository.update_summary(
 
 | File | Lines | Role |
 |------|-------|------|
-| `backend/routers/rooms.py` | 707 | Route handlers, chat logic, SSE streaming |
+| `backend/routers/rooms.py` | ~800 | Route handlers, chat logic, SSE streaming |
 | `backend/services/room_chat.py` | 158 | Mention routing, LLM context building |
 | `backend/db/repositories/room_repository.py` | 442 | Room + message CRUD |
 | `backend/schemas/requests.py` | 353-382 | Room request models |
 | `backend/schemas/responses.py` | 134-217 | Room response models |
-| `backend/tests/test_rooms.py` | 304 | Backend tests |
+| `backend/tests/test_rooms.py` | ~450 | Backend tests |
 | `frontend/src/store/roomStore.ts` | 70 | Room state management |
 | `frontend/src/hooks/useRoomChat.ts` | 148 | Chat send/load/abort |
 | `frontend/src/components/rooms/RoomChatPage.tsx` | 270 | Chat UI |

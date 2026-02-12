@@ -324,7 +324,7 @@ class TestChatEndpoint:
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
     @patch("routers.chat.DirectLLMClient")
-    async def test_chat_stream_direct_mode_uses_direct_stream_client(
+    async def test_chat_stream_direct_mode_uses_tool_loop(
         self,
         mock_direct_client_class,
         mock_pre_llm,
@@ -366,13 +366,20 @@ class TestChatEndpoint:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        async def _fake_stream():
-            yield {"choices": [{"delta": {"content": "Hello "}}]}
-            yield {"choices": [{"delta": {"content": "direct"}, "finish_reason": "stop"}]}
-            yield {"usage": {"prompt_tokens": 9, "completion_tokens": 4}}
-
         mock_direct = MagicMock()
-        mock_direct.stream_chat_completion = MagicMock(return_value=_fake_stream())
+        mock_direct.chat_completion = AsyncMock(
+            return_value={
+                "model": "gpt-test-direct",
+                "choices": [
+                    {
+                        "message": {
+                            "content": "Hello direct stream",
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 9, "completion_tokens": 4},
+            }
+        )
         mock_direct_client_class.return_value = mock_direct
 
         headers = {
@@ -388,10 +395,10 @@ class TestChatEndpoint:
 
         assert response.status_code == 200
         body = response.text
-        assert '"content": "Hello "' in body
-        assert '"response": "Hello direct"' in body
+        assert '"content": "Hello direct stream"' in body
+        assert '"response": "Hello direct stream"' in body
         assert '"done": true' in body
-        mock_direct.stream_chat_completion.assert_called_once()
+        mock_direct.chat_completion.assert_awaited_once()
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)

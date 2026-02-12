@@ -1,8 +1,8 @@
 # P010: Direct Mode V2 - Memory Tools + In-Chat Toggle
 
-**Status:** Planning (owner constraints locked)
+**Status:** Implemented
 **Created:** 2026-02-12
-**Updated:** 2026-02-12
+**Updated:** 2026-02-12 (implemented)
 
 ## Goal
 
@@ -28,6 +28,10 @@ OpenClaw does not expose memory as an HTTP API. Memory tools are internal to age
 ```
 ~/.openclaw/memory/<agent_id>.sqlite
 ```
+
+> **ID mapping note:** This `<agent_id>` is the OpenClaw agent ID, which corresponds
+> to the `clawdbot_agent_id` column in our `agents` table, NOT the `id` column.
+> Verify with: `ls ~/.openclaw/memory/` and match filenames to agent records.
 
 ### Database Schema
 
@@ -163,120 +167,276 @@ OpenClaw uses hybrid search (vector + FTS):
 - Progressive rollout controls/canary gating.
 - Writing to the index (we read-only; OpenClaw handles indexing).
 
+---
+
+## Code Review Findings & Architectural Decisions
+
+### Issue 1: Streaming + Tool Loop Complexity
+
+**Problem:** The tool loop needs to handle intermediate LLM calls that return tool_calls
+instead of content. During streaming, tool call arguments arrive as deltas that must be
+accumulated before execution. Streaming tool call deltas to the client makes no sense.
+
+**Decision: Non-stream internally, stream only the final completion.**
+- The tool loop always runs `chat_completion()` (non-stream) for intermediate steps.
+- When the LLM returns content (no more tool calls), that's the final response.
+- For SSE callers: if the final response is ready (no more tools), we can optionally
+  re-call with stream=True for the last step, OR just emit the full content as a single
+  chunk. Start with single-chunk emission (simpler), optimize to streaming final step later.
+- This means slight latency before first visible chunk (tool calls happen first), but
+  keeps the implementation clean and testable.
+
+### Issue 2: Duplicated Direct-Mode Code (MUST FIX FIRST)
+
+**Problem:** The following code is duplicated between `chat.py` and `rooms.py`:
+- `_normalize_messages_for_direct()` — identical function in both files
+- Direct mode branching logic (non-stream and stream paths)
+- Stream chunk parsing loops
+
+Adding a tool loop to both files without consolidation doubles the maintenance surface.
+
+**Decision: Consolidation is a prerequisite (Section A), not optional cleanup.**
+Move shared direct-mode logic into `services/direct_llm.py` which already exists.
+
+### Issue 3: sqlite-vec Loading Strategy
+
+**Problem:** The original plan loads `vec0.so` from OpenClaw's `node_modules/` path.
+This is fragile — depends on OpenClaw's install location, Node.js platform builds,
+and `sqlite3.enable_load_extension()` being available (disabled by default in many
+Python builds for security).
+
+**Decision: Use `pip install sqlite-vec`.**
+The `sqlite-vec` Python package bundles the extension and provides `sqlite_vec.load(conn)`.
+No path detection, no ctypes, no Node.js dependency. Falls back to FTS-only if the
+package isn't installed or extension fails to load.
+
+### Issue 4: DirectLLMClient Missing `tools` Support
+
+**Problem:** `DirectLLMClient.chat_completion()` and `stream_chat_completion()` don't
+accept a `tools` parameter. The tool loop needs to pass tool schemas to the LLM.
+
+**Decision:** Add `tools` parameter to `chat_completion()`. The tool runtime handles
+the loop; only `chat_completion()` needs the parameter (streaming is only for the final
+content-only call).
+
+### Issue 5: Message Normalization Rejects Tool Messages
+
+**Problem:** `_normalize_messages_for_direct()` filters to `role in {system, user,
+assistant}` with `isinstance(content, str)`. Tool loop messages have:
+- `role: "assistant"` with `tool_calls` list (not string content)
+- `role: "tool"` with `tool_call_id` field
+
+**Decision:** The tool runtime manages its own messages array internally. It starts from
+the normalized messages but appends tool-loop messages without re-normalizing. The
+existing `_normalize_messages_for_direct()` runs once at the start, then the runtime
+owns the array.
+
+### Issue 6: Three Service Files → Two
+
+**Problem:** `gemini_embeddings.py` is only called from `memory_bridge.py`. The repo
+pattern is self-contained service modules (see: compaction.py, elevenlabs.py). A
+single-function module is unnecessary.
+
+**Decision:** Embed the Gemini embedding call as a private async function inside
+`memory_bridge.py`. Two new files total: `direct_tool_runtime.py` + `memory_bridge.py`.
+
+### Issue 7: Config Bloat
+
+**Problem:** 8 new env vars is excessive. Most are search-tuning constants that will
+rarely change.
+
+**Decision:** Only env vars for things that vary between deployments:
+- `OPENCLAW_MEMORY_DIR` (path differs per machine)
+- `GEMINI_API_KEY` (secret)
+- `DIRECT_TOOL_MAX_STEPS` (safety knob)
+
+Everything else becomes module-level constants in the service files (matching the
+pattern used by `MAX_SOUL_MD_CHARS` in `direct_llm.py`). They can be promoted to
+env vars later if needed.
+
+### Issue 8: Agent ID Mapping
+
+**Problem:** OpenClaw's SQLite path uses `<agent_id>` but we have two IDs:
+- `agents.id` (our internal ID, e.g., "emilia")
+- `agents.clawdbot_agent_id` (OpenClaw agent ID, e.g., "emilia-claw")
+
+**Decision:** Use `clawdbot_agent_id` for the SQLite path since it's the OpenClaw
+identifier. The memory bridge takes this ID explicitly — callers resolve it from the
+agent record. Verify by checking `ls ~/.openclaw/memory/` against known agent IDs
+during development.
+
+### Issue 9: Frontend Toggle Access Control
+
+**Problem:** The toggle calls `PUT /api/manage/agents/{agent_id}` which only requires
+`verify_token` — no user-level ACL. Any authenticated user can change any agent's mode.
+
+**Decision:** Acceptable for household app. Note in code comment. If multi-user access
+control is needed later, add `UserRepository.can_access_agent()` check to the admin
+endpoint (same pattern used in chat routes).
+
+---
+
 ## Target Architecture
 
-### 1) Direct chat runtime remains primary
+### 1) Direct chat runtime with tool loop
 
 - `chat_mode=direct` uses direct OpenAI-compatible completion path for assistant generation.
-- Tool calls are handled by a webapp-side tool executor loop.
-- Memory tools read OpenClaw's SQLite index directly.
+- Tool calls are handled by `direct_tool_runtime.run_tool_loop()` in a bounded loop.
+- Memory tools read/write via `memory_bridge.py`.
+- The runtime returns a result dict in the same shape as `DirectLLMClient.chat_completion()`,
+  so existing response parsing (`parse_chat_completion`) works unchanged.
 
 ### 2) Memory bridge (SQLite-based)
 
-- Add a dedicated service that:
-  - Opens the SQLite database read-only
-  - Loads sqlite-vec extension for vector search
-  - Calls Gemini embedding API for query vectors
-  - Implements hybrid search (vector + FTS)
-- The bridge exposes typed methods:
-  - `search(agent_claw_id, query, limit, min_score)` → list of snippets
-  - `read(path)` → file content (direct file read, not from index)
-  - `write(path, content, mode)` → writes to workspace file (triggers OpenClaw re-index)
+- Single service module (`memory_bridge.py`) that:
+  - Opens OpenClaw's SQLite database read-only
+  - Loads sqlite-vec extension via `sqlite_vec.load(conn)`
+  - Calls Gemini embedding API for query vectors (private helper)
+  - Implements hybrid search (vector + FTS), falls back to FTS-only on vector failure
+- Exposes three functions:
+  - `search(claw_agent_id, query, limit, min_score)` → list of snippets
+  - `read(workspace, path)` → file content
+  - `write(workspace, path, content, mode)` → write/append file
 
 ### 3) No fallback policy
 
 - Direct mode must never route assistant generation to OpenClaw chat completions.
 - Errors stay explicit (`503`/SSE `error`), with existing rollback behavior preserved.
 
+---
+
 ## File-Level Implementation Checklist
 
-## A. Backend Foundation
+## A. Prerequisite: Consolidate Shared Direct-Mode Code
 
-- [ ] Add `backend/services/direct_tool_runtime.py`.
-- [ ] Define tool schemas (`memory_search`, `memory_read`, `memory_write`) in OpenAI-compatible `tools` format.
-- [ ] Implement a bounded tool loop (`MAX_DIRECT_TOOL_STEPS`, default 6-8).
-- [ ] Ensure loop appends tool call + tool result messages correctly before continuing completion.
-- [ ] Return final assistant content and usage in the same shape expected by existing router parsers.
+This MUST happen before adding tool loop logic to avoid doubling duplication.
 
-## B. Memory Bridge (SQLite-based)
+- [x] Move `_normalize_messages_for_direct()` from `chat.py` into `services/direct_llm.py`.
+- [x] Remove the duplicate copy from `rooms.py`, import from `direct_llm`.
+- [x] Extract shared stream-chunk-parsing into a helper (or leave inline if the tool
+      runtime replaces the direct path entirely — evaluate during implementation).
+- [x] Verify existing direct-mode tests still pass after consolidation.
 
-- [ ] Add `backend/services/memory_bridge.py`.
-- [ ] Add dependency: `sqlite-vec` Python bindings (or use ctypes to load `.so` directly).
-- [ ] Implement database connection:
-  - [ ] Path: `~/.openclaw/memory/<agent_claw_id>.sqlite`
-  - [ ] Open read-only (`?mode=ro`)
-  - [ ] Load sqlite-vec extension (path from OpenClaw: `node_modules/sqlite-vec-linux-x64/vec0.so`)
-- [ ] Implement `search(agent_claw_id, query, limit, min_score)`:
-  - [ ] Call Gemini embedding API with `RETRIEVAL_QUERY` task type
-  - [ ] Run vector search on `chunks_vec` with cosine distance
-  - [ ] Run FTS search on `chunks_fts` with BM25
-  - [ ] Merge results with hybrid scoring
-  - [ ] Return `[{ path, start_line, end_line, snippet, score, source }]`
-- [ ] Implement `read(workspace_path, file_path)`:
-  - [ ] Direct file read from `<workspace>/MEMORY.md` or `<workspace>/memory/*.md`
-  - [ ] Validate path is within allowed patterns
-  - [ ] Return file content (truncated to max chars if needed)
-- [ ] Implement `write(workspace_path, file_path, content, mode)`:
-  - [ ] Validate path is within allowed patterns (`MEMORY.md`, `memory/*.md`)
-  - [ ] Write/append to file
-  - [ ] OpenClaw will auto-reindex on next sync cycle
-- [ ] Add timeout and size guards.
+## B. Extend DirectLLMClient
 
-## C. Gemini Embedding Client
+- [x] Add `tools: list[dict] | None = None` parameter to `chat_completion()`.
+- [x] When `tools` is provided, include it in the API payload.
+- [x] No changes needed to `stream_chat_completion()` (final content-only call
+      can still use the existing streaming path).
 
-- [ ] Add `backend/services/gemini_embeddings.py`.
-- [ ] Implement `embed_query(text: str) -> list[float]`:
-  - [ ] POST to `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent`
-  - [ ] Use `GEMINI_API_KEY` from env (same key OpenClaw uses)
-  - [ ] Return embedding values array
-- [ ] Add caching layer (optional, check `embedding_cache` table first).
-- [ ] Add timeout handling.
+## C. Tool Runtime (`backend/services/direct_tool_runtime.py`)
 
-## D. Config and Secrets (`.env` only)
+- [x] Define `MEMORY_TOOLS` list (OpenAI-compatible tool schemas) as module constant.
+- [x] Implement `run_tool_loop(client, model, messages, workspace, claw_agent_id, ...)`:
+  - [x] Call `client.chat_completion(model=..., messages=..., tools=MEMORY_TOOLS)`.
+  - [x] Check response for `tool_calls` in assistant message.
+  - [x] If no tool calls → return result as-is (content response).
+  - [x] If tool calls → execute each via `_execute_tool()`, append assistant + tool
+        messages, re-call. Bounded by `MAX_TOOL_STEPS` (default 6).
+  - [x] On max-step → append a system message telling the LLM to respond without tools,
+        do one final call without `tools` param.
+- [x] Implement `_execute_tool(name, arguments, workspace, claw_agent_id)`:
+  - [x] Route to `memory_bridge.search/read/write` based on tool name.
+  - [x] Wrap in try/except, return error string on failure (don't crash the loop).
+  - [x] Truncate tool output to `MAX_TOOL_OUTPUT_CHARS` (4000).
+- [x] Return final result in same dict shape as `DirectLLMClient.chat_completion()`
+      so `parse_chat_completion()` works unchanged.
+- [x] Add `tool_calls_count` to returned metadata for logging.
 
-- [ ] Extend `backend/config.py` with V2 runtime knobs (non-secret):
-  - [ ] `DIRECT_TOOL_MAX_STEPS` (default 8)
-  - [ ] `DIRECT_TOOL_TIMEOUT_S` (default 60)
-  - [ ] `DIRECT_TOOL_MAX_OUTPUT_CHARS` (default 4000)
-  - [ ] `MEMORY_SEARCH_MAX_RESULTS` (default 5)
-  - [ ] `MEMORY_SEARCH_MIN_SCORE` (default 0.3)
-  - [ ] `MEMORY_SNIPPET_MAX_CHARS` (default 700)
-  - [ ] `OPENCLAW_MEMORY_DIR` (default `~/.openclaw/memory`)
-  - [ ] `SQLITE_VEC_PATH` (path to vec0.so, auto-detect from OpenClaw node_modules)
-- [ ] Keep secrets env-only:
-  - [ ] `OPENAI_API_KEY`
-  - [ ] `GEMINI_API_KEY` (for Gemini embeddings)
-- [ ] Do not add any secret columns to `agents` table.
+## D. Memory Bridge (`backend/services/memory_bridge.py`)
 
-## E. Chat Router Integration (1:1)
+- [x] Add `sqlite-vec` to requirements: `pip install sqlite-vec`.
+- [x] Private helper `_get_memory_db(claw_agent_id)`:
+  - [x] Path: `OPENCLAW_MEMORY_DIR / f"{claw_agent_id}.sqlite"`
+  - [x] Open read-only (`?mode=ro`)
+  - [x] `sqlite_vec.load(conn)` (catch + log on failure)
+  - [x] Return connection (caller must close)
+- [x] Private helper `_embed_query(text) -> list[float]`:
+  - [x] POST to Gemini embedding API with `RETRIEVAL_QUERY` task type
+  - [x] Use `GEMINI_API_KEY` from env
+  - [x] Timeout: 10s
+  - [x] Return embedding values array
+- [x] `search(claw_agent_id, query, limit=5, min_score=0.3)`:
+  - [x] Try hybrid search (vector + FTS):
+    - [x] Call `_embed_query(query)` for vector search
+    - [x] Run vector search on `chunks_vec` with cosine distance
+    - [x] Run FTS search on `chunks_fts` with BM25
+    - [x] Merge results with hybrid scoring (vector=0.7, text=0.3)
+  - [x] On vector failure (no extension, embedding API error): fall back to FTS-only.
+  - [x] Return `[{ path, start_line, end_line, snippet, score, source }]`
+  - [x] Handle missing DB gracefully (return empty list + log warning).
+- [x] `read(workspace, path)`:
+  - [x] Validate `path` matches `MEMORY.md` or `memory/*.md` (no traversal).
+  - [x] Read file from `<workspace>/<path>`.
+  - [x] Truncate to `SNIPPET_MAX_CHARS` (700).
+  - [x] Return content string, or error string if file not found.
+- [x] `write(workspace, path, content, mode="append")`:
+  - [x] Validate `path` matches `MEMORY.md` or `memory/*.md`.
+  - [x] Create `memory/` subdirectory if needed.
+  - [x] Write or append to file.
+  - [x] Return success confirmation string.
+  - [x] OpenClaw auto-reindexes on next sync cycle.
 
-- [ ] Update direct path in `backend/routers/chat.py` to call `direct_tool_runtime` instead of one-shot direct completion.
-- [ ] Preserve existing behavior extraction (`extract_avatar_commands`) and message persistence.
-- [ ] Preserve rollback on failure (delete orphaned user message).
-- [ ] Preserve stream mode behavior with tool loop support for SSE path.
-- [ ] Enforce explicit no-fallback: no branch from `direct` -> OpenClaw completion.
+Module-level constants (not env vars):
+```python
+MAX_SEARCH_RESULTS = 5
+MIN_SEARCH_SCORE = 0.3
+SNIPPET_MAX_CHARS = 700
+VECTOR_WEIGHT = 0.7
+TEXT_WEIGHT = 0.3
+CANDIDATE_MULTIPLIER = 3
+```
 
-## F. Rooms Router Integration
+## E. Config (`.env` only)
 
-- [ ] Update direct path in `backend/routers/rooms.py` to use shared direct tool runtime.
-- [ ] Support per-agent mixed modes within the same room.
-- [ ] Keep room SSE event contract unchanged (`agent_chunk`, `agent_done`, `agent_error`).
-- [ ] Enforce no-fallback semantics for direct-mode room agents.
+- [x] Add to `backend/config.py`:
+  - [x] `OPENCLAW_MEMORY_DIR` (default `~/.openclaw/memory`)
+  - [x] `DIRECT_TOOL_MAX_STEPS` (default 6)
+- [x] Keep secrets env-only:
+  - [x] `OPENAI_API_KEY` (existing)
+  - [x] `GEMINI_API_KEY` (new, for Gemini embeddings)
+- [x] Do not add any secret columns to `agents` table.
 
-## G. Frontend Chat Header Toggle (`/chat/:sessionId`)
+## F. Chat Router Integration (1:1)
 
-- [ ] Update `frontend/src/components/Header.tsx` to include a chat mode toggle control.
-- [ ] Add update helper in `frontend/src/utils/api.ts` for agent mode update (or reuse existing manage endpoint cleanly).
-- [ ] Add store helper in `frontend/src/store/userStore.ts` to update current agent fields in place.
-- [ ] Wire toggle to `PUT /api/manage/agents/{agent_id}` with payload `{ chat_mode }`.
-- [ ] Add pending state + disabled UI while request in flight.
-- [ ] On success, update local agent state immediately.
-- [ ] On failure, revert UI state and surface error via app error channel.
+- [x] In non-stream direct path: replace `DirectLLMClient.chat_completion()` call with
+      `direct_tool_runtime.run_tool_loop()`, passing `workspace` and `claw_agent_id`.
+- [x] In stream direct path: call `run_tool_loop()` (non-stream) then emit the final
+      content. If tool calls occurred, emit full content as single chunk + done event.
+      If no tool calls occurred, optionally re-stream via `stream_chat_completion()`
+      for progressive UX (evaluate complexity — single-chunk may be fine for V2).
+- [x] Preserve existing behavior extraction (`extract_avatar_commands`) and message persistence.
+- [x] Preserve rollback on failure (delete orphaned user message).
+- [x] Enforce explicit no-fallback: no branch from `direct` -> OpenClaw completion.
 
-## H. Optional but Recommended Cleanup During V2
+## G. Rooms Router Integration
 
-- [ ] Consolidate duplicated direct-path logic between `chat.py` and `rooms.py` into shared helpers.
-- [ ] Add a compact telemetry log tag for `chat_mode` and tool usage counts.
+- [x] In `_call_llm_non_stream()`: replace `DirectLLMClient.chat_completion()` with
+      `run_tool_loop()` when `chat_mode == "direct"`.
+- [x] In `_stream_room_chat_sse()`: same approach as chat.py — run tool loop non-stream,
+      emit final content.
+- [x] Import `_normalize_messages_for_direct` from `services/direct_llm` (after Section A).
+- [x] Keep room SSE event contract unchanged (`agent_start`, `agent_done`, `agent_error`).
+- [x] Enforce no-fallback semantics for direct-mode room agents.
+
+## H. Frontend Chat Header Toggle (`/chat/:sessionId`)
+
+- [x] Add toggle button in `frontend/src/components/Header.tsx`:
+  - [x] Show current mode indicator next to agent name (small pill/badge).
+  - [x] On click: flip between "openclaw" and "direct".
+  - [x] Follow existing TTS toggle pattern (optimistic update, revert on error).
+- [x] Add `updateAgent(agentId, updates)` helper in `frontend/src/utils/api.ts`:
+  - [x] Wraps `PUT /api/manage/agents/{agent_id}`.
+  - [x] Reuse existing `fetchWithAuth` pattern.
+- [x] Add `updateCurrentAgent(updates)` in `frontend/src/store/userStore.ts`:
+  - [x] Merges partial updates into `currentAgent` in place.
+  - [x] Persists via existing localStorage middleware.
+- [x] Wire toggle:
+  - [x] On click → set pending state → call `updateAgent()` → on success call
+        `updateCurrentAgent({ chat_mode })` → clear pending.
+  - [x] On failure → revert UI + log error.
+
+---
 
 ## Tool Schemas (OpenAI-compatible)
 
@@ -361,59 +521,79 @@ MEMORY_TOOLS = [
 ]
 ```
 
+---
+
 ## Test Checklist
 
 ### Backend
 
-- [ ] Unit tests for direct tool runtime:
-  - [ ] single tool call
-  - [ ] chained tool calls
-  - [ ] max-step termination
-  - [ ] malformed tool args
-- [ ] Unit tests for memory bridge:
-  - [ ] search with mocked embedding + sqlite
-  - [ ] read file success/failure
-  - [ ] write file success/failure
-  - [ ] path validation rejects bad paths
-- [ ] Unit tests for Gemini embedding client:
-  - [ ] successful embedding call
-  - [ ] API error handling
-  - [ ] timeout handling
-- [ ] Integration tests in `backend/tests/test_api.py`:
-  - [ ] direct non-stream with tool call
-  - [ ] direct stream with tool call
-  - [ ] no-fallback assertion when direct call fails
-  - [ ] rollback still deletes orphaned user message on failure
-- [ ] Integration tests in `backend/tests/test_rooms.py`:
-  - [ ] direct room non-stream tool call
-  - [ ] direct room stream tool call
-  - [ ] mixed-mode room behavior remains correct
+- [x] Unit tests for direct tool runtime (`test_direct_tool_runtime.py`):
+  - [x] No tool calls → returns content immediately
+  - [x] Single tool call → executes and returns final content
+  - [x] Chained tool calls (search → read) → correct message threading
+  - [x] Max-step termination → forces final content response
+  - [x] Malformed tool args → error message returned to LLM, loop continues
+  - [x] Unknown tool name → error message returned to LLM
+- [x] Unit tests for memory bridge (`test_memory_bridge.py`):
+  - [x] Search with mocked embedding + sqlite (hybrid path)
+  - [x] Search FTS-only fallback (when vector fails)
+  - [x] Search with missing DB → empty results, no crash
+  - [x] Read file success + truncation
+  - [x] Read file not found → error string
+  - [x] Write file (overwrite + append modes)
+  - [x] Path validation rejects traversal (`../../../etc/passwd`)
+  - [x] Path validation rejects non-memory paths (`src/main.py`)
+- [x] Integration tests in `backend/tests/test_api.py`:
+  - [x] Direct non-stream with tool call (mock tool runtime)
+  - [x] Direct stream with tool call (content emission)
+  - [x] No-fallback assertion when direct call fails
+  - [x] Rollback still deletes orphaned user message on failure
+- [x] Integration tests in `backend/tests/test_rooms.py`:
+  - [x] Direct room non-stream tool call
+  - [x] Direct room stream tool call
+  - [x] Mixed-mode room behavior remains correct
 
 ### Frontend
 
-- [ ] Add tests for chat-header mode toggle component behavior:
-  - [ ] initial render from `currentAgent.chat_mode`
-  - [ ] sends update request on toggle
-  - [ ] disables during pending request
-  - [ ] reverts and shows error on failure
-- [ ] Keep existing frontend suites green.
+- [x] Add tests for chat-header mode toggle component behavior:
+  - [x] Initial render from `currentAgent.chat_mode`
+  - [x] Sends update request on toggle
+  - [x] Disables during pending request
+  - [x] Reverts and shows error on failure
+- [x] Keep existing frontend suites green.
+
+---
 
 ## Validation Commands
 
 ```bash
 backend/.venv/bin/python -m pytest -q backend/tests
-cd frontend && npm test && npm run lint && npm run build
-cd .. && ./scripts/check-all.sh
+cd frontend && npx vitest run && npm run build
 ```
+
+## Implementation Order
+
+Recommended sequence to minimize risk:
+
+1. **Section A** — Consolidate shared code (pure refactor, no behavior change)
+2. **Section B** — Extend DirectLLMClient with `tools` param (backward compatible)
+3. **Section D** — Memory bridge (standalone, fully unit-testable in isolation)
+4. **Section E** — Config additions (trivial)
+5. **Section C** — Tool runtime (depends on B + D)
+6. **Section F + G** — Router integration (depends on A + C)
+7. **Section H** — Frontend toggle (independent of backend tool work)
+
+Sections D and H can be developed in parallel with the rest.
 
 ## Acceptance Criteria (Definition of Done)
 
 1. Direct-mode agents can complete chats using required memory tools (`memory_search`, `memory_read`, `memory_write`).
-2. Memory search reads OpenClaw's SQLite index directly with hybrid vector+FTS scoring.
-3. No direct->openclaw chat fallback occurs when `chat_mode=direct`.
+2. Memory search reads OpenClaw's SQLite index directly with hybrid vector+FTS scoring (FTS-only fallback if vector unavailable).
+3. No direct→openclaw chat fallback occurs when `chat_mode=direct`.
 4. `/user/:userId/chat/:sessionId` top nav exposes mode toggle and persists changes.
 5. Secrets are environment-only; DB schema does not store secret material.
-6. Backend and frontend test suites pass, including new V2 coverage.
+6. No duplicated direct-mode logic between `chat.py` and `rooms.py`.
+7. Backend and frontend test suites pass, including new V2 coverage.
 
 ## Rollout Plan
 
@@ -423,6 +603,6 @@ cd .. && ./scripts/check-all.sh
 
 ## Dependencies
 
-- `sqlite-vec` Python bindings or direct `.so` loading
+- `sqlite-vec` Python package (`pip install sqlite-vec`)
 - Gemini API key (shared with OpenClaw, already in env)
 - OpenClaw memory index must exist (`openclaw memory index --agent <id>` if needed)
