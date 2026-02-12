@@ -19,6 +19,9 @@ class AgentResponse(BaseModel):
     vrm_model: str | None = "emilia.vrm"
     voice_id: str | None = None
     workspace: str | None = None
+    chat_mode: str = "openclaw"
+    direct_model: str | None = None
+    direct_api_base: str | None = None
     created_at: int
     owners: list[str] | None = None
 

@@ -120,6 +120,9 @@ async def create_manage_agent(
             vrm_model=agent.vrm_model or "emilia.vrm",
             voice_id=agent.voice_id,
             workspace=agent.workspace,
+            chat_mode=agent.chat_mode,
+            direct_model=agent.direct_model,
+            direct_api_base=agent.direct_api_base,
         )
     except sqlite3.IntegrityError:
         raise bad_request("Agent already exists")

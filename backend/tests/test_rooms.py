@@ -17,13 +17,33 @@ def _seed_user(user_id: str, name: str) -> None:
         )
 
 
-def _seed_agent(agent_id: str, name: str, claw_id: str) -> None:
+def _seed_agent(
+    agent_id: str,
+    name: str,
+    claw_id: str,
+    *,
+    chat_mode: str = "openclaw",
+    direct_model: str | None = None,
+    direct_api_base: str | None = None,
+) -> None:
     with get_db() as conn:
         conn.execute(
             """INSERT INTO agents
-               (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (agent_id, name, claw_id, "emilia.vrm", None, None, "{}"),
+               (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
+                emotional_profile, chat_mode, direct_model, direct_api_base)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                agent_id,
+                name,
+                claw_id,
+                "emilia.vrm",
+                None,
+                None,
+                "{}",
+                chat_mode,
+                direct_model,
+                direct_api_base,
+            ),
         )
 
 
@@ -301,3 +321,128 @@ class TestRoomChat:
         payload = sent.json()
         assert payload["count"] == 1
         assert payload["responses"][0]["agent_id"] == alpha
+
+    @patch("routers.rooms._spawn_background")
+    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.rooms.DirectLLMClient")
+    @patch("routers.rooms.httpx.AsyncClient")
+    async def test_room_chat_non_stream_supports_direct_mode_agents(
+        self,
+        mock_client_class,
+        mock_direct_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+        beta = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha")
+        _seed_agent(
+            beta,
+            "Beta",
+            "claw-beta",
+            chat_mode="direct",
+            direct_model="gpt-room-direct",
+            direct_api_base="https://example.invalid/v1",
+        )
+        _grant_access(user_id, alpha)
+        _grant_access(user_id, beta)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Direct Mode Room", "agent_ids": [alpha, beta]},
+        )
+        room_id = created.json()["id"]
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_direct = MagicMock()
+        mock_direct.chat_completion = AsyncMock(
+            return_value={
+                "model": "gpt-room-direct",
+                "choices": [{"message": {"content": "[intent:reply] Direct room response"}}],
+                "usage": {"prompt_tokens": 6, "completion_tokens": 3},
+            }
+        )
+        mock_direct_client_class.return_value = mock_direct
+
+        sent = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=0",
+            headers=headers,
+            json={"message": "@beta answer this", "mention_agents": [beta]},
+        )
+
+        assert sent.status_code == 200
+        payload = sent.json()
+        assert payload["count"] == 1
+        assert payload["responses"][0]["agent_id"] == beta
+        assert payload["responses"][0]["message"]["content"] == "Direct room response"
+        mock_direct.chat_completion.assert_awaited_once()
+        mock_client_class.assert_not_called()
+
+    @patch("routers.rooms._spawn_background")
+    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.rooms.DirectLLMClient")
+    @patch("routers.rooms.httpx.AsyncClient")
+    async def test_room_chat_stream_supports_direct_mode_agents(
+        self,
+        mock_client_class,
+        mock_direct_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        beta = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(
+            beta,
+            "Beta",
+            "claw-beta",
+            chat_mode="direct",
+            direct_model="gpt-room-direct",
+            direct_api_base="https://example.invalid/v1",
+        )
+        _grant_access(user_id, beta)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Direct Stream Room", "agent_ids": [beta]},
+        )
+        room_id = created.json()["id"]
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        async def _fake_stream():
+            yield {"choices": [{"delta": {"content": "Room "}}]}
+            yield {"choices": [{"delta": {"content": "direct"}, "finish_reason": "stop"}]}
+            yield {"usage": {"prompt_tokens": 5, "completion_tokens": 2}}
+
+        mock_direct = MagicMock()
+        mock_direct.stream_chat_completion = MagicMock(return_value=_fake_stream())
+        mock_direct_client_class.return_value = mock_direct
+
+        sent = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=1",
+            headers=headers,
+            json={"message": "stream please"},
+        )
+
+        assert sent.status_code == 200
+        body = sent.text
+        assert "event: agent_done" in body
+        assert '"content": "Room direct"' in body
+        mock_direct.stream_chat_completion.assert_called_once()
+        mock_client_class.assert_not_called()

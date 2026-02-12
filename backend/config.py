@@ -60,6 +60,15 @@ class Settings:
         )
         self.soul_sim_max_turns: int = int(os.getenv("SOUL_SIM_MAX_TURNS", "8"))
 
+        # Direct chat mode (OpenAI-compatible endpoint)
+        self.direct_default_model: str = os.getenv(
+            "DIRECT_DEFAULT_MODEL", "openai-codex/gpt-5.1-codex-mini"
+        )
+        self.openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
+        self.openai_api_base: str = os.getenv(
+            "OPENAI_API_BASE", "https://api.openai.com/v1"
+        )
+
         # Validation
         if not self.clawdbot_token:
             raise RuntimeError("Missing CLAWDBOT_TOKEN env var")

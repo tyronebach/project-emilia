@@ -135,8 +135,14 @@ class AgentUpdate(BaseModel):
     voice_id: Optional[str] = Field(None, max_length=100, description="Voice ID")
     vrm_model: Optional[str] = Field(None, max_length=200, description="VRM model filename")
     workspace: Optional[str] = Field(None, max_length=500, description="Workspace path")
+    chat_mode: Optional[Literal["openclaw", "direct"]] = Field(
+        None,
+        description="Agent chat backend mode",
+    )
+    direct_model: Optional[str] = Field(None, max_length=200, description="Direct mode model override")
+    direct_api_base: Optional[str] = Field(None, max_length=500, description="Direct mode API base URL")
 
-    @field_validator('display_name', 'voice_id', 'vrm_model', 'workspace')
+    @field_validator('display_name', 'voice_id', 'vrm_model', 'workspace', 'direct_model', 'direct_api_base')
     @classmethod
     def strip_strings(cls, v: Optional[str]) -> Optional[str]:
         """Strip whitespace from string fields."""
@@ -180,8 +186,23 @@ class AgentCreate(BaseModel):
     vrm_model: str = Field("emilia.vrm", max_length=200, description="VRM model filename")
     voice_id: Optional[str] = Field(None, max_length=100, description="Voice ID")
     workspace: Optional[str] = Field(None, max_length=500, description="Workspace path")
+    chat_mode: Optional[Literal["openclaw", "direct"]] = Field(
+        None,
+        description="Agent chat backend mode",
+    )
+    direct_model: Optional[str] = Field(None, max_length=200, description="Direct mode model override")
+    direct_api_base: Optional[str] = Field(None, max_length=500, description="Direct mode API base URL")
 
-    @field_validator("id", "display_name", "clawdbot_agent_id", "vrm_model", "voice_id", "workspace")
+    @field_validator(
+        "id",
+        "display_name",
+        "clawdbot_agent_id",
+        "vrm_model",
+        "voice_id",
+        "workspace",
+        "direct_model",
+        "direct_api_base",
+    )
     @classmethod
     def strip_agent_fields(cls, v: Optional[str]) -> Optional[str]:
         return v.strip() if v else None
