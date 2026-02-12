@@ -13,12 +13,16 @@ Current backend app version: `5.6.3`.
 | Avatar | Three.js + @pixiv/three-vrm |
 | TTS | ElevenLabs REST `/with-timestamps` |
 | STT | Faster Whisper (remote service) |
-| LLM | Clawdbot Gateway (OpenClaw) |
+| LLM | Mixed mode per agent: OpenClaw gateway (`openclaw`) or direct OpenAI-compatible (`direct`) |
 
 ## Core Features
 
 - 1:1 chat sessions with streaming SSE responses and avatar behavior tags.
 - Group rooms with multi-agent participation.
+- Per-agent chat backend toggle:
+  - `openclaw` -> `agent:{clawdbot_agent_id}` via gateway
+  - `direct` -> OpenAI-compatible `/chat/completions`
+  - rooms support mixed mode per responding agent.
 - Emotion engine with per user-agent persistent state and calibration.
 - Designer SOUL simulator API for quick persona consistency checks (`POST /api/designer/v2/soul/simulate`).
 - Soul Window UX:
@@ -38,6 +42,10 @@ docker compose logs -f backend
 ```
 
 Open `https://localhost:3443`.
+
+Direct mode note:
+- `OPENAI_API_KEY` must be set for backend when using `chat_mode=direct`.
+- For OpenAI direct calls, use provider model IDs (example: `gpt-4.1-mini`) rather than OpenClaw-style model prefixes.
 
 ## Feature Flags
 

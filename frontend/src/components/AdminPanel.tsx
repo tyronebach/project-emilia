@@ -46,11 +46,21 @@ import { useVoiceOptions } from '../hooks/useVoiceOptions';
 import { useVrmOptions } from '../hooks/useVrmOptions';
 import AppTopNav from './AppTopNav';
 
-type EditableField = 'display_name' | 'voice_id' | 'vrm_model' | 'workspace';
+type EditableField =
+  | 'display_name'
+  | 'voice_id'
+  | 'vrm_model'
+  | 'workspace'
+  | 'chat_mode'
+  | 'direct_model'
+  | 'direct_api_base';
 
 type AgentWithWorkspace = Agent & {
   workspace: string | null;
   created_at: number;
+  chat_mode: 'openclaw' | 'direct';
+  direct_model: string | null;
+  direct_api_base: string | null;
 };
 
 type GameFormState = {
@@ -135,6 +145,9 @@ function AdminPanel() {
     vrm_model: 'emilia.vrm',
     voice_id: '',
     workspace: '',
+    chat_mode: 'openclaw' as 'openclaw' | 'direct',
+    direct_model: '',
+    direct_api_base: '',
   });
   const [agentSaving, setAgentSaving] = useState(false);
 
@@ -216,6 +229,9 @@ function AdminPanel() {
       const agentList = (data.agents || []).map((agent: Agent) => ({
         ...agent,
         workspace: agent.workspace ?? null,
+        chat_mode: agent.chat_mode === 'direct' ? 'direct' : 'openclaw',
+        direct_model: agent.direct_model ?? null,
+        direct_api_base: agent.direct_api_base ?? null,
       })) as AgentWithWorkspace[];
       setAgents(agentList);
       setOriginalAgents(JSON.parse(JSON.stringify(agentList)));
@@ -326,7 +342,10 @@ function AdminPanel() {
       agent.display_name !== original.display_name ||
       agent.voice_id !== original.voice_id ||
       agent.vrm_model !== original.vrm_model ||
-      agent.workspace !== original.workspace
+      agent.workspace !== original.workspace ||
+      agent.chat_mode !== original.chat_mode ||
+      agent.direct_model !== original.direct_model ||
+      agent.direct_api_base !== original.direct_api_base
     );
   };
 
@@ -352,6 +371,9 @@ function AdminPanel() {
           voice_id: agent.voice_id?.trim() || null,
           vrm_model: agent.vrm_model?.trim() || null,
           workspace: agent.workspace?.trim() || null,
+          chat_mode: agent.chat_mode,
+          direct_model: agent.direct_model?.trim() || null,
+          direct_api_base: agent.direct_api_base?.trim() || null,
         }),
       });
 
@@ -436,6 +458,9 @@ function AdminPanel() {
       vrm_model: 'emilia.vrm',
       voice_id: '',
       workspace: '',
+      chat_mode: 'openclaw',
+      direct_model: '',
+      direct_api_base: '',
     });
     setAgentModalOpen(true);
   };
@@ -453,6 +478,9 @@ function AdminPanel() {
         vrm_model: agentForm.vrm_model || 'emilia.vrm',
         voice_id: agentForm.voice_id.trim() || null,
         workspace: agentForm.workspace.trim() || null,
+        chat_mode: agentForm.chat_mode,
+        direct_model: agentForm.direct_model.trim() || null,
+        direct_api_base: agentForm.direct_api_base.trim() || null,
       });
       queryClient.invalidateQueries({ queryKey: ['designer-v2', 'personalities'] });
       setSuccess(`Created agent ${agentForm.display_name}`);
@@ -928,6 +956,34 @@ function AdminPanel() {
               placeholder="/home/user/agent-workspace"
               mono
               tooltip="Filesystem path used by tools/memory for this agent."
+            />
+            <div>
+              <label className="block text-xs text-text-secondary mb-1" title="Choose which backend handles chat for this agent.">
+                Chat Mode
+              </label>
+              <select
+                value={agentForm.chat_mode}
+                onChange={(e) => setAgentForm(prev => ({ ...prev, chat_mode: e.target.value as 'openclaw' | 'direct' }))}
+                title="OpenClaw uses agent:{id}; Direct uses OpenAI-compatible endpoint."
+                className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+              >
+                <option value="openclaw">OpenClaw</option>
+                <option value="direct">Direct</option>
+              </select>
+            </div>
+            <Field
+              label="Direct Model"
+              value={agentForm.direct_model}
+              onChange={(v) => setAgentForm(prev => ({ ...prev, direct_model: v }))}
+              placeholder="gpt-4.1-mini"
+              tooltip="Optional model override when chat mode is Direct (use provider model ID)."
+            />
+            <Field
+              label="Direct API Base"
+              value={agentForm.direct_api_base}
+              onChange={(v) => setAgentForm(prev => ({ ...prev, direct_api_base: v }))}
+              placeholder="https://api.openai.com/v1"
+              tooltip="Optional base URL override for OpenAI-compatible providers."
             />
           </div>
           <div className="flex justify-end gap-2 pt-4">

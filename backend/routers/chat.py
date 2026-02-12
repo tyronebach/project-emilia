@@ -13,7 +13,7 @@ from dependencies import verify_token, get_user_id, get_agent_id, get_optional_a
 from schemas import ChatRequest, SpeakRequest
 from config import settings
 from core.exceptions import TTSError, not_found, forbidden, service_unavailable, timeout_error
-from parse_chat import parse_chat_completion, extract_avatar_commands
+from parse_chat import parse_chat_completion, extract_avatar_commands, coalesce_response_text
 from db.repositories import (
     UserRepository,
     AgentRepository,
@@ -26,6 +26,13 @@ from services.emotion_engine import (
     EmotionEngine, EmotionalState, AgentProfile,
     normalize_trigger, ContextualTriggerCalibration,
     infer_outcome_multisignal, CalibrationRecovery, CONFIDENCE_THRESHOLD,
+)
+from services.direct_llm import (
+    DirectLLMClient,
+    normalize_chat_mode,
+    prepend_workspace_soul,
+    resolve_direct_api_base,
+    resolve_direct_model,
 )
 from services.soul_window_service import get_mood_snapshot
 from services.workspace_events import WorkspaceEventsService
@@ -498,6 +505,20 @@ def _safe_get_mood_snapshot(user_id: str, agent_id: str) -> dict | None:
         return None
 
 
+def _normalize_messages_for_direct(messages: list[dict]) -> list[dict[str, str]]:
+    """Filter and normalize message rows for OpenAI-compatible payloads."""
+    normalized: list[dict[str, str]] = []
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content")
+        if role not in {"system", "user", "assistant"}:
+            continue
+        if not isinstance(content, str):
+            continue
+        normalized.append({"role": role, "content": content})
+    return normalized
+
+
 def _build_llm_messages(
     session_id: str,
     current_msg: str,
@@ -634,6 +655,7 @@ async def chat(
             _stream_chat_sse(
                 request,
                 start_time,
+                agent,
                 clawdbot_agent_id,
                 sid,
                 user_id,
@@ -688,32 +710,55 @@ async def chat(
         user_origin = "game_runtime" if runtime_trigger else "user"
         user_msg = MessageRepository.add(sid, "user", request.message, origin=user_origin)
         user_msg_id = user_msg["id"]
+        chat_mode = normalize_chat_mode(agent.get("chat_mode"))
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    f"{settings.clawdbot_url}/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.clawdbot_token}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": f"agent:{clawdbot_agent_id}",
-                        "messages": messages,
-                        "stream": False,
-                        "user": f"emilia:{sid}",
-                    }
+            if chat_mode == "direct":
+                direct_client = DirectLLMClient(
+                    api_base=resolve_direct_api_base(agent),
                 )
+                direct_messages = prepend_workspace_soul(
+                    _normalize_messages_for_direct(messages),
+                    agent_workspace if isinstance(agent_workspace, str) else None,
+                )
+                result = await direct_client.chat_completion(
+                    model=resolve_direct_model(agent),
+                    messages=direct_messages,
+                    user_tag=f"emilia:{sid}",
+                    timeout_s=60.0,
+                )
+            else:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.post(
+                        f"{settings.clawdbot_url}/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {settings.clawdbot_token}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": f"agent:{clawdbot_agent_id}",
+                            "messages": messages,
+                            "stream": False,
+                            "user": f"emilia:{sid}",
+                        }
+                    )
 
-                if response.status_code != 200:
-                    raise service_unavailable("Chat")
+                    if response.status_code != 200:
+                        raise service_unavailable("Chat")
+                result = response.json()
+        except ValueError as exc:
+            if user_msg_id:
+                MessageRepository.delete_by_id(user_msg_id)
+            raise HTTPException(status_code=503, detail=str(exc))
+        except httpx.HTTPStatusError:
+            if user_msg_id:
+                MessageRepository.delete_by_id(user_msg_id)
+            raise service_unavailable("Chat")
         except Exception:
             # LLM failed — remove orphaned user message
             if user_msg_id:
                 MessageRepository.delete_by_id(user_msg_id)
             raise
-
-        result = response.json()
 
         parsed = parse_chat_completion(result)
         processing_ms = int((time.time() - start_time) * 1000)
@@ -791,6 +836,7 @@ async def chat(
 async def _stream_chat_sse(
     request: ChatRequest,
     start_time: float,
+    agent: dict,
     clawdbot_agent_id: str,
     session_id: str,
     user_id: str,
@@ -840,40 +886,91 @@ async def _stream_chat_sse(
 
         try:
             _llm_success = False
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                async with client.stream(
-                    "POST",
-                    f"{settings.clawdbot_url}/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.clawdbot_token}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": f"agent:{clawdbot_agent_id}",
-                        "messages": messages,
-                        "stream": True,
-                        "stream_options": {"include_usage": True},
-                        "user": f"emilia:{session_id}",
-                    }
-                ) as response:
-                    if response.status_code != 200:
-                        yield f"data: {json.dumps({'error': 'API error'})}\n\n"
-                        return
+            chat_mode = normalize_chat_mode(agent.get("chat_mode"))
+            full_content = ""
+            usage = None
+            max_response_chars = 50_000  # Guard against runaway LLM output
 
-                    full_content = ""
-                    usage = None
-                    MAX_RESPONSE_CHARS = 50_000  # Guard against runaway LLM output
+            if chat_mode == "direct":
+                direct_client = DirectLLMClient(
+                    api_base=resolve_direct_api_base(agent),
+                )
+                direct_messages = prepend_workspace_soul(
+                    _normalize_messages_for_direct(messages),
+                    agent_workspace if isinstance(agent_workspace, str) else None,
+                )
 
-                    async for line in response.aiter_lines():
-                        if not line.startswith("data: "):
+                try:
+                    async for data in direct_client.stream_chat_completion(
+                        model=resolve_direct_model(agent),
+                        messages=direct_messages,
+                        user_tag=f"emilia:{session_id}",
+                        timeout_s=120.0,
+                    ):
+                        if "usage" in data:
+                            usage = data["usage"]
+
+                        choices = data.get("choices", [])
+                        if not choices:
                             continue
 
-                        data_str = line[6:].strip()
-                        if data_str == "[DONE]":
-                            continue
+                        delta = choices[0].get("delta", {})
+                        chunk = delta.get("content", "")
+                        if chunk:
+                            full_content += chunk
+                            if len(full_content) > max_response_chars:
+                                logger.warning("[SSE] Response exceeded %d chars, truncating", max_response_chars)
+                                break
+                            yield f"data: {json.dumps({'content': chunk})}\n\n"
 
-                        try:
-                            data = json.loads(data_str)
+                        if choices[0].get("finish_reason"):
+                            break
+                except ValueError as exc:
+                    if user_msg_id:
+                        MessageRepository.delete_by_id(user_msg_id)
+                    yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+                    return
+                except httpx.HTTPStatusError as exc:
+                    if user_msg_id:
+                        MessageRepository.delete_by_id(user_msg_id)
+                    status_code = exc.response.status_code if exc.response else 503
+                    yield f"data: {json.dumps({'error': f'API error ({status_code})'})}\n\n"
+                    return
+            else:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{settings.clawdbot_url}/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {settings.clawdbot_token}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": f"agent:{clawdbot_agent_id}",
+                            "messages": messages,
+                            "stream": True,
+                            "stream_options": {"include_usage": True},
+                            "user": f"emilia:{session_id}",
+                        }
+                    ) as response:
+                        if response.status_code != 200:
+                            if user_msg_id:
+                                MessageRepository.delete_by_id(user_msg_id)
+                            yield f"data: {json.dumps({'error': 'API error'})}\n\n"
+                            return
+
+                        async for line in response.aiter_lines():
+                            if not line.startswith("data: "):
+                                continue
+
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                continue
+
+                            try:
+                                data = json.loads(data_str)
+                            except json.JSONDecodeError:
+                                continue
 
                             if "usage" in data:
                                 usage = data["usage"]
@@ -887,110 +984,108 @@ async def _stream_chat_sse(
 
                             if chunk:
                                 full_content += chunk
-                                if len(full_content) > MAX_RESPONSE_CHARS:
-                                    logger.warning("[SSE] Response exceeded %d chars, truncating", MAX_RESPONSE_CHARS)
+                                if len(full_content) > max_response_chars:
+                                    logger.warning("[SSE] Response exceeded %d chars, truncating", max_response_chars)
                                     break
                                 yield f"data: {json.dumps({'content': chunk})}\n\n"
 
                             if choices[0].get("finish_reason"):
                                 break
 
-                        except json.JSONDecodeError:
-                            continue
+            # Final response - extract behavior tags from full content
+            clean_full, behavior = extract_avatar_commands(full_content)
+            clean_full = coalesce_response_text(clean_full, full_content)
+            processing_ms = int((time.time() - start_time) * 1000)
 
-                    # Final response - extract behavior tags from full content
-                    clean_full, behavior = extract_avatar_commands(full_content)
-                    processing_ms = int((time.time() - start_time) * 1000)
+            # Store assistant response with metadata
+            usage_data = usage or {}
+            MessageRepository.add(
+                session_id, "assistant", clean_full,
+                origin="assistant",
+                model=None,
+                processing_ms=processing_ms,
+                usage_prompt_tokens=usage_data.get("prompt_tokens"),
+                usage_completion_tokens=usage_data.get("completion_tokens"),
+                behavior_intent=behavior.get("intent"),
+                behavior_mood=behavior.get("mood"),
+                behavior_mood_intensity=behavior.get("mood_intensity"),
+                behavior_energy=behavior.get("energy"),
+                behavior_move=behavior.get("move"),
+                behavior_game_action=behavior.get("game_action"),
+            )
 
-                    # Store assistant response with metadata
-                    usage_data = usage or {}
-                    MessageRepository.add(
-                        session_id, "assistant", clean_full,
-                        origin="assistant",
-                        model=None,
-                        processing_ms=processing_ms,
-                        usage_prompt_tokens=usage_data.get("prompt_tokens"),
-                        usage_completion_tokens=usage_data.get("completion_tokens"),
-                        behavior_intent=behavior.get("intent"),
-                        behavior_mood=behavior.get("mood"),
-                        behavior_mood_intensity=behavior.get("mood_intensity"),
-                        behavior_energy=behavior.get("energy"),
-                        behavior_move=behavior.get("move"),
-                        behavior_game_action=behavior.get("game_action"),
-                    )
+            avatar_data = {}
+            if behavior.get("intent"):
+                avatar_data["intent"] = behavior["intent"]
+            if behavior.get("mood"):
+                avatar_data["mood"] = behavior["mood"]
+                avatar_data["intensity"] = behavior["mood_intensity"]
+            if behavior.get("energy"):
+                avatar_data["energy"] = behavior["energy"]
+            if behavior.get("move"):
+                avatar_data["move"] = behavior["move"]
+            if behavior.get("game_action"):
+                avatar_data["game_action"] = behavior["game_action"]
+            if avatar_data:
+                yield f"event: avatar\ndata: {json.dumps(avatar_data)}\n\n"
 
-                    avatar_data = {}
-                    if behavior.get("intent"):
-                        avatar_data["intent"] = behavior["intent"]
-                    if behavior.get("mood"):
-                        avatar_data["mood"] = behavior["mood"]
-                        avatar_data["intensity"] = behavior["mood_intensity"]
-                    if behavior.get("energy"):
-                        avatar_data["energy"] = behavior["energy"]
-                    if behavior.get("move"):
-                        avatar_data["move"] = behavior["move"]
-                    if behavior.get("game_action"):
-                        avatar_data["game_action"] = behavior["game_action"]
-                    if avatar_data:
-                        yield f"event: avatar\ndata: {json.dumps(avatar_data)}\n\n"
+            # Emit emotion debug info (triggers + context block + structured snapshot).
+            if emotional_context or pre_llm_triggers or emotion_snapshot:
+                emotion_debug = {
+                    "triggers": [[t, round(i, 3)] for t, i in pre_llm_triggers],
+                    "context_block": emotional_context,
+                    "snapshot": emotion_snapshot,
+                }
+                yield f"event: emotion\ndata: {json.dumps(emotion_debug)}\n\n"
 
-                    # Emit emotion debug info (triggers + context block + structured snapshot).
-                    if emotional_context or pre_llm_triggers or emotion_snapshot:
-                        emotion_debug = {
-                            "triggers": [[t, round(i, 3)] for t, i in pre_llm_triggers],
-                            "context_block": emotional_context,
-                            "snapshot": emotion_snapshot,
-                        }
-                        yield f"event: emotion\ndata: {json.dumps(emotion_debug)}\n\n"
+            SessionRepository.update_last_used(session_id)
+            SessionRepository.increment_message_count(session_id)
 
-                    SessionRepository.update_last_used(session_id)
-                    SessionRepository.increment_message_count(session_id)
+            if isinstance(agent_workspace, str) and agent_workspace.strip():
+                state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
+                interaction_count = int(state_row.get("interaction_count") or 0)
+                game_id_value = _ctx_value(game_context, "game_id", "gameId")
+                game_id = (
+                    game_id_value.strip()
+                    if isinstance(game_id_value, str) and game_id_value.strip()
+                    else None
+                )
+                _spawn_background(asyncio.to_thread(
+                    _ensure_workspace_milestones,
+                    agent_workspace=agent_workspace,
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    interaction_count=interaction_count,
+                    runtime_trigger=runtime_trigger,
+                    game_id=game_id,
+                ))
 
-                    if isinstance(agent_workspace, str) and agent_workspace.strip():
-                        state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
-                        interaction_count = int(state_row.get("interaction_count") or 0)
-                        game_id_value = _ctx_value(game_context, "game_id", "gameId")
-                        game_id = (
-                            game_id_value.strip()
-                            if isinstance(game_id_value, str) and game_id_value.strip()
-                            else None
-                        )
-                        _spawn_background(asyncio.to_thread(
-                            _ensure_workspace_milestones,
-                            agent_workspace=agent_workspace,
-                            user_id=user_id,
-                            agent_id=agent_id,
-                            interaction_count=interaction_count,
-                            runtime_trigger=runtime_trigger,
-                            game_id=game_id,
-                        ))
+            # Process emotional state after LLM in background thread (M1 fix)
+            _spawn_background(asyncio.to_thread(
+                _process_emotion_post_llm,
+                user_id, agent_id, behavior, session_id,
+                pre_llm_triggers, None if runtime_trigger else request.message,
+            ))
 
-                    # Process emotional state after LLM in background thread (M1 fix)
-                    _spawn_background(asyncio.to_thread(
-                        _process_emotion_post_llm,
-                        user_id, agent_id, behavior, session_id,
-                        pre_llm_triggers, None if runtime_trigger else request.message,
-                    ))
+            # Send done event FIRST so UI unblocks immediately
+            logger.info("[SSE] Yielding done event at %dms", processing_ms)
+            final = {
+                "done": True,
+                "response": clean_full,
+                "session_id": session_id,
+                "processing_ms": processing_ms,
+                "behavior": behavior
+            }
+            if usage:
+                final["usage"] = usage
 
-                    # Send done event FIRST so UI unblocks immediately
-                    logger.info("[SSE] Yielding done event at %dms", processing_ms)
-                    final = {
-                        "done": True,
-                        "response": clean_full,
-                        "session_id": session_id,
-                        "processing_ms": processing_ms,
-                        "behavior": behavior
-                    }
-                    if usage:
-                        final["usage"] = usage
+            yield f"data: {json.dumps(final)}\n\n"
+            logger.info("[SSE] Done event yielded, spawning background compaction")
 
-                    yield f"data: {json.dumps(final)}\n\n"
-                    logger.info("[SSE] Done event yielded, spawning background compaction")
+            _llm_success = True
 
-                    _llm_success = True
-
-                    # Fire-and-forget: compact in background so stream closes immediately
-                    _spawn_background(_maybe_compact_session(session_id))
+            # Fire-and-forget: compact in background so stream closes immediately
+            _spawn_background(_maybe_compact_session(session_id))
 
         except Exception:
             # LLM failed — remove orphaned user message
