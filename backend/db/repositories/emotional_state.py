@@ -384,3 +384,44 @@ class EmotionalStateRepository:
                 events.append(event)
 
             return events
+
+    @staticmethod
+    def get_recent_trigger_labels(
+        user_id: str,
+        agent_id: str,
+        limit_events: int = 5,
+    ) -> list[str]:
+        """Return flattened trigger labels from recent emotional events."""
+        if limit_events <= 0:
+            return []
+
+        with get_db() as conn:
+            rows = conn.execute(
+                """SELECT triggers_json
+                   FROM emotional_events_v2
+                   WHERE user_id = ? AND agent_id = ?
+                   ORDER BY timestamp DESC
+                   LIMIT ?""",
+                (user_id, agent_id, int(limit_events)),
+            ).fetchall()
+
+        labels: list[str] = []
+        for row in rows:
+            raw = row.get("triggers_json") if isinstance(row, dict) else None
+            if not raw:
+                continue
+            try:
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            if not isinstance(parsed, list):
+                continue
+            for entry in parsed:
+                if not isinstance(entry, (list, tuple)) or not entry:
+                    continue
+                label = str(entry[0]).strip().lower()
+                if label:
+                    labels.append(label)
+
+        return labels

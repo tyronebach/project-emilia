@@ -14,7 +14,33 @@ from services.trigger_classifier import (
 def _fake_pipeline(text: str):
     lowered = text.lower()
 
-    if "incredible" in lowered or "amazing" in lowered:
+    if "great job" in lowered and "proud" in lowered:
+        emotions = [
+            {"label": "admiration", "score": 0.91},
+            {"label": "approval", "score": 0.62},
+        ]
+    elif "great job" in lowered:
+        emotions = [
+            {"label": "admiration", "score": 0.89},
+            {"label": "approval", "score": 0.57},
+        ]
+    elif "real helpful" in lowered:
+        emotions = [
+            {"label": "approval", "score": 0.85},
+            {"label": "gratitude", "score": 0.44},
+        ]
+    elif "thanks a lot" in lowered:
+        emotions = [
+            {"label": "gratitude", "score": 0.88},
+            {"label": "joy", "score": 0.41},
+            {"label": "neutral", "score": 0.02},
+        ]
+    elif "perfect" in lowered:
+        emotions = [
+            {"label": "joy", "score": 0.78},
+            {"label": "admiration", "score": 0.42},
+        ]
+    elif "incredible" in lowered or "amazing" in lowered:
         emotions = [
             {"label": "admiration", "score": 0.92},
             {"label": "joy", "score": 0.64},
@@ -81,6 +107,11 @@ def _mock_pipeline(monkeypatch):
     monkeypatch.setattr(trigger_classifier_module, "_get_classifier", lambda: _fake_pipeline)
 
 
+@pytest.fixture(autouse=True)
+def _enable_sarcasm(monkeypatch):
+    monkeypatch.setenv("SARCASM_MITIGATION_ENABLED", "1")
+
+
 class TestTriggerClassifier:
     @pytest.fixture
     def classifier(self):
@@ -130,6 +161,21 @@ class TestTriggerClassifier:
         assert classifier.classify("   ") == []
         assert classifier.is_low_confidence("ok")
         assert classifier.is_low_confidence("sure")
+
+    def test_sarcasm_exact_override(self, classifier):
+        labels = [label for label, _score in classifier.classify("thanks a lot")]
+        assert labels
+        assert labels[0] in {"annoyance", "disapproval", "disappointment"}
+
+    def test_sarcasm_contains_override(self, classifier):
+        labels = [label for label, _score in classifier.classify("Great job genius")]
+        assert labels
+        assert labels[0] in {"annoyance", "disapproval", "disappointment"}
+
+    def test_genuine_positive_not_flipped(self, classifier):
+        labels = [label for label, _score in classifier.classify("great job, I'm proud of you")]
+        assert labels[0] in {"admiration", "approval"}
+        assert "disapproval" not in labels[:2]
 
 
 class TestTriggerClassifierSingleton:

@@ -219,6 +219,14 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - Emotion-engine classifier tuning env vars are read directly in `backend/services/emotion_engine.py`:
   - `TRIGGER_CLASSIFIER_ENABLED`
   - `TRIGGER_CLASSIFIER_CONFIDENCE`
+  - `SARCASM_MITIGATION_ENABLED`
+  - `SARCASM_POSITIVE_DAMPEN_FACTOR`
+  - `SARCASM_RECENT_NEGATIVE_DAMPEN_FACTOR`
+  - `SARCASM_RECENT_POSITIVE_THRESHOLD`
+- Classifier sarcasm phrase tuning env vars are read in `backend/services/trigger_classifier.py`:
+  - `SARCASM_EXACT_BOOST`
+  - `SARCASM_CONTAINS_BOOST`
+  - `SARCASM_POSITIVE_CAP`
 
 **Auth & Security**
 - All endpoints require `Authorization: Bearer {token}` via `verify_token`.
@@ -230,6 +238,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 **Emotion Engine** (`backend/services/emotion_engine.py`)
 - Detects triggers with a local GoEmotions classifier (`SamLowe/roberta-base-go_emotions`).
 - Normalizes legacy trigger aliases to canonical GoEmotions labels for backward compatibility.
+- Applies sarcasm-aware co-occurrence dampening when positive signals conflict with negative/recent-negative context.
 - Maintains emotional state (V/A/D + relationship dimensions + mood weights).
 - Supports per-trigger calibration and outcome-driven learning.
 - Produces prompt context blocks for injection.

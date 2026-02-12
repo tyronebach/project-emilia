@@ -340,6 +340,26 @@ TRIGGER_TAXONOMY = {
     ],
 }
 
+SARCASM_POSITIVE_TRIGGERS = {
+    "admiration",
+    "approval",
+    "gratitude",
+    "joy",
+    "love",
+    "optimism",
+    "pride",
+    "relief",
+}
+
+SARCASM_NEGATIVE_TRIGGERS = {
+    "anger",
+    "annoyance",
+    "disappointment",
+    "disapproval",
+    "disgust",
+    "fear",
+}
+
 ALL_TRIGGERS: list[str] = []
 for _group in TRIGGER_TAXONOMY.values():
     for _trigger in _group:
@@ -923,6 +943,24 @@ class EmotionEngine:
             "trust": 0.0,
         },
     }
+
+    @staticmethod
+    def _env_float(name: str, default: float, low: float, high: float) -> float:
+        raw = os.getenv(name)
+        if raw is None:
+            return default
+        try:
+            parsed = float(raw)
+        except (TypeError, ValueError):
+            return default
+        return max(low, min(high, parsed))
+
+    @staticmethod
+    def _env_bool(name: str, default: bool) -> bool:
+        raw = os.getenv(name)
+        if raw is None:
+            return default
+        return raw.strip().lower() not in {"0", "false", "no", "off"}
     
     def __init__(self, profile: AgentProfile):
         self.profile = profile
@@ -930,6 +968,28 @@ class EmotionEngine:
         self._trigger_classifier_enabled = os.getenv(
             "TRIGGER_CLASSIFIER_ENABLED", "1"
         ) == "1"
+        self._sarcasm_mitigation_enabled = self._env_bool(
+            "SARCASM_MITIGATION_ENABLED",
+            True,
+        )
+        self._sarcasm_positive_dampen = self._env_float(
+            "SARCASM_POSITIVE_DAMPEN_FACTOR",
+            0.35,
+            0.0,
+            1.0,
+        )
+        self._sarcasm_recent_negative_dampen = self._env_float(
+            "SARCASM_RECENT_NEGATIVE_DAMPEN_FACTOR",
+            0.6,
+            0.0,
+            1.0,
+        )
+        self._sarcasm_recent_positive_threshold = self._env_float(
+            "SARCASM_RECENT_POSITIVE_THRESHOLD",
+            0.45,
+            0.0,
+            1.0,
+        )
         self._trigger_classifier = None
         if self._trigger_classifier_enabled:
             self._trigger_classifier = get_trigger_classifier()
@@ -990,7 +1050,11 @@ class EmotionEngine:
 
         return state
     
-    def detect_triggers(self, text: str) -> list[tuple[str, float]]:
+    def detect_triggers(
+        self,
+        text: str,
+        recent_context_triggers: list[str] | None = None,
+    ) -> list[tuple[str, float]]:
         """
         Detect emotional triggers from text using GoEmotions classifier.
         
@@ -1012,7 +1076,79 @@ class EmotionEngine:
             if canonical not in trigger_map or confidence > trigger_map[canonical]:
                 trigger_map[canonical] = confidence
 
+        if self._sarcasm_mitigation_enabled and trigger_map:
+            trigger_map = self._apply_sarcasm_cooccurrence_dampening(
+                trigger_map,
+                recent_context_triggers or [],
+            )
+
+            confidence_floor = self._clamp(
+                float(getattr(self._trigger_classifier, "confidence_threshold", 0.0)),
+                0.0,
+                1.0,
+            )
+            trigger_map = {
+                trigger: confidence
+                for trigger, confidence in trigger_map.items()
+                if confidence >= confidence_floor
+            }
+
         return sorted(trigger_map.items(), key=lambda x: -x[1])
+
+    def _apply_sarcasm_cooccurrence_dampening(
+        self,
+        trigger_map: dict[str, float],
+        recent_context_triggers: list[str],
+    ) -> dict[str, float]:
+        """Dampen positive triggers when current or recent context looks negative."""
+        result = dict(trigger_map)
+        has_negative_now = any(trigger in SARCASM_NEGATIVE_TRIGGERS for trigger in result)
+        has_positive_now = any(trigger in SARCASM_POSITIVE_TRIGGERS for trigger in result)
+        if not has_positive_now:
+            return result
+
+        recent_negative = False
+        for trigger in recent_context_triggers:
+            canonical = normalize_trigger(trigger) or (trigger or "").strip().lower()
+            if canonical in SARCASM_NEGATIVE_TRIGGERS:
+                recent_negative = True
+                break
+
+        dampen_factor: float | None = None
+        reason = ""
+        if has_negative_now:
+            dampen_factor = self._sarcasm_positive_dampen
+            reason = "mixed_current"
+        elif recent_negative:
+            dampen_factor = self._sarcasm_recent_negative_dampen
+            reason = "recent_negative_context"
+
+        if dampen_factor is None:
+            return result
+
+        changed = False
+        for trigger, confidence in list(result.items()):
+            if trigger not in SARCASM_POSITIVE_TRIGGERS:
+                continue
+            if (
+                reason == "recent_negative_context"
+                and confidence < self._sarcasm_recent_positive_threshold
+            ):
+                continue
+            updated = confidence * dampen_factor
+            if updated < confidence:
+                result[trigger] = updated
+                changed = True
+
+        if changed:
+            logger.debug(
+                "[Emotion] Sarcasm cooccurrence dampening (%s): %s -> %s",
+                reason,
+                {k: round(v, 3) for k, v in trigger_map.items()},
+                {k: round(v, 3) for k, v in result.items()},
+            )
+
+        return result
 
     def apply_trigger(self, state: EmotionalState, trigger: str, intensity: float = 0.7) -> dict[str, float]:
         """
