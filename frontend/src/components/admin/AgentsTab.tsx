@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import type { Agent } from '../../utils/api';
 
 type EditableField = 'display_name' | 'voice_id' | 'vrm_model' | 'workspace';
+type AgentEditableField = EditableField | 'chat_mode' | 'direct_model' | 'direct_api_base';
 
 type AgentWithWorkspace = Agent & {
   workspace: string | null;
@@ -58,7 +59,7 @@ interface AgentsTabProps {
   vrmLoading: boolean;
   vrmOptions: OptionItem[];
   onOpenCreateAgent: () => void;
-  onFieldChange: (agentId: string, field: EditableField, value: string) => void;
+  onFieldChange: (agentId: string, field: AgentEditableField, value: string) => void;
   onVoiceChange: (agent: AgentWithWorkspace, value: string) => Promise<void> | void;
   onReset: (agentId: string) => void;
   onSave: (agent: AgentWithWorkspace) => Promise<void> | void;
@@ -185,6 +186,35 @@ function AgentsTab({
                     placeholder="/home/user/agent-workspace"
                     mono
                     tooltip="Filesystem path used by tools/memory for this agent."
+                  />
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1" title="Choose which backend handles chat for this agent.">
+                      Chat Mode
+                    </label>
+                    <select
+                      value={agent.chat_mode || 'openclaw'}
+                      onChange={(e) => onFieldChange(agent.id, 'chat_mode', e.target.value)}
+                      disabled={savingAgentId === agent.id}
+                      title="OpenClaw uses agent:{id}; Direct uses OpenAI-compatible endpoint."
+                      className="w-full bg-bg-tertiary border border-bg-tertiary rounded-lg px-3 py-2 text-sm focus:border-accent focus:outline-none"
+                    >
+                      <option value="openclaw">OpenClaw</option>
+                      <option value="direct">Direct</option>
+                    </select>
+                  </div>
+                  <Field
+                    label="Direct Model"
+                    value={agent.direct_model || ''}
+                    onChange={(v) => onFieldChange(agent.id, 'direct_model', v)}
+                    placeholder="gpt-4.1-mini"
+                    tooltip="Optional model override when chat mode is Direct (use provider model ID)."
+                  />
+                  <Field
+                    label="Direct API Base"
+                    value={agent.direct_api_base || ''}
+                    onChange={(v) => onFieldChange(agent.id, 'direct_api_base', v)}
+                    placeholder="https://api.openai.com/v1"
+                    tooltip="Optional base URL override for OpenAI-compatible providers."
                   />
                 </div>
 

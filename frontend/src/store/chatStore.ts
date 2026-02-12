@@ -3,11 +3,16 @@ import type { Message, MessageMeta } from '../types';
 import type { EmotionDebug } from '../utils/api';
 import type { SoulMoodSnapshot } from '../types/soulWindow';
 
-let _nextMessageId = 1;
+let _messageNonce = 0;
+
+function _newLocalMessageId(): string {
+  _messageNonce += 1;
+  return `local-${Date.now()}-${_messageNonce}`;
+}
 
 interface ChatState {
   messages: Message[];
-  addMessage: (role: 'user' | 'assistant' | 'system', content: string, meta?: Partial<MessageMeta>) => number;
+  addMessage: (role: 'user' | 'assistant' | 'system', content: string, meta?: Partial<MessageMeta>) => string;
   updateMessage: (id: number | string, updates: Partial<Message>) => void;
   setMessages: (messages: Message[]) => void;
   clearMessages: () => void;
@@ -23,7 +28,7 @@ export const useChatStore = create<ChatState>((set) => ({
   messages: [],
 
   addMessage: (role, content, meta = {}) => {
-    const id = _nextMessageId++;
+    const id = _newLocalMessageId();
     const message: Message = {
       id,
       role,

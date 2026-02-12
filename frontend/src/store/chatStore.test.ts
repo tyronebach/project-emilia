@@ -154,6 +154,33 @@ describe('chatStore', () => {
       const messages = useChatStore.getState().messages;
       expect(messages).toHaveLength(0);
     });
+
+    it('should not collide local message IDs with history numeric IDs', () => {
+      const store = useChatStore.getState();
+      store.setMessages([
+        {
+          id: 0,
+          role: 'user',
+          content: 'history 0',
+          timestamp: new Date(),
+          meta: {},
+        },
+        {
+          id: 1,
+          role: 'assistant',
+          content: 'history 1',
+          timestamp: new Date(),
+          meta: {},
+        },
+      ]);
+
+      const localId = store.addMessage('user', 'new local message');
+      const ids = useChatStore.getState().messages.map((m) => m.id);
+
+      expect(typeof localId).toBe('string');
+      expect(ids.filter((id) => id === 1)).toHaveLength(1);
+      expect(ids.filter((id) => id === localId)).toHaveLength(1);
+    });
   });
 
   describe('clearMessages', () => {

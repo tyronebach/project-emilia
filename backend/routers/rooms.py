@@ -22,7 +22,7 @@ from db.repositories import (
     UserRepository,
 )
 from dependencies import get_user_id, verify_token
-from parse_chat import extract_avatar_commands, parse_chat_completion
+from parse_chat import extract_avatar_commands, parse_chat_completion, coalesce_response_text
 from routers.chat import (
     _process_emotion_post_llm,
     _process_emotion_pre_llm,
@@ -49,6 +49,13 @@ from schemas import (
     UpdateRoomRequest,
 )
 from services.room_chat import build_room_llm_messages, determine_responding_agents
+from services.direct_llm import (
+    DirectLLMClient,
+    normalize_chat_mode,
+    prepend_workspace_soul,
+    resolve_direct_api_base,
+    resolve_direct_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +150,40 @@ def _inject_game_context_if_present(
     return messages
 
 
-async def _call_llm_non_stream(clawdbot_agent_id: str, messages: list[dict], room_id: str) -> dict:
+def _normalize_messages_for_direct(messages: list[dict]) -> list[dict[str, str]]:
+    normalized: list[dict[str, str]] = []
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content")
+        if role not in {"system", "user", "assistant"}:
+            continue
+        if not isinstance(content, str):
+            continue
+        normalized.append({"role": role, "content": content})
+    return normalized
+
+
+async def _call_llm_non_stream(agent: dict, messages: list[dict], room_id: str) -> dict:
+    agent_id = str(agent.get("agent_id") or "")
+    agent_config = AgentRepository.get_by_id(agent_id) if agent_id else None
+    chat_mode = normalize_chat_mode((agent_config or {}).get("chat_mode"))
+
+    if chat_mode == "direct":
+        direct_client = DirectLLMClient(
+            api_base=resolve_direct_api_base(agent_config),
+        )
+        direct_messages = prepend_workspace_soul(
+            _normalize_messages_for_direct(messages),
+            (agent_config or {}).get("workspace"),
+        )
+        return await direct_client.chat_completion(
+            model=resolve_direct_model(agent_config),
+            messages=direct_messages,
+            user_tag=f"emilia:room:{room_id}",
+            timeout_s=60.0,
+        )
+
+    clawdbot_agent_id = (agent.get("clawdbot_agent_id") or "").strip()
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
             f"{settings.clawdbot_url}/v1/chat/completions",
@@ -439,7 +479,6 @@ async def room_chat(
 
     for agent in responding_agents:
         agent_id = agent["agent_id"]
-        clawdbot_agent_id = agent["clawdbot_agent_id"]
         started_at = time.time()
 
         try:
@@ -461,7 +500,7 @@ async def room_chat(
             )
             llm_messages = _inject_game_context_if_present(llm_messages, agent_id, game_context)
 
-            result = await _call_llm_non_stream(clawdbot_agent_id, llm_messages, room_id)
+            result = await _call_llm_non_stream(agent, llm_messages, room_id)
             parsed = parse_chat_completion(result)
             processing_ms = int((time.time() - started_at) * 1000)
 
@@ -546,6 +585,8 @@ async def _stream_room_chat_sse(
     for agent in responding_agents:
         agent_id = agent["agent_id"]
         clawdbot_agent_id = agent["clawdbot_agent_id"]
+        agent_config = AgentRepository.get_by_id(agent_id) or {}
+        chat_mode = normalize_chat_mode(agent_config.get("chat_mode"))
         agent_name = agent.get("display_name") or agent_id
         started_at = time.time()
 
@@ -572,45 +613,21 @@ async def _stream_room_chat_sse(
 
             usage = None
             full_content = ""
-
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                async with client.stream(
-                    "POST",
-                    f"{settings.clawdbot_url}/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.clawdbot_token}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": f"agent:{clawdbot_agent_id}",
-                        "messages": llm_messages,
-                        "stream": True,
-                        "stream_options": {"include_usage": True},
-                        "user": f"emilia:room:{room_id}",
-                    },
-                ) as response:
-                    if response.status_code != 200:
-                        payload = {
-                            "agent_id": agent_id,
-                            "agent_name": agent_name,
-                            "error": f"Chat service error ({response.status_code})",
-                        }
-                        yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
-                        continue
-
-                    async for line in response.aiter_lines():
-                        if not line.startswith("data: "):
-                            continue
-
-                        data_str = line[6:].strip()
-                        if not data_str or data_str == "[DONE]":
-                            continue
-
-                        try:
-                            data = json.loads(data_str)
-                        except json.JSONDecodeError:
-                            continue
-
+            if chat_mode == "direct":
+                direct_client = DirectLLMClient(
+                    api_base=resolve_direct_api_base(agent_config),
+                )
+                direct_messages = prepend_workspace_soul(
+                    _normalize_messages_for_direct(llm_messages),
+                    agent_config.get("workspace"),
+                )
+                try:
+                    async for data in direct_client.stream_chat_completion(
+                        model=resolve_direct_model(agent_config),
+                        messages=direct_messages,
+                        user_tag=f"emilia:room:{room_id}",
+                        timeout_s=120.0,
+                    ):
                         if "usage" in data:
                             usage = data["usage"]
 
@@ -626,8 +643,93 @@ async def _stream_room_chat_sse(
 
                         if choices[0].get("finish_reason"):
                             break
+                except ValueError as exc:
+                    payload = {
+                        "agent_id": agent_id,
+                        "agent_name": agent_name,
+                        "error": str(exc),
+                    }
+                    yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
+                    continue
+                except httpx.HTTPStatusError as exc:
+                    status_code = exc.response.status_code if exc.response else 503
+                    logger.exception("Room direct stream HTTP error for %s", agent_id)
+                    detail = ""
+                    if exc.response is not None:
+                        try:
+                            detail = (exc.response.text or "").strip()
+                        except Exception:
+                            detail = ""
+                    if detail:
+                        detail = detail[:220]
+                    payload = {
+                        "agent_id": agent_id,
+                        "agent_name": agent_name,
+                        "error": (
+                            f"Chat service error ({status_code}): {detail}"
+                            if detail
+                            else f"Chat service error ({status_code})"
+                        ),
+                    }
+                    yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
+                    continue
+            else:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{settings.clawdbot_url}/v1/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {settings.clawdbot_token}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": f"agent:{clawdbot_agent_id}",
+                            "messages": llm_messages,
+                            "stream": True,
+                            "stream_options": {"include_usage": True},
+                            "user": f"emilia:room:{room_id}",
+                        },
+                    ) as response:
+                        if response.status_code != 200:
+                            payload = {
+                                "agent_id": agent_id,
+                                "agent_name": agent_name,
+                                "error": f"Chat service error ({response.status_code})",
+                            }
+                            yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
+                            continue
+
+                        async for line in response.aiter_lines():
+                            if not line.startswith("data: "):
+                                continue
+
+                            data_str = line[6:].strip()
+                            if not data_str or data_str == "[DONE]":
+                                continue
+
+                            try:
+                                data = json.loads(data_str)
+                            except json.JSONDecodeError:
+                                continue
+
+                            if "usage" in data:
+                                usage = data["usage"]
+
+                            choices = data.get("choices") or []
+                            if not choices:
+                                continue
+
+                            delta = choices[0].get("delta") or {}
+                            chunk = delta.get("content") or ""
+                            if chunk:
+                                full_content += chunk
+                                yield f"data: {json.dumps({'content': chunk, 'agent_id': agent_id})}\n\n"
+
+                            if choices[0].get("finish_reason"):
+                                break
 
             clean_content, behavior = extract_avatar_commands(full_content)
+            clean_content = coalesce_response_text(clean_content, full_content)
             processing_ms = int((time.time() - started_at) * 1000)
             usage_data = usage or {}
 

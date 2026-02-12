@@ -68,6 +68,14 @@ def extract_avatar_commands(text: str) -> tuple[str, dict[str, Any]]:
     return clean_text, behavior
 
 
+def coalesce_response_text(clean_text: str, raw_text: str) -> str:
+    """Guarantee a visible response text when tag stripping empties the output."""
+    normalized_clean = (clean_text or "").strip()
+    if normalized_clean:
+        return normalized_clean
+    return (raw_text or "").strip()
+
+
 def parse_chat_completion(result: dict[str, Any]) -> dict[str, Any]:
     """Parse a Clawdbot /v1/chat/completions response into text + optional reasoning/thinking.
 
@@ -119,7 +127,9 @@ def parse_chat_completion(result: dict[str, Any]) -> dict[str, Any]:
                 reasoning = part.get("reasoning")
         response_text = "".join(text_parts).strip()
 
-    response_text, behavior = extract_avatar_commands(response_text)
+    raw_response_text = response_text
+    response_text, behavior = extract_avatar_commands(raw_response_text)
+    response_text = coalesce_response_text(response_text, raw_response_text)
 
     return {
         "response_text": response_text,

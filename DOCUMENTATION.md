@@ -1,6 +1,6 @@
 # Emilia Web App — LLM Agent Documentation
 
-**Purpose**: Trusted household LLM avatar chat app with VRM rendering, games, emotion engine, and extensive debug tools. Backend connects to OpenClaw/Clawdbot gateway.
+**Purpose**: Trusted household LLM avatar chat app with VRM rendering, games, emotion engine, and extensive debug tools. Backend supports mixed LLM routing per agent (`openclaw` gateway mode or direct OpenAI-compatible mode).
 
 **Primary Systems**
 - VRM viewer + animation system (Three.js + VRM + animation graph, lip sync, post-processing).
@@ -75,12 +75,19 @@
 - `DELETE /api/rooms/{room_id}/agents/{agent_id}`: Removes agent. Response `DeleteResponse`.
 - `GET /api/rooms/{room_id}/history?limit=`: Room message history with sender attribution. Response `RoomHistoryResponse`.
 - `POST /api/rooms/{room_id}/chat?stream=0|1`: Multi-agent room chat. Body `RoomChatRequest`.
+  - Per responding agent, routing uses persisted `agents.chat_mode`:
+    - `openclaw`: `agent:{clawdbot_agent_id}` via gateway
+    - `direct`: OpenAI-compatible `/chat/completions` (with optional per-agent model/base overrides)
 
 **Chat / Media** (`backend/routers/chat.py`)
 - `POST /api/chat?stream=0|1`: Main chat endpoint.
   - Request: `ChatRequest` (`message`, optional `game_context`, optional `runtime_trigger`).
   - Headers: `Authorization`, `X-User-Id`, `X-Agent-Id`, optional `X-Session-Id`.
-  - Logic: builds message list (summary + recent history + emotion context + first-turn UTC facts + game context), calls Clawdbot `/v1/chat/completions`, parses behavior tags, stores messages, triggers emotion updates, runs compaction, and emits mood snapshot data.
+  - Logic: builds message list (summary + recent history + emotion context + first-turn UTC facts + game context), then routes by `agents.chat_mode`:
+    - `openclaw`: gateway `/v1/chat/completions`
+    - `direct`: OpenAI-compatible `/chat/completions` (`OPENAI_API_BASE`, `OPENAI_API_KEY`, model from agent override or default)
+  - Direct mode optionally prepends `workspace/SOUL.md` as the first system message when present.
+  - On LLM failure, user-message rollback semantics are preserved (orphaned user message cleanup).
   - Non-stream response: `{response, session_id, processing_ms, model, behavior, usage, emotion_debug?}`.
   - Stream response: SSE data chunks plus `event: avatar` and `event: emotion` (`emotion.snapshot` carries structured mood telemetry for UI).
 - `POST /api/transcribe`: Multipart audio upload, forwards to STT service, returns transcription JSON.
@@ -103,6 +110,7 @@
 - `DELETE /api/manage/sessions/agent/{agent_id}`: Deletes sessions for agent.
 - `DELETE /api/manage/sessions/all`: Deletes all sessions.
 - `GET /api/manage/agents`: Lists all agents.
+- `POST /api/manage/agents`: Creates agent. Body `AgentCreate`.
 - `PUT /api/manage/agents/{agent_id}`: Updates agent. Body `AgentUpdate`.
 - `GET /api/manage/debug/compaction/{session_id}`: Compaction diagnostics.
 - `POST /api/manage/debug/compaction/{session_id}/trigger`: Manual compaction.
@@ -165,7 +173,8 @@ This includes:
 - `UpdateSessionRequest`: `{name?}`
 - `CreateRoomRequest`, `UpdateRoomRequest`, `AddRoomAgentRequest`, `UpdateRoomAgentRequest`, `RoomChatRequest`
 - `SpeakRequest`: `{text, voice_id?}`
-- `AgentUpdate`: `{display_name?, voice_id?, vrm_model?, workspace?}`
+- `AgentCreate`: `{id, display_name, clawdbot_agent_id, vrm_model?, voice_id?, workspace?, chat_mode?, direct_model?, direct_api_base?}`
+- `AgentUpdate`: `{display_name?, voice_id?, vrm_model?, workspace?, chat_mode?, direct_model?, direct_api_base?}`
 - `UserPreferencesUpdate`: `{preferences: {...}}`
 - `SoulWindowEventsRequest`: `{action, id?, item?}`
 
@@ -182,7 +191,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 
 **Core tables**
 - `users`: `id`, `display_name`, `preferences`, `created_at`
-- `agents`: `id`, `display_name`, `clawdbot_agent_id`, `vrm_model`, `voice_id`, `workspace`, emotional baselines + profile JSON
+- `agents`: `id`, `display_name`, `clawdbot_agent_id`, `vrm_model`, `voice_id`, `workspace`, `chat_mode`, `direct_model`, `direct_api_base`, emotional baselines + profile JSON
 - `user_agents`: many-to-many access
 - `sessions`: `id`, `agent_id`, `name`, `created_at`, `last_used`, `message_count`, compaction summary fields
 - `session_participants`: many-to-many
@@ -216,6 +225,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `CHAT_HISTORY_LIMIT`.
 - `COMPACT_THRESHOLD`, `COMPACT_KEEP_RECENT`, `COMPACT_MODEL`.
 - `SOUL_SIM_PERSONA_MODEL`, `SOUL_SIM_MAX_TURNS`.
+- `OPENAI_API_KEY`, `OPENAI_API_BASE`, `DIRECT_DEFAULT_MODEL` (used when agent `chat_mode=direct`).
 - `GAMES_V2_AGENT_ALLOWLIST` (optional agent rollout cohort).
 - `EMILIA_DB_PATH` / fallback for DB.
 - Emotion-engine classifier tuning env vars are read directly in `backend/services/emotion_engine.py`:
