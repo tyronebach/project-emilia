@@ -36,7 +36,7 @@
 - `backend/dependencies.py`: Auth + header dependencies.
 - `backend/routers/`: API endpoints.
 - `backend/schemas/`: Pydantic request/response models.
-- `backend/services/`: ElevenLabs client, emotion engine, drift simulator, room chat orchestration, compaction, Soul Window helpers.
+- `backend/services/`: ElevenLabs client, emotion engine, drift simulator, room chat orchestration, compaction, Soul Window helpers, SOUL simulator helpers.
 - `backend/db/`: SQLite connection + repositories.
 - `backend/core/exceptions.py`: Exception helpers.
 
@@ -133,6 +133,7 @@
 - `DELETE /api/designer/v2/calibration/{user_id}/{agent_id}`: Reset all calibration.
 - `DELETE /api/designer/v2/calibration/{user_id}/{agent_id}/{trigger_type}`: Reset one trigger.
 - `POST /api/designer/v2/simulate`: Dry-run trigger detection + state evolution.
+- `POST /api/designer/v2/soul/simulate`: Multi-turn SOUL persona simulation + judge analysis (stateless; for tuning).
 - `GET /api/designer/v2/archetypes`: List global drift archetypes (DB-backed replay datasets).
 - `GET /api/designer/v2/archetypes/{archetype_id}`: Fetch one archetype (full replay payload).
 - `POST /api/designer/v2/archetypes`: Create archetype from explicit `message_triggers`.
@@ -214,6 +215,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `TTS_CACHE_ENABLED`, `TTS_CACHE_TTL_SECONDS`, `TTS_CACHE_MAX_ENTRIES`.
 - `CHAT_HISTORY_LIMIT`.
 - `COMPACT_THRESHOLD`, `COMPACT_KEEP_RECENT`, `COMPACT_MODEL`.
+- `SOUL_SIM_PERSONA_MODEL`, `SOUL_SIM_MAX_TURNS`.
 - `GAMES_V2_AGENT_ALLOWLIST` (optional agent rollout cohort).
 - `EMILIA_DB_PATH` / fallback for DB.
 - Emotion-engine classifier tuning env vars are read directly in `backend/services/emotion_engine.py`:
@@ -245,6 +247,10 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 
 **Compaction** (`backend/services/compaction.py`)
 - Summarizes older session history via Clawdbot model; stored in `sessions.summary` and old messages pruned.
+
+**SOUL Simulator** (`backend/services/soul_simulator.py`)
+- Runs a ping-pong exchange (archetype user vs SOUL persona) and returns judge-scored consistency hints.
+- Used by `POST /api/designer/v2/soul/simulate`.
 
 **TTS** (`backend/services/elevenlabs.py`)
 - ElevenLabs REST `/with-timestamps` for alignment data.

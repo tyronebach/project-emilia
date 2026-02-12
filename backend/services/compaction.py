@@ -1,8 +1,8 @@
 """Session history compaction via LLM summarization."""
 # Phase 3.1 COMPLETE - 2026-02-08
 import logging
-import httpx
 from config import settings
+from services.llm_client import chat_completion_text
 
 logger = logging.getLogger(__name__)
 
@@ -30,23 +30,11 @@ class CompactionService:
             *messages,
         ]
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{settings.clawdbot_url}/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.clawdbot_token}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": settings.compact_model,
-                    "messages": llm_messages,
-                    "stream": False,
-                    "user": "emilia:compaction",
-                },
-            )
-            response.raise_for_status()
-            result = response.json()
-
-        summary = result["choices"][0]["message"]["content"].strip()
+        summary = await chat_completion_text(
+            model=settings.compact_model,
+            messages=llm_messages,
+            user_tag="emilia:compaction",
+            timeout_s=60.0,
+        )
         logger.info("Compaction summary generated: %d chars", len(summary))
         return summary

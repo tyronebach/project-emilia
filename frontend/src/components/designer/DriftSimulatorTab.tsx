@@ -54,7 +54,7 @@ function DriftSimulatorTab() {
   const [sessionsPerDay, setSessionsPerDay] = useState(DESIGNER_CONFIG.DEFAULT_SESSIONS_PER_DAY);
   const [messagesPerSession, setMessagesPerSession] = useState(DESIGNER_CONFIG.DEFAULT_MESSAGES_PER_SESSION);
   const [seed, setSeed] = useState('');
-  const [replayMode, setReplayMode] = useState<'sequential' | 'random'>('sequential');
+  const [replayMode, setReplayMode] = useState<'sequential' | 'random'>('random');
   const [compareMode, setCompareMode] = useState(false);
   const [compareArchetypes, setCompareArchetypes] = useState<string[]>([]);
   const [managerOpen, setManagerOpen] = useState(false);

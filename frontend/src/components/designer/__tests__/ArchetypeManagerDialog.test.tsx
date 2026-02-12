@@ -79,7 +79,8 @@ describe('ArchetypeManagerDialog', () => {
 
     const nameInputs = screen.getAllByPlaceholderText('Name');
     fireEvent.change(nameInputs[0], { target: { value: 'Fresh Archetype' } });
-    fireEvent.change(screen.getByPlaceholderText('Description'), {
+    const descriptionInputs = screen.getAllByPlaceholderText('Description');
+    fireEvent.change(descriptionInputs[0], {
       target: { value: 'Generated in test' },
     });
 
@@ -93,7 +94,7 @@ describe('ArchetypeManagerDialog', () => {
     await waitFor(() => expect(mockGenerateArchetype).toHaveBeenCalledTimes(1));
     expect(mockGenerateArchetype).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: 'fresharchetype',
+        id: 'fresh-archetype',
         name: 'Fresh Archetype',
         description: 'Generated in test',
         file,
