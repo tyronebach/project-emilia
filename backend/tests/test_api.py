@@ -171,6 +171,230 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.chat.DirectLLMClient")
+    async def test_chat_non_stream_direct_mode_uses_direct_client(
+        self,
+        mock_direct_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents
+                   (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
+                    emotional_profile, chat_mode, direct_model, direct_api_base)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    agent_id,
+                    "Direct Agent",
+                    "test-claw-id",
+                    "emilia.vrm",
+                    None,
+                    None,
+                    "{}",
+                    "direct",
+                    "gpt-test-direct",
+                    "https://example.invalid/v1",
+                ),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_direct = MagicMock()
+        mock_direct.chat_completion = AsyncMock(
+            return_value={
+                "model": "gpt-test-direct",
+                "choices": [
+                    {
+                        "message": {
+                            "content": "[intent:playful] [mood:happy:0.7] Direct hello!",
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 11, "completion_tokens": 6},
+            }
+        )
+        mock_direct_client_class.return_value = mock_direct
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        response = await test_client.post(
+            "/api/chat?stream=0",
+            json={"message": "Hi direct"},
+            headers=headers,
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["response"] == "Direct hello!"
+        assert data["model"] == "gpt-test-direct"
+        assert data["usage"]["prompt_tokens"] == 11
+        mock_direct.chat_completion.assert_awaited_once()
+
+    @patch("routers.chat._spawn_background")
+    @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.chat.DirectLLMClient")
+    async def test_chat_direct_mode_rolls_back_user_message_on_direct_client_error(
+        self,
+        mock_direct_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents
+                   (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
+                    emotional_profile, chat_mode, direct_model, direct_api_base)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    agent_id,
+                    "Direct Agent",
+                    "test-claw-id",
+                    "emilia.vrm",
+                    None,
+                    None,
+                    "{}",
+                    "direct",
+                    "gpt-test-direct",
+                    "https://example.invalid/v1",
+                ),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_direct = MagicMock()
+        mock_direct.chat_completion = AsyncMock(side_effect=ValueError("OPENAI_API_KEY is required for direct chat mode"))
+        mock_direct_client_class.return_value = mock_direct
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        response = await test_client.post(
+            "/api/chat?stream=0",
+            json={"message": "Hi direct"},
+            headers=headers,
+        )
+
+        assert response.status_code == 503
+        assert "OPENAI_API_KEY is required" in response.json()["detail"]
+
+        with get_db() as conn:
+            row = conn.execute(
+                """SELECT COUNT(*) AS count
+                   FROM messages m
+                   JOIN sessions s ON s.id = m.session_id
+                   WHERE s.agent_id = ?""",
+                (agent_id,),
+            ).fetchone()
+        assert row["count"] == 0
+
+    @patch("routers.chat._spawn_background")
+    @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.chat.DirectLLMClient")
+    async def test_chat_stream_direct_mode_uses_direct_stream_client(
+        self,
+        mock_direct_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (id, display_name) VALUES (?, ?)",
+                (user_id, "Test User"),
+            )
+            conn.execute(
+                """INSERT INTO agents
+                   (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
+                    emotional_profile, chat_mode, direct_model, direct_api_base)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    agent_id,
+                    "Direct Agent",
+                    "test-claw-id",
+                    "emilia.vrm",
+                    None,
+                    None,
+                    "{}",
+                    "direct",
+                    "gpt-test-direct",
+                    "https://example.invalid/v1",
+                ),
+            )
+            conn.execute(
+                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
+                (user_id, agent_id),
+            )
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        async def _fake_stream():
+            yield {"choices": [{"delta": {"content": "Hello "}}]}
+            yield {"choices": [{"delta": {"content": "direct"}, "finish_reason": "stop"}]}
+            yield {"usage": {"prompt_tokens": 9, "completion_tokens": 4}}
+
+        mock_direct = MagicMock()
+        mock_direct.stream_chat_completion = MagicMock(return_value=_fake_stream())
+        mock_direct_client_class.return_value = mock_direct
+
+        headers = {
+            **auth_headers,
+            "X-User-Id": user_id,
+            "X-Agent-Id": agent_id,
+        }
+        response = await test_client.post(
+            "/api/chat?stream=1",
+            json={"message": "Stream direct"},
+            headers=headers,
+        )
+
+        assert response.status_code == 200
+        body = response.text
+        assert '"content": "Hello "' in body
+        assert '"response": "Hello direct"' in body
+        assert '"done": true' in body
+        mock_direct.stream_chat_completion.assert_called_once()
+
+    @patch("routers.chat._spawn_background")
+    @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
     @patch("routers.chat.httpx.AsyncClient")
     async def test_chat_runtime_trigger_marks_message_origin_and_hides_from_history(
         self,
@@ -856,6 +1080,40 @@ class TestManageEndpoints:
     async def test_list_agents_requires_auth(self, test_client):
         response = await test_client.get("/api/manage/agents")
         assert response.status_code == 401
+
+    async def test_manage_agent_update_persists_direct_mode_fields(self, test_client, auth_headers):
+        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
+
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO agents
+                   (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (agent_id, "Test Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
+            )
+
+        response = await test_client.put(
+            f"/api/manage/agents/{agent_id}",
+            json={
+                "chat_mode": "direct",
+                "direct_model": "gpt-test-direct",
+                "direct_api_base": "https://example.invalid/v1",
+            },
+            headers=auth_headers,
+        )
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT chat_mode, direct_model, direct_api_base FROM agents WHERE id = ?",
+                (agent_id,),
+            ).fetchone()
+
+        assert row["chat_mode"] == "direct"
+        assert row["direct_model"] == "gpt-test-direct"
+        assert row["direct_api_base"] == "https://example.invalid/v1"
 
     async def test_manage_games_and_agent_config_affect_catalog(self, test_client, auth_headers, monkeypatch):
         monkeypatch.setattr(settings, "games_v2_agent_allowlist", set())

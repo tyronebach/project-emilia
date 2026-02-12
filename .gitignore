@@ -10,3 +10,5 @@ dist/
 *.log
 frontend/public/animations/test/*.glb
 scripts/emotion-lab-runs/
+data/emilia.db
+data/emilia-*.db

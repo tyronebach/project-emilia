@@ -22,6 +22,9 @@ export interface Agent {
   voice_id: string | null;
   owners?: string[];
   workspace?: string | null;
+  chat_mode?: 'openclaw' | 'direct';
+  direct_model?: string | null;
+  direct_api_base?: string | null;
   created_at?: number;
 }
 
@@ -308,6 +311,9 @@ export async function createAgent(data: {
   vrm_model?: string;
   voice_id?: string | null;
   workspace?: string | null;
+  chat_mode?: 'openclaw' | 'direct';
+  direct_model?: string | null;
+  direct_api_base?: string | null;
 }): Promise<Agent> {
   const response = await fetchWithAuth(`${API_URL}/api/manage/agents`, {
     method: 'POST',

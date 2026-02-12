@@ -72,14 +72,39 @@ class AgentRepository:
         voice_id: str | None = None,
         workspace: str | None = None,
         emotional_profile: str | None = None,
+        chat_mode: str | None = None,
+        direct_model: str | None = None,
+        direct_api_base: str | None = None,
     ) -> dict:
         if emotional_profile is None:
             emotional_profile = json.dumps(AgentRepository.DEFAULT_EMOTIONAL_PROFILE)
+
+        normalized_chat_mode = (chat_mode or "openclaw").strip().lower()
+        if normalized_chat_mode not in {"openclaw", "direct"}:
+            normalized_chat_mode = "openclaw"
+        if isinstance(direct_model, str):
+            direct_model = direct_model.strip() or None
+        if isinstance(direct_api_base, str):
+            direct_api_base = direct_api_base.strip() or None
+
         with get_db() as conn:
             conn.execute(
-                "INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (agent_id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
+                """INSERT INTO agents
+                   (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
+                    emotional_profile, chat_mode, direct_model, direct_api_base)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    agent_id,
+                    display_name,
+                    clawdbot_agent_id,
+                    vrm_model,
+                    voice_id,
+                    workspace,
+                    emotional_profile,
+                    normalized_chat_mode,
+                    direct_model,
+                    direct_api_base,
+                )
             )
             return conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
 
@@ -88,11 +113,25 @@ class AgentRepository:
         if not updates:
             return
 
-        allowed = {"display_name", "voice_id", "vrm_model", "clawdbot_agent_id", "workspace"}
+        allowed = {
+            "display_name",
+            "voice_id",
+            "vrm_model",
+            "clawdbot_agent_id",
+            "workspace",
+            "chat_mode",
+            "direct_model",
+            "direct_api_base",
+        }
         set_clauses = []
         params = []
         for key, value in updates.items():
             if key in allowed:
+                if key == "chat_mode":
+                    mode = str(value or "").strip().lower()
+                    value = mode if mode in {"openclaw", "direct"} else "openclaw"
+                elif key in {"direct_model", "direct_api_base"} and isinstance(value, str):
+                    value = value.strip() or None
                 set_clauses.append(f"{key} = ?")
                 params.append(value)
 

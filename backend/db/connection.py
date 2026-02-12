@@ -366,6 +366,18 @@ def init_db():
         _add_column(cur, "agents", "emotional_volatility", "REAL DEFAULT 0.5")
         _add_column(cur, "agents", "emotional_recovery", "REAL DEFAULT 0.1")
         _add_column(cur, "agents", "emotional_profile", "TEXT")
+        _add_column(cur, "agents", "chat_mode", "TEXT DEFAULT 'openclaw'")
+        _add_column(cur, "agents", "direct_model", "TEXT")
+        _add_column(cur, "agents", "direct_api_base", "TEXT")
+
+        # Keep agent mode values in supported set.
+        cur.execute(
+            """UPDATE agents
+               SET chat_mode = 'openclaw'
+               WHERE chat_mode IS NULL
+                  OR TRIM(chat_mode) = ''
+                  OR LOWER(chat_mode) NOT IN ('openclaw', 'direct')"""
+        )
 
         # Session compaction columns (Phase 3.1)
         _add_column(cur, "sessions", "summary", "TEXT")
