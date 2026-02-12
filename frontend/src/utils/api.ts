@@ -323,6 +323,17 @@ export async function createAgent(data: {
   return response.json();
 }
 
+export async function updateAgent(
+  agentId: string,
+  data: Partial<Pick<Agent, 'display_name' | 'chat_mode' | 'direct_model' | 'direct_api_base' | 'voice_id'>>,
+): Promise<void> {
+  const response = await fetchWithAuth(`${API_URL}/api/manage/agents/${encodeURIComponent(agentId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  if (!response.ok) throw new Error(`Failed to update agent: ${response.status}`);
+}
+
 export async function deleteAgent(agentId: string): Promise<void> {
   const response = await fetchWithAuth(`${API_URL}/api/manage/agents/${encodeURIComponent(agentId)}`, {
     method: 'DELETE',
@@ -1033,6 +1044,7 @@ export default {
   removeRoomAgent,
   getRoomHistory,
   sendRoomMessage,
+  updateAgent,
   streamChat,
   streamRoomChat,
   stripAvatarTags,

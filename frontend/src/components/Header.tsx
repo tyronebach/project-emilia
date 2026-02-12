@@ -1,10 +1,11 @@
+import { useState } from 'react';
 import { Menu, Activity, Brain, MicOff, Volume2, HeartHandshake, BookOpenText } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
 import { STATUS_COLORS } from '../types';
 import type { SoulMoodSnapshot } from '../types/soulWindow';
 import { Button } from './ui/button';
-import { updateUserPreferences } from '../utils/api';
+import { updateUserPreferences, updateAgent } from '../utils/api';
 import MoodIndicator from './MoodIndicator';
 
 interface HeaderProps {
@@ -42,6 +43,28 @@ function Header({
   const currentAgent = useUserStore((state) => state.currentAgent);
   const currentUser = useUserStore((state) => state.currentUser);
   const updatePreferences = useUserStore((state) => state.updatePreferences);
+  const updateCurrentAgent = useUserStore((state) => state.updateCurrentAgent);
+  const [modeTogglePending, setModeTogglePending] = useState(false);
+
+  const chatMode = currentAgent?.chat_mode || 'openclaw';
+
+  const handleToggleMode = async () => {
+    if (!currentAgent?.id || modeTogglePending) return;
+    const nextMode = chatMode === 'direct' ? 'openclaw' : 'direct';
+
+    // Optimistic update
+    setModeTogglePending(true);
+    updateCurrentAgent({ chat_mode: nextMode });
+
+    try {
+      await updateAgent(currentAgent.id, { chat_mode: nextMode });
+    } catch (error) {
+      console.error('Failed to update chat mode:', error);
+      updateCurrentAgent({ chat_mode: chatMode }); // revert
+    } finally {
+      setModeTogglePending(false);
+    }
+  };
 
   const handleToggleTts = async () => {
     const nextEnabled = !ttsEnabled;
@@ -78,6 +101,18 @@ function Header({
           <span className="font-display text-sm md:text-base text-text-primary">
             {currentAgent?.display_name || 'Kokoro'}
           </span>
+          <button
+            onClick={handleToggleMode}
+            disabled={modeTogglePending || !currentAgent?.id}
+            className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide leading-none cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              chatMode === 'direct'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
+            }`}
+            title={`Mode: ${chatMode} (click to toggle)`}
+          >
+            {chatMode === 'direct' ? 'Direct' : 'OC'}
+          </button>
           <span
             className={`w-2 h-2 rounded-full ${STATUS_COLORS[status]}`}
             title={`Status: ${status}`}

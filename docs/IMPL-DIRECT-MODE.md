@@ -1,6 +1,6 @@
 # Direct Mode Implementation (Repo-Aligned)
 
-Status: Implemented (Lean V1)  
+Status: Implemented (V1 + V2)
 Last updated: 2026-02-12
 
 ## Goal
@@ -12,24 +12,17 @@ Add a per-agent chat backend toggle:
 Primary outcome: support persona-focused agents that should not depend on OpenClaw agent/tool wiring, while preserving current behavior for utility agents.
 
 ## Executive Assessment
-This idea improves robustness and operational flexibility, but the previous draft introduces more complexity than needed for v1.
+This idea improves robustness and operational flexibility. V1 shipped a lean toggle + shared direct caller. V2 added the memory tool loop and in-chat mode toggle.
 
 Robustness gains:
 - Reduces coupling to OpenClaw agent prompt/tool behavior for selected agents.
 - Enables provider portability (OpenAI-like backends) without changing frontend flow.
 - Allows mixed-mode deployments per agent.
+- V2 memory tools give direct-mode agents access to the same memory files as OpenClaw agents.
 
-Complexity costs in previous draft:
-- Adds a full custom tool loop + sqlite-vec memory search path not present in current repo.
-- Proposes a migration style (standalone SQL file) that does not match this codebase.
-- Only patches 1:1 chat path, but current room chat has separate LLM call paths.
-- Moves internal services (simulator/judge/compactor) to direct mode unnecessarily for the core feature.
+## Implementation Summary
 
-Recommendation: ship a lean v1 first (toggle + shared direct caller + 1:1 + rooms), then add optional memory tools later.
-
-## Implementation Summary (Completed)
-
-Lean V1 is now implemented in repo with the following delivered scope:
+### V1 (Lean Toggle)
 
 - Per-agent mode fields added and persisted: `chat_mode`, `direct_model`, `direct_api_base`.
 - New direct client service added: `backend/services/direct_llm.py`.
@@ -39,8 +32,19 @@ Lean V1 is now implemented in repo with the following delivered scope:
 - Rollback semantics on direct-call failure are preserved (orphaned user message cleanup).
 - `SOUL.md` prepend support is available in direct mode when workspace file exists.
 
-Implemented files:
+### V2 (Memory Tools + In-Chat Toggle)
 
+- Bounded tool loop (`run_tool_loop`) with 3 required memory tools: `memory_search`, `memory_read`, `memory_write`.
+- Memory bridge reads OpenClaw's SQLite memory index directly (hybrid vector+FTS search via `sqlite-vec`, FTS-only fallback).
+- Gemini embedding API for query vectors (`gemini-embedding-001`, dynamic dimension handling).
+- Consolidated shared direct-mode code: `normalize_messages_for_direct()` moved to `services/direct_llm.py`.
+- Streaming direct path runs tool loop non-stream internally, emits final content as single SSE chunk.
+- In-chat mode toggle pill in `Header.tsx` (amber "Direct" / blue "OC") with optimistic update pattern.
+- New config settings: `OPENCLAW_MEMORY_DIR`, `DIRECT_TOOL_MAX_STEPS`, `GEMINI_API_KEY`.
+
+### Implemented files
+
+V1:
 - `backend/config.py`
 - `backend/db/connection.py`
 - `backend/db/repositories/agents.py`
@@ -56,6 +60,14 @@ Implemented files:
 - `backend/tests/test_api.py`
 - `backend/tests/test_rooms.py`
 
+V2 (additional):
+- `backend/services/direct_tool_runtime.py` (new — tool loop runtime)
+- `backend/services/memory_bridge.py` (new — memory search/read/write)
+- `backend/tests/test_direct_tool_runtime.py` (new — 11 tests)
+- `backend/tests/test_memory_bridge.py` (new — 18 tests)
+- `frontend/src/store/userStore.ts` (added `updateCurrentAgent`)
+- `frontend/src/components/Header.tsx` (added mode toggle pill)
+
 ## Current Repo Reality Check
 
 | Assumption from old draft | Current repo reality | Action |
@@ -63,35 +75,27 @@ Implemented files:
 | `chat_mode` already exists on agents | It does not exist in DB/schema/repo/frontend types | Add DB columns + schema/type support |
 | Add SQL migration file under `backend/scripts/migrations` | This repo uses idempotent schema changes in `backend/db/connection.py` via `_add_column` | Implement migration in `connection.py` |
 | Only `backend/routers/chat.py` needs branching | Room chat has independent OpenClaw calls in `backend/routers/rooms.py` (stream + non-stream) | Add mode routing in both chat and rooms |
-| Memory tools can read OpenClaw sqlite memory index | Runtime memory today is workspace files (`MEMORY.md`, `memory/*.md`); no sqlite-vec integration in app | Defer vector memory tools for v1 |
+| Memory tools can read OpenClaw sqlite memory index | V2 implemented: `memory_bridge.py` reads OpenClaw's SQLite index directly via `sqlite-vec` | Implemented in V2 |
 | Internal services should switch to direct client now | `compaction` / `soul_simulator` use shared `services/llm_client.py` and are not part of agent chat toggle | Keep unchanged for v1 |
 | Per-agent API keys in DB are fine | Storing provider keys in DB increases secret-management complexity | Use env/API-secret store for v1; optionally add per-agent secret refs later |
 | Frontend/admin unaffected | `/manage` agent edit currently only supports display/voice/VRM/workspace | Extend backend schema + frontend types/UI |
 
-## V1 Scope (Implemented)
+## Scope
 
-### Included
-1. Per-agent backend mode fields:
-- `chat_mode`: `openclaw | direct`
-- `direct_model`: nullable override
-- `direct_api_base`: nullable override
+### V1 (Implemented)
+1. Per-agent backend mode fields: `chat_mode`, `direct_model`, `direct_api_base`
+2. Shared direct caller service (OpenAI-compatible non-stream + stream)
+3. Mode-aware routing in `POST /api/chat` and `POST /api/rooms/{room_id}/chat`
+4. Admin/manage support for configuring mode per agent
 
-2. Shared direct caller service:
-- OpenAI-compatible non-stream + stream support
-- No tool-calling loop in v1
+### V2 (Implemented)
+1. Bounded tool loop with 3 memory tools (`memory_search`, `memory_read`, `memory_write`)
+2. SQLite-based memory bridge reading OpenClaw's index (hybrid vector+FTS search)
+3. Gemini embedding API for query vectors
+4. Consolidated shared direct-mode code in `services/direct_llm.py`
+5. In-chat mode toggle in Header.tsx
 
-3. Mode-aware routing in:
-- `POST /api/chat` (stream and non-stream)
-- `POST /api/rooms/{room_id}/chat` (stream and non-stream, per responding agent)
-
-4. Admin/manage support:
-- Existing `PUT /api/manage/agents/{agent_id}` accepts new fields
-- `GET /api/manage/agents` returns new fields
-- Basic toggle/inputs in manage UI
-
-### Explicitly Deferred
-- Custom memory tool-calling loop (`memory_search/read/write`)
-- sqlite-vec / OpenClaw memory index dependency
+### Still Deferred
 - Migrating compaction/simulator/judge to direct mode
 - Per-agent raw API key storage
 
@@ -149,9 +153,9 @@ Responsibilities:
 - Stream call yielding chunks in the same shape routers already parse.
 - Convert provider errors to actionable exceptions.
 
-Non-goals for v1:
-- Tool-calling loop.
-- Embeddings/vector memory logic.
+V2 additions:
+- Tool-calling loop via `direct_tool_runtime.run_tool_loop()`.
+- Embeddings/vector memory via `memory_bridge.py`.
 
 ### 5) Router integration
 
@@ -207,49 +211,36 @@ If `SOUL.md` is missing, proceed with existing message stack (no hard failure).
 ## Validation Results
 
 ### Backend
-Added and passing tests cover:
+Tests cover both V1 and V2 paths:
 1. `POST /api/chat?stream=0` routes to direct path when `chat_mode=direct`.
-2. `POST /api/chat?stream=1` routes to direct stream path.
-3. rollback cleanup deletes orphaned user message on direct call failure.
-4. room non-stream chat supports direct-mode agents.
-5. room streaming chat supports direct-mode agents.
-6. manage agent update persists and returns the new fields.
-
-Command run:
+2. `POST /api/chat?stream=1` routes to direct stream path (V2: via `run_tool_loop`).
+3. Rollback cleanup deletes orphaned user message on direct call failure.
+4. Room non-stream chat supports direct-mode agents (V2: via `run_tool_loop`).
+5. Room streaming chat supports direct-mode agents.
+6. Manage agent update persists and returns the new fields.
+7. Tool loop: no-tool passthrough, single/chained tool calls, max-step termination, malformed args.
+8. Memory bridge: path validation, file read/write, hybrid search merge, FTS fallback.
 
 ```bash
 backend/.venv/bin/python -m pytest -q backend/tests
 ```
 
-Result: `209 passed, 1 skipped`.
+Result: `247 passed, 1 skipped`.
 
 ### Frontend
-Frontend checks run:
 
 ```bash
-cd frontend
-npm test
-npm run lint
-npm run build
+cd frontend && npx vitest run && npm run build
 ```
 
-Result: tests/lint/build passed (within `./scripts/check-all.sh`).
-
-### Full Stack Check
-
-Command run:
-
-```bash
-./scripts/check-all.sh
-```
-
-Result: passed (backend tests + frontend tests/lint/build + game loader check).
+Result: 126 tests passed, build succeeded.
 
 ## Operational Notes Learned
 
 - The direct toggle introduces moderate, targeted complexity and materially improves robustness by reducing hard dependency on OpenClaw routing for all agents.
-- V1 keeps complexity controlled by explicitly deferring tool-calling and vector-memory coupling.
-- This architecture is V2-ready because routing is centralized around `chat_mode` and shared direct-client helpers.
+- V2 adds tool-calling and vector-memory coupling in a clean, bounded way: tool loop is isolated in `direct_tool_runtime.py`, memory bridge is self-contained in `memory_bridge.py`.
+- Streaming + tool loop solved by running tool steps non-stream internally, emitting final content as single SSE chunk.
+- Shared code consolidated in `services/direct_llm.py` prevents duplication between `chat.py` and `rooms.py`.
 
 ## Risks and Mitigations
 
@@ -266,21 +257,16 @@ Result: passed (backend tests + frontend tests/lint/build + game loader check).
 - Mitigation: keep provider key env-based in v1; avoid DB key storage.
 
 ## Complexity vs Robustness Verdict
-- As a lean toggle-based implementation: net positive, more robust.
-- As originally drafted (tool loop + vector memory + internal-service migration): high complexity for limited immediate gain.
+- V1 lean toggle: net positive, minimal complexity.
+- V2 memory tools: adds bounded complexity (tool loop + memory bridge), but keeps it isolated in two new service files. No changes to existing OpenClaw paths.
 
-Ship v1 lean, then evaluate v2 memory-tools based on production behavior.
+## V2 Implementation Reference
 
-## V2 Plan (Concrete Checklist)
-
-V2 execution plan now lives in:
+V2 implementation checklist (all items completed):
 
 - `docs/planning/P010-direct-mode-v2-checklist.md`
 
-That plan is the active source of truth for:
-
-- mandatory memory tools in direct mode (`memory_search`, `memory_read`, `memory_write`)
-- OpenClaw-backed memory system usage
-- env-only secret handling
-- explicit no-fallback behavior for direct mode
-- live chat top-nav mode toggle in `/user/:userId/chat/:sessionId`
+Key V2 service files:
+- `backend/services/direct_tool_runtime.py` — Bounded tool loop (`run_tool_loop`) with `MEMORY_TOOLS` schema
+- `backend/services/memory_bridge.py` — SQLite memory reader (hybrid vector+FTS search, file read/write)
+- `backend/services/direct_llm.py` — Shared `normalize_messages_for_direct()` + `DirectLLMClient` with `tools` param

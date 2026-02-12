@@ -12,6 +12,7 @@ interface UserState {
   setAgent: (agent: Agent | null) => void;
   clearUser: () => void;
   updatePreferences: (preferences: string) => void;
+  updateCurrentAgent: (updates: Partial<Agent>) => void;
   logout: () => void;
 }
 
@@ -44,6 +45,13 @@ export const useUserStore = create<UserState>()(
           currentUser: state.currentUser
             ? { ...state.currentUser, preferences }
             : state.currentUser,
+        }));
+      },
+      updateCurrentAgent: (updates) => {
+        set((state) => ({
+          currentAgent: state.currentAgent
+            ? { ...state.currentAgent, ...updates }
+            : state.currentAgent,
         }));
       },
       logout: () => {
