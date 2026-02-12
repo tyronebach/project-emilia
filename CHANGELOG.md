@@ -4,6 +4,22 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.6.4] - 2026-02-12
+
+### Added - Sarcasm Mitigation in Live Trigger Detection
+
+- **Classifier phrase overrides** - Added deterministic sarcasm phrase mitigation in `backend/services/trigger_classifier.py` to boost negative labels for known sarcastic patterns and cap conflicting positive labels.
+- **Co-occurrence dampening in emotion engine** - Added positive-trigger dampening in `backend/services/emotion_engine.py` when mixed positive/negative signals (or recent negative context) suggest sarcasm.
+- **Recent-trigger context helper** - Added `EmotionalStateRepository.get_recent_trigger_labels()` and wired it into pre-LLM emotional processing in `backend/routers/chat.py`.
+- **Shared-path coverage** - The mitigation now affects 1:1 chat, room chat (shared pre-LLM path), Designer V2 simulate trigger detection, and archetype generation (shared classifier path).
+- **Config knobs** - Added env-tunable controls for sarcasm mitigation strength and phrase override behavior.
+
+### Tests
+
+- Expanded `backend/tests/test_trigger_classifier.py` with sarcasm and genuine-positive anti-regression cases.
+- Expanded `backend/tests/test_emotion_engine.py` with co-occurrence and recent-negative-context dampening coverage.
+- Full backend suite passing (`190 passed, 1 skipped`).
+
 ## [5.6.3] - 2026-02-11
 
 ### Added - Group Rooms (V1)

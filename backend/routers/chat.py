@@ -116,7 +116,19 @@ async def _process_emotion_pre_llm(
 
             # Classifier-based trigger detection
             normalized_user_message = (user_message or "").strip()
-            classifier_triggers = engine.detect_triggers(normalized_user_message) if normalized_user_message else []
+            recent_context_triggers = (
+                EmotionalStateRepository.get_recent_trigger_labels(user_id, agent_id, limit_events=5)
+                if normalized_user_message
+                else []
+            )
+            classifier_triggers = (
+                engine.detect_triggers(
+                    normalized_user_message,
+                    recent_context_triggers=recent_context_triggers,
+                )
+                if normalized_user_message
+                else []
+            )
 
             # Normalize to canonical trigger keys so designer presets always apply.
             trigger_map = {}

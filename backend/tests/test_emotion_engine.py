@@ -18,6 +18,12 @@ class _StubTriggerClassifier:
 
     def classify(self, text: str) -> list[tuple[str, float]]:
         lowered = (text or "").lower()
+        if "mixed sarcasm" in lowered:
+            return [("gratitude", 0.90), ("annoyance", 0.72)]
+        if "bright thank you" in lowered:
+            return [("gratitude", 0.90)]
+        if "small thanks" in lowered:
+            return [("gratitude", 0.35)]
         if "amazing" in lowered or "incredible" in lowered:
             return [("admiration", 0.92)]
         if "thank you" in lowered or "thanks" in lowered:
@@ -45,6 +51,10 @@ class _StubTriggerClassifier:
 
 @pytest.fixture(autouse=True)
 def _mock_trigger_classifier(monkeypatch):
+    monkeypatch.setenv("SARCASM_MITIGATION_ENABLED", "1")
+    monkeypatch.setenv("SARCASM_POSITIVE_DAMPEN_FACTOR", "0.35")
+    monkeypatch.setenv("SARCASM_RECENT_NEGATIVE_DAMPEN_FACTOR", "0.6")
+    monkeypatch.setenv("SARCASM_RECENT_POSITIVE_THRESHOLD", "0.45")
     stub = _StubTriggerClassifier()
     monkeypatch.setattr(emotion_engine_module, "get_trigger_classifier", lambda: stub)
     yield
@@ -202,6 +212,33 @@ class TestEmotionEngineTriggerDetection:
         for trigger, intensity in triggers:
             assert trigger in engine.DEFAULT_TRIGGER_DELTAS
             assert 0.0 <= intensity <= 1.0
+
+    def test_cooccurrence_dampens_positive_when_negative_present(self, engine):
+        triggers = dict(engine.detect_triggers("mixed sarcasm"))
+        assert "annoyance" in triggers
+        assert "gratitude" in triggers
+        assert triggers["gratitude"] < 0.40
+        assert triggers["gratitude"] >= 0.25
+
+    def test_recent_negative_context_dampens_strong_positive(self, engine):
+        no_context = dict(engine.detect_triggers("bright thank you"))
+        with_context = dict(
+            engine.detect_triggers(
+                "bright thank you",
+                recent_context_triggers=["anger"],
+            )
+        )
+        assert no_context["gratitude"] > with_context["gratitude"]
+        assert with_context["gratitude"] > 0.45
+
+    def test_recent_negative_context_skips_low_confidence_positive(self, engine):
+        triggers = dict(
+            engine.detect_triggers(
+                "small thanks",
+                recent_context_triggers=["disapproval"],
+            )
+        )
+        assert triggers["gratitude"] == pytest.approx(0.35)
 
     def test_classifier_integration_positive_emotion_increases_valence(self, engine):
         state = EmotionalState()
