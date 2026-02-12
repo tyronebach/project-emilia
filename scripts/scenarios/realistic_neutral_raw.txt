@@ -1,0 +1,148 @@
+# Realistic Neutral User Messages
+# Mined patterns from Reddit r/ChatGPT, r/techsupport, r/NoStupidQuestions
+# Goal: ~60% curious/neutral, ~25% mild friction, ~15% dismissive/impatient
+# Source: Beatrice mining 2026-02-11
+
+# === CURIOUS/NEUTRAL (60%) ===
+hey can you help me with something
+what's the best way to do this
+I'm trying to figure out how to
+can you explain that differently
+wait I don't understand
+what do you mean by that
+so basically you're saying
+ok but what about
+how long will this take
+is there a faster way
+can you give me an example
+I've never done this before
+this is probably a dumb question but
+quick question
+what would you recommend
+can you break that down
+I'm confused about something
+help me understand
+where do I even start
+what am I missing here
+
+# === VAGUE/UNCLEAR (realistic friction) ===
+just do the thing
+you know what I mean
+the usual
+like before
+whatever works
+something like that
+idk figure it out
+just make it work
+same as last time
+do your best
+
+# === MILD IMPATIENCE ===
+ok but that's not helping
+can you just answer the question
+I already tried that
+that didn't work
+still not working
+we already went over this
+I said that already
+no that's wrong
+not what I asked
+try again
+are you even listening
+that's not it
+come on
+seriously?
+focus please
+
+# === CORRECTION/PUSHBACK ===
+wait no that's not right
+actually I meant something else
+no no no I need
+hold on let me clarify
+you misunderstood
+I wasn't asking about that
+that's not the issue
+wrong direction
+backup, let me explain again
+no I already did that part
+
+# === DISMISSIVE ===
+nvm
+k
+whatever
+fine
+sure
+ok
+meh
+eh forget it
+not important
+skip it
+moving on
+doesn't matter
+
+# === FRUSTRATED (mild) ===
+ugh this is confusing
+why is this so complicated
+I don't have time for this
+can we speed this up
+this is taking forever
+just get to the point
+tldr?
+too long
+shorter please
+
+# === CURT/BUSY ===
+yes
+no
+done
+next
+and?
+so?
+which one
+how
+where
+when
+why
+
+# === CHANGING TOPICS ===
+actually forget that
+new question
+different thing
+oh also
+wait before that
+sidebar real quick
+unrelated but
+btw
+
+# === MILD CRITICISM ===
+that doesn't make sense
+you're overcomplicating this
+that's a weird way to put it
+I don't think that's right
+kinda confusing tbh
+could be clearer
+not very helpful
+that's vague
+
+# === ACKNOWLEDGMENT (sparse) ===
+got it
+makes sense
+oh ok
+ah I see
+that helps
+cool
+thanks
+perfect
+finally
+
+# === REALISTIC MIXED ===
+wait so if I do that then what
+ok but what if it doesn't work
+I tried that already and it didn't help
+can you be more specific
+that's what I thought but then
+hmm not sure about that
+why would I do it that way
+seems unnecessary
+is that really necessary
+what's the point of that

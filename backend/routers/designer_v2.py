@@ -9,10 +9,13 @@ Operates on the same DB tables as V1 but exposes V2-specific views:
 import json
 import re
 import time
+from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
-from core.exceptions import not_found, bad_request
+from config import settings
+from core.exceptions import not_found, bad_request, service_unavailable, timeout_error
 
 from db.connection import get_db
 from db.repositories import (
@@ -32,6 +35,13 @@ from services.emotion_engine import (
 from services.drift_simulator import (
     DriftSimulationConfig,
     DriftSimulator,
+)
+from services.soul_simulator import (
+    analyze_exchange,
+    normalize_archetype_id,
+    run_exchange,
+    validate_soul_md,
+    validate_turns,
 )
 
 router = APIRouter(
@@ -206,7 +216,7 @@ def _run_drift_simulation(
     session_gap_hours: float = 8.0,
     overnight_gap_hours: float = 12.0,
     seed: int | None = None,
-    replay_mode: str = "sequential",
+    replay_mode: str = "random",
 ):
     if not agent_id or not archetype:
         raise bad_request("agent_id and archetype required")
@@ -214,7 +224,7 @@ def _run_drift_simulation(
     if duration_days <= 0 or sessions_per_day <= 0 or messages_per_session <= 0:
         raise bad_request("duration_days, sessions_per_day, messages_per_session must be positive")
 
-    replay_mode = (replay_mode or "sequential").strip().lower()
+    replay_mode = (replay_mode or "random").strip().lower()
     if replay_mode not in {"sequential", "random"}:
         raise bad_request("replay_mode must be 'sequential' or 'random'")
 
@@ -423,7 +433,7 @@ async def apply_personality(
     simulate_session_gap_hours: float = Query(8.0, description="Simulation intra-day gap in hours when simulate_archetype is set."),
     simulate_overnight_gap_hours: float = Query(12.0, description="Simulation overnight gap in hours when simulate_archetype is set."),
     simulate_seed: int | None = Query(None, description="Optional deterministic seed when simulate_archetype is set."),
-    simulate_replay_mode: str = Query("sequential", description="Simulation replay mode when simulate_archetype is set."),
+    simulate_replay_mode: str = Query("random", description="Simulation replay mode when simulate_archetype is set."),
     simulate_include_config: bool = Query(False, description="Include resolved simulation config in simulation_summary."),
 ) -> dict:
     """Apply a personality payload that includes `agent_id` (or `id`).
@@ -711,6 +721,120 @@ async def reset_trigger_calibration(user_id: str, agent_id: str, trigger_type: s
 
 # ============ SIMULATION ============
 
+def _load_soul_md_from_agent(agent_id: str) -> str:
+    """Load and validate SOUL.md from an agent workspace."""
+    normalized_agent_id = (agent_id or "").strip()
+    if not normalized_agent_id:
+        raise bad_request("agent_id is required")
+
+    agent = AgentRepository.get_by_id(normalized_agent_id)
+    if not agent:
+        raise not_found(f"Agent {normalized_agent_id}")
+
+    workspace_raw = agent.get("workspace")
+    if not workspace_raw:
+        raise not_found("Agent workspace")
+
+    soul_path = Path(workspace_raw) / "SOUL.md"
+    if not soul_path.exists() or not soul_path.is_file():
+        raise not_found("SOUL.md")
+
+    try:
+        return validate_soul_md(soul_path.read_text(encoding="utf-8"))
+    except UnicodeDecodeError as exc:
+        raise bad_request("SOUL.md must be UTF-8 text") from exc
+    except OSError as exc:
+        raise bad_request(f"Failed to read SOUL.md: {exc}") from exc
+
+
+@router.post("/soul/simulate")
+async def soul_simulate(body: dict[str, Any]) -> dict:
+    soul_md_raw = body.get("soul_md")
+    agent_id_raw = body.get("agent_id")
+
+    has_soul_md = isinstance(soul_md_raw, str) and bool(soul_md_raw.strip())
+    has_agent_id = isinstance(agent_id_raw, str) and bool(agent_id_raw.strip())
+
+    if not has_soul_md and soul_md_raw not in {None, ""}:
+        raise bad_request("soul_md must be a string")
+    if not has_agent_id and agent_id_raw not in {None, ""}:
+        raise bad_request("agent_id must be a string")
+
+    if has_soul_md == has_agent_id:
+        raise bad_request("Provide exactly one of soul_md or agent_id")
+
+    try:
+        soul_md = validate_soul_md(soul_md_raw) if has_soul_md else _load_soul_md_from_agent(str(agent_id_raw))
+    except ValueError as exc:
+        raise bad_request(str(exc)) from exc
+
+    archetype_raw = body.get("archetype")
+    try:
+        archetype = normalize_archetype_id(archetype_raw)
+    except ValueError as exc:
+        raise bad_request(str(exc)) from exc
+
+    try:
+        turns = validate_turns(body.get("turns", settings.soul_sim_max_turns), settings.soul_sim_max_turns)
+    except ValueError as exc:
+        raise bad_request(str(exc)) from exc
+
+    persona_model = str(body.get("persona_model") or settings.soul_sim_persona_model).strip()
+    archetype_model = str(body.get("archetype_model") or settings.compact_model).strip()
+    judge_model = str(body.get("judge_model") or settings.compact_model).strip()
+    if not persona_model or not archetype_model or not judge_model:
+        raise bad_request("persona_model, archetype_model, and judge_model must be non-empty when provided")
+
+    timeout_per_call_raw = body.get("timeout_per_call")
+    if timeout_per_call_raw is not None:
+        try:
+            timeout_per_call = float(timeout_per_call_raw)
+            if timeout_per_call < 10.0 or timeout_per_call > 300.0:
+                raise bad_request("timeout_per_call must be between 10 and 300 seconds")
+        except (TypeError, ValueError) as exc:
+            raise bad_request("timeout_per_call must be a number") from exc
+    else:
+        timeout_per_call = 90.0
+
+    try:
+        exchange = await run_exchange(
+            soul_md=soul_md,
+            archetype_id=archetype,
+            turns=turns,
+            persona_model=persona_model,
+            archetype_model=archetype_model,
+            timeout_per_call=timeout_per_call,
+        )
+        analysis = await analyze_exchange(
+            soul_md=soul_md,
+            archetype_id=archetype,
+            exchange=exchange,
+            judge_model=judge_model,
+            timeout_per_call=timeout_per_call,
+        )
+    except httpx.TimeoutException as exc:
+        raise timeout_error("Soul simulation") from exc
+    except (httpx.ConnectError, httpx.HTTPStatusError) as exc:
+        raise service_unavailable("Soul simulation") from exc
+    except RuntimeError as exc:
+        raise service_unavailable("Soul simulation") from exc
+    except ValueError as exc:
+        raise bad_request(str(exc)) from exc
+
+    return {
+        "ok": True,
+        "exchange": exchange,
+        "analysis": analysis,
+        "config": {
+            "archetype": archetype,
+            "turns": turns,
+            "persona_model": persona_model,
+            "archetype_model": archetype_model,
+            "judge_model": judge_model,
+            "timeout_per_call": timeout_per_call,
+        },
+    }
+
 @router.post("/simulate")
 async def simulate(body: dict[str, Any]) -> dict:
     agent_id = body.get("agent_id")
@@ -944,7 +1068,7 @@ async def drift_simulate(body: dict[str, Any]) -> dict:
     agent_id = body.get("agent_id")
     user_id = body.get("user_id", "sim-user")
     archetype = body.get("archetype")
-    replay_mode = str(body.get("replay_mode", "sequential"))
+    replay_mode = str(body.get("replay_mode", "random"))
 
     duration_days = int(body.get("duration_days", 7))
     sessions_per_day = int(body.get("sessions_per_day", 2))
@@ -979,7 +1103,7 @@ async def drift_simulate_summary(
     agent_id = body.get("agent_id")
     user_id = body.get("user_id", "sim-user")
     archetype = body.get("archetype")
-    replay_mode = str(body.get("replay_mode", "sequential"))
+    replay_mode = str(body.get("replay_mode", "random"))
 
     duration_days = int(body.get("duration_days", 7))
     sessions_per_day = int(body.get("sessions_per_day", 2))
@@ -1009,7 +1133,7 @@ async def drift_simulate_summary(
 async def drift_compare(body: dict[str, Any]) -> dict:
     agent_id = body.get("agent_id")
     archetypes = body.get("archetypes") or []
-    replay_mode = str(body.get("replay_mode", "sequential"))
+    replay_mode = str(body.get("replay_mode", "random"))
 
     duration_days = int(body.get("duration_days", 7))
     sessions_per_day = int(body.get("sessions_per_day", 2))

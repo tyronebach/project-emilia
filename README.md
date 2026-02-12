@@ -20,6 +20,7 @@ Current backend app version: `5.6.3`.
 - 1:1 chat sessions with streaming SSE responses and avatar behavior tags.
 - Group rooms with multi-agent participation.
 - Emotion engine with per user-agent persistent state and calibration.
+- Designer SOUL simulator API for quick persona consistency checks (`POST /api/designer/v2/soul/simulate`).
 - Soul Window UX:
   - Header mood indicator (live from SSE `emotion.snapshot`).
   - Bond modal (`/api/soul-window/bond`).
@@ -96,6 +97,7 @@ npm run build         # Production build
 | `AGENTS.md` | Guide for coding agents |
 | `CHANGELOG.md` | Version history |
 | `DOCUMENTATION.md` | LLM-focused repo map |
+| `docs/SOUL-SIMULATOR-API.md` | SOUL simulator endpoint contract |
 | `docs/planning/archive/P006-soul-window.md` | Soul Window canonical plan |
 | `docs/P006-soul-window-dev-guide.md` | Soul Window implementation and extension guide |
 | `docs/planning/archive/DRIFT-API.md` | Drift Simulator API contract |

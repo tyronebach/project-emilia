@@ -54,6 +54,12 @@ class Settings:
         self.compact_keep_recent: int = int(os.getenv("COMPACT_KEEP_RECENT", "10"))
         self.compact_model: str = os.getenv("COMPACT_MODEL", "openai/gpt-4o-mini")
 
+        # SOUL simulator
+        self.soul_sim_persona_model: str = os.getenv(
+            "SOUL_SIM_PERSONA_MODEL", "openai-codex/gpt-5.1-codex-mini"
+        )
+        self.soul_sim_max_turns: int = int(os.getenv("SOUL_SIM_MAX_TURNS", "8"))
+
         # Validation
         if not self.clawdbot_token:
             raise RuntimeError("Missing CLAWDBOT_TOKEN env var")
