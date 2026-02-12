@@ -21,8 +21,9 @@ Current backend app version: `5.6.3`.
 - Group rooms with multi-agent participation.
 - Per-agent chat backend toggle:
   - `openclaw` -> `agent:{clawdbot_agent_id}` via gateway
-  - `direct` -> OpenAI-compatible `/chat/completions`
+  - `direct` -> OpenAI-compatible `/chat/completions` with memory tool loop (`memory_search`, `memory_read`, `memory_write`)
   - rooms support mixed mode per responding agent.
+  - In-chat mode toggle pill in header (amber "Direct" / blue "OC").
 - Emotion engine with per user-agent persistent state and calibration.
 - Designer SOUL simulator API for quick persona consistency checks (`POST /api/designer/v2/soul/simulate`).
 - Soul Window UX:
@@ -45,6 +46,7 @@ Open `https://localhost:3443`.
 
 Direct mode note:
 - `OPENAI_API_KEY` must be set for backend when using `chat_mode=direct`.
+- `GEMINI_API_KEY` must be set for memory search embeddings in direct mode.
 - For OpenAI direct calls, use provider model IDs (example: `gpt-4.1-mini`) rather than OpenClaw-style model prefixes.
 
 ## Feature Flags
@@ -105,9 +107,12 @@ npm run build         # Production build
 | `AGENTS.md` | Guide for coding agents |
 | `CHANGELOG.md` | Version history |
 | `DOCUMENTATION.md` | LLM-focused repo map |
+| `docs/IMPL-DIRECT-MODE.md` | Direct mode V1+V2 implementation doc |
+| `docs/CODE-REVIEW-GROUP-CHAT.md` | Group chat code review and gap analysis |
 | `docs/SOUL-SIMULATOR-API.md` | SOUL simulator endpoint contract |
-| `docs/planning/archive/P006-soul-window.md` | Soul Window canonical plan |
 | `docs/P006-soul-window-dev-guide.md` | Soul Window implementation and extension guide |
+| `docs/planning/P010-direct-mode-v2-checklist.md` | Direct mode V2 checklist (completed) |
+| `docs/planning/archive/P006-soul-window.md` | Soul Window canonical plan |
 | `docs/planning/archive/DRIFT-API.md` | Drift Simulator API contract |
 | `docs/animation/` | VRM/animation pipeline notes |
 
