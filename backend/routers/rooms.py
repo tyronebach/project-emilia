@@ -24,11 +24,7 @@ from db.repositories import (
 )
 from dependencies import get_user_id, verify_token
 from parse_chat import extract_avatar_commands, parse_chat_completion, coalesce_response_text
-from routers.chat import (
-    _process_emotion_post_llm,
-    _process_emotion_pre_llm,
-    _spawn_background,
-)
+from services.background_tasks import spawn_background as _spawn_background
 from services.chat_context_runtime import (
     build_first_turn_context as _build_first_turn_context,
     ctx_value as _ctx_value,
@@ -36,6 +32,10 @@ from services.chat_context_runtime import (
     inject_game_context,
     resolve_trusted_prompt_instructions as _resolve_trusted_prompt_instructions,
     safe_get_mood_snapshot as _safe_get_mood_snapshot,
+)
+from services.emotion_runtime import (
+    process_emotion_post_llm as _process_emotion_post_llm,
+    process_emotion_pre_llm as _process_emotion_pre_llm,
 )
 from schemas import (
     AddRoomAgentRequest,
