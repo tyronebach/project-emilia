@@ -19,10 +19,14 @@ type BlinkPhase = 'open' | 'closing' | 'closed' | 'opening';
 const EMOTION_EYE_CLOSURE: Record<string, number> = {
   angry: 0.3,
   relaxed: 0.2,
-  happy: 0.15,    // Smile squints eyes slightly
-  sleepy: 0.4,
+  happy: 0.4,     // Happy/smile squints eyes significantly
+  excited: 0.35,  // Excited also squints
+  sleepy: 0.5,
   // Add more as needed
 };
+
+// If base eye closure is above this threshold, skip blinking entirely
+const BLINK_SKIP_THRESHOLD = 0.7;
 
 export interface BlinkControllerOptions {
   expressions?: string[];
@@ -165,6 +169,22 @@ export class BlinkController {
   update(deltaTime: number): void {
     const deltaMs = deltaTime * 1000;
 
+    // Skip blinking entirely if eyes are mostly closed from emotion
+    // This prevents compounding blinks on expressions like happy/sleepy
+    if (this.baseEyeClosed >= BLINK_SKIP_THRESHOLD) {
+      // Just output the base value, no blink
+      for (const expr of this.expressions) {
+        this.mixer.setExpression(this.channelName, expr, this.baseEyeClosed);
+      }
+      // Keep phase at open so we can resume when emotion changes
+      if (this.phase !== 'open') {
+        this.phase = 'open';
+        this.blinkProgress = 0;
+        this.scheduleNextBlink();
+      }
+      return;
+    }
+
     switch (this.phase) {
       case 'open':
         // Eyes at base state - count down to next blink
@@ -219,7 +239,7 @@ export class BlinkController {
         break;
     }
 
-    // Apply final value to mixer (additive: base + blink contribution)
+    // Apply final value to mixer (additive: base + blink contribution, clamped)
     const finalValue = this.getFinalEyeClosed();
     for (const expr of this.expressions) {
       this.mixer.setExpression(this.channelName, expr, finalValue);
