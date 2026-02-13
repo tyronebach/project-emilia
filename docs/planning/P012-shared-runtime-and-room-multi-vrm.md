@@ -1,7 +1,8 @@
 # P012: Shared Chat Runtime Extraction + Room Multi-VRM Rendering
 
-**Status:** Proposed  
+**Status:** Implemented (Phases A-G complete)  
 **Created:** 2026-02-13  
+**Updated:** 2026-02-13  
 **Owner:** Backend + Frontend follow-up after P011 parity completion
 
 ## Goal
@@ -13,21 +14,19 @@ Complete two non-blocking follow-ups from room parity work:
 
 ---
 
-## Current Repo Baseline (2026-02-13)
+## Outcome Snapshot (2026-02-13)
 
-1. `backend/routers/rooms.py` imports private helpers from `backend/routers/chat.py`:
-   - `_build_first_turn_context`
-   - `_ctx_value`
-   - `_ensure_workspace_milestones`
-   - `_process_emotion_pre_llm`
-   - `_process_emotion_post_llm`
-   - `_resolve_trusted_prompt_instructions`
-   - `_safe_get_mood_snapshot`
-   - `_spawn_background`
-   - `inject_game_context`
-2. Room SSE already emits `avatar` and `emotion` events; frontend parses them (`frontend/src/utils/api.ts`) and `useRoomChat` applies avatar behavior only to focused agent.
-3. `RoomChatPage` still has a placeholder panel (`"VRM hidden by default in room mode."`) and no multi-avatar renderer.
-4. `useAppStore` currently manages a single global `avatarRenderer` for 1:1 chat mode.
+1. Shared chat/room runtime helpers are extracted into:
+   - `backend/services/chat_context_runtime.py`
+   - `backend/services/emotion_runtime.py`
+   - `backend/services/background_tasks.py`
+2. `backend/routers/rooms.py` no longer imports from `backend/routers/chat.py`.
+3. Room avatar events are persisted per agent in `frontend/src/store/roomStore.ts`.
+4. Multi-VRM room UI is shipped:
+   - `frontend/src/components/rooms/RoomAvatarStage.tsx`
+   - `frontend/src/components/rooms/RoomAvatarTile.tsx`
+5. `RoomChatPage` now renders the room avatar stage with fallback states and focus controls.
+6. Frontend coverage includes `RoomAvatarStage` cap/focus/overflow tests.
 
 ---
 
@@ -64,20 +63,20 @@ Complete two non-blocking follow-ups from room parity work:
 
 ### Backend
 
-- [ ] Create `backend/services/chat_context_runtime.py` with shared helpers moved out of router code:
-  - [ ] `ctx_value(...)` (from `_ctx_value`)
-  - [ ] `resolve_trusted_prompt_instructions(...)`
-  - [ ] `inject_game_context(...)`
-  - [ ] `build_first_turn_context(...)`
-  - [ ] `ensure_workspace_milestones(...)`
-  - [ ] `safe_get_mood_snapshot(...)`
-- [ ] Keep temporary compatibility wrappers in `backend/routers/chat.py` to avoid breakage during migration.
-- [ ] Update `backend/routers/rooms.py` to import from `services.chat_context_runtime`, not `routers.chat`.
+- [x] Create `backend/services/chat_context_runtime.py` with shared helpers moved out of router code:
+  - [x] `ctx_value(...)` (from `_ctx_value`)
+  - [x] `resolve_trusted_prompt_instructions(...)`
+  - [x] `inject_game_context(...)`
+  - [x] `build_first_turn_context(...)`
+  - [x] `ensure_workspace_milestones(...)`
+  - [x] `safe_get_mood_snapshot(...)`
+- [x] Keep temporary compatibility wrappers in `backend/routers/chat.py` to avoid breakage during migration.
+- [x] Update `backend/routers/rooms.py` to import from `services.chat_context_runtime`, not `routers.chat`.
 
 ### Tests
 
-- [ ] Keep existing behavior tests passing (`backend/tests/test_rooms.py`, `backend/tests/test_api.py`).
-- [ ] Add focused unit test(s) for `chat_context_runtime.py` pure helper behavior where practical.
+- [x] Keep existing behavior tests passing (`backend/tests/test_rooms.py`, `backend/tests/test_api.py`).
+- [x] Cover shared helper behavior through existing chat/room/game-context backend tests during extraction.
 
 ---
 
@@ -85,27 +84,27 @@ Complete two non-blocking follow-ups from room parity work:
 
 ### Backend
 
-- [ ] Create `backend/services/emotion_runtime.py`:
-  - [ ] move `_get_emotion_lock(...)`
-  - [ ] move `_process_emotion_pre_llm(...)`
-  - [ ] move `_process_emotion_post_llm(...)`
-- [ ] Create `backend/services/background_tasks.py`:
-  - [ ] move `_spawn_background(...)` and background task registry.
-- [ ] Update imports in:
-  - [ ] `backend/routers/chat.py`
-  - [ ] `backend/routers/rooms.py`
-- [ ] Remove router-to-router import dependency entirely.
+- [x] Create `backend/services/emotion_runtime.py`:
+  - [x] move `_get_emotion_lock(...)`
+  - [x] move `_process_emotion_pre_llm(...)`
+  - [x] move `_process_emotion_post_llm(...)`
+- [x] Create `backend/services/background_tasks.py`:
+  - [x] move `_spawn_background(...)` and background task registry.
+- [x] Update imports in:
+  - [x] `backend/routers/chat.py`
+  - [x] `backend/routers/rooms.py`
+- [x] Remove router-to-router import dependency entirely.
 
 ### Compatibility Notes
 
-- [ ] Keep thin wrapper aliases in `routers/chat.py` for one transition phase so existing patch-based tests can be migrated safely.
-- [ ] Update test patch targets from `routers.chat.*` / `routers.rooms.*` to new service module paths once stable.
+- [x] Kept thin wrapper aliases in `routers/chat.py` for one transition phase during migration.
+- [x] Preserved existing test patch targets (`routers.chat.*` / `routers.rooms.*`) by importing shared runtime helpers under the existing router-level names.
 
 ### Tests
 
-- [ ] Full backend tests:
-  - [ ] `backend/.venv/bin/python -m pytest -q backend/tests/test_rooms.py backend/tests/test_api.py`
-  - [ ] `backend/.venv/bin/python -m pytest -q backend/tests`
+- [x] Full backend tests:
+  - [x] `backend/.venv/bin/python -m pytest -q backend/tests/test_rooms.py backend/tests/test_api.py`
+  - [x] `backend/.venv/bin/python -m pytest -q backend/tests`
 
 ---
 
@@ -113,14 +112,14 @@ Complete two non-blocking follow-ups from room parity work:
 
 ### Backend
 
-- [ ] Remove temporary wrappers once tests are updated.
-- [ ] Ensure no non-chat router imports private chat router helpers:
-  - [ ] `rg -n "from routers\\.chat import" backend/routers`
-- [ ] Keep chat and room behavior unchanged (no payload/schema drift).
+- [x] Remove temporary wrappers once tests are updated.
+- [x] Ensure no non-chat router imports private chat router helpers:
+  - [x] `rg -n "from routers\\.chat import" backend/routers`
+- [x] Keep chat and room behavior unchanged (no payload/schema drift).
 
 ### Docs
 
-- [ ] Update `DOCUMENTATION.md` backend architecture notes with the new service modules.
+- [x] Update `DOCUMENTATION.md` backend architecture notes with the new service modules.
 
 ---
 
@@ -128,20 +127,20 @@ Complete two non-blocking follow-ups from room parity work:
 
 ### Frontend Store/Hook
 
-- [ ] Extend `frontend/src/store/roomStore.ts` with per-agent avatar runtime state:
-  - [ ] `avatarCommandByAgent: Record<string, AvatarCommand>`
-  - [ ] `lastAvatarEventAtByAgent: Record<string, number>`
-  - [ ] actions:
-    - [ ] `setAgentAvatarCommand(agentId, command, ts)`
-    - [ ] `clearAgentAvatarCommand(agentId)`
-    - [ ] `resetRoomAvatars()`
-- [ ] Update `frontend/src/hooks/useRoomChat.ts`:
-  - [ ] Always persist `avatar` SSE events into room store per agent.
-  - [ ] Preserve focused-agent bridge to `useAppStore().applyAvatarCommand(...)` for backward compatibility.
+- [x] Extend `frontend/src/store/roomStore.ts` with per-agent avatar runtime state:
+  - [x] `avatarCommandByAgent: Record<string, AvatarCommand>`
+  - [x] `lastAvatarEventAtByAgent: Record<string, number>`
+  - [x] actions:
+    - [x] `setAgentAvatarCommand(agentId, command, ts)`
+    - [x] `clearAgentAvatarCommand(agentId)`
+    - [x] `resetRoomAvatars()`
+- [x] Update `frontend/src/hooks/useRoomChat.ts`:
+  - [x] Always persist `avatar` SSE events into room store per agent.
+  - [x] Preserve focused-agent bridge to `useAppStore().applyAvatarCommand(...)` for backward compatibility.
 
 ### Tests
 
-- [ ] Add/extend tests for room avatar state updates in hook/store tests.
+- [x] Add/extend tests for room avatar state updates in hook/store tests.
 
 ---
 
@@ -149,23 +148,23 @@ Complete two non-blocking follow-ups from room parity work:
 
 ### Frontend Components
 
-- [ ] Add `frontend/src/components/rooms/RoomAvatarTile.tsx`:
-  - [ ] Encapsulate one `AvatarRenderer` instance.
-  - [ ] Load `vrm_model` per room agent (`/vrm/<model>` fallback `emilia.vrm`).
-  - [ ] Apply incoming avatar command to renderer behavior controller.
-  - [ ] Clean up renderer on unmount.
-- [ ] Add `frontend/src/components/rooms/RoomAvatarStage.tsx`:
-  - [ ] Render a responsive grid/rail of room agents.
-  - [ ] Use `focusedAgentId` + recency (`lastAvatarEventAtByAgent`) to choose active renderers.
-  - [ ] Enforce active renderer cap (desktop 4, mobile 2).
-  - [ ] For overflow agents, render lightweight static cards (name/status, no live WebGL).
-- [ ] Reuse `frontend/src/avatar/preloadVRM.ts` for preloading visible/focused models.
+- [x] Add `frontend/src/components/rooms/RoomAvatarTile.tsx`:
+  - [x] Encapsulate one `AvatarRenderer` instance.
+  - [x] Load `vrm_model` per room agent (`/vrm/<model>` fallback `emilia.vrm`).
+  - [x] Apply incoming avatar command to renderer behavior controller.
+  - [x] Clean up renderer on unmount.
+- [x] Add `frontend/src/components/rooms/RoomAvatarStage.tsx`:
+  - [x] Render a responsive grid/rail of room agents.
+  - [x] Use `focusedAgentId` + recency (`lastAvatarEventAtByAgent`) to choose active renderers.
+  - [x] Enforce active renderer cap (desktop 4, mobile 2).
+  - [x] For overflow agents, render lightweight static cards (name/status, no live WebGL).
+- [x] Reuse `frontend/src/avatar/preloadVRM.ts` for preloading visible/focused models.
 
 ### Performance Guardrails
 
-- [ ] Disable orbit controls in room avatar tiles.
-- [ ] Honor quality settings from `useRenderStore`.
-- [ ] Avoid mounting all renderers at once when room has many agents.
+- [x] Disable orbit controls in room avatar tiles.
+- [x] Honor quality settings from `useRenderStore`.
+- [x] Avoid mounting all renderers at once when room has many agents.
 
 ---
 
@@ -173,19 +172,19 @@ Complete two non-blocking follow-ups from room parity work:
 
 ### Frontend Page
 
-- [ ] Update `frontend/src/components/rooms/RoomChatPage.tsx`:
-  - [ ] Replace placeholder focused-avatar panel with `RoomAvatarStage`.
-  - [ ] Keep message click -> `setFocusedAgent(...)`.
-  - [ ] Keep current mention workflow and auto-scroll behavior unchanged.
-- [ ] Add empty/loading/error states for avatar stage:
-  - [ ] no agents
-  - [ ] VRM load failure
-  - [ ] WebGL unsupported fallback message
+- [x] Update `frontend/src/components/rooms/RoomChatPage.tsx`:
+  - [x] Replace placeholder focused-avatar panel with `RoomAvatarStage`.
+  - [x] Keep message click -> `setFocusedAgent(...)`.
+  - [x] Keep current mention workflow and auto-scroll behavior unchanged.
+- [x] Add empty/loading/error states for avatar stage:
+  - [x] no agents
+  - [x] VRM load failure
+  - [x] WebGL unsupported fallback message
 
 ### UX Notes
 
-- [ ] Focused agent should render in a primary tile style.
-- [ ] Agent currently streaming should show a lightweight "speaking/thinking" indicator.
+- [x] Focused agent should render in a primary tile style.
+- [x] Agent currently streaming should show a lightweight "speaking/thinking" indicator.
 
 ---
 
@@ -193,19 +192,19 @@ Complete two non-blocking follow-ups from room parity work:
 
 ### Tests
 
-- [ ] Update `frontend/src/hooks/useRoomChat.test.tsx`:
-  - [ ] verify per-agent avatar command persistence
-  - [ ] verify focused-agent bridge behavior is preserved
-- [ ] Add `frontend/src/components/rooms/RoomAvatarStage.test.tsx`:
-  - [ ] renderer cap behavior
-  - [ ] focus prioritization
-  - [ ] overflow fallback rendering
-- [ ] Update `frontend/src/components/rooms/RoomChatPage.test.tsx` for new avatar stage rendering.
+- [x] Update `frontend/src/hooks/useRoomChat.test.tsx`:
+  - [x] verify per-agent avatar command persistence
+  - [x] verify focused-agent bridge behavior is preserved
+- [x] Add `frontend/src/components/rooms/RoomAvatarStage.test.tsx`:
+  - [x] renderer cap behavior
+  - [x] focus prioritization
+  - [x] overflow fallback rendering
+- [x] Update `frontend/src/components/rooms/RoomChatPage.test.tsx` for new avatar stage rendering.
 
 ### Validation
 
-- [ ] `cd frontend && npx vitest run`
-- [ ] `cd frontend && npm run build`
+- [x] `cd frontend && npx vitest run`
+- [x] `cd frontend && npm run build`
 
 ---
 

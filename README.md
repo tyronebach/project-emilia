@@ -19,6 +19,7 @@ Current backend app version: `5.6.3`.
 
 - 1:1 chat sessions with streaming SSE responses and avatar behavior tags.
 - Group rooms with multi-agent participation.
+- Room multi-VRM avatar stage with focused-agent priority and renderer caps (desktop 4 / mobile 2).
 - Per-agent chat backend toggle:
   - `openclaw` -> `agent:{clawdbot_agent_id}` via gateway
   - `direct` -> OpenAI-compatible `/chat/completions` with memory tool loop (`memory_search`, `memory_read`, `memory_write`)
@@ -108,7 +109,8 @@ npm run build         # Production build
 | `CHANGELOG.md` | Version history |
 | `DOCUMENTATION.md` | LLM-focused repo map |
 | `docs/IMPL-DIRECT-MODE.md` | Direct mode V1+V2 implementation doc |
-| `docs/CODE-REVIEW-GROUP-CHAT.md` | Group chat code review and gap analysis |
+| `docs/CODE-REVIEW-GROUP-CHAT.md` | Group chat revalidation and closure notes |
+| `docs/planning/P012-shared-runtime-and-room-multi-vrm.md` | Shared runtime extraction + room multi-VRM plan (completed) |
 | `docs/SOUL-SIMULATOR-API.md` | SOUL simulator endpoint contract |
 | `docs/P006-soul-window-dev-guide.md` | Soul Window implementation and extension guide |
 | `docs/planning/P010-direct-mode-v2-checklist.md` | Direct mode V2 checklist (completed) |
