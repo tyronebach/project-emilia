@@ -53,11 +53,12 @@ class Settings:
         # Session compaction (Phase 3.1)
         self.compact_threshold: int = int(os.getenv("COMPACT_THRESHOLD", "25"))
         self.compact_keep_recent: int = int(os.getenv("COMPACT_KEEP_RECENT", "10"))
-        self.compact_model: str = os.getenv("COMPACT_MODEL", "openai/gpt-4o-mini")
+        self.compact_model: str = os.getenv("COMPACT_MODEL", "gpt-4o-mini")
+        self.soul_sim_judge_model: str = os.getenv("SOUL_SIM_JUDGE_MODEL", "gpt-5-mini")
 
         # SOUL simulator
         self.soul_sim_persona_model: str = os.getenv(
-            "SOUL_SIM_PERSONA_MODEL", "openai-codex/gpt-5.1-codex-mini"
+            "SOUL_SIM_PERSONA_MODEL", "gpt-5-mini"
         )
         self.soul_sim_max_turns: int = int(os.getenv("SOUL_SIM_MAX_TURNS", "8"))
 
@@ -76,6 +77,9 @@ class Settings:
         )
         self.direct_tool_max_steps: int = int(os.getenv("DIRECT_TOOL_MAX_STEPS", "6"))
         self.gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
+
+        # Webapp defaults
+        self.default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "America/Vancouver")
 
         # Validation
         if not self.clawdbot_token:

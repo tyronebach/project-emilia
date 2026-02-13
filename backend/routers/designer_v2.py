@@ -780,8 +780,8 @@ async def soul_simulate(body: dict[str, Any]) -> dict:
         raise bad_request(str(exc)) from exc
 
     persona_model = str(body.get("persona_model") or settings.soul_sim_persona_model).strip()
-    archetype_model = str(body.get("archetype_model") or settings.compact_model).strip()
-    judge_model = str(body.get("judge_model") or settings.compact_model).strip()
+    archetype_model = str(body.get("archetype_model") or settings.soul_sim_judge_model).strip()
+    judge_model = str(body.get("judge_model") or settings.soul_sim_judge_model).strip()
     if not persona_model or not archetype_model or not judge_model:
         raise bad_request("persona_model, archetype_model, and judge_model must be non-empty when provided")
 

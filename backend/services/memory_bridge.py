@@ -22,7 +22,10 @@ VECTOR_WEIGHT = 0.7
 TEXT_WEIGHT = 0.3
 CANDIDATE_MULTIPLIER = 3
 
-_VALID_MEMORY_PATH = re.compile(r"^(?:MEMORY\.md|memory/[\w. -]+\.md)$")
+# Read path: permissive (allow existing random files)
+_VALID_MEMORY_PATH_READ = re.compile(r"^(?:MEMORY\.md|memory/[\w. -]+\.md)$")
+# Write path: strict (only MEMORY.md or memory/YYYY-MM-DD.md)
+_VALID_MEMORY_PATH_WRITE = re.compile(r"^(?:MEMORY\.md|memory/\d{4}-\d{2}-\d{2}\.md)$")
 _GEMINI_EMBED_URL = (
     "https://generativelanguage.googleapis.com/v1beta/"
     "models/gemini-embedding-001:embedContent"
@@ -243,9 +246,14 @@ async def search(
 
 # ── File read/write ─────────────────────────────────────────────────
 
-def _validate_memory_path(path: str) -> bool:
-    """Validate that a path matches allowed memory file patterns."""
-    return bool(_VALID_MEMORY_PATH.match(path))
+def _validate_memory_path(path: str, *, for_write: bool = False) -> bool:
+    """Validate that a path matches allowed memory file patterns.
+    
+    Read: permissive (MEMORY.md or memory/*.md)
+    Write: strict (MEMORY.md or memory/YYYY-MM-DD.md only)
+    """
+    pattern = _VALID_MEMORY_PATH_WRITE if for_write else _VALID_MEMORY_PATH_READ
+    return bool(pattern.match(path))
 
 
 def read(
@@ -291,8 +299,8 @@ def write(
     """Write or append to a memory file in the agent workspace."""
     if not workspace:
         return "Error: no workspace configured for this agent"
-    if not _validate_memory_path(path):
-        return f"Error: invalid memory path '{path}' (must be MEMORY.md or memory/*.md)"
+    if not _validate_memory_path(path, for_write=True):
+        return f"Error: invalid memory path '{path}' (must be MEMORY.md or memory/YYYY-MM-DD.md, e.g. memory/2026-02-12.md)"
 
     file_path = Path(workspace) / path
 

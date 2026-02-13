@@ -36,9 +36,9 @@ Optional parameters:
 - `timeout_per_call`: per-LLM-call timeout in seconds (10-300, default 90)
 
 Defaults:
-- `persona_model`: `SOUL_SIM_PERSONA_MODEL` (default `openai-codex/gpt-5.1-codex-mini`)
-- `archetype_model`: `COMPACT_MODEL`
-- `judge_model`: `COMPACT_MODEL`
+- `persona_model`: `SOUL_SIM_PERSONA_MODEL` (default `gpt-5-mini`)
+- `archetype_model`: `COMPACT_MODEL` (default `gpt-4o-mini`)
+- `judge_model`: `COMPACT_MODEL` (default `gpt-4o-mini`)
 - `turns`: `SOUL_SIM_MAX_TURNS` (default `8`)
 
 ## Response

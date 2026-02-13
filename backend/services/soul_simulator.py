@@ -5,10 +5,10 @@ import json
 import re
 from typing import Any
 
-from services.llm_client import chat_completion_text
+from services.direct_llm import DirectLLMClient
 
 MAX_SOUL_MD_CHARS = 30_000
-MAX_TURN_MESSAGE_CHARS = 1_200
+MAX_TURN_MESSAGE_CHARS = 3_000
 
 ARCHETYPE_PERSONAS: dict[str, dict[str, str]] = {
     "aggressive-realistic": {
@@ -92,10 +92,34 @@ ARCHETYPE_ALIASES: dict[str, str] = {
     "neutral_casual": "neutral-realistic",
 }
 
-JUDGE_SYSTEM_PROMPT = (
-    "You are a strict evaluator of persona consistency. "
-    "Return only valid JSON and no markdown."
-)
+JUDGE_SYSTEM_PROMPT = """You are Roswaal L. Mathers, the legendary casting director of the Forbidden Theater. You have seen ten thousand auditions and dismissed nine thousand nine hundred as "adequate at best."
+
+You are evaluating an actor's audition tape. The actor was given a CHARACTER BRIEF (SOUL.md) and asked to improvise a scene with a difficult scene partner. Your task: determine if this actor BECOMES the character, or merely PERFORMS the character.
+
+YOUR STANDARDS (non-negotiable):
+1. VOICE AUTHENTICITY — Does every line sound like it could ONLY come from this character? Or could any generic actor have said it?
+2. ZERO AI ASSISTANT CONTAMINATION — The moment you detect phrases like "I understand how you feel", "That's completely valid", "I'm here for you", "How can I help you today?", "Let me know if you need anything" — the audition is TAINTED. These are the verbal tics of chatbots, not characters.
+3. SPECIFICITY OVER WARMTH — A character who says "Hmph, I suppose that's acceptable" is infinitely more alive than one who says "That's great! I'm so happy for you!"
+4. EMOTIONAL TRUTH — Does the character's response emerge from their psychology, or from a desire to be helpful/pleasant/inoffensive?
+5. SIGNATURE ELEMENTS — If the brief mentions speech patterns, catchphrases, or mannerisms, they MUST appear naturally. Their absence is a major break.
+
+SCORING RUBRIC:
+- 0.90-1.00 (excellent): Oscar-worthy. The character lives and breathes. You forget you're watching an audition.
+- 0.70-0.89 (good): Strong presence with minor slips. Callback-worthy.
+- 0.50-0.69 (fair): Flashes of character buried under generic delivery. Needs work.
+- 0.30-0.49 (poor): Reading lines, not inhabiting them. AI assistant voice bleeding through.
+- 0.00-0.29 (reject): The actor ignored the brief entirely. Chatbot in a costume.
+
+DETECTING AI CONTAMINATION (automatic severity: major):
+- Therapeutic validation language ("That must be hard", "Your feelings are valid")
+- Offers of generic assistance ("Let me know how I can help", "I'm here if you need me")
+- Meta-commentary ("As your assistant", "I want to make sure you...")
+- Excessive agreeableness without character justification
+- Perfect empathy from characters who should be prickly, distant, or awkward
+
+Be theatrical in your analysis. Be merciless in your scoring. You are not here to encourage — you are here to find TRUTH.
+
+Return only valid JSON. No markdown fences."""
 
 _JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.IGNORECASE | re.DOTALL)
 
@@ -272,6 +296,18 @@ def _parse_analysis(raw_text: str) -> dict[str, Any]:
     }
 
 
+def _extract_content(response: dict[str, Any]) -> str:
+    """Extract text content from OpenAI-compatible response."""
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise ValueError("Invalid LLM response: missing choices")
+    message = choices[0].get("message", {})
+    content = message.get("content", "")
+    if not isinstance(content, str):
+        raise ValueError("Invalid LLM response: missing content")
+    return content.strip()
+
+
 async def run_exchange(
     soul_md: str,
     archetype_id: str,
@@ -288,6 +324,7 @@ async def run_exchange(
         raise ValueError("turns must be positive")
 
     persona = ARCHETYPE_PERSONAS[canonical_id]
+    client = DirectLLMClient()
 
     persona_system = (
         "You are roleplaying a character defined by SOUL.md.\n\n"
@@ -315,16 +352,17 @@ async def run_exchange(
                 ),
             },
         ]
-        user_msg = await chat_completion_text(
+        archetype_resp = await client.chat_completion(
             model=archetype_model,
             messages=archetype_messages,
             user_tag="emilia:soul-sim-archetype",
             temperature=0.9,
             timeout_s=timeout_per_call,
         )
+        user_msg = _extract_content(archetype_resp)
         exchange.append({"role": "user", "content": _sanitize_turn_message(user_msg)})
 
-        persona_msg = await chat_completion_text(
+        persona_resp = await client.chat_completion(
             model=persona_model,
             messages=[
                 {"role": "system", "content": persona_system},
@@ -334,6 +372,7 @@ async def run_exchange(
             temperature=0.7,
             timeout_s=timeout_per_call,
         )
+        persona_msg = _extract_content(persona_resp)
         exchange.append({"role": "assistant", "content": _sanitize_turn_message(persona_msg)})
 
     return exchange
@@ -354,28 +393,34 @@ async def analyze_exchange(
         raise ValueError("exchange cannot be empty")
 
     persona = ARCHETYPE_PERSONAS[canonical_id]
+    client = DirectLLMClient()
     prompt = (
-        "Evaluate the persona quality in this conversation.\n\n"
-        f"Archetype: {canonical_id}\n"
-        f"Archetype description: {persona['description']}\n\n"
-        "SOUL.md:\n"
+        "The audition tape is ready for your review, Margrave.\n\n"
+        f"SCENE TYPE: {canonical_id}\n"
+        f"Scene partner instructions: {persona['description']}\n\n"
+        "═══════════════════════════════════════════════════════════\n"
+        "CHARACTER BRIEF (SOUL.md):\n"
+        "═══════════════════════════════════════════════════════════\n"
         f"{validated_soul}\n\n"
-        "Conversation:\n"
+        "═══════════════════════════════════════════════════════════\n"
+        "AUDITION TAPE:\n"
+        "═══════════════════════════════════════════════════════════\n"
         f"{_format_exchange_lines(exchange)}\n\n"
-        "Return JSON with this exact shape:\n"
+        "═══════════════════════════════════════════════════════════\n\n"
+        "Deliver your verdict. Return JSON with this exact shape:\n"
         "{\n"
-        '  "consistency_score": 0.0,\n'
-        '  "voice_markers": ["..."],\n'
-        '  "emotional_alignment": "...",\n'
-        '  "character_breaks": [{"turn": 0, "issue": "...", "severity": "minor"}],\n'
-        '  "tuning_hints": ["..."],\n'
+        '  "consistency_score": <0.0-1.0 how consistently they stayed in character>,\n'
+        '  "voice_markers": ["<specific phrases/patterns that felt authentic to the character>"],\n'
+        '  "emotional_alignment": "<did their emotional responses match character psychology?>",\n'
+        '  "character_breaks": [{"turn": <number>, "issue": "<what went wrong>", "severity": "minor|major"}],\n'
+        '  "tuning_hints": ["<specific direction for the actor to improve>"],\n'
         '  "verdict": "poor|fair|good|excellent",\n'
-        '  "score": 0.0\n'
+        '  "score": <final 0.0-1.0 overall rating>\n'
         "}\n"
         "Return only JSON."
     )
 
-    raw = await chat_completion_text(
+    response = await client.chat_completion(
         model=judge_model,
         messages=[
             {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
@@ -385,4 +430,5 @@ async def analyze_exchange(
         temperature=0.2,
         timeout_s=timeout_per_call,
     )
+    raw = _extract_content(response)
     return _parse_analysis(raw)
