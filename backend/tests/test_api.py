@@ -643,8 +643,9 @@ class TestChatEndpoint:
         assert response.status_code == 200
         assert captured_payload.get("messages")
         injected_message = captured_payload["messages"][-1]["content"]
-        assert "Session facts (UTC):" in injected_message
-        assert "time_of_day_utc:" in injected_message
+        expected_tz_label = settings.default_timezone or "UTC"
+        assert f"Session facts ({expected_tz_label}):" in injected_message
+        assert "time_of_day:" in injected_message
 
 
 # ========================================
