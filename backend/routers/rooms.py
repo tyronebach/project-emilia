@@ -17,6 +17,7 @@ from core.exceptions import (
 )
 from db.repositories import (
     AgentRepository,
+    EmotionalStateRepository,
     RoomMessageRepository,
     RoomRepository,
     UserRepository,
@@ -24,6 +25,9 @@ from db.repositories import (
 from dependencies import get_user_id, verify_token
 from parse_chat import extract_avatar_commands, parse_chat_completion, coalesce_response_text
 from routers.chat import (
+    _build_first_turn_context,
+    _ctx_value,
+    _ensure_workspace_milestones,
     _process_emotion_post_llm,
     _process_emotion_pre_llm,
     _resolve_trusted_prompt_instructions,
@@ -146,6 +150,26 @@ def _inject_game_context_if_present(
                 game_context,
                 prompt_instructions=trusted_prompt,
             ),
+        }
+        break
+
+    return messages
+
+
+def _inject_first_turn_context_if_present(
+    messages: list[dict],
+    first_turn_context: str | None,
+) -> list[dict]:
+    if not first_turn_context:
+        return messages
+
+    for idx in range(len(messages) - 1, -1, -1):
+        if messages[idx].get("role") != "user":
+            continue
+        existing_content = str(messages[idx].get("content") or "")
+        messages[idx] = {
+            **messages[idx],
+            "content": first_turn_context + "\n\n" + existing_content,
         }
         break
 
@@ -501,9 +525,25 @@ async def room_chat(
 
     for agent in responding_agents:
         agent_id = agent["agent_id"]
+        agent_config = AgentRepository.get_by_id(agent_id) or {}
+        agent_workspace = agent_config.get("workspace")
         started_at = time.time()
 
         try:
+            is_first_turn = (
+                not runtime_trigger
+                and RoomMessageRepository.get_agent_reply_count(room_id, agent_id) == 0
+            )
+            first_turn_context = (
+                _build_first_turn_context(
+                    user_id,
+                    agent_id,
+                    agent_workspace=agent_workspace if isinstance(agent_workspace, str) else None,
+                )
+                if is_first_turn
+                else None
+            )
+
             emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
                 user_id,
                 agent_id,
@@ -520,6 +560,7 @@ async def room_chat(
                 emotional_context=emotional_context,
                 include_game_runtime=bool(game_context),
             )
+            llm_messages = _inject_first_turn_context_if_present(llm_messages, first_turn_context)
             llm_messages = _inject_game_context_if_present(llm_messages, agent_id, game_context)
 
             result = await _call_llm_non_stream(agent, llm_messages, room_id)
@@ -552,10 +593,29 @@ async def room_chat(
                 user_id,
                 agent_id,
                 behavior,
-                None,
+                f"room:{room_id}",
                 pre_llm_triggers,
                 None if runtime_trigger else request.message,
             ))
+
+            if isinstance(agent_workspace, str) and agent_workspace.strip():
+                state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
+                interaction_count = int(state_row.get("interaction_count") or 0)
+                game_id_value = _ctx_value(game_context, "game_id", "gameId")
+                game_id = (
+                    game_id_value.strip()
+                    if isinstance(game_id_value, str) and game_id_value.strip()
+                    else None
+                )
+                _spawn_background(asyncio.to_thread(
+                    _ensure_workspace_milestones,
+                    agent_workspace=agent_workspace,
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    interaction_count=interaction_count,
+                    runtime_trigger=runtime_trigger,
+                    game_id=game_id,
+                ))
 
             msg_for_response = {
                 **_room_message_row(
@@ -612,6 +672,7 @@ async def _stream_room_chat_sse(
         agent_id = agent["agent_id"]
         clawdbot_agent_id = agent["clawdbot_agent_id"]
         agent_config = AgentRepository.get_by_id(agent_id) or {}
+        agent_workspace = agent_config.get("workspace")
         chat_mode = normalize_chat_mode(agent_config.get("chat_mode"))
         agent_name = agent.get("display_name") or agent_id
         started_at = time.time()
@@ -619,6 +680,20 @@ async def _stream_room_chat_sse(
         yield f"event: agent_start\ndata: {json.dumps({'agent_id': agent_id, 'agent_name': agent_name})}\n\n"
 
         try:
+            is_first_turn = (
+                not runtime_trigger
+                and RoomMessageRepository.get_agent_reply_count(room_id, agent_id) == 0
+            )
+            first_turn_context = (
+                _build_first_turn_context(
+                    user_id,
+                    agent_id,
+                    agent_workspace=agent_workspace if isinstance(agent_workspace, str) else None,
+                )
+                if is_first_turn
+                else None
+            )
+
             emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
                 user_id,
                 agent_id,
@@ -635,6 +710,7 @@ async def _stream_room_chat_sse(
                 emotional_context=emotional_context,
                 include_game_runtime=bool(effective_game_context),
             )
+            llm_messages = _inject_first_turn_context_if_present(llm_messages, first_turn_context)
             llm_messages = _inject_game_context_if_present(llm_messages, agent_id, effective_game_context)
 
             usage = None
@@ -643,10 +719,9 @@ async def _stream_room_chat_sse(
                 direct_client = DirectLLMClient(
                     api_base=resolve_direct_api_base(agent_config),
                 )
-                workspace = agent_config.get("workspace")
                 direct_messages = prepend_webapp_system_prompt(
                     normalize_messages_for_direct(llm_messages),
-                    workspace,
+                    agent_workspace,
                     timezone=settings.default_timezone,
                 )
                 claw_id = agent_config.get("clawdbot_agent_id") or ""
@@ -655,7 +730,7 @@ async def _stream_room_chat_sse(
                         client=direct_client,
                         model=resolve_direct_model(agent_config),
                         messages=direct_messages,
-                        workspace=workspace,
+                        workspace=agent_workspace,
                         claw_agent_id=claw_id,
                         user_tag=f"emilia:room:{room_id}",
                         timeout_s=120.0,
@@ -791,10 +866,29 @@ async def _stream_room_chat_sse(
                 user_id,
                 agent_id,
                 behavior,
-                None,
+                f"room:{room_id}",
                 pre_llm_triggers,
                 post_llm_user_message,
             ))
+
+            if isinstance(agent_workspace, str) and agent_workspace.strip():
+                state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
+                interaction_count = int(state_row.get("interaction_count") or 0)
+                game_id_value = _ctx_value(effective_game_context, "game_id", "gameId")
+                game_id = (
+                    game_id_value.strip()
+                    if isinstance(game_id_value, str) and game_id_value.strip()
+                    else None
+                )
+                _spawn_background(asyncio.to_thread(
+                    _ensure_workspace_milestones,
+                    agent_workspace=agent_workspace,
+                    user_id=user_id,
+                    agent_id=agent_id,
+                    interaction_count=interaction_count,
+                    runtime_trigger=runtime_trigger,
+                    game_id=game_id,
+                ))
 
             done_message = {
                 **_room_message_row(

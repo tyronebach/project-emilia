@@ -23,6 +23,7 @@ def _seed_agent(
     name: str,
     claw_id: str,
     *,
+    workspace: str | None = None,
     chat_mode: str = "openclaw",
     direct_model: str | None = None,
     direct_api_base: str | None = None,
@@ -39,7 +40,7 @@ def _seed_agent(
                 claw_id,
                 "emilia.vrm",
                 None,
-                None,
+                workspace,
                 "{}",
                 chat_mode,
                 direct_model,
@@ -555,3 +556,197 @@ class TestRoomChat:
         assert len(runtime_messages) == 2
         assert runtime_messages[0]["sender_type"] == "user"
         assert runtime_messages[0]["origin"] == "game_runtime"
+
+    @patch("routers.rooms._spawn_background")
+    @patch("routers.rooms._build_first_turn_context")
+    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.rooms.httpx.AsyncClient")
+    async def test_room_chat_builds_first_turn_context_once_per_agent(
+        self,
+        mock_client_class,
+        mock_pre_llm,
+        mock_first_turn_context,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha")
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "First Turn Room", "agent_ids": [alpha]},
+        )
+        room_id = created.json()["id"]
+
+        mock_pre_llm.return_value = (None, [])
+        mock_first_turn_context.return_value = "Session facts (UTC): ..."
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "agent:claw-alpha",
+            "choices": [{"message": {"content": "Hello there"}}],
+            "usage": {"prompt_tokens": 6, "completion_tokens": 3},
+        }
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        first = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=0",
+            headers=headers,
+            json={"message": "first"},
+        )
+        assert first.status_code == 200
+
+        second = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=0",
+            headers=headers,
+            json={"message": "second"},
+        )
+        assert second.status_code == 200
+
+        assert mock_first_turn_context.call_count == 1
+
+    @patch("routers.rooms._spawn_background")
+    @patch("routers.rooms.asyncio.to_thread")
+    @patch("routers.rooms._ensure_workspace_milestones")
+    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.rooms.httpx.AsyncClient")
+    async def test_room_chat_triggers_workspace_milestones_when_workspace_configured(
+        self,
+        mock_client_class,
+        mock_pre_llm,
+        mock_ensure_workspace_milestones,
+        mock_to_thread,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+        workspace = f"/tmp/{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha", workspace=workspace)
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Workspace Room", "agent_ids": [alpha]},
+        )
+        room_id = created.json()["id"]
+
+        mock_pre_llm.return_value = (None, [])
+
+        async def _noop():
+            return None
+
+        mock_to_thread.side_effect = lambda *_args, **_kwargs: _noop()
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "agent:claw-alpha",
+            "choices": [{"message": {"content": "Milestone updated"}}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 2},
+        }
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        sent = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=0",
+            headers=headers,
+            json={"message": "hello"},
+        )
+        assert sent.status_code == 200
+
+        milestone_calls = [
+            call for call in mock_to_thread.call_args_list
+            if call.args and call.args[0] is mock_ensure_workspace_milestones
+        ]
+        assert milestone_calls, "Expected _ensure_workspace_milestones to be scheduled"
+
+    @patch("routers.rooms._spawn_background")
+    @patch("routers.rooms.asyncio.to_thread")
+    @patch("routers.rooms._process_emotion_post_llm")
+    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.rooms.httpx.AsyncClient")
+    async def test_room_chat_post_llm_uses_namespaced_room_session_id(
+        self,
+        mock_client_class,
+        mock_pre_llm,
+        mock_post_llm,
+        mock_to_thread,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha")
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Emotion Room", "agent_ids": [alpha]},
+        )
+        room_id = created.json()["id"]
+
+        mock_pre_llm.return_value = (None, [])
+
+        async def _noop():
+            return None
+
+        mock_to_thread.side_effect = lambda *_args, **_kwargs: _noop()
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "agent:claw-alpha",
+            "choices": [{"message": {"content": "Emotion stored"}}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 2},
+        }
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        sent = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=0",
+            headers=headers,
+            json={"message": "track emotion"},
+        )
+        assert sent.status_code == 200
+
+        post_calls = [
+            call for call in mock_to_thread.call_args_list
+            if call.args and call.args[0] is mock_post_llm
+        ]
+        assert post_calls, "Expected _process_emotion_post_llm to be scheduled"
+        assert post_calls[0].args[4] == f"room:{room_id}"

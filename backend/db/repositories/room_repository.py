@@ -439,3 +439,20 @@ class RoomMessageRepository:
         with get_db() as conn:
             result = conn.execute("DELETE FROM room_messages WHERE id = ?", (message_id,))
             return result.rowcount > 0
+
+    @staticmethod
+    def get_agent_reply_count(
+        room_id: str,
+        agent_id: str,
+        include_game_runtime: bool = False,
+    ) -> int:
+        where = "WHERE room_id = ? AND sender_type = 'agent' AND sender_id = ?"
+        if not include_game_runtime:
+            where += " AND COALESCE(origin, '') != 'game_runtime'"
+
+        with get_db() as conn:
+            row = conn.execute(
+                f"SELECT COUNT(*) AS cnt FROM room_messages {where}",
+                (room_id, agent_id),
+            ).fetchone()
+            return int(row["cnt"]) if row else 0
