@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from config import settings
 from db.connection import get_db
 
 pytestmark = pytest.mark.anyio
@@ -494,7 +493,8 @@ class TestRoomChat:
         auth_headers,
         monkeypatch,
     ):
-        monkeypatch.setattr(settings, "games_v2_agent_allowlist", set())
+        from routers import rooms as rooms_router
+        monkeypatch.setattr(rooms_router.settings, "games_v2_agent_allowlist", set())
         user_id = f"user-{uuid.uuid4().hex[:8]}"
         alpha = f"agent-{uuid.uuid4().hex[:8]}"
 
@@ -750,3 +750,181 @@ class TestRoomChat:
         ]
         assert post_calls, "Expected _process_emotion_post_llm to be scheduled"
         assert post_calls[0].args[4] == f"room:{room_id}"
+
+    @patch("routers.rooms._spawn_background")
+    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.rooms.httpx.AsyncClient")
+    async def test_room_chat_non_stream_deletes_user_message_when_all_agents_fail(
+        self,
+        mock_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha")
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Failure Room", "agent_ids": [alpha]},
+        )
+        room_id = created.json()["id"]
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_response.text = "Service unavailable"
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        sent = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=0",
+            headers=headers,
+            json={"message": "this should fail"},
+        )
+        assert sent.status_code == 503
+
+        history = await test_client.get(
+            f"/api/rooms/{room_id}/history?includeRuntime=true",
+            headers=headers,
+        )
+        assert history.status_code == 200
+        assert history.json()["count"] == 0
+
+    @patch("routers.rooms._spawn_background")
+    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.rooms.httpx.AsyncClient")
+    async def test_room_chat_stream_deletes_user_message_when_all_agents_fail(
+        self,
+        mock_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha")
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Stream Failure Room", "agent_ids": [alpha]},
+        )
+        room_id = created.json()["id"]
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        stream_response = MagicMock()
+        stream_response.status_code = 503
+
+        stream_ctx = MagicMock()
+        stream_ctx.__aenter__ = AsyncMock(return_value=stream_response)
+        stream_ctx.__aexit__ = AsyncMock(return_value=None)
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.stream = MagicMock(return_value=stream_ctx)
+        mock_client_class.return_value = mock_client
+
+        sent = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=1",
+            headers=headers,
+            json={"message": "stream should fail"},
+        )
+        assert sent.status_code == 200
+        assert "event: agent_error" in sent.text
+
+        history = await test_client.get(
+            f"/api/rooms/{room_id}/history?includeRuntime=true",
+            headers=headers,
+        )
+        assert history.status_code == 200
+        assert history.json()["count"] == 0
+
+    @patch("routers.rooms._spawn_background")
+    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.rooms.DirectLLMClient")
+    @patch("routers.rooms.httpx.AsyncClient")
+    async def test_room_chat_stream_truncates_oversized_direct_response(
+        self,
+        mock_client_class,
+        mock_direct_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+        oversized_content = "x" * 60000
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(
+            alpha,
+            "Alpha",
+            "claw-alpha",
+            chat_mode="direct",
+            direct_model="gpt-room-direct",
+            direct_api_base="https://example.invalid/v1",
+        )
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Truncate Room", "agent_ids": [alpha]},
+        )
+        room_id = created.json()["id"]
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_direct = MagicMock()
+        mock_direct.chat_completion = AsyncMock(
+            return_value={
+                "model": "gpt-room-direct",
+                "choices": [{"message": {"content": oversized_content}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 10},
+            }
+        )
+        mock_direct_client_class.return_value = mock_direct
+
+        sent = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=1",
+            headers=headers,
+            json={"message": "truncate this"},
+        )
+        assert sent.status_code == 200
+        assert "event: agent_done" in sent.text
+        mock_client_class.assert_not_called()
+
+        history = await test_client.get(
+            f"/api/rooms/{room_id}/history?includeRuntime=true",
+            headers=headers,
+        )
+        assert history.status_code == 200
+        messages = history.json()["messages"]
+        assert len(messages) == 2
+        assert messages[1]["sender_type"] == "agent"
+        assert len(messages[1]["content"]) == 50000
