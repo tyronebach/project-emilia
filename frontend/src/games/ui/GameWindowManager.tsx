@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { getGame, loadGame } from '../registry';
 import { useGame } from '../../hooks/useGame';
 import { useChat } from '../../hooks/useChat';
@@ -42,7 +42,10 @@ function GameWindowManager() {
   const wasThinking = useRef(false);
   const wasGameOver = useRef(false);
   const wasActive = useRef(false);
+  const pendingGameTrigger = useRef(false);
   const [module, setModule] = useState<GameModule | null>(null);
+
+  const status = useAppStore((state) => state.status);
 
   useEffect(() => {
     if (!activeGameId) return;
@@ -112,12 +115,32 @@ function GameWindowManager() {
     wasActive.current = Boolean(activeGameId);
   }, [activeGameId, applyAvatarCommand]);
 
+  // Send game trigger to LLM, queuing if currently busy speaking
+  const sendGameTrigger = useCallback(() => {
+    const currentStatus = useAppStore.getState().status;
+    if (currentStatus === 'speaking' || currentStatus === 'thinking') {
+      // Queue the trigger to be sent when status becomes 'ready'
+      pendingGameTrigger.current = true;
+      return;
+    }
+    pendingGameTrigger.current = false;
+    void sendMessage('Your turn!', { runtimeTrigger: true });
+  }, [sendMessage]);
+
+  // Send pending game trigger when status becomes 'ready'
   useEffect(() => {
-    if (isAvatarThinking && !wasThinking.current) {
+    if (status === 'ready' && pendingGameTrigger.current && isAvatarThinking) {
+      pendingGameTrigger.current = false;
       void sendMessage('Your turn!', { runtimeTrigger: true });
     }
+  }, [status, isAvatarThinking, sendMessage]);
+
+  useEffect(() => {
+    if (isAvatarThinking && !wasThinking.current) {
+      sendGameTrigger();
+    }
     wasThinking.current = isAvatarThinking;
-  }, [isAvatarThinking, sendMessage]);
+  }, [isAvatarThinking, sendGameTrigger]);
 
   useEffect(() => {
     if (gameStatus.isOver && !wasGameOver.current && activeGameId) {
