@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, Activity, Brain, MicOff, Volume2, HeartHandshake, BookOpenText } from 'lucide-react';
+import { Menu, Activity, Brain, MicOff, Volume2, VolumeX, HeartHandshake, BookOpenText } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
 import { STATUS_COLORS } from '../types';
@@ -127,10 +127,23 @@ function Header({
             size="icon"
             onClick={handleToggleTts}
             aria-pressed={ttsEnabled}
-            className={`text-text-primary hover:bg-white/10 bg-bg-secondary/45 border border-white/10 ${ttsEnabled ? 'bg-accent/20 border-accent/40' : ''}`}
-            title={ttsEnabled ? 'Voice replies on' : 'Voice replies off'}
+            className={`text-text-primary hover:bg-white/10 border transition-all duration-200 ${
+              ttsEnabled 
+                ? 'bg-accent/20 border-accent/40 text-accent hover:bg-accent/30' 
+                : 'bg-bg-secondary/45 border-white/10 text-text-secondary hover:text-text-primary'
+            }`}
+            title={ttsEnabled ? 'Voice replies on (click to disable)' : 'Voice replies off (click to enable)'}
           >
-            <Volume2 className="w-5 h-5" />
+            <div className="relative">
+              {ttsEnabled ? (
+                <Volume2 className="w-5 h-5 transition-transform duration-200 hover:scale-110" />
+              ) : (
+                <VolumeX className="w-5 h-5 transition-transform duration-200 hover:scale-110" />
+              )}
+              {ttsEnabled && (
+                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-accent rounded-full animate-pulse" />
+              )}
+            </div>
           </Button>
           <Button
             variant="ghost"

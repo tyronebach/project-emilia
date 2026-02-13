@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Sliders, Sparkles, Video } from 'lucide-react';
+import { X, Sliders, Sparkles, Video, Volume2, VolumeX } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
 import { useRenderStore, QUALITY_LABELS } from '../store/renderStore';
@@ -124,23 +124,51 @@ function UserSettingsModal({ open, onClose }: UserSettingsModalProps) {
             </div>
           </div>
 
-          <label className="flex items-start gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              className="mt-1 h-4 w-4 accent-accent"
-              checked={ttsEnabled}
-              disabled={!currentUser || savingKey === 'tts_enabled'}
-              onChange={(e) =>
-                handleToggle('tts_enabled', e.target.checked, setTtsEnabled, ttsEnabled)
-              }
-            />
-            <div>
-            <div className="text-sm text-text-primary">Voice replies (TTS)</div>
-            <div className="text-xs text-text-secondary">
-              Enables spoken responses by default.
+          <button
+            onClick={() => 
+              handleToggle('tts_enabled', !ttsEnabled, setTtsEnabled, ttsEnabled)
+            }
+            disabled={!currentUser || savingKey === 'tts_enabled'}
+            className={`w-full text-left p-3 rounded-xl border transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+              ttsEnabled
+                ? 'bg-accent/15 border-accent/40 text-text-primary'
+                : 'bg-bg-tertiary/50 border-white/10 text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className={`relative p-2 rounded-lg transition-all duration-200 ${
+                ttsEnabled 
+                  ? 'bg-accent/20 text-accent' 
+                  : 'bg-bg-secondary text-text-secondary'
+              }`}>
+                {ttsEnabled ? (
+                  <Volume2 className="w-4 h-4" />
+                ) : (
+                  <VolumeX className="w-4 h-4" />
+                )}
+                {ttsEnabled && (
+                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-accent rounded-full" />
+                )}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-medium">Voice replies (TTS)</div>
+                  <div className={`text-xs px-2 py-0.5 rounded-full ${
+                    savingKey === 'tts_enabled'
+                      ? 'bg-warning/20 text-warning animate-pulse'
+                      : ttsEnabled 
+                        ? 'bg-accent/20 text-accent' 
+                        : 'bg-bg-secondary text-text-secondary'
+                  }`}>
+                    {savingKey === 'tts_enabled' ? 'SAVING...' : ttsEnabled ? 'ON' : 'OFF'}
+                  </div>
+                </div>
+                <div className="text-xs text-text-secondary mt-0.5">
+                  Enables spoken responses by default.
+                </div>
+              </div>
             </div>
-          </div>
-        </label>
+          </button>
 
           {!currentUser && (
             <div className="text-xs text-text-secondary">
