@@ -36,6 +36,7 @@ from services.drift_simulator import (
     DriftSimulationConfig,
     DriftSimulator,
 )
+from services.trigger_classifier import get_trigger_classifier
 from services.soul_simulator import (
     analyze_exchange,
     normalize_archetype_id,
@@ -1019,6 +1020,91 @@ async def generate_archetype(
         "description": created.get("description") or "",
         "sample_count": created.get("sample_count") or len(messages),
         "trigger_distribution": created.get("trigger_distribution", {}),
+    }
+
+
+@router.post("/archetypes/{archetype_id}/regenerate")
+async def regenerate_archetype(
+    archetype_id: str,
+    file: UploadFile = File(...),
+) -> dict:
+    """Replace an archetype's message_triggers by re-classifying a new file."""
+    existing = ArchetypeRepository.get(archetype_id)
+    if not existing:
+        raise not_found(f"Archetype {archetype_id}")
+
+    payload = await file.read(MAX_GENERATE_FILE_BYTES + 1)
+    if len(payload) > MAX_GENERATE_FILE_BYTES:
+        raise bad_request(f"File exceeds max size ({MAX_GENERATE_FILE_BYTES} bytes)")
+
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise bad_request("File must be UTF-8 text") from exc
+
+    messages: list[str] = []
+    for line in text.splitlines():
+        normalized = line.strip()
+        if not normalized:
+            continue
+        if len(normalized) > MAX_GENERATE_LINE_CHARS:
+            raise bad_request(
+                f"Line exceeds max length ({MAX_GENERATE_LINE_CHARS} chars)"
+            )
+        messages.append(normalized)
+        if len(messages) > MAX_GENERATE_LINES:
+            raise bad_request(f"File exceeds max non-empty lines ({MAX_GENERATE_LINES})")
+
+    if not messages:
+        raise bad_request("No messages found in file")
+
+    # Classify messages
+    classifier = get_trigger_classifier()
+    message_triggers: list[list[list[str | float]]] = []
+    trigger_counts: dict[str, int] = {}
+
+    for message in messages:
+        trigger_map: dict[str, float] = {}
+        for trigger, confidence in classifier.classify(message):
+            canonical = normalize_trigger(trigger) or str(trigger).strip().lower()
+            if canonical == "neutral":
+                continue
+            if canonical not in EmotionEngine.DEFAULT_TRIGGER_DELTAS:
+                continue
+            if canonical not in trigger_map or confidence > trigger_map[canonical]:
+                trigger_map[canonical] = float(confidence)
+
+        ordered = sorted(trigger_map.items(), key=lambda item: item[1], reverse=True)
+        trigger_set = [[trigger, float(f"{confidence:.4f}")] for trigger, confidence in ordered]
+        message_triggers.append(trigger_set)
+        for trigger, _confidence in ordered:
+            trigger_counts[trigger] = trigger_counts.get(trigger, 0) + 1
+
+    # Update archetype
+    updated = ArchetypeRepository.update(
+        archetype_id,
+        {
+            "message_triggers": message_triggers,
+            "sample_count": len(messages),
+            "source_filename": file.filename,
+        },
+    )
+    if not updated:
+        raise not_found(f"Archetype {archetype_id}")
+
+    # Build distribution
+    total_hits = sum(trigger_counts.values()) or 1
+    distribution = {
+        trigger: round(count / total_hits, 4)
+        for trigger, count in sorted(trigger_counts.items(), key=lambda item: item[1], reverse=True)
+    }
+
+    return {
+        "id": updated["id"],
+        "name": updated["name"],
+        "description": updated.get("description") or "",
+        "sample_count": updated.get("sample_count") or len(messages),
+        "trigger_distribution": distribution,
     }
 
 

@@ -6,6 +6,7 @@ import {
   deleteArchetype,
   generateArchetype,
   getArchetype,
+  regenerateArchetype,
   updateArchetype,
 } from '../../utils/designerApiV2';
 import { Button } from '../ui/button';
@@ -47,6 +48,7 @@ function ArchetypeManagerDialog({
 
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editFile, setEditFile] = useState<File | null>(null);
   const [editPositive, setEditPositive] = useState(0.33);
   const [editNeutral, setEditNeutral] = useState(0.34);
   const [editNegative, setEditNegative] = useState(0.33);
@@ -165,6 +167,27 @@ function ArchetypeManagerDialog({
     },
   });
 
+  const regenerateMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedId) throw new Error('Select an archetype first.');
+      if (!editFile) throw new Error('Select a .txt file first.');
+      return regenerateArchetype(selectedId, editFile);
+    },
+    onSuccess: async (data) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['designer-v2', 'archetypes'] }),
+        queryClient.invalidateQueries({ queryKey: ['designer-v2', 'archetype-detail', selectedId] }),
+      ]);
+      setStatusMessage(`Regenerated '${data.name}' with ${data.sample_count} samples.`);
+      setErrorMessage('');
+      setEditFile(null);
+    },
+    onError: (error: unknown) => {
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to regenerate archetype');
+      setStatusMessage('');
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!selectedId) throw new Error('Select an archetype first.');
@@ -189,7 +212,7 @@ function ArchetypeManagerDialog({
     },
   });
 
-  const isBusy = generateMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+  const isBusy = generateMutation.isPending || updateMutation.isPending || regenerateMutation.isPending || deleteMutation.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -426,6 +449,44 @@ function ArchetypeManagerDialog({
                             aria-label="Edit negative outcome weight"
                           />
                         </label>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 border-t border-white/10 pt-3">
+                      <div className="text-xs text-text-secondary">
+                        Replace samples: upload a new <code>.txt</code> file to re-classify and replace all message triggers.
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <label
+                          htmlFor="archetype-edit-upload-input"
+                          className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-bg-secondary px-3 py-2 text-xs text-text-primary hover:border-accent cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          Choose .txt file
+                        </label>
+                        <input
+                          id="archetype-edit-upload-input"
+                          type="file"
+                          accept=".txt,text/plain"
+                          onChange={(e) => setEditFile(e.target.files?.[0] ?? null)}
+                          className="sr-only"
+                        />
+                        <div className="text-xs text-text-secondary truncate flex-1">
+                          {editFile ? editFile.name : 'No file selected'}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => regenerateMutation.mutate()}
+                          disabled={isBusy || !editFile}
+                        >
+                          {regenerateMutation.isPending ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Upload className="w-4 h-4" />
+                          )}
+                          Regenerate
+                        </Button>
                       </div>
                     </div>
 

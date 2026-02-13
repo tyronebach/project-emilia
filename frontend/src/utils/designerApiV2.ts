@@ -234,6 +234,30 @@ export async function updateArchetype(
   return res.json();
 }
 
+export async function regenerateArchetype(
+  id: string,
+  file: File
+): Promise<{
+  id: string;
+  name: string;
+  description: string;
+  sample_count: number;
+  trigger_distribution: Record<string, number>;
+}> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetchWithAuth(`/api/designer/v2/archetypes/${encodeURIComponent(id)}/regenerate`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(detail || `Failed to regenerate archetype: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function deleteArchetype(id: string): Promise<void> {
   const res = await fetchWithAuth(`/api/designer/v2/archetypes/${encodeURIComponent(id)}`, {
     method: 'DELETE',
