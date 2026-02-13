@@ -117,6 +117,8 @@ describe('RoomChatPage auto-scroll', () => {
 
   it('scrolls to bottom when messages update', async () => {
     render(<RoomChatPage userId="user-1" roomId="room-1" />);
+    expect(document.querySelector('[data-testid="room-avatar-stage"]')).toBeTruthy();
+
     const scrollSpy = vi.mocked(Element.prototype.scrollIntoView);
     const initialCalls = scrollSpy.mock.calls.length;
 
