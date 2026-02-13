@@ -4,6 +4,40 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.6.6] - 2026-02-13
+
+### Added - P012 Shared Runtime + Room Multi-VRM
+
+- **Shared chat runtime extraction** - Moved shared chat/room helpers into:
+  - `backend/services/chat_context_runtime.py`
+  - `backend/services/emotion_runtime.py`
+  - `backend/services/background_tasks.py`
+- **Router decoupling** - `backend/routers/rooms.py` no longer imports private helpers from `backend/routers/chat.py`.
+- **Room per-agent avatar state** - Added per-agent avatar command + event timestamp state in `frontend/src/store/roomStore.ts`.
+- **Room multi-VRM components** - Added:
+  - `frontend/src/components/rooms/RoomAvatarTile.tsx`
+  - `frontend/src/components/rooms/RoomAvatarStage.tsx`
+- **Room UI integration** - `RoomChatPage` now renders the avatar stage with focus controls, renderer caps (desktop 4 / mobile 2), overflow fallback cards, VRM preload, and WebGL/load-failure fallback states.
+- **First-turn context timezone alignment** - `build_first_turn_context` now uses configured `DEFAULT_TIMEZONE` (fallback UTC).
+
+### Changed
+
+- **SOUL simulator test expectation** - Updated `backend/tests/test_soul_simulator.py` to assert `gpt-5-mini` for judge/archetype model defaults.
+
+### Tests
+
+- Added frontend stage coverage:
+  - `frontend/src/components/rooms/RoomAvatarStage.test.tsx`
+- Updated room page/hook tests:
+  - `frontend/src/components/rooms/RoomChatPage.test.tsx`
+  - `frontend/src/hooks/useRoomChat.test.tsx`
+- Validation completed:
+  - backend full suite passing (`260 passed, 1 skipped`)
+  - frontend full suite passing (`19 files, 132 tests`)
+  - frontend production build passing
+
+---
+
 ## [5.6.5] - 2026-02-13
 
 ### Added - Room Chat Parity V2 (User-Agent Continuity)

@@ -88,7 +88,7 @@
 - `POST /api/chat?stream=0|1`: Main chat endpoint.
   - Request: `ChatRequest` (`message`, optional `game_context`, optional `runtime_trigger`).
   - Headers: `Authorization`, `X-User-Id`, `X-Agent-Id`, optional `X-Session-Id`.
-  - Logic: builds message list (summary + recent history + emotion context + first-turn UTC facts + game context), then routes by `agents.chat_mode`:
+  - Logic: builds message list (summary + recent history + emotion context + first-turn timezone-aware facts + game context), then routes by `agents.chat_mode`:
     - `openclaw`: gateway `/v1/chat/completions`
     - `direct`: OpenAI-compatible `/chat/completions` via `run_tool_loop()` with memory tools (`memory_search`, `memory_read`, `memory_write`). The tool loop runs non-stream internally; streaming callers receive final content as a single SSE chunk.
   - Direct mode optionally prepends `workspace/SOUL.md` as the first system message when present.
@@ -329,7 +329,7 @@ Routes are file-based via TanStack Router.
 - `frontend/src/store/index.ts`: App state (status, errors, session, TTS, avatar commands).
 - `frontend/src/store/userStore.ts`: Current user/agent, persisted to localStorage.
 - `frontend/src/store/chatStore.ts`: Messages + streaming content + emotion debug + `currentMood` snapshot.
-- `frontend/src/store/roomStore.ts`: Group room state (room, agents, messages, per-agent streaming chunks).
+- `frontend/src/store/roomStore.ts`: Group room state (room, agents, messages, per-agent streaming chunks, per-agent avatar commands + avatar-event timestamps).
 - `frontend/src/store/renderStore.ts`: Render quality, per-user persisted settings.
 - `frontend/src/store/gameStore.ts`: Game session state, persisted to sessionStorage.
 - `frontend/src/store/statsStore.ts`: Latency + state logs for debug HUD.
@@ -353,6 +353,8 @@ Routes are file-based via TanStack Router.
 - `AvatarPanel`: VRM renderer mount + controls.
 - `ChatPanel`: Chat overlay with message list.
 - `InputControls`: Text input, voice toggle, send controls.
+- `components/rooms/RoomAvatarStage`: Multi-agent room avatar stage with renderer caps and fallback cards.
+- `components/rooms/RoomAvatarTile`: Per-agent VRM tile renderer for room chat.
 - `GamePanel` + `GameSelector`: Game UX and move flow.
 - `Drawer`: Sessions list + settings entry points.
 - `Header` + `MoodIndicator`: status + current mood display.
@@ -430,7 +432,7 @@ Assets
 
 **Chat Flow**
 - Frontend `useChat` → `streamChat()` → `POST /api/chat?stream=1`.
-- Backend builds context: summary + recent DB messages + emotion context + first-turn UTC facts + game context.
+- Backend builds context: summary + recent DB messages + emotion context + first-turn timezone-aware facts + game context.
 - Backend routes by `agents.chat_mode`:
   - `openclaw`: Clawdbot gateway `/v1/chat/completions` with `model: agent:{clawdbot_agent_id}`.
   - `direct`: `run_tool_loop()` with memory tools → OpenAI-compatible `/chat/completions`. Tool loop runs non-stream; final content emitted as single SSE chunk.
@@ -479,8 +481,8 @@ Assets
 
 - API calls use `fetchWithAuth()` and header-based context IDs.
 - Chat responses embed avatar tags parsed by `backend/parse_chat.py` and stripped on frontend.
-- Emotion engine updates are serialized per `(user_id, agent_id)` via lock-protected sections in `chat.py` (5s timeout + warning on contention).
-- First non-runtime turn in a session gets deterministic UTC context facts from backend.
+- Emotion engine updates are serialized per `(user_id, agent_id)` in `backend/services/emotion_runtime.py` (5s timeout + warning on contention).
+- First non-runtime turn context facts use configured timezone (`DEFAULT_TIMEZONE`; UTC fallback) in `backend/services/chat_context_runtime.py`.
 - Soul Window events are file-backed and supplemental; relationship dimensions remain canonical in DB.
 - Session compaction is best-effort and run in background.
 - Zustand stores are the single source of truth for UI state; React Query is used for server state in some components.

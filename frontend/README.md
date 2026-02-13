@@ -38,6 +38,10 @@ VITE_GAMES_V2_AGENT_ALLOWLIST=emilia,rem npm run dev -- --host
 - Room list: `/user/:userId/rooms`
 - Room chat: `/user/:userId/rooms/:roomId`
 - APIs used: `/api/rooms/*` (`getRooms`, `createRoom`, `getRoomHistory`, `streamRoomChat`)
+- Room chat renders a multi-VRM avatar stage (`RoomAvatarStage`) with:
+  - active renderer caps (desktop 4 / mobile 2)
+  - focused/streaming/recent-event prioritization
+  - overflow fallback cards + WebGL/load-failure fallback UI
 
 ## Build
 
