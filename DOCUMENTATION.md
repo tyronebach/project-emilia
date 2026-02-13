@@ -75,9 +75,14 @@
 - `DELETE /api/rooms/{room_id}/agents/{agent_id}`: Removes agent. Response `DeleteResponse`.
 - `GET /api/rooms/{room_id}/history?limit=`: Room message history with sender attribution. Response `RoomHistoryResponse`.
 - `POST /api/rooms/{room_id}/chat?stream=0|1`: Multi-agent room chat. Body `RoomChatRequest`.
+  - Request fields mirror core chat semantics:
+    - `message`
+    - optional `game_context` (validated `GameContextRequest`)
+    - optional `runtime_trigger` / `runtimeTrigger` (marks runtime-origin turns)
   - Per responding agent, routing uses persisted `agents.chat_mode`:
     - `openclaw`: `agent:{clawdbot_agent_id}` via gateway
     - `direct`: OpenAI-compatible `/chat/completions` (with optional per-agent model/base overrides)
+  - Stream response emits additive room events: `agent_start`, `agent_done`, `agent_error`, `avatar`, `emotion`.
 
 **Chat / Media** (`backend/routers/chat.py`)
 - `POST /api/chat?stream=0|1`: Main chat endpoint.
@@ -172,6 +177,7 @@ This includes:
 - `CreateSessionRequest`: `{agent_id, name?}`
 - `UpdateSessionRequest`: `{name?}`
 - `CreateRoomRequest`, `UpdateRoomRequest`, `AddRoomAgentRequest`, `UpdateRoomAgentRequest`, `RoomChatRequest`
+  - `RoomChatRequest`: `{message, mention_agents?, game_context?, runtime_trigger?}`
 - `SpeakRequest`: `{text, voice_id?}`
 - `AgentCreate`: `{id, display_name, clawdbot_agent_id, vrm_model?, voice_id?, workspace?, chat_mode?, direct_model?, direct_api_base?}`
 - `AgentUpdate`: `{display_name?, voice_id?, vrm_model?, workspace?, chat_mode?, direct_model?, direct_api_base?}`
