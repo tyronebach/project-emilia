@@ -36,7 +36,7 @@
 - `backend/dependencies.py`: Auth + header dependencies.
 - `backend/routers/`: API endpoints.
 - `backend/schemas/`: Pydantic request/response models.
-- `backend/services/`: ElevenLabs client, emotion engine, drift simulator, room chat orchestration, compaction, Soul Window helpers, SOUL simulator helpers, direct LLM client, direct tool runtime, memory bridge.
+- `backend/services/`: ElevenLabs client, emotion engine, shared emotion runtime hooks, shared chat-context runtime helpers, background task scheduler, drift simulator, room chat orchestration, compaction, Soul Window helpers, SOUL simulator helpers, direct LLM client, direct tool runtime, memory bridge.
 - `backend/db/`: SQLite connection + repositories.
 - `backend/core/exceptions.py`: Exception helpers.
 
@@ -261,6 +261,11 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - Maintains emotional state (V/A/D + relationship dimensions + mood weights).
 - Supports per-trigger calibration and outcome-driven learning.
 - Produces prompt context blocks for injection.
+
+**Shared Chat Runtime Helpers** (`backend/services/chat_context_runtime.py`, `backend/services/emotion_runtime.py`, `backend/services/background_tasks.py`)
+- `chat_context_runtime.py`: shared prompt/context helpers used by both `chat.py` and `rooms.py` (game context injection, first-turn facts, trusted game prompt resolution, milestone helper, mood snapshot helper).
+- `emotion_runtime.py`: shared pre/post LLM emotion hooks + per-user-agent lock management.
+- `background_tasks.py`: shared background task scheduler with retained task references.
 
 **Compaction** (`backend/services/compaction.py`)
 - Summarizes older session history via Clawdbot model; stored in `sessions.summary` and old messages pruned.
@@ -507,6 +512,9 @@ Assets
 - `backend/services/memory_bridge.py`: memory search/read/write via OpenClaw SQLite index.
 - `backend/services/soul_window_service.py`: Soul Window read-model helpers.
 - `backend/services/workspace_events.py`: workspace events timeline service.
+- `backend/services/chat_context_runtime.py`: shared chat/room context + workspace helper functions.
+- `backend/services/emotion_runtime.py`: shared chat/room emotion pre/post hooks.
+- `backend/services/background_tasks.py`: shared background task scheduling helper.
 - `backend/services/soul_parser.py`: SOUL markdown parser.
 - `backend/db/connection.py`: schema + migrations.
 - `frontend/src/App.tsx`: main chat UI.

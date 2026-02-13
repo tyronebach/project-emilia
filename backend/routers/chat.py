@@ -3,7 +3,6 @@ import asyncio
 import time
 import json
 import logging
-import threading
 import httpx
 from fastapi import APIRouter, UploadFile, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -19,7 +18,7 @@ from db.repositories import (
     MessageRepository,
     EmotionalStateRepository,
 )
-from services.background_tasks import spawn_background as _spawn_background_impl
+from services.background_tasks import spawn_background as _spawn_background
 from services.direct_llm import (
     DirectLLMClient,
     normalize_chat_mode,
@@ -30,119 +29,21 @@ from services.direct_llm import (
 )
 from services.direct_tool_runtime import run_tool_loop
 from services.emotion_runtime import (
-    get_emotion_lock as _get_emotion_lock_impl,
-    process_emotion_post_llm as _process_emotion_post_llm_impl,
-    process_emotion_pre_llm as _process_emotion_pre_llm_impl,
+    process_emotion_post_llm as _process_emotion_post_llm,
+    process_emotion_pre_llm as _process_emotion_pre_llm,
 )
 from services.chat_context_runtime import (
-    build_first_turn_context as _build_first_turn_context_impl,
-    ctx_value as _ctx_value_impl,
-    ensure_workspace_milestones as _ensure_workspace_milestones_impl,
-    inject_game_context as _inject_game_context_impl,
-    resolve_trusted_prompt_instructions as _resolve_trusted_prompt_instructions_impl,
-    safe_get_mood_snapshot as _safe_get_mood_snapshot_impl,
+    build_first_turn_context as _build_first_turn_context,
+    ctx_value as _ctx_value,
+    ensure_workspace_milestones as _ensure_workspace_milestones,
+    inject_game_context,
+    resolve_trusted_prompt_instructions as _resolve_trusted_prompt_instructions,
+    safe_get_mood_snapshot as _safe_get_mood_snapshot,
 )
 
 logger = logging.getLogger(__name__)
 
-def _get_emotion_lock(user_id: str, agent_id: str) -> threading.Lock:
-    """Compatibility wrapper for shared emotion runtime helper."""
-    return _get_emotion_lock_impl(user_id, agent_id)
-
-
-async def _process_emotion_pre_llm(
-    user_id: str, agent_id: str, user_message: str, session_id: str | None = None
-) -> tuple[str | None, list[tuple[str, float]]]:
-    """Compatibility wrapper for shared emotion runtime helper."""
-    return await _process_emotion_pre_llm_impl(
-        user_id,
-        agent_id,
-        user_message,
-        session_id=session_id,
-    )
-
-
-def _process_emotion_post_llm(
-    user_id: str,
-    agent_id: str,
-    behavior: dict,
-    session_id: str | None = None,
-    pre_llm_triggers: list[tuple[str, float]] | None = None,
-    user_message: str | None = None,
-) -> None:
-    """Compatibility wrapper for shared emotion runtime helper."""
-    _process_emotion_post_llm_impl(
-        user_id,
-        agent_id,
-        behavior,
-        session_id=session_id,
-        pre_llm_triggers=pre_llm_triggers,
-        user_message=user_message,
-    )
-
 router = APIRouter(prefix="/api", tags=["chat"])
-
-def _spawn_background(coro) -> asyncio.Task:
-    """Compatibility wrapper for shared background task scheduler."""
-    return _spawn_background_impl(coro)
-
-
-def _ctx_value(game_context, *keys):
-    """Compatibility wrapper for shared runtime helper."""
-    return _ctx_value_impl(game_context, *keys)
-
-
-def _resolve_trusted_prompt_instructions(agent_id: str, game_context) -> str:
-    """Compatibility wrapper for shared runtime helper."""
-    return _resolve_trusted_prompt_instructions_impl(agent_id, game_context)
-
-
-def inject_game_context(
-    message: str,
-    game_context,
-    prompt_instructions: str | None = None,
-) -> str:
-    """Compatibility wrapper for shared runtime helper."""
-    return _inject_game_context_impl(message, game_context, prompt_instructions=prompt_instructions)
-
-
-def _build_first_turn_context(
-    user_id: str,
-    agent_id: str,
-    *,
-    agent_workspace: str | None,
-) -> str | None:
-    """Compatibility wrapper for shared runtime helper."""
-    return _build_first_turn_context_impl(
-        user_id,
-        agent_id,
-        agent_workspace=agent_workspace,
-    )
-
-
-def _ensure_workspace_milestones(
-    *,
-    agent_workspace: str,
-    user_id: str,
-    agent_id: str,
-    interaction_count: int,
-    runtime_trigger: bool,
-    game_id: str | None,
-) -> None:
-    """Compatibility wrapper for shared runtime helper."""
-    _ensure_workspace_milestones_impl(
-        agent_workspace=agent_workspace,
-        user_id=user_id,
-        agent_id=agent_id,
-        interaction_count=interaction_count,
-        runtime_trigger=runtime_trigger,
-        game_id=game_id,
-    )
-
-
-def _safe_get_mood_snapshot(user_id: str, agent_id: str) -> dict | None:
-    """Compatibility wrapper for shared runtime helper."""
-    return _safe_get_mood_snapshot_impl(user_id, agent_id)
 
 
 
