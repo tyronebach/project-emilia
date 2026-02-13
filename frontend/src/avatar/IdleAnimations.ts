@@ -23,12 +23,27 @@ export class IdleAnimations {
   private fadeOut: number = 0.3;
   private idleRotator: IdleRotator | null = null;
 
+  // Callback when idle animation is ready and playing
+  private onReadyCallback: (() => void) | null = null;
+
   constructor(vrm: VRM, animationGraph?: AnimationGraph) {
     this.vrm = vrm;
     this.animationGraph = animationGraph ?? null;
 
     // Load idle from state machine config
     this.loadFromStateMachine();
+  }
+
+  /**
+   * Set callback for when idle is ready and playing
+   */
+  onReady(callback: () => void): void {
+    if (this.isLoaded) {
+      // Already loaded, call immediately
+      callback();
+    } else {
+      this.onReadyCallback = callback;
+    }
   }
 
   /**
@@ -88,6 +103,13 @@ export class IdleAnimations {
 
     this.isLoaded = true;
     console.log(`[IdleAnimations] Playing idle: ${filename} (${animData.duration.toFixed(1)}s)`);
+
+    // Fire ready callback if set
+    if (this.onReadyCallback) {
+      this.onReadyCallback();
+      this.onReadyCallback = null;
+    }
+
     return true;
   }
 
