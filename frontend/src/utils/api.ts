@@ -844,6 +844,25 @@ export type RoomStreamEvent =
   | { type: 'agent_start'; agent_id: string; agent_name: string }
   | { type: 'content'; agent_id: string; content: string }
   | {
+      type: 'avatar';
+      agent_id: string;
+      agent_name: string;
+      intent?: string;
+      mood?: string;
+      intensity?: number;
+      energy?: string;
+      move?: string;
+      game_action?: string;
+    }
+  | {
+      type: 'emotion';
+      agent_id: string;
+      agent_name: string;
+      triggers: [string, number][];
+      context_block: string | null;
+      snapshot?: SoulMoodSnapshot | null;
+    }
+  | {
       type: 'agent_done';
       agent_id: string;
       agent_name: string;
@@ -939,6 +958,35 @@ export async function streamRoomChat(
               usage: parsed.usage,
               processing_ms: parsed.processing_ms,
               message: parsed.message,
+            });
+            currentEventType = null;
+            continue;
+          }
+
+          if (currentEventType === 'avatar') {
+            onEvent({
+              type: 'avatar',
+              agent_id: parsed.agent_id,
+              agent_name: parsed.agent_name,
+              intent: parsed.intent,
+              mood: parsed.mood,
+              intensity: parsed.intensity,
+              energy: parsed.energy,
+              move: parsed.move,
+              game_action: parsed.game_action,
+            });
+            currentEventType = null;
+            continue;
+          }
+
+          if (currentEventType === 'emotion') {
+            onEvent({
+              type: 'emotion',
+              agent_id: parsed.agent_id,
+              agent_name: parsed.agent_name,
+              triggers: parsed.triggers || [],
+              context_block: parsed.context_block ?? null,
+              snapshot: parsed.snapshot ?? null,
             });
             currentEventType = null;
             continue;

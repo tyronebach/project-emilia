@@ -450,6 +450,79 @@ class TestRoomChat:
         mock_direct.chat_completion.assert_awaited_once()
         mock_client_class.assert_not_called()
 
+    @patch("routers.rooms._spawn_background")
+    @patch("routers.rooms._safe_get_mood_snapshot")
+    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.rooms.DirectLLMClient")
+    @patch("routers.rooms.httpx.AsyncClient")
+    async def test_room_chat_stream_emits_avatar_and_emotion_events(
+        self,
+        mock_client_class,
+        mock_direct_client_class,
+        mock_pre_llm,
+        mock_snapshot,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        beta = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(
+            beta,
+            "Beta",
+            "claw-beta",
+            chat_mode="direct",
+            direct_model="gpt-room-direct",
+            direct_api_base="https://example.invalid/v1",
+        )
+        _grant_access(user_id, beta)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Event Stream Room", "agent_ids": [beta]},
+        )
+        room_id = created.json()["id"]
+
+        mock_pre_llm.return_value = ("Emotion context", [("joy", 0.8)])
+        mock_snapshot.return_value = {"dominant_mood": "happy"}
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_direct = MagicMock()
+        mock_direct.chat_completion = AsyncMock(
+            return_value={
+                "model": "gpt-room-direct",
+                "choices": [
+                    {
+                        "message": {
+                            "content": "[intent:greeting] [mood:happy:0.8] [energy:high] hi room",
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 4},
+            }
+        )
+        mock_direct_client_class.return_value = mock_direct
+
+        sent = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=1",
+            headers=headers,
+            json={"message": "stream events"},
+        )
+
+        assert sent.status_code == 200
+        body = sent.text
+        assert "event: agent_done" in body
+        assert "event: avatar" in body
+        assert "event: emotion" in body
+        assert '"intent": "greeting"' in body
+        assert '"context_block": "Emotion context"' in body
+        mock_direct.chat_completion.assert_awaited_once()
+        mock_client_class.assert_not_called()
+
     async def test_room_chat_rejects_invalid_game_context_payload(self, test_client, auth_headers):
         user_id = f"user-{uuid.uuid4().hex[:8]}"
         alpha = f"agent-{uuid.uuid4().hex[:8]}"
