@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
+from config import settings
 from db.repositories import EmotionalStateRepository, GameRepository
 from services.soul_window_service import get_mood_snapshot
 from services.workspace_events import WorkspaceEventsService
@@ -95,8 +97,8 @@ def inject_game_context(
     return message + context_block
 
 
-def _time_of_day_bucket_utc(now_utc: datetime) -> str:
-    hour = now_utc.hour
+def _time_of_day_bucket(dt: datetime) -> str:
+    hour = dt.hour
     if 5 <= hour < 12:
         return "morning"
     if 12 <= hour < 17:
@@ -112,12 +114,21 @@ def build_first_turn_context(
     *,
     agent_workspace: str | None,
 ) -> str | None:
-    """Build deterministic first-turn facts block in UTC."""
+    """Build deterministic first-turn facts block using configured timezone."""
     now_utc = datetime.now(timezone.utc)
+    try:
+        tz_info = ZoneInfo(settings.default_timezone)
+        now_local = datetime.now(tz_info)
+        tz_label = settings.default_timezone
+    except Exception:
+        now_local = now_utc
+        tz_label = "UTC"
+
     lines = [
-        "Session facts (UTC):",
-        f"- now_utc: {now_utc.isoformat()}",
-        f"- time_of_day_utc: {_time_of_day_bucket_utc(now_utc)}",
+        f"Session facts ({tz_label}):",
+        f"- now: {now_local.strftime('%Y-%m-%d %H:%M')}",
+        f"- day: {now_local.strftime('%A')}",
+        f"- time_of_day: {_time_of_day_bucket(now_local)}",
     ]
 
     try:
