@@ -4,6 +4,40 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.6.5] - 2026-02-13
+
+### Added - Room Chat Parity V2 (User-Agent Continuity)
+
+- **Room request parity** - `RoomChatRequest` now uses validated `GameContextRequest` and supports `runtimeTrigger`/`runtime_trigger`.
+- **Runtime-trigger parity** - Room runtime prompts now follow 1:1 semantics (`origin='game_runtime'`, trigger detection suppression, history filtering).
+- **First-turn context in rooms** - Room chat now injects deterministic first-turn context for an agent’s first room reply.
+- **Workspace milestone parity** - Room agent replies now schedule workspace auto-milestone writes.
+- **Emotion log room correlation** - Room emotional events now use namespaced session references (`room:<room_id>`).
+- **Room SSE safety guard** - Added `MAX_RESPONSE_CHARS` truncation guard for both direct and OpenClaw streaming paths.
+- **Room rollback cleanup** - If all room agents fail, the pre-stored user room message is now deleted (non-stream + stream paths).
+- **Room compaction** - Implemented room summary/pruning flow (`_maybe_compact_room`) with `compact_enabled` room setting support.
+- **Room SSE event parity** - Added per-agent `avatar` and `emotion` events while keeping `agent_start/agent_done/agent_error` unchanged.
+- **Frontend room parity** - Room stream parser now handles `avatar`/`emotion` events, focused agent can drive avatar commands, and room chat now auto-scrolls on updates.
+
+### Tests
+
+- Expanded `backend/tests/test_rooms.py` with:
+  - runtime-trigger room behavior checks
+  - first-turn/milestone/emotion-correlation checks
+  - all-agent-failure rollback checks
+  - stream truncation guard checks
+  - avatar/emotion SSE event checks
+  - room compaction summary/pruning/disabled checks
+- Added frontend tests:
+  - `frontend/src/hooks/useRoomChat.test.tsx`
+  - `frontend/src/components/rooms/RoomChatPage.test.tsx`
+- Validation completed:
+  - `backend/tests/test_rooms.py` + `backend/tests/test_api.py` passing
+  - full frontend vitest suite passing
+  - frontend production build passing
+
+---
+
 ## [5.6.4] - 2026-02-12
 
 ### Added - Sarcasm Mitigation in Live Trigger Detection
