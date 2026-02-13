@@ -4,8 +4,6 @@ import time
 import json
 import logging
 import threading
-from datetime import datetime, timezone
-from pathlib import Path
 import httpx
 from fastapi import APIRouter, UploadFile, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -20,7 +18,6 @@ from db.repositories import (
     SessionRepository,
     MessageRepository,
     EmotionalStateRepository,
-    GameRepository,
 )
 from services.emotion_engine import (
     EmotionEngine, EmotionalState, AgentProfile,
@@ -36,8 +33,14 @@ from services.direct_llm import (
     resolve_direct_model,
 )
 from services.direct_tool_runtime import run_tool_loop
-from services.soul_window_service import get_mood_snapshot
-from services.workspace_events import WorkspaceEventsService
+from services.chat_context_runtime import (
+    build_first_turn_context as _build_first_turn_context_impl,
+    ctx_value as _ctx_value_impl,
+    ensure_workspace_milestones as _ensure_workspace_milestones_impl,
+    inject_game_context as _inject_game_context_impl,
+    resolve_trusted_prompt_instructions as _resolve_trusted_prompt_instructions_impl,
+    safe_get_mood_snapshot as _safe_get_mood_snapshot_impl,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -333,40 +336,13 @@ def _spawn_background(coro) -> asyncio.Task:
 
 
 def _ctx_value(game_context, *keys):
-    """Read a value from either dict-style or model-style game context."""
-    if game_context is None:
-        return None
-
-    if isinstance(game_context, dict):
-        for key in keys:
-            if key in game_context:
-                value = game_context.get(key)
-                if value is not None:
-                    return value
-        return None
-
-    for key in keys:
-        if hasattr(game_context, key):
-            value = getattr(game_context, key)
-            if value is not None:
-                return value
-    return None
+    """Compatibility wrapper for shared runtime helper."""
+    return _ctx_value_impl(game_context, *keys)
 
 
 def _resolve_trusted_prompt_instructions(agent_id: str, game_context) -> str:
-    """Resolve per-game prompt instructions from server-side registry/config."""
-    game_id = _ctx_value(game_context, "game_id", "gameId")
-    if not isinstance(game_id, str) or not game_id.strip():
-        return ""
-
-    effective = GameRepository.get_effective_game_for_agent(agent_id, game_id.strip())
-    if not effective:
-        return ""
-
-    prompt = effective.get("prompt_override") or effective.get("prompt_instructions") or ""
-    if not isinstance(prompt, str):
-        return ""
-    return prompt.strip()
+    """Compatibility wrapper for shared runtime helper."""
+    return _resolve_trusted_prompt_instructions_impl(agent_id, game_context)
 
 
 def inject_game_context(
@@ -374,55 +350,8 @@ def inject_game_context(
     game_context,
     prompt_instructions: str | None = None,
 ) -> str:
-    """Append game context to the user's message for the LLM prompt."""
-    if not game_context:
-        return message
-
-    game_id = _ctx_value(game_context, "game_id", "gameId") or "unknown"
-    if prompt_instructions is None:
-        # Backward-compatible fallback for callsites/tests that don't inject trusted prompts.
-        prompt_instructions = _ctx_value(game_context, "prompt_instructions", "promptInstructions") or ""
-    state = _ctx_value(game_context, "state_text", "state") or ""
-    last_move = _ctx_value(game_context, "last_user_move", "lastUserMove") or ""
-    avatar_move = _ctx_value(game_context, "avatar_move", "avatarMove")
-    valid_moves = _ctx_value(game_context, "valid_moves", "validMoves") or []
-    status = _ctx_value(game_context, "status") or "in_progress"
-
-    # Build context block: Layer 2 (prompt instructions) + Layer 3 (game state)
-    context_block = f"\n\n---\n[game: {game_id}]\n"
-
-    if prompt_instructions:
-        context_block += f"\n{prompt_instructions}\n"
-
-    context_block += f"\n{state}\n"
-
-    if last_move:
-        context_block += f"The user just played: {last_move}\n"
-
-    if avatar_move:
-        context_block += f"You played: {avatar_move}\nReact to this game state naturally.\n"
-    elif valid_moves:
-        moves_str = ", ".join(str(move) for move in valid_moves[:30])
-        context_block += f"It's your turn. Legal moves: {moves_str}\n"
-        context_block += "Choose a move and include it as [move:your_move] in your response.\n"
-
-    if status == "game_over":
-        context_block += "The game is over. React to the outcome.\n"
-
-    context_block += "---"
-
-    return message + context_block
-
-
-def _time_of_day_bucket_utc(now_utc: datetime) -> str:
-    hour = now_utc.hour
-    if 5 <= hour < 12:
-        return "morning"
-    if 12 <= hour < 17:
-        return "afternoon"
-    if 17 <= hour < 22:
-        return "evening"
-    return "night"
+    """Compatibility wrapper for shared runtime helper."""
+    return _inject_game_context_impl(message, game_context, prompt_instructions=prompt_instructions)
 
 
 def _build_first_turn_context(
@@ -431,48 +360,12 @@ def _build_first_turn_context(
     *,
     agent_workspace: str | None,
 ) -> str | None:
-    """Build deterministic first-turn facts block in UTC."""
-    now_utc = datetime.now(timezone.utc)
-    lines = [
-        "Session facts (UTC):",
-        f"- now_utc: {now_utc.isoformat()}",
-        f"- time_of_day_utc: {_time_of_day_bucket_utc(now_utc)}",
-    ]
-
-    try:
-        prior_state = EmotionalStateRepository.get(user_id, agent_id)
-        last_interaction = prior_state.get("last_interaction") if prior_state else None
-        if isinstance(last_interaction, (int, float)):
-            days_since = max(0, int((now_utc.timestamp() - float(last_interaction)) // 86400))
-            lines.append(f"- days_since_last_interaction: {days_since}")
-    except Exception:
-        logger.exception("Failed building first-turn interaction facts for %s/%s", user_id, agent_id)
-
-    if agent_workspace:
-        try:
-            upcoming = WorkspaceEventsService.get_upcoming(
-                Path(agent_workspace),
-                user_id,
-                agent_id,
-                days=7,
-                now_utc=now_utc,
-            )
-            if upcoming:
-                lines.append("- upcoming_events_next_7_days:")
-                for event in upcoming[:3]:
-                    event_type = str(event.get("type") or "event")
-                    event_date = str(event.get("date") or "")
-                    event_note = str(event.get("note") or "").strip()
-                    if event_note:
-                        lines.append(f"  - {event_type} on {event_date}: {event_note}")
-                    else:
-                        lines.append(f"  - {event_type} on {event_date}")
-        except Exception:
-            logger.exception("Failed loading first-turn upcoming events for %s/%s", user_id, agent_id)
-
-    if len(lines) <= 1:
-        return None
-    return "\n".join(lines)
+    """Compatibility wrapper for shared runtime helper."""
+    return _build_first_turn_context_impl(
+        user_id,
+        agent_id,
+        agent_workspace=agent_workspace,
+    )
 
 
 def _ensure_workspace_milestones(
@@ -484,27 +377,20 @@ def _ensure_workspace_milestones(
     runtime_trigger: bool,
     game_id: str | None,
 ) -> None:
-    """Best-effort auto milestone persistence to workspace events file."""
-    try:
-        WorkspaceEventsService.ensure_auto_milestones(
-            Path(agent_workspace),
-            user_id,
-            agent_id,
-            interaction_count=interaction_count,
-            runtime_trigger=runtime_trigger,
-            game_id=game_id,
-        )
-    except Exception:
-        logger.exception("Failed writing auto milestones for %s/%s", user_id, agent_id)
+    """Compatibility wrapper for shared runtime helper."""
+    _ensure_workspace_milestones_impl(
+        agent_workspace=agent_workspace,
+        user_id=user_id,
+        agent_id=agent_id,
+        interaction_count=interaction_count,
+        runtime_trigger=runtime_trigger,
+        game_id=game_id,
+    )
 
 
 def _safe_get_mood_snapshot(user_id: str, agent_id: str) -> dict | None:
-    """Best-effort mood snapshot for debug/UI payloads."""
-    try:
-        return get_mood_snapshot(user_id, agent_id)
-    except Exception:
-        logger.exception("Failed loading mood snapshot for %s/%s", user_id, agent_id)
-        return None
+    """Compatibility wrapper for shared runtime helper."""
+    return _safe_get_mood_snapshot_impl(user_id, agent_id)
 
 
 
