@@ -1,12 +1,12 @@
-import { useState } from 'react';
-import { Menu, Activity, Brain, MicOff, Volume2, VolumeX, HeartHandshake, BookOpenText } from 'lucide-react';
+import { Menu, Activity, MicOff, Volume2, VolumeX } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
 import { STATUS_COLORS } from '../types';
 import type { SoulMoodSnapshot } from '../types/soulWindow';
 import { Button } from './ui/button';
-import { updateUserPreferences, updateAgent } from '../utils/api';
+import { updateUserPreferences } from '../utils/api';
 import MoodIndicator from './MoodIndicator';
+import AgentPanelDropdown from './AgentPanelDropdown';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -30,9 +30,6 @@ function Header({
   onBondClick,
   onAboutClick,
   debugOpen,
-  memoryOpen,
-  bondOpen,
-  aboutOpen,
   currentMood,
   handsFreeEnabled = false,
   voicePermissionWarning,
@@ -43,28 +40,6 @@ function Header({
   const currentAgent = useUserStore((state) => state.currentAgent);
   const currentUser = useUserStore((state) => state.currentUser);
   const updatePreferences = useUserStore((state) => state.updatePreferences);
-  const updateCurrentAgent = useUserStore((state) => state.updateCurrentAgent);
-  const [modeTogglePending, setModeTogglePending] = useState(false);
-
-  const chatMode = currentAgent?.chat_mode || 'openclaw';
-
-  const handleToggleMode = async () => {
-    if (!currentAgent?.id || modeTogglePending) return;
-    const nextMode = chatMode === 'direct' ? 'openclaw' : 'direct';
-
-    // Optimistic update
-    setModeTogglePending(true);
-    updateCurrentAgent({ chat_mode: nextMode });
-
-    try {
-      await updateAgent(currentAgent.id, { chat_mode: nextMode });
-    } catch (error) {
-      console.error('Failed to update chat mode:', error);
-      updateCurrentAgent({ chat_mode: chatMode }); // revert
-    } finally {
-      setModeTogglePending(false);
-    }
-  };
 
   const handleToggleTts = async () => {
     const nextEnabled = !ttsEnabled;
@@ -96,23 +71,11 @@ function Header({
           <Menu className="w-6 h-6" />
         </Button>
 
-        {/* Center: Agent name + status */}
+        {/* Center: Agent name + status + mood */}
         <div className="flex items-center gap-3 rounded-full border border-white/10 bg-bg-secondary/45 px-3 md:px-4 py-1 shadow-sm">
           <span className="font-display text-sm md:text-base text-text-primary">
             {currentAgent?.display_name || 'Kokoro'}
           </span>
-          <button
-            onClick={handleToggleMode}
-            disabled={modeTogglePending || !currentAgent?.id}
-            className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide leading-none cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-              chatMode === 'direct'
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                : 'bg-blue-500/20 text-blue-300 border border-blue-500/40'
-            }`}
-            title={`Mode: ${chatMode} (click to toggle)`}
-          >
-            {chatMode === 'direct' ? 'Direct' : 'OC'}
-          </button>
           <span
             className={`w-2 h-2 rounded-full ${STATUS_COLORS[status]}`}
             title={`Status: ${status}`}
@@ -120,19 +83,20 @@ function Header({
           <MoodIndicator mood={currentMood} onClick={onBondClick} />
         </div>
 
-        {/* Right: TTS + Bond/About + Debug + Memory buttons */}
+        {/* Right: TTS + Agent Panel + Debug */}
         <div className="flex items-center gap-1">
+          {/* TTS button - blue when enabled, grey when disabled */}
           <Button
             variant="ghost"
             size="icon"
             onClick={handleToggleTts}
             aria-pressed={ttsEnabled}
-            className={`text-text-primary hover:bg-white/10 border transition-all duration-200 ${
+            className={`transition-all duration-200 ${
               ttsEnabled 
-                ? 'bg-accent/20 border-accent/40 text-accent hover:bg-accent/30' 
-                : 'bg-bg-secondary/45 border-white/10 text-text-secondary hover:text-text-primary'
+                ? 'bg-blue-500/20 border-blue-500/40 text-blue-400 hover:bg-blue-500/30 border' 
+                : 'bg-bg-secondary/45 border-white/10 text-text-secondary/50 hover:text-text-secondary hover:bg-white/10 border opacity-60'
             }`}
-            title={ttsEnabled ? 'Voice replies on (click to disable)' : 'Voice replies off (click to enable)'}
+            title={ttsEnabled ? 'Voice replies ON (click to disable)' : 'Voice replies OFF (click to enable)'}
           >
             <div className="relative">
               {ttsEnabled ? (
@@ -141,37 +105,19 @@ function Header({
                 <VolumeX className="w-5 h-5 transition-transform duration-200 hover:scale-110" />
               )}
               {ttsEnabled && (
-                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-accent rounded-full animate-pulse" />
+                <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
               )}
             </div>
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onBondClick}
-            className={`text-text-primary hover:bg-white/10 bg-bg-secondary/45 border border-white/10 ${bondOpen ? 'bg-white/15' : ''}`}
-            title="Bond"
-          >
-            <HeartHandshake className="w-5 h-5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onAboutClick}
-            className={`text-text-primary hover:bg-white/10 bg-bg-secondary/45 border border-white/10 ${aboutOpen ? 'bg-white/15' : ''}`}
-            title="About"
-          >
-            <BookOpenText className="w-5 h-5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onMemoryClick}
-            className={`text-text-primary hover:bg-white/10 bg-bg-secondary/45 border border-white/10 ${memoryOpen ? 'bg-white/15' : ''}`}
-            title="Agent Memory"
-          >
-            <Brain className="w-5 h-5" />
-          </Button>
+
+          {/* Agent Panel dropdown - contains Bond, About, Memory, Mode toggle */}
+          <AgentPanelDropdown
+            onBondClick={onBondClick}
+            onAboutClick={onAboutClick}
+            onMemoryClick={onMemoryClick}
+          />
+
+          {/* Debug panel button */}
           <Button
             variant="ghost"
             size="icon"
