@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from config import settings
 from db.connection import get_db
 
 pytestmark = pytest.mark.anyio
@@ -447,3 +448,110 @@ class TestRoomChat:
         assert '"content": "Room direct"' in body
         mock_direct.chat_completion.assert_awaited_once()
         mock_client_class.assert_not_called()
+
+    async def test_room_chat_rejects_invalid_game_context_payload(self, test_client, auth_headers):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha")
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Validation Room", "agent_ids": [alpha]},
+        )
+        room_id = created.json()["id"]
+
+        invalid_game_context = {
+            "gameId": "tic_tac_toe",
+            "state": "X to move",
+            "validMoves": [f"move{i}" for i in range(101)],
+        }
+        sent = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=0",
+            headers=headers,
+            json={
+                "message": "runtime update",
+                "game_context": invalid_game_context,
+            },
+        )
+
+        assert sent.status_code == 422
+
+    @patch("routers.rooms._spawn_background")
+    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.rooms.httpx.AsyncClient")
+    async def test_room_chat_runtime_trigger_uses_game_runtime_origin_and_history_filtering(
+        self,
+        mock_client_class,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+        monkeypatch,
+    ):
+        monkeypatch.setattr(settings, "games_v2_agent_allowlist", set())
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha")
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Runtime Room", "agent_ids": [alpha]},
+        )
+        room_id = created.json()["id"]
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "model": "agent:claw-alpha",
+            "choices": [{"message": {"content": "Runtime acknowledged"}}],
+            "usage": {"prompt_tokens": 5, "completion_tokens": 2},
+        }
+
+        mock_client = MagicMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client_class.return_value = mock_client
+
+        sent = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=0",
+            headers=headers,
+            json={"message": "runtime tick", "runtime_trigger": True},
+        )
+
+        assert sent.status_code == 200
+        assert mock_pre_llm.await_count == 1
+        first_call_args = mock_pre_llm.await_args_list[0].args
+        assert first_call_args[2] == ""
+
+        history_default = await test_client.get(
+            f"/api/rooms/{room_id}/history",
+            headers=headers,
+        )
+        assert history_default.status_code == 200
+        default_messages = history_default.json()["messages"]
+        assert len(default_messages) == 1
+        assert default_messages[0]["sender_type"] == "agent"
+
+        history_runtime = await test_client.get(
+            f"/api/rooms/{room_id}/history?includeRuntime=true",
+            headers=headers,
+        )
+        assert history_runtime.status_code == 200
+        runtime_messages = history_runtime.json()["messages"]
+        assert len(runtime_messages) == 2
+        assert runtime_messages[0]["sender_type"] == "user"
+        assert runtime_messages[0]["origin"] == "game_runtime"

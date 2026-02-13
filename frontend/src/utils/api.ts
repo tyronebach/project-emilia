@@ -635,11 +635,21 @@ export async function getRoomHistory(
 
 export async function sendRoomMessage(
   roomId: string,
-  data: { message: string; mention_agents?: string[]; game_context?: GameContext | undefined },
+  data: {
+    message: string;
+    mention_agents?: string[];
+    game_context?: GameContext | undefined;
+    runtime_trigger?: boolean;
+    runtimeTrigger?: boolean;
+  },
 ): Promise<RoomChatResponsePayload> {
+  const { runtimeTrigger, runtime_trigger, ...rest } = data;
   const response = await fetchWithAuth(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/chat?stream=0`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...rest,
+      runtime_trigger: runtime_trigger ?? runtimeTrigger ?? undefined,
+    }),
   });
   if (!response.ok) throw new Error(`Failed to send room message: ${response.status}`);
   return response.json();
@@ -847,17 +857,27 @@ export type RoomStreamEvent =
 
 export async function streamRoomChat(
   roomId: string,
-  data: { message: string; mention_agents?: string[]; game_context?: GameContext | undefined },
+  data: {
+    message: string;
+    mention_agents?: string[];
+    game_context?: GameContext | undefined;
+    runtime_trigger?: boolean;
+    runtimeTrigger?: boolean;
+  },
   onEvent: (event: RoomStreamEvent) => void,
   onError: (error: Error) => void,
   options?: {
     signal?: AbortSignal;
   },
 ): Promise<void> {
+  const { runtimeTrigger, runtime_trigger, ...rest } = data;
   try {
     const response = await fetchWithAuth(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/chat?stream=1`, {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        ...rest,
+        runtime_trigger: runtime_trigger ?? runtimeTrigger ?? undefined,
+      }),
       signal: options?.signal,
     });
 

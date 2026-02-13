@@ -377,7 +377,12 @@ class RoomChatRequest(BaseModel):
 
     message: str = Field(..., min_length=1, max_length=10000)
     mention_agents: list[str] | None = Field(None, max_length=10)
-    game_context: Dict[str, Any] | None = None
+    game_context: GameContextRequest | None = None
+    runtime_trigger: bool = Field(
+        False,
+        alias="runtimeTrigger",
+        description="Marks non-user runtime prompts (e.g. game turns) to skip user-history persistence.",
+    )
 
     @field_validator("message")
     @classmethod
