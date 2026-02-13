@@ -561,6 +561,10 @@ export class AvatarRenderer {
           this.vrm = vrm;
           VRMUtils.rotateVRM0(vrm);
           VRMUtils.combineSkeletons(vrm.scene);
+
+          // Hide VRM initially to avoid T-pose flash while idle animation loads
+          vrm.scene.visible = false;
+
           this.scene?.add(vrm.scene);
 
           // Apply alphaToCoverage to MToon materials
@@ -602,6 +606,14 @@ export class AvatarRenderer {
             maxPitchDown: 15,
             headWeight: 0.4,
             smoothSpeed: 6,
+          });
+
+          // Show VRM once idle animation is ready (avoids T-pose flash)
+          this.animationController.onIdleReady(() => {
+            if (vrm.scene) {
+              vrm.scene.visible = true;
+              console.log('[AvatarRenderer] VRM visible after idle animation loaded');
+            }
           });
 
           // Debug: Log available humanoid bones

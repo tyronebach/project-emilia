@@ -118,6 +118,11 @@ export class AnimationController {
   private targetIntensity: number = 0;
   private emotionBlendSpeed: number = 0.08;
 
+  // Emotion decay - returns to neutral after hold time
+  private emotionSetTime: number = 0;
+  private emotionDecayDelayMs: number = 4000;  // Hold emotion for 4s before decaying
+  private isDecaying: boolean = false;
+
   constructor() {
     this.expressionMixer = new ExpressionMixer();
     this.behaviorPlanner = new BehaviorPlanner();
@@ -382,6 +387,13 @@ export class AnimationController {
 
     this.targetEmotion = normalizedEmotion;
     this.targetIntensity = intensity;
+
+    // Track when emotion was set (for decay timer)
+    // Only reset timer if setting a non-neutral emotion
+    if (normalizedEmotion !== 'neutral' || intensity > 0.1) {
+      this.emotionSetTime = Date.now();
+      this.isDecaying = false;
+    }
   }
 
   /**
@@ -389,6 +401,19 @@ export class AnimationController {
    */
   private updateEmotionBlend(deltaTime: number): void {
     const blendAmount = this.emotionBlendSpeed * deltaTime * 60;
+
+    // Check if emotion should start decaying back to neutral
+    const timeSinceSet = Date.now() - this.emotionSetTime;
+    if (!this.isDecaying &&
+        this.targetEmotion !== 'neutral' &&
+        timeSinceSet > this.emotionDecayDelayMs &&
+        !this.isSpeaking) {
+      // Start decay - set target to neutral
+      this.targetEmotion = 'neutral';
+      this.targetIntensity = 0;
+      this.isDecaying = true;
+      console.log('[AnimationController] Emotion decaying to neutral');
+    }
 
     // Blend intensity
     if (Math.abs(this.emotionIntensity - this.targetIntensity) > 0.01) {
@@ -506,6 +531,14 @@ export class AnimationController {
    */
   get graph(): AnimationGraph | null {
     return this.animationGraph;
+  }
+
+  /**
+   * Set callback for when idle animation is ready and playing
+   * Used to show VRM after initial load (avoiding T-pose flash)
+   */
+  onIdleReady(callback: () => void): void {
+    this.idleAnimations?.onReady(callback);
   }
 
   /**
