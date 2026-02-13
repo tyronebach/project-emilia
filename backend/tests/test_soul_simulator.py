@@ -80,8 +80,8 @@ async def test_soul_simulate_inline_soul_md(test_client, auth_headers, monkeypat
     assert payload["analysis"] == analysis
     assert payload["config"]["archetype"] == "venting-sad"
     assert payload["config"]["persona_model"] == settings.soul_sim_persona_model
-    assert payload["config"]["archetype_model"] == settings.compact_model
-    assert payload["config"]["judge_model"] == settings.compact_model
+    assert payload["config"]["archetype_model"] == "gpt-5-mini"
+    assert payload["config"]["judge_model"] == "gpt-5-mini"
 
 
 async def test_soul_simulate_loads_workspace_soul_md(test_client, auth_headers, monkeypatch, tmp_path):
