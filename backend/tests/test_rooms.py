@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from db.connection import get_db
+from db.repositories import RoomMessageRepository, RoomRepository
 
 pytestmark = pytest.mark.anyio
 
@@ -928,3 +929,126 @@ class TestRoomChat:
         assert len(messages) == 2
         assert messages[1]["sender_type"] == "agent"
         assert len(messages[1]["content"]) == 50000
+
+
+class TestRoomCompaction:
+
+    @patch("services.compaction.CompactionService.summarize_messages", new_callable=AsyncMock)
+    async def test_room_compaction_updates_summary_when_threshold_exceeded(
+        self,
+        mock_summarize,
+        test_client,
+        auth_headers,
+        monkeypatch,
+    ):
+        from routers import rooms as rooms_router
+
+        monkeypatch.setattr(rooms_router.settings, "compact_threshold", 2)
+        monkeypatch.setattr(rooms_router.settings, "compact_keep_recent", 1)
+        mock_summarize.return_value = "Compacted room summary"
+
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha")
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Compact Summary Room", "agent_ids": [alpha]},
+        )
+        room_id = created.json()["id"]
+
+        RoomMessageRepository.add(room_id, "user", user_id, "u1", origin="chat")
+        RoomMessageRepository.add(room_id, "agent", alpha, "a1", origin="chat")
+        RoomMessageRepository.add(room_id, "user", user_id, "u2", origin="chat")
+
+        result = await rooms_router._maybe_compact_room(room_id)
+        assert result is not None
+        assert result["compacted"] is True
+        assert RoomRepository.get_summary(room_id) == "Compacted room summary"
+        assert mock_summarize.await_count == 1
+
+    @patch("services.compaction.CompactionService.summarize_messages", new_callable=AsyncMock)
+    async def test_room_compaction_prunes_old_messages_to_keep_recent(
+        self,
+        mock_summarize,
+        test_client,
+        auth_headers,
+        monkeypatch,
+    ):
+        from routers import rooms as rooms_router
+
+        monkeypatch.setattr(rooms_router.settings, "compact_threshold", 1)
+        monkeypatch.setattr(rooms_router.settings, "compact_keep_recent", 2)
+        mock_summarize.return_value = "Pruned summary"
+
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha")
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Compact Prune Room", "agent_ids": [alpha]},
+        )
+        room_id = created.json()["id"]
+
+        RoomMessageRepository.add(room_id, "user", user_id, "u1", origin="chat")
+        RoomMessageRepository.add(room_id, "agent", alpha, "a1", origin="chat")
+        RoomMessageRepository.add(room_id, "user", user_id, "u2", origin="chat")
+        RoomMessageRepository.add(room_id, "agent", alpha, "a2", origin="chat")
+
+        result = await rooms_router._maybe_compact_room(room_id)
+        assert result is not None
+        assert result["compacted"] is True
+        assert RoomRepository.get_message_count(room_id) == 2
+
+    @patch("services.compaction.CompactionService.summarize_messages", new_callable=AsyncMock)
+    async def test_room_compaction_skips_when_compact_disabled(
+        self,
+        mock_summarize,
+        test_client,
+        auth_headers,
+        monkeypatch,
+    ):
+        from routers import rooms as rooms_router
+
+        monkeypatch.setattr(rooms_router.settings, "compact_threshold", 1)
+        monkeypatch.setattr(rooms_router.settings, "compact_keep_recent", 1)
+
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha")
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={
+                "name": "Compact Disabled Room",
+                "agent_ids": [alpha],
+                "settings": {"compact_enabled": False},
+            },
+        )
+        room_id = created.json()["id"]
+
+        RoomMessageRepository.add(room_id, "user", user_id, "u1", origin="chat")
+        RoomMessageRepository.add(room_id, "agent", alpha, "a1", origin="chat")
+        RoomMessageRepository.add(room_id, "user", user_id, "u2", origin="chat")
+
+        result = await rooms_router._maybe_compact_room(room_id)
+        assert result is None
+        assert RoomRepository.get_message_count(room_id) == 3
+        assert RoomRepository.get_summary(room_id) is None
+        assert mock_summarize.await_count == 0

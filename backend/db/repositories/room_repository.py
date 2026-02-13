@@ -456,3 +456,55 @@ class RoomMessageRepository:
                 (room_id, agent_id),
             ).fetchone()
             return int(row["cnt"]) if row else 0
+
+    @staticmethod
+    def get_all_for_room(
+        room_id: str,
+        include_game_runtime: bool = False,
+    ) -> list[dict]:
+        where = "WHERE rm.room_id = ?"
+        if not include_game_runtime:
+            where += " AND COALESCE(rm.origin, '') != 'game_runtime'"
+
+        with get_db() as conn:
+            return conn.execute(
+                f"""SELECT
+                       rm.*,
+                       CASE
+                           WHEN rm.sender_type = 'user' THEN COALESCE(u.display_name, rm.sender_id)
+                           ELSE COALESCE(a.display_name, rm.sender_id)
+                       END AS sender_name
+                   FROM room_messages rm
+                   LEFT JOIN users u ON rm.sender_type = 'user' AND u.id = rm.sender_id
+                   LEFT JOIN agents a ON rm.sender_type = 'agent' AND a.id = rm.sender_id
+                   {where}
+                   ORDER BY rm.timestamp ASC""",
+                (room_id,),
+            ).fetchall()
+
+    @staticmethod
+    def delete_oldest(
+        room_id: str,
+        keep_recent: int,
+        include_game_runtime: bool = False,
+    ) -> int:
+        filter_clause = ""
+        if not include_game_runtime:
+            filter_clause = "AND COALESCE(origin, '') != 'game_runtime'"
+
+        with get_db() as conn:
+            result = conn.execute(
+                f"""DELETE FROM room_messages WHERE id IN (
+                       SELECT id FROM room_messages
+                       WHERE room_id = ?
+                       {filter_clause}
+                       ORDER BY timestamp ASC
+                       LIMIT (
+                           SELECT MAX(0, COUNT(*) - ?) FROM room_messages
+                           WHERE room_id = ?
+                           {filter_clause}
+                       )
+                   )""",
+                (room_id, keep_recent, room_id),
+            )
+            return result.rowcount

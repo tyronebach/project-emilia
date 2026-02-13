@@ -281,6 +281,70 @@ def _room_message_row(
     }
 
 
+async def _maybe_compact_room(room_id: str) -> dict | None:
+    room = RoomRepository.get_by_id(room_id)
+    if not room:
+        return None
+
+    room_settings = room.get("settings") if isinstance(room.get("settings"), dict) else {}
+    if isinstance(room_settings, dict) and room_settings.get("compact_enabled") is False:
+        return None
+
+    msg_count = RoomRepository.get_message_count(room_id)
+    if msg_count <= settings.compact_threshold:
+        return None
+
+    logger.info(
+        "Room %s has %d messages (threshold=%d), compacting",
+        room_id,
+        msg_count,
+        settings.compact_threshold,
+    )
+
+    try:
+        from services.compaction import CompactionService
+
+        all_msgs = RoomMessageRepository.get_all_for_room(room_id)
+        split_at = len(all_msgs) - settings.compact_keep_recent
+        if split_at <= 0:
+            return None
+
+        old_msgs = all_msgs[:split_at]
+        existing_summary = RoomRepository.get_summary(room_id)
+
+        to_summarize: list[dict] = []
+        if existing_summary:
+            to_summarize.append({"role": "system", "content": f"Prior summary: {existing_summary}"})
+
+        for msg in old_msgs:
+            sender_name = str(msg.get("sender_name") or msg.get("sender_id") or "Unknown")
+            content = str(msg.get("content") or "")
+            to_summarize.append({"role": "user", "content": f"[{sender_name}]: {content}"})
+
+        summary = await CompactionService.summarize_messages(to_summarize)
+
+        RoomRepository.update_summary(room_id, summary)
+        deleted = RoomMessageRepository.delete_oldest(room_id, settings.compact_keep_recent)
+
+        logger.info(
+            "[RoomCompaction] Room %s: deleted %d msgs, kept %d, summary %d chars",
+            room_id,
+            deleted,
+            settings.compact_keep_recent,
+            len(summary),
+        )
+        return {
+            "compacted": True,
+            "messages_before": msg_count,
+            "messages_deleted": deleted,
+            "messages_kept": settings.compact_keep_recent,
+            "summary_chars": len(summary),
+        }
+    except Exception:
+        logger.exception("Compaction failed for room %s, continuing with full history", room_id)
+        return {"compacted": False, "error": "Compaction failed"}
+
+
 @router.get("", response_model=RoomsListResponse)
 async def list_rooms(
     token: str = Depends(verify_token),
@@ -658,6 +722,8 @@ async def room_chat(
             RoomMessageRepository.delete_by_id(user_msg_id)
         raise service_unavailable("Room chat")
 
+    _spawn_background(_maybe_compact_room(room_id))
+
     return RoomChatResponse(room_id=room_id, responses=responses, count=len(responses))
 
 
@@ -970,5 +1036,7 @@ async def _stream_room_chat_sse(
 
     if successful_replies == 0 and user_msg_id:
         RoomMessageRepository.delete_by_id(user_msg_id)
+    elif successful_replies > 0:
+        _spawn_background(_maybe_compact_room(room_id))
 
     yield f"data: {json.dumps({'done': True, 'room_id': room_id})}\n\n"
