@@ -18,8 +18,8 @@ MEMORY_TOOLS: list[dict[str, Any]] = [
             "name": "memory_search",
             "description": (
                 "Semantically search the agent's memory files (MEMORY.md + memory/*.md). "
-                "Use before answering questions about prior work, decisions, dates, people, "
-                "preferences, or todos."
+                "Use before answering questions about prior conversations, preferences, "
+                "dates, people, or past events."
             ),
             "parameters": {
                 "type": "object",
@@ -45,13 +45,13 @@ MEMORY_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "memory_read",
-            "description": "Read content from a memory file. Use after memory_search to get full context.",
+            "description": "Read content from a memory file. Use after memory_search to get full context from a specific file.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "File path (MEMORY.md or memory/*.md)",
+                        "description": "File path: MEMORY.md or memory/YYYY-MM-DD.md (e.g. memory/2026-02-12.md)",
                     },
                     "from": {
                         "type": "integer",
@@ -70,22 +70,26 @@ MEMORY_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "memory_write",
-            "description": "Write or append to a memory file. Use for storing important information.",
+            "description": (
+                "Append to a memory file. Use MEMORY.md for long-term facts/preferences, "
+                "or memory/YYYY-MM-DD.md for daily notes (e.g. memory/2026-02-12.md). "
+                "Do NOT create other filenames."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "File path (MEMORY.md or memory/*.md)",
+                        "description": "MEMORY.md for long-term, or memory/YYYY-MM-DD.md for daily (e.g. memory/2026-02-12.md)",
                     },
                     "content": {
                         "type": "string",
-                        "description": "Content to write",
+                        "description": "Content to append",
                     },
                     "mode": {
                         "type": "string",
                         "enum": ["overwrite", "append"],
-                        "description": "Write mode (default: append)",
+                        "description": "Write mode (default: append). Use append for most cases.",
                     },
                 },
                 "required": ["path", "content"],

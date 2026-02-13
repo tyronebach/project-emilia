@@ -31,7 +31,7 @@ from services.direct_llm import (
     DirectLLMClient,
     normalize_chat_mode,
     normalize_messages_for_direct,
-    prepend_workspace_soul,
+    prepend_webapp_system_prompt,
     resolve_direct_api_base,
     resolve_direct_model,
 )
@@ -706,9 +706,10 @@ async def chat(
                 direct_client = DirectLLMClient(
                     api_base=resolve_direct_api_base(agent),
                 )
-                direct_messages = prepend_workspace_soul(
+                direct_messages = prepend_webapp_system_prompt(
                     normalize_messages_for_direct(messages),
                     agent_workspace if isinstance(agent_workspace, str) else None,
+                    timezone=settings.default_timezone,
                 )
                 result = await run_tool_loop(
                     client=direct_client,
@@ -720,6 +721,18 @@ async def chat(
                     timeout_s=60.0,
                 )
             else:
+                # OpenClaw mode: inject only webapp-specific behavior format (for avatar animation)
+                # OpenClaw handles time/memory/skills via its own system
+                from services.direct_llm import build_webapp_system_instructions
+                webapp_instructions = build_webapp_system_instructions(
+                    chat_mode="openclaw",
+                    include_behavior_format=True,
+                )
+                openclaw_messages = [
+                    {"role": "system", "content": webapp_instructions},
+                    *messages,
+                ]
+
                 async with httpx.AsyncClient(timeout=60.0) as client:
                     response = await client.post(
                         f"{settings.clawdbot_url}/v1/chat/completions",
@@ -729,7 +742,7 @@ async def chat(
                         },
                         json={
                             "model": f"agent:{clawdbot_agent_id}",
-                            "messages": messages,
+                            "messages": openclaw_messages,
                             "stream": False,
                             "user": f"emilia:{sid}",
                         }
@@ -887,9 +900,10 @@ async def _stream_chat_sse(
                 direct_client = DirectLLMClient(
                     api_base=resolve_direct_api_base(agent),
                 )
-                direct_messages = prepend_workspace_soul(
+                direct_messages = prepend_webapp_system_prompt(
                     normalize_messages_for_direct(messages),
                     agent_workspace if isinstance(agent_workspace, str) else None,
+                    timezone=settings.default_timezone,
                 )
 
                 try:
@@ -921,6 +935,17 @@ async def _stream_chat_sse(
                     yield f"data: {json.dumps({'error': f'API error ({status_code})'})}\n\n"
                     return
             else:
+                # OpenClaw mode: inject only webapp-specific behavior format (for avatar animation)
+                from services.direct_llm import build_webapp_system_instructions
+                webapp_instructions = build_webapp_system_instructions(
+                    chat_mode="openclaw",
+                    include_behavior_format=True,
+                )
+                openclaw_messages = [
+                    {"role": "system", "content": webapp_instructions},
+                    *messages,
+                ]
+
                 async with httpx.AsyncClient(timeout=120.0) as client:
                     async with client.stream(
                         "POST",
@@ -931,7 +956,7 @@ async def _stream_chat_sse(
                         },
                         json={
                             "model": f"agent:{clawdbot_agent_id}",
-                            "messages": messages,
+                            "messages": openclaw_messages,
                             "stream": True,
                             "stream_options": {"include_usage": True},
                             "user": f"emilia:{session_id}",

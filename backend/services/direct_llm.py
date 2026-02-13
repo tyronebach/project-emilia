@@ -1,9 +1,11 @@
-"""Direct OpenAI-compatible chat helpers."""
+"""Direct OpenAI-compatible chat helpers and webapp system prompt builder."""
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone as tz
 from pathlib import Path
 from typing import Any, AsyncIterator
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -11,6 +13,96 @@ from config import settings
 
 SUPPORTED_CHAT_MODES = {"openclaw", "direct"}
 MAX_SOUL_MD_CHARS = 50_000
+
+# ── Webapp System Instructions ──────────────────────────────────────
+# These are injected for ALL webapp avatar interactions (direct + openclaw mode).
+# Mirrors OpenClaw patterns for time/memory, adds webapp-specific behavior format.
+
+MEMORY_INSTRUCTIONS = """## Memory
+You have access to memory tools for continuity across sessions.
+
+**Files:**
+- `MEMORY.md` — Long-term curated memory (preferences, facts, relationships)
+- `memory/YYYY-MM-DD.md` — Daily notes (e.g. memory/2026-02-12.md)
+
+**Usage:**
+- Before answering about prior conversations, preferences, or past events: use `memory_search`
+- After search, use `memory_read` to get full context if needed
+- To remember something important: use `memory_write` to append to `MEMORY.md` or today's daily file
+- DO NOT create random filenames — only use `MEMORY.md` or `memory/YYYY-MM-DD.md` pattern
+"""
+
+BEHAVIOR_FORMAT_INSTRUCTIONS = """## Response Format
+Start every response with behavior tags for the avatar system:
+```
+[intent:X] [mood:Y] [energy:Z] Your message here...
+```
+
+**intent:** greeting | farewell | agreement | disagreement | thinking | listening | affection | embarrassed | playful | curious | surprised | pleased | annoyed | neutral
+**mood:** happy | sad | angry | calm | anxious | neutral
+**energy:** low | medium | high
+
+Example: `[intent:playful] [mood:happy] [energy:high] Good morning!`
+"""
+
+# Game instructions removed — injected dynamically per-turn via inject_game_context()
+# which includes: prompt_instructions, board state, last moves, valid moves, [move:X] format
+
+
+def _get_time_block(timezone: str | None = None) -> str:
+    """Generate current time block for system prompt."""
+    try:
+        if timezone:
+            tz_info = ZoneInfo(timezone)
+            now = datetime.now(tz_info)
+            tz_label = timezone
+        else:
+            now = datetime.now(tz.utc)
+            tz_label = "UTC"
+    except Exception:
+        now = datetime.now(tz.utc)
+        tz_label = "UTC"
+
+    hour = now.hour
+    if 5 <= hour < 12:
+        time_of_day = "morning"
+    elif 12 <= hour < 17:
+        time_of_day = "afternoon"
+    elif 17 <= hour < 22:
+        time_of_day = "evening"
+    else:
+        time_of_day = "night"
+
+    return f"""## Current Time
+- Timezone: {tz_label}
+- Now: {now.strftime('%Y-%m-%d %H:%M')} ({time_of_day})
+- Day: {now.strftime('%A')}"""
+
+
+def build_webapp_system_instructions(
+    *,
+    chat_mode: str = "direct",
+    timezone: str | None = None,
+    include_behavior_format: bool = True,
+) -> str:
+    """Build the webapp system instructions block.
+
+    For direct mode: includes time, memory, behavior format.
+    For openclaw mode: only behavior format (OpenClaw handles time/memory).
+    Game instructions are injected dynamically per-turn via inject_game_context().
+    """
+    parts = []
+
+    # Only inject time/memory for direct mode (OpenClaw has its own)
+    if chat_mode == "direct":
+        parts.append(_get_time_block(timezone))
+        parts.append(MEMORY_INSTRUCTIONS)
+
+    # Always inject webapp-specific behavior format (for avatar animation)
+    if include_behavior_format:
+        parts.append(BEHAVIOR_FORMAT_INSTRUCTIONS)
+
+    return "\n\n".join(parts)
 
 
 def normalize_chat_mode(raw_mode: Any) -> str:
@@ -61,15 +153,42 @@ def load_workspace_soul_md(workspace: str | None) -> str | None:
     return text
 
 
-def prepend_workspace_soul(
+def prepend_webapp_system_prompt(
     messages: list[dict[str, str]],
     workspace: str | None,
+    *,
+    chat_mode: str = "direct",
+    timezone: str | None = None,
+    include_behavior_format: bool = True,
 ) -> list[dict[str, str]]:
-    """Prepend SOUL.md as a leading system message when available."""
+    """Prepend SOUL.md + webapp system instructions as a leading system message.
+
+    Used for webapp avatar interactions. SOUL.md provides persona/character,
+    webapp instructions provide behavior format (for avatar animation).
+
+    For direct mode: also injects time + memory (OpenClaw doesn't handle these).
+    For openclaw mode: only injects behavior format (no duplication).
+    Game instructions are injected dynamically per-turn via inject_game_context().
+    """
     soul_md = load_workspace_soul_md(workspace)
-    if not soul_md:
+    webapp_instructions = build_webapp_system_instructions(
+        chat_mode=chat_mode,
+        timezone=timezone,
+        include_behavior_format=include_behavior_format,
+    )
+
+    # Build system prompt: SOUL.md (persona) + webapp instructions (capabilities)
+    parts = []
+    if soul_md:
+        parts.append(soul_md)
+    if webapp_instructions:
+        parts.append(webapp_instructions)
+
+    if not parts:
         return list(messages)
-    return [{"role": "system", "content": soul_md}, *messages]
+
+    system_content = "\n\n".join(parts)
+    return [{"role": "system", "content": system_content}, *messages]
 
 
 def normalize_messages_for_direct(messages: list[dict]) -> list[dict[str, str]]:
@@ -89,6 +208,9 @@ def normalize_messages_for_direct(messages: list[dict]) -> list[dict[str, str]]:
 class DirectLLMClient:
     """Minimal OpenAI-compatible chat client for direct mode."""
 
+    # Models that don't support temperature parameter
+    NO_TEMPERATURE_MODELS = {"gpt-5", "gpt-5.1", "gpt-5.2", "o1", "o3"}
+
     def __init__(
         self,
         *,
@@ -106,6 +228,14 @@ class DirectLLMClient:
             "Content-Type": "application/json",
         }
 
+    def _supports_temperature(self, model: str) -> bool:
+        """Check if model supports temperature parameter."""
+        model_lower = model.lower()
+        for prefix in self.NO_TEMPERATURE_MODELS:
+            if model_lower.startswith(prefix):
+                return False
+        return True
+
     async def chat_completion(
         self,
         *,
@@ -117,7 +247,11 @@ class DirectLLMClient:
         max_tokens: int | None = None,
         tools: list[dict] | None = None,
     ) -> dict[str, Any]:
-        """Run a non-stream direct completion and return response JSON."""
+        """Run a non-stream direct completion and return response JSON.
+        
+        Automatically retries without unsupported parameters (temperature, max_tokens)
+        if the model rejects them.
+        """
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
@@ -125,7 +259,7 @@ class DirectLLMClient:
         }
         if user_tag:
             payload["user"] = user_tag
-        if temperature is not None:
+        if temperature is not None and self._supports_temperature(model):
             payload["temperature"] = float(temperature)
         if max_tokens is not None:
             payload["max_tokens"] = int(max_tokens)
@@ -138,6 +272,34 @@ class DirectLLMClient:
                 headers=self._headers(),
                 json=payload,
             )
+            
+            # Handle unsupported parameter errors by retrying without them
+            if response.status_code == 400:
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("error", {}).get("message", "")
+                    error_param = error_data.get("error", {}).get("param", "")
+                    
+                    # Retry without the unsupported parameter
+                    if "temperature" in error_param or "temperature" in error_msg.lower():
+                        payload.pop("temperature", None)
+                        response = await client.post(
+                            f"{self.api_base}/chat/completions",
+                            headers=self._headers(),
+                            json=payload,
+                        )
+                    elif "max_tokens" in error_param or "max_tokens" in error_msg.lower():
+                        # Try with max_completion_tokens instead
+                        if "max_tokens" in payload:
+                            payload["max_completion_tokens"] = payload.pop("max_tokens")
+                            response = await client.post(
+                                f"{self.api_base}/chat/completions",
+                                headers=self._headers(),
+                                json=payload,
+                            )
+                except Exception:
+                    pass  # Fall through to raise_for_status
+            
             response.raise_for_status()
             data = response.json()
 

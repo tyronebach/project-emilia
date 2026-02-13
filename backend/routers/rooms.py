@@ -53,7 +53,7 @@ from services.direct_llm import (
     DirectLLMClient,
     normalize_chat_mode,
     normalize_messages_for_direct,
-    prepend_workspace_soul,
+    prepend_webapp_system_prompt,
     resolve_direct_api_base,
     resolve_direct_model,
 )
@@ -163,9 +163,10 @@ async def _call_llm_non_stream(agent: dict, messages: list[dict], room_id: str) 
             api_base=resolve_direct_api_base(agent_config),
         )
         workspace = (agent_config or {}).get("workspace")
-        direct_messages = prepend_workspace_soul(
+        direct_messages = prepend_webapp_system_prompt(
             normalize_messages_for_direct(messages),
             workspace,
+            timezone=settings.default_timezone,
         )
         claw_id = (agent_config or {}).get("clawdbot_agent_id") or ""
         return await run_tool_loop(
@@ -178,6 +179,17 @@ async def _call_llm_non_stream(agent: dict, messages: list[dict], room_id: str) 
             timeout_s=60.0,
         )
 
+    # OpenClaw mode: inject only webapp-specific behavior format (for avatar animation)
+    from services.direct_llm import build_webapp_system_instructions
+    webapp_instructions = build_webapp_system_instructions(
+        chat_mode="openclaw",
+        include_behavior_format=True,
+    )
+    openclaw_messages = [
+        {"role": "system", "content": webapp_instructions},
+        *messages,
+    ]
+
     clawdbot_agent_id = (agent.get("clawdbot_agent_id") or "").strip()
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
@@ -188,7 +200,7 @@ async def _call_llm_non_stream(agent: dict, messages: list[dict], room_id: str) 
             },
             json={
                 "model": f"agent:{clawdbot_agent_id}",
-                "messages": messages,
+                "messages": openclaw_messages,
                 "stream": False,
                 "user": f"emilia:room:{room_id}",
             },
@@ -613,9 +625,10 @@ async def _stream_room_chat_sse(
                     api_base=resolve_direct_api_base(agent_config),
                 )
                 workspace = agent_config.get("workspace")
-                direct_messages = prepend_workspace_soul(
+                direct_messages = prepend_webapp_system_prompt(
                     normalize_messages_for_direct(llm_messages),
                     workspace,
+                    timezone=settings.default_timezone,
                 )
                 claw_id = agent_config.get("clawdbot_agent_id") or ""
                 try:
@@ -666,6 +679,17 @@ async def _stream_room_chat_sse(
                     yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
                     continue
             else:
+                # OpenClaw mode: inject only webapp-specific behavior format (for avatar animation)
+                from services.direct_llm import build_webapp_system_instructions
+                webapp_instructions = build_webapp_system_instructions(
+                    chat_mode="openclaw",
+                    include_behavior_format=True,
+                )
+                openclaw_messages = [
+                    {"role": "system", "content": webapp_instructions},
+                    *llm_messages,
+                ]
+
                 async with httpx.AsyncClient(timeout=120.0) as client:
                     async with client.stream(
                         "POST",
@@ -676,7 +700,7 @@ async def _stream_room_chat_sse(
                         },
                         json={
                             "model": f"agent:{clawdbot_agent_id}",
-                            "messages": llm_messages,
+                            "messages": openclaw_messages,
                             "stream": True,
                             "stream_options": {"include_usage": True},
                             "user": f"emilia:room:{room_id}",

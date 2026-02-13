@@ -124,13 +124,24 @@ class TestWrite:
 
     def test_write_creates_memory_subdir(self, tmp_path: Path):
         workspace = str(tmp_path)
-        result = write(workspace, "memory/new-file.md", "hello\n")
+        result = write(workspace, "memory/2026-02-12.md", "hello\n")
         assert result.startswith("OK:")
-        assert (tmp_path / "memory" / "new-file.md").read_text() == "hello\n"
+        assert (tmp_path / "memory" / "2026-02-12.md").read_text() == "hello\n"
 
     def test_write_invalid_path(self, tmp_path: Path):
         result = write(str(tmp_path), "src/evil.py", "bad")
         assert result.startswith("Error:")
+
+    def test_write_rejects_random_semantic_filename(self, tmp_path: Path):
+        """Write validation is strict: only MEMORY.md or memory/YYYY-MM-DD.md allowed."""
+        workspace = str(tmp_path)
+        # Random semantic filenames should be rejected
+        result = write(workspace, "memory/preferences.md", "test")
+        assert result.startswith("Error:")
+        assert "YYYY-MM-DD" in result
+        # But date-based filenames work
+        result = write(workspace, "memory/2026-02-12.md", "test")
+        assert result.startswith("OK:")
 
     def test_write_no_workspace(self):
         result = write(None, "MEMORY.md", "test")
