@@ -17,12 +17,12 @@ function resolveVrmUrl(vrmModel: string | null | undefined): string {
 
 function useIsMobileViewport(): boolean {
   const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === 'undefined') return false;
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
     return window.matchMedia(MOBILE_QUERY).matches;
   });
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
     const media = window.matchMedia(MOBILE_QUERY);
 
     const onChange = (event: MediaQueryListEvent) => {
@@ -41,6 +41,17 @@ function useIsMobileViewport(): boolean {
   return isMobile;
 }
 
+function hasWebGLSupport(): boolean {
+  if (typeof document === 'undefined') return true;
+  try {
+    const canvas = document.createElement('canvas');
+    if (!canvas) return false;
+    return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
+  } catch {
+    return false;
+  }
+}
+
 interface RoomAvatarStageProps {
   className?: string;
 }
@@ -52,8 +63,10 @@ function RoomAvatarStage({ className = '' }: RoomAvatarStageProps) {
   const avatarCommandByAgent = useRoomStore((state) => state.avatarCommandByAgent);
   const lastAvatarEventAtByAgent = useRoomStore((state) => state.lastAvatarEventAtByAgent);
   const isMobile = useIsMobileViewport();
+  const [tileErrors, setTileErrors] = useState<Record<string, string>>({});
 
   const maxRenderers = isMobile ? MOBILE_MAX_RENDERERS : DESKTOP_MAX_RENDERERS;
+  const webglSupported = useMemo(() => hasWebGLSupport(), []);
 
   const prioritizedAgents = useMemo(() => {
     return agents
@@ -103,6 +116,30 @@ function RoomAvatarStage({ className = '' }: RoomAvatarStageProps) {
     }
   }, [maxRenderers, prioritizedAgents]);
 
+  const handleTileError = (agentId: string, message: string) => {
+    setTileErrors((prev) => ({
+      ...prev,
+      [agentId]: message,
+    }));
+  };
+
+  const handleTileRecovered = (agentId: string) => {
+    setTileErrors((prev) => {
+      if (!prev[agentId]) return prev;
+      const next = { ...prev };
+      delete next[agentId];
+      return next;
+    });
+  };
+
+  if (!webglSupported) {
+    return (
+      <div className={`rounded-2xl border border-warning/40 bg-warning/10 p-4 text-sm text-text-secondary ${className}`}>
+        Live room avatars are unavailable because WebGL is not supported in this browser.
+      </div>
+    );
+  }
+
   if (agents.length === 0) {
     return (
       <div className={`rounded-2xl border border-white/10 bg-bg-secondary/70 p-4 text-sm text-text-secondary ${className}`}>
@@ -119,6 +156,12 @@ function RoomAvatarStage({ className = '' }: RoomAvatarStageProps) {
           Rendering {Math.min(maxRenderers, agents.length)} / {agents.length}
         </p>
       </div>
+
+      {Object.keys(tileErrors).length > 0 ? (
+        <div className="rounded-xl border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-text-secondary">
+          Some avatars failed to load. Check model files/manifest for the affected agents.
+        </div>
+      ) : null}
 
       <div className={`grid gap-3 ${agents.length > 1 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
         {agents.map((agent) => {
@@ -162,6 +205,8 @@ function RoomAvatarStage({ className = '' }: RoomAvatarStageProps) {
                   command={command}
                   isFocused={isFocused}
                   isStreaming={isStreaming}
+                  onLoadError={handleTileError}
+                  onLoadRecovered={handleTileRecovered}
                 />
               ) : (
                 <div className="flex h-44 flex-col items-center justify-center rounded-xl border border-dashed border-white/15 bg-bg-primary/45 px-4 text-center">

@@ -19,6 +19,8 @@ interface RoomAvatarTileProps {
   command?: AvatarCommand;
   isFocused?: boolean;
   isStreaming?: boolean;
+  onLoadError?: (agentId: string, message: string) => void;
+  onLoadRecovered?: (agentId: string) => void;
 }
 
 function RoomAvatarTile({
@@ -28,6 +30,8 @@ function RoomAvatarTile({
   command,
   isFocused = false,
   isStreaming = false,
+  onLoadError,
+  onLoadRecovered,
 }: RoomAvatarTileProps) {
   const renderSettings = useRenderStore((state) => state.settings);
   const lookAtEnabled = useRenderStore((state) => state.lookAtEnabled);
@@ -57,11 +61,14 @@ function RoomAvatarTile({
         renderer.setLookAtEnabled(initialLookAtEnabled);
         setLoading(false);
         setError(null);
+        onLoadRecovered?.(agentId);
       },
       onError: (loadError: Error) => {
         console.error(`[RoomAvatarTile:${agentId}] VRM load error:`, loadError);
-        setError(loadError.message || 'Failed to load avatar');
+        const message = loadError.message || 'Failed to load avatar';
+        setError(message);
         setLoading(false);
+        onLoadError?.(agentId, message);
       },
       onProgress: (percent: number) => {
         setLoadProgress(percent);
@@ -93,13 +100,17 @@ function RoomAvatarTile({
       .then(() => {
         currentVrmRef.current = vrmUrl;
         setLoading(false);
+        setError(null);
+        onLoadRecovered?.(agentId);
       })
       .catch((loadError: Error) => {
         console.error(`[RoomAvatarTile:${agentId}] VRM swap error:`, loadError);
-        setError(loadError.message || 'Failed to load avatar');
+        const message = loadError.message || 'Failed to load avatar';
+        setError(message);
         setLoading(false);
+        onLoadError?.(agentId, message);
       });
-  }, [agentId, vrmUrl]);
+  }, [agentId, onLoadError, onLoadRecovered, vrmUrl]);
 
   useEffect(() => {
     const renderer = rendererRef.current;

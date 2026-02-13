@@ -6,6 +6,7 @@ import AmbientBackground from '../AmbientBackground';
 import AppTopNav from '../AppTopNav';
 import { Button } from '../ui/button';
 import { ScrollArea } from '../ui/scroll-area';
+import RoomAvatarStage from './RoomAvatarStage';
 import { useUserStore } from '../../store/userStore';
 import { useRoomStore } from '../../store/roomStore';
 import { getRoom, getUser } from '../../utils/api';
@@ -204,18 +205,14 @@ function RoomChatPage({ userId, roomId }: RoomChatPageProps) {
 
               <div className="space-y-3">
                 <div className="rounded-3xl border border-white/10 bg-bg-secondary/70 p-4">
-                  <p className="text-xs uppercase tracking-wide text-text-secondary">Focused Avatar</p>
+                  <RoomAvatarStage />
                   {focusedAgent ? (
-                    <div className="mt-3 rounded-2xl border border-accent/40 bg-accent/10 p-3">
-                      <p className="font-display text-lg text-text-primary">{focusedAgent.display_name}</p>
-                      <p className="mt-1 text-xs text-text-secondary">VRM hidden by default in room mode.</p>
-                      <Button className="mt-3" variant="ghost" onClick={() => setFocusedAgent(null)}>
-                        Clear Focus
-                      </Button>
-                    </div>
+                    <Button className="mt-3 w-full" variant="ghost" onClick={() => setFocusedAgent(null)}>
+                      Clear Focus ({focusedAgent.display_name})
+                    </Button>
                   ) : (
-                    <p className="mt-3 text-sm text-text-secondary">
-                      Click an agent message to focus them.
+                    <p className="mt-3 text-xs text-text-secondary">
+                      Click an agent message to focus their avatar.
                     </p>
                   )}
                 </div>
