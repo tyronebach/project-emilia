@@ -1,7 +1,9 @@
+import { User } from 'lucide-react';
 import { useAppStore } from '../../../store';
 import { useUserStore } from '../../../store/userStore';
 import { STATUS_COLORS } from '../../../types';
 import type { AppStatus } from '../../../types';
+import { CollapsibleSection } from './CollapsibleSection';
 
 const getStatusColor = (s: AppStatus): string => STATUS_COLORS[s] ?? 'bg-text-secondary/60';
 
@@ -12,7 +14,13 @@ export function StatusSection() {
   const currentAgent = useUserStore((state) => state.currentAgent);
 
   return (
-    <>
+    <CollapsibleSection
+      id="hud-status"
+      label="Status & Context"
+      icon={User}
+      iconColor="text-blue-400"
+      defaultExpanded
+    >
       {/* Status Row */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -35,6 +43,6 @@ export function StatusSection() {
           <span className="text-accent">{currentAgent?.display_name || '—'}</span>
         </div>
       </div>
-    </>
+    </CollapsibleSection>
   );
 }

@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
+import { Clock } from 'lucide-react';
 import { useStatsStore } from '../../../store/statsStore';
+import { CollapsibleSection } from './CollapsibleSection';
 
 export function LatencySection() {
   const { stageLatencies } = useStatsStore();
@@ -24,21 +26,34 @@ export function LatencySection() {
     return stats;
   }, [stageLatencies]);
 
-  if (Object.keys(stageStats).length === 0) return null;
+  const hasData = Object.keys(stageStats).length > 0;
 
   return (
-    <div>
-      <div className="text-[10px] text-text-secondary uppercase mb-1">Latency (P50 / P95)</div>
-      <div className="grid grid-cols-2 gap-1 text-[10px]">
-        {Object.entries(stageStats).map(([stage, stats]) => (
-          <div key={stage} className="bg-white/5 rounded px-2 py-1">
-            <div className="text-text-secondary capitalize">{stage}</div>
-            <div className="text-text-primary font-mono">
-              {stats.p50}ms / {stats.p95}ms
-            </div>
+    <CollapsibleSection
+      id="hud-latency"
+      label="Latency"
+      icon={Clock}
+      iconColor="text-yellow-400"
+    >
+      {hasData ? (
+        <>
+          <div className="text-[10px] text-text-secondary uppercase mb-1">P50 / P95</div>
+          <div className="grid grid-cols-2 gap-1 text-[10px]">
+            {Object.entries(stageStats).map(([stage, stats]) => (
+              <div key={stage} className="bg-white/5 rounded px-2 py-1">
+                <div className="text-text-secondary capitalize">{stage}</div>
+                <div className="text-text-primary font-mono">
+                  {stats.p50}ms / {stats.p95}ms
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-    </div>
+        </>
+      ) : (
+        <div className="text-[10px] text-text-secondary text-center py-2">
+          No latency data yet
+        </div>
+      )}
+    </CollapsibleSection>
   );
 }
