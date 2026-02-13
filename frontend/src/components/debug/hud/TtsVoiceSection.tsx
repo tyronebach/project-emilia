@@ -1,5 +1,7 @@
+import { Volume2 } from 'lucide-react';
 import { useAppStore } from '../../../store';
 import { useVoiceOptions } from '../../../hooks/useVoiceOptions';
+import { CollapsibleSection } from './CollapsibleSection';
 
 export function TtsVoiceSection() {
   const ttsVoiceId = useAppStore((s) => s.ttsVoiceId);
@@ -7,8 +9,12 @@ export function TtsVoiceSection() {
   const { voices: voiceOptions } = useVoiceOptions();
 
   return (
-    <div>
-      <div className="text-[10px] text-text-secondary uppercase mb-1">TTS Voice</div>
+    <CollapsibleSection
+      id="hud-tts-voice"
+      label="TTS Voice"
+      icon={Volume2}
+      iconColor="text-cyan-400"
+    >
       <select
         value={ttsVoiceId || ''}
         onChange={(e) => setTtsVoiceId(e.target.value)}
@@ -21,6 +27,6 @@ export function TtsVoiceSection() {
           </option>
         ))}
       </select>
-    </div>
+    </CollapsibleSection>
   );
 }
