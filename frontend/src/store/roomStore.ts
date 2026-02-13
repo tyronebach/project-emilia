@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Room, RoomAgent, RoomMessage } from '../utils/api';
+import type { AvatarCommand } from '../types';
 
 interface RoomStoreState {
   currentRoomId: string | null;
@@ -8,6 +9,8 @@ interface RoomStoreState {
   messages: RoomMessage[];
   streamingByAgent: Record<string, string>;
   focusedAgentId: string | null;
+  avatarCommandByAgent: Record<string, AvatarCommand>;
+  lastAvatarEventAtByAgent: Record<string, number>;
 
   setCurrentRoom: (room: Room | null) => void;
   setAgents: (agents: RoomAgent[]) => void;
@@ -17,6 +20,9 @@ interface RoomStoreState {
   clearStreamingContent: (agentId: string) => void;
   resetStreaming: () => void;
   setFocusedAgent: (agentId: string | null) => void;
+  setAgentAvatarCommand: (agentId: string, command: AvatarCommand, timestamp?: number) => void;
+  clearAgentAvatarCommand: (agentId: string) => void;
+  resetRoomAvatars: () => void;
   clearRoomState: () => void;
 }
 
@@ -27,6 +33,8 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
   messages: [],
   streamingByAgent: {},
   focusedAgentId: null,
+  avatarCommandByAgent: {},
+  lastAvatarEventAtByAgent: {},
 
   setCurrentRoom: (room) => set({
     currentRoom: room,
@@ -58,6 +66,35 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
 
   setFocusedAgent: (agentId) => set({ focusedAgentId: agentId }),
 
+  setAgentAvatarCommand: (agentId, command, timestamp) => set((state) => ({
+    avatarCommandByAgent: {
+      ...state.avatarCommandByAgent,
+      [agentId]: command,
+    },
+    lastAvatarEventAtByAgent: {
+      ...state.lastAvatarEventAtByAgent,
+      [agentId]: timestamp ?? Date.now() / 1000,
+    },
+  })),
+
+  clearAgentAvatarCommand: (agentId) => set((state) => {
+    const nextCommands = { ...state.avatarCommandByAgent };
+    delete nextCommands[agentId];
+
+    const nextTimestamps = { ...state.lastAvatarEventAtByAgent };
+    delete nextTimestamps[agentId];
+
+    return {
+      avatarCommandByAgent: nextCommands,
+      lastAvatarEventAtByAgent: nextTimestamps,
+    };
+  }),
+
+  resetRoomAvatars: () => set({
+    avatarCommandByAgent: {},
+    lastAvatarEventAtByAgent: {},
+  }),
+
   clearRoomState: () => set({
     currentRoomId: null,
     currentRoom: null,
@@ -65,5 +102,7 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
     messages: [],
     streamingByAgent: {},
     focusedAgentId: null,
+    avatarCommandByAgent: {},
+    lastAvatarEventAtByAgent: {},
   }),
 }));

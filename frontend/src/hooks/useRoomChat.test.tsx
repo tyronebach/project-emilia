@@ -38,6 +38,8 @@ describe('useRoomChat avatar events', () => {
       messages: [],
       streamingByAgent: {},
       focusedAgentId: 'agent-1',
+      avatarCommandByAgent: {},
+      lastAvatarEventAtByAgent: {},
     });
   });
 
@@ -73,6 +75,17 @@ describe('useRoomChat avatar events', () => {
       move: undefined,
       game_action: undefined,
     });
+
+    const state = useRoomStore.getState();
+    expect(state.avatarCommandByAgent['agent-1']).toEqual({
+      intent: 'greeting',
+      mood: 'happy',
+      intensity: 0.7,
+      energy: 'high',
+      move: undefined,
+      game_action: undefined,
+    });
+    expect(state.lastAvatarEventAtByAgent['agent-1']).toBeTypeOf('number');
   });
 
   it('ignores avatar commands for non-focused agents', async () => {
@@ -97,5 +110,16 @@ describe('useRoomChat avatar events', () => {
     });
 
     expect(applyAvatarCommand).not.toHaveBeenCalled();
+
+    const state = useRoomStore.getState();
+    expect(state.avatarCommandByAgent['agent-1']).toEqual({
+      intent: 'greeting',
+      mood: undefined,
+      intensity: undefined,
+      energy: undefined,
+      move: undefined,
+      game_action: undefined,
+    });
+    expect(state.lastAvatarEventAtByAgent['agent-1']).toBeTypeOf('number');
   });
 });

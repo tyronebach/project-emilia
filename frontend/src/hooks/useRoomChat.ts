@@ -13,6 +13,7 @@ export function useRoomChat(roomId: string) {
   const clearStreamingContent = useRoomStore((state) => state.clearStreamingContent);
   const resetStreaming = useRoomStore((state) => state.resetStreaming);
   const focusedAgentId = useRoomStore((state) => state.focusedAgentId);
+  const setAgentAvatarCommand = useRoomStore((state) => state.setAgentAvatarCommand);
   const applyAvatarCommand = useAppStore((state) => state.applyAvatarCommand);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -81,15 +82,18 @@ export function useRoomChat(roomId: string) {
         }
 
         if (event.type === 'avatar') {
+          const command = {
+            intent: event.intent,
+            mood: event.mood,
+            intensity: event.intensity,
+            energy: event.energy,
+            move: event.move,
+            game_action: event.game_action,
+          };
+          setAgentAvatarCommand(event.agent_id, command);
+
           if (focusedAgentId && focusedAgentId === event.agent_id) {
-            applyAvatarCommand({
-              intent: event.intent,
-              mood: event.mood,
-              intensity: event.intensity,
-              energy: event.energy,
-              move: event.move,
-              game_action: event.game_action,
-            });
+            applyAvatarCommand(command);
           }
           return;
         }
@@ -150,6 +154,7 @@ export function useRoomChat(roomId: string) {
     appendStreamingContent,
     clearStreamingContent,
     focusedAgentId,
+    setAgentAvatarCommand,
     isLoading,
     resetStreaming,
     applyAvatarCommand,
