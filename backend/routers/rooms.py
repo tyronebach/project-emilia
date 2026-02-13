@@ -129,7 +129,7 @@ def _serialize_room_message(message: dict) -> RoomMessageResponse:
 def _inject_game_context_if_present(
     messages: list[dict],
     agent_id: str,
-    game_context: dict | None,
+    game_context: object | None,
 ) -> list[dict]:
     if not game_context:
         return messages
@@ -456,12 +456,26 @@ async def room_chat(
     if not responding_agents:
         raise bad_request("No agents selected to respond")
 
+    selected_games_v2_agents = [
+        agent for agent in responding_agents
+        if settings.is_games_v2_enabled_for_agent(agent.get("agent_id"))
+    ]
+    games_v2_enabled_for_request = bool(selected_games_v2_agents)
+    runtime_trigger = bool(request.runtime_trigger) if games_v2_enabled_for_request else False
+    if not games_v2_enabled_for_request and (request.runtime_trigger or request.game_context):
+        logger.info(
+            "[RoomChat] Ignoring game payload because Games V2 rollout is disabled "
+            "for selected agents in room %s",
+            room_id,
+        )
+    emotion_input_message = "" if runtime_trigger else request.message
+
     RoomMessageRepository.add(
         room_id=room_id,
         sender_type="user",
         sender_id=user_id,
         content=request.message,
-        origin="chat",
+        origin="game_runtime" if runtime_trigger else "chat",
     )
 
     if stream == 1:
@@ -471,6 +485,7 @@ async def room_chat(
                 user_id=user_id,
                 message=request.message,
                 game_context=request.game_context,
+                runtime_trigger=runtime_trigger,
                 room_agents=room_agents,
                 responding_agents=responding_agents,
             ),
@@ -492,7 +507,7 @@ async def room_chat(
             emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
                 user_id,
                 agent_id,
-                request.message,
+                emotion_input_message,
                 None,
             )
 
@@ -539,7 +554,7 @@ async def room_chat(
                 behavior,
                 None,
                 pre_llm_triggers,
-                request.message,
+                None if runtime_trigger else request.message,
             ))
 
             msg_for_response = {
@@ -585,10 +600,14 @@ async def _stream_room_chat_sse(
     room_id: str,
     user_id: str,
     message: str,
-    game_context: dict | None,
+    game_context: object | None,
+    runtime_trigger: bool,
     room_agents: list[dict],
     responding_agents: list[dict],
 ):
+    emotion_input_message = "" if runtime_trigger else message
+    post_llm_user_message = None if runtime_trigger else message
+
     for agent in responding_agents:
         agent_id = agent["agent_id"]
         clawdbot_agent_id = agent["clawdbot_agent_id"]
@@ -603,7 +622,7 @@ async def _stream_room_chat_sse(
             emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
                 user_id,
                 agent_id,
-                message,
+                emotion_input_message,
                 None,
             )
 
@@ -774,7 +793,7 @@ async def _stream_room_chat_sse(
                 behavior,
                 None,
                 pre_llm_triggers,
-                message,
+                post_llm_user_message,
             ))
 
             done_message = {
