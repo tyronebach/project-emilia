@@ -64,6 +64,7 @@ from services.direct_llm import (
 from services.direct_tool_runtime import run_tool_loop
 
 logger = logging.getLogger(__name__)
+MAX_RESPONSE_CHARS = 50_000
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 
@@ -494,13 +495,14 @@ async def room_chat(
         )
     emotion_input_message = "" if runtime_trigger else request.message
 
-    RoomMessageRepository.add(
+    user_msg = RoomMessageRepository.add(
         room_id=room_id,
         sender_type="user",
         sender_id=user_id,
         content=request.message,
         origin="game_runtime" if runtime_trigger else "chat",
     )
+    user_msg_id = user_msg.get("id")
 
     if stream == 1:
         return StreamingResponse(
@@ -512,6 +514,7 @@ async def room_chat(
                 runtime_trigger=runtime_trigger,
                 room_agents=room_agents,
                 responding_agents=responding_agents,
+                user_msg_id=user_msg_id,
             ),
             media_type="text/event-stream",
             headers={
@@ -651,6 +654,8 @@ async def room_chat(
             logger.exception("Room chat failure for agent %s", agent_id)
 
     if not responses:
+        if user_msg_id:
+            RoomMessageRepository.delete_by_id(user_msg_id)
         raise service_unavailable("Room chat")
 
     return RoomChatResponse(room_id=room_id, responses=responses, count=len(responses))
@@ -664,9 +669,11 @@ async def _stream_room_chat_sse(
     runtime_trigger: bool,
     room_agents: list[dict],
     responding_agents: list[dict],
+    user_msg_id: str | None = None,
 ):
     emotion_input_message = "" if runtime_trigger else message
     post_llm_user_message = None if runtime_trigger else message
+    successful_replies = 0
 
     for agent in responding_agents:
         agent_id = agent["agent_id"]
@@ -740,6 +747,13 @@ async def _stream_room_chat_sse(
                     if choices:
                         content = (choices[0].get("message") or {}).get("content", "")
                         if content:
+                            if len(content) > MAX_RESPONSE_CHARS:
+                                logger.warning(
+                                    "[Room SSE] Response for %s exceeded %d chars, truncating",
+                                    agent_id,
+                                    MAX_RESPONSE_CHARS,
+                                )
+                                content = content[:MAX_RESPONSE_CHARS]
                             full_content = content
                             yield f"data: {json.dumps({'content': content, 'agent_id': agent_id})}\n\n"
                 except ValueError as exc:
@@ -832,8 +846,27 @@ async def _stream_room_chat_sse(
                             delta = choices[0].get("delta") or {}
                             chunk = delta.get("content") or ""
                             if chunk:
-                                full_content += chunk
-                                yield f"data: {json.dumps({'content': chunk, 'agent_id': agent_id})}\n\n"
+                                allowed = MAX_RESPONSE_CHARS - len(full_content)
+                                if allowed <= 0:
+                                    logger.warning(
+                                        "[Room SSE] Response for %s exceeded %d chars, truncating",
+                                        agent_id,
+                                        MAX_RESPONSE_CHARS,
+                                    )
+                                    break
+
+                                chunk_to_send = chunk[:allowed]
+                                full_content += chunk_to_send
+                                if chunk_to_send:
+                                    yield f"data: {json.dumps({'content': chunk_to_send, 'agent_id': agent_id})}\n\n"
+
+                                if len(chunk) > len(chunk_to_send):
+                                    logger.warning(
+                                        "[Room SSE] Response for %s exceeded %d chars, truncating",
+                                        agent_id,
+                                        MAX_RESPONSE_CHARS,
+                                    )
+                                    break
 
                             if choices[0].get("finish_reason"):
                                 break
@@ -916,6 +949,7 @@ async def _stream_room_chat_sse(
                 "behavior": behavior,
                 "message": _serialize_room_message(done_message).model_dump(),
             }
+            successful_replies += 1
             yield f"event: agent_done\ndata: {json.dumps(payload)}\n\n"
 
         except httpx.TimeoutException:
@@ -933,5 +967,8 @@ async def _stream_room_chat_sse(
                 "error": "Room chat failed",
             }
             yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
+
+    if successful_replies == 0 and user_msg_id:
+        RoomMessageRepository.delete_by_id(user_msg_id)
 
     yield f"data: {json.dumps({'done': True, 'room_id': room_id})}\n\n"
