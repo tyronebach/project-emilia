@@ -31,6 +31,7 @@ from routers.chat import (
     _process_emotion_post_llm,
     _process_emotion_pre_llm,
     _resolve_trusted_prompt_instructions,
+    _safe_get_mood_snapshot,
     _spawn_background,
     inject_game_context,
 )
@@ -773,6 +774,7 @@ async def _stream_room_chat_sse(
                 emotion_input_message,
                 None,
             )
+            emotion_snapshot = _safe_get_mood_snapshot(user_id, agent_id)
 
             effective_game_context = game_context if settings.is_games_v2_enabled_for_agent(agent_id) else None
             llm_messages = build_room_llm_messages(
@@ -1017,6 +1019,34 @@ async def _stream_room_chat_sse(
             }
             successful_replies += 1
             yield f"event: agent_done\ndata: {json.dumps(payload)}\n\n"
+
+            avatar_payload = {
+                "agent_id": agent_id,
+                "agent_name": agent_name,
+            }
+            if behavior.get("intent"):
+                avatar_payload["intent"] = behavior["intent"]
+            if behavior.get("mood"):
+                avatar_payload["mood"] = behavior["mood"]
+                avatar_payload["intensity"] = behavior.get("mood_intensity")
+            if behavior.get("energy"):
+                avatar_payload["energy"] = behavior["energy"]
+            if behavior.get("move"):
+                avatar_payload["move"] = behavior["move"]
+            if behavior.get("game_action"):
+                avatar_payload["game_action"] = behavior["game_action"]
+            if len(avatar_payload) > 2:
+                yield f"event: avatar\ndata: {json.dumps(avatar_payload)}\n\n"
+
+            if emotional_context or pre_llm_triggers or emotion_snapshot:
+                emotion_payload = {
+                    "agent_id": agent_id,
+                    "agent_name": agent_name,
+                    "triggers": [[t, round(i, 3)] for t, i in pre_llm_triggers],
+                    "context_block": emotional_context,
+                    "snapshot": emotion_snapshot,
+                }
+                yield f"event: emotion\ndata: {json.dumps(emotion_payload)}\n\n"
 
         except httpx.TimeoutException:
             payload = {

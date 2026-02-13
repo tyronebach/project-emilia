@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useUserStore } from '../store/userStore';
 import { useRoomStore } from '../store/roomStore';
+import { useAppStore } from '../store';
 import { getRoomHistory, streamRoomChat, type RoomMessage } from '../utils/api';
 
 export function useRoomChat(roomId: string) {
@@ -11,6 +12,8 @@ export function useRoomChat(roomId: string) {
   const appendStreamingContent = useRoomStore((state) => state.appendStreamingContent);
   const clearStreamingContent = useRoomStore((state) => state.clearStreamingContent);
   const resetStreaming = useRoomStore((state) => state.resetStreaming);
+  const focusedAgentId = useRoomStore((state) => state.focusedAgentId);
+  const applyAvatarCommand = useAppStore((state) => state.applyAvatarCommand);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -77,6 +80,24 @@ export function useRoomChat(roomId: string) {
           return;
         }
 
+        if (event.type === 'avatar') {
+          if (focusedAgentId && focusedAgentId === event.agent_id) {
+            applyAvatarCommand({
+              intent: event.intent,
+              mood: event.mood,
+              intensity: event.intensity,
+              energy: event.energy,
+              move: event.move,
+              game_action: event.game_action,
+            });
+          }
+          return;
+        }
+
+        if (event.type === 'emotion') {
+          return;
+        }
+
         if (event.type === 'agent_error') {
           clearStreamingContent(event.agent_id);
           addMessage({
@@ -128,8 +149,10 @@ export function useRoomChat(roomId: string) {
     addMessage,
     appendStreamingContent,
     clearStreamingContent,
+    focusedAgentId,
     isLoading,
     resetStreaming,
+    applyAvatarCommand,
   ]);
 
   const abort = useCallback(() => {

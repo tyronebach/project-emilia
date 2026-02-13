@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { AtSign, Send, UserCircle2, Users } from 'lucide-react';
@@ -40,6 +40,7 @@ function RoomChatPage({ userId, roomId }: RoomChatPageProps) {
 
   const [input, setInput] = useState('');
   const [mentionAgents, setMentionAgents] = useState<string[]>([]);
+  const bottomAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const userQuery = useQuery({
     queryKey: ['user', userId],
@@ -85,6 +86,13 @@ function RoomChatPage({ userId, roomId }: RoomChatPageProps) {
       clearRoomState();
     };
   }, [clearRoomState]);
+
+  useEffect(() => {
+    bottomAnchorRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'end',
+    });
+  }, [messages, streamingByAgent]);
 
   const focusedAgent = useMemo(
     () => agents.find((agent) => agent.agent_id === focusedAgentId) || null,
@@ -189,6 +197,7 @@ function RoomChatPage({ userId, roomId }: RoomChatPageProps) {
                         </div>
                       );
                     })}
+                    <div ref={bottomAnchorRef} />
                   </div>
                 </ScrollArea>
               </div>
