@@ -48,6 +48,10 @@ vi.mock('../ui/scroll-area', () => ({
   ),
 }));
 
+vi.mock('./RoomAvatarStage', () => ({
+  default: () => <div data-testid="room-avatar-stage" />,
+}));
+
 describe('RoomChatPage auto-scroll', () => {
   beforeEach(() => {
     vi.clearAllMocks();
