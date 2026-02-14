@@ -3,7 +3,7 @@
 **Issue:** #12  
 **Date:** 2026-02-14 (Updated)  
 **Author:** Ram  
-**Status:** IN PROGRESS — Phase 1 complete
+**Status:** IN PROGRESS — Phase 2 underway
 
 ---
 
@@ -129,68 +129,41 @@ New endpoints:
 
 ---
 
-## Phase 2: Frontend Core (3-4 days)
+## Phase 2: Frontend Core ✅ IN PROGRESS
 
-### 2.1 New Store
+### 2.1 Extended chatStore ✅
 
-**File:** `frontend/src/store/chatroomStore.ts`
+**File:** `frontend/src/store/chatStore.ts`
 
-```typescript
-interface ChatroomState {
-  chatrooms: Chatroom[];
-  activeChatroom: Chatroom | null;
-  participants: Agent[];
-  messages: Message[];
-  
-  // Per-agent state
-  agentStatus: Record<string, 'idle' | 'thinking' | 'speaking'>;
-  agentEmotion: Record<string, EmotionSnapshot>;
-  
-  // UI state
-  focusedAgentId: string | null;  // For maximized view
-  isChatHistoryOpen: boolean;
-  
-  // Actions
-  loadChatroom: (id: string) => Promise<void>;
-  sendMessage: (content: string, mentions?: string[]) => Promise<void>;
-  addParticipant: (agentId: string) => Promise<void>;
-  removeParticipant: (agentId: string) => Promise<void>;
-  setFocusedAgent: (agentId: string | null) => void;
-}
-```
-
-### 2.2 Unified Chat Page
-
-**File:** `frontend/src/routes/user/$userId/chat.$chatroomId.tsx`
-
-Adapts existing `App.tsx` functionality with multi-agent support:
+No new store needed — extended existing `chatStore` with multi-agent state:
 
 ```typescript
-function ChatPage() {
-  const { chatroomId } = useParams();
-  const { participants, messages, agentStatus } = useChatroomStore();
-  
-  return (
-    <div className="chat-container">
-      {/* Adaptive avatar display */}
-      <AvatarStage participants={participants} />
-      
-      {/* Chat history button (Google Meet style) */}
-      <ChatHistoryButton />
-      
-      {/* Manage participants */}
-      <ParticipantsButton />
-      
-      {/* Input bar (existing, works as-is) */}
-      <ChatInputBar />
-      
-      {/* Slide-out panels */}
-      <ChatHistoryPanel />
-      <ManageParticipantsPanel />
-    </div>
-  );
-}
+// Already in chatStore:
+sessionAgents: Agent[];                              // Agents in current session
+agentStatus: Record<string, AgentStatus>;           // Per-agent status
+agentMoods: Record<string, SoulMoodSnapshot>;       // Per-agent emotion
+focusedAgentId: string | null;                      // For maximized view
+getActiveAgents: () => Agent[];                     // Sorted by activity
 ```
+
+### 2.2 Extended App.tsx ✅
+
+**File:** `frontend/src/App.tsx`
+
+Extended existing App.tsx (no separate ChatPage needed):
+
+- Populates `sessionAgents` from session response on load
+- Floating participants button shows agent count
+- ManageParticipantsPanel slide-in for add/remove agents
+- MessageBubble shows agent name/initial for multi-agent
+
+### 2.3 Multi-Agent Session Creation ✅
+
+**File:** `frontend/src/components/NewChatPage.tsx`
+
+- Solo/Group mode toggle (only shown if user has multiple agents)
+- Agent selection grid for group mode
+- Calls `createMultiAgentSession()` for group chats
 
 ### 2.3 Adaptive Avatar Stage
 
