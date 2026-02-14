@@ -79,6 +79,7 @@ function App({ userId, sessionId }: AppProps) {
   }, [sessionId]);
 
   // Validate sessionId exists - redirect to /chat/new if not found
+  // Also populates sessionAgents for multi-agent support
   // Only validate ONCE per sessionId using direct session lookup (no agent dependency)
   useEffect(() => {
     // Don't validate if no user or already validated this sessionId
@@ -103,6 +104,14 @@ function App({ userId, sessionId }: AppProps) {
         }
         if (!response.ok) {
           console.warn('[App] Session validation failed:', response.status);
+          return;
+        }
+        
+        // Extract session data and populate sessionAgents (multi-agent support)
+        const session = await response.json();
+        if (session.agents && Array.isArray(session.agents)) {
+          console.log('[App] Session has %d agents', session.agents.length);
+          useChatStore.getState().setSessionAgents(session.agents);
         }
       } catch (error) {
         console.warn('[App] Session validation error:', error);

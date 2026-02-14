@@ -177,7 +177,11 @@ export function useChat() {
     abortControllerRef.current = abortController;
 
     try {
-      const messageId = addMessage('assistant', '', { streaming: true, origin: 'assistant' });
+      const messageId = addMessage('assistant', '', { 
+        streaming: true, 
+        origin: 'assistant',
+        agent_id: currentAgent?.id,  // Multi-agent support
+      });
       let fullContent = '';
       let finalResponse: StreamResponse = {};
       let didAbort = false;

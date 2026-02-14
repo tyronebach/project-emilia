@@ -29,6 +29,7 @@ export interface MessageMeta {
   behavior?: BehaviorData;
   usage?: TokenUsage;
   audio_base64?: string;  // Stored TTS audio for replay
+  agent_id?: string;  // Multi-agent: which agent sent this message
 }
 
 export interface Message {
