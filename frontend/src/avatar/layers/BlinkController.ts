@@ -26,7 +26,9 @@ const EMOTION_EYE_CLOSURE: Record<string, number> = {
 };
 
 // If base eye closure is above this threshold, skip blinking entirely
-const BLINK_SKIP_THRESHOLD = 0.7;
+// Lowered from 0.7 to 0.35 to prevent blink compounding on emotions like 'happy'
+// that already close the eyes significantly
+const BLINK_SKIP_THRESHOLD = 0.35;
 
 export interface BlinkControllerOptions {
   expressions?: string[];
