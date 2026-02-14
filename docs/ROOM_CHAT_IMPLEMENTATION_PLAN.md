@@ -3,7 +3,7 @@
 **Issue:** #12  
 **Date:** 2026-02-14 (Updated)  
 **Author:** Ram  
-**Status:** APPROVED — Unified approach confirmed
+**Status:** IN PROGRESS — Phase 1 complete
 
 ---
 
@@ -13,7 +13,8 @@ We're building a unified chat system where every conversation is a "room" that s
 
 **Key Decisions (Thai-approved):**
 - ✅ Unified route — no dual interfaces
-- ✅ Backend restructure — chatrooms with participants table
+- ✅ Extend `sessions` table (NOT separate `chatrooms` table)
+- ✅ Use `session_agents` junction table for multi-agent
 - ✅ No backwards compatibility concerns — not in prod
 - ✅ UI follows Zoom Mobile / Google Meet conventions
 - ✅ Games support variable player count
@@ -22,35 +23,35 @@ We're building a unified chat system where every conversation is a "room" that s
 
 ## Architecture Overview
 
-### Data Model
+### Data Model (IMPLEMENTED)
+
+We extend the existing `sessions` table rather than creating a separate `chatrooms` table:
 
 ```
-chatrooms
+sessions (existing, extended)
 ├── id (UUID)
-├── user_id (owner)
-├── name (optional, auto-generated for 1:1)
+├── agent_id (primary agent, for backwards compat)
+├── name
 ├── created_at
-└── updated_at
+├── last_used
+├── message_count
+├── summary (compaction)
+└── ...
 
-chatroom_participants
-├── id
-├── chatroom_id (FK)
-├── agent_id (FK)
+session_agents (NEW junction table)
+├── session_id (FK → sessions)
+├── agent_id (FK → agents)
 ├── added_at
-├── role (default: 'member', future: 'moderator')
-└── UNIQUE(chatroom_id, agent_id)
+├── role (default: 'participant')
+└── PRIMARY KEY (session_id, agent_id)
 
-messages
-├── id
-├── chatroom_id (FK) -- replaces session_id
-├── agent_id (nullable, null = user message)
-├── content
-├── role (user/assistant)
-├── created_at
-└── metadata (JSON: emotion, mentions, etc.)
+messages (extended)
+├── ...existing columns...
+├── agent_id (NEW: which agent sent this message)
+└── ...
 ```
 
-**Migration:** Existing `sessions` table data maps to `chatrooms` with single participant.
+**Backfill:** Existing sessions populated `session_agents` from `sessions.agent_id`.
 
 ### Route Structure
 
@@ -64,82 +65,67 @@ The old `/room` routes are deprecated — everything is a "chat" now.
 
 ---
 
-## Phase 1: Backend Restructure (2-3 days)
+## Phase 1: Backend Restructure ✅ COMPLETE
 
-### 1.1 Create New Tables
+### 1.1 Database Schema ✅
+
+Extended `sessions` table (no separate `chatrooms` table needed):
 
 ```sql
--- chatrooms table
-CREATE TABLE chatrooms (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    name TEXT,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+-- session_agents junction table (multi-agent support)
+CREATE TABLE session_agents (
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    added_at INTEGER DEFAULT (strftime('%s', 'now')),
+    role TEXT DEFAULT 'participant',
+    PRIMARY KEY (session_id, agent_id)
 );
 
--- participants junction table
-CREATE TABLE chatroom_participants (
-    id TEXT PRIMARY KEY,
-    chatroom_id TEXT NOT NULL,
-    agent_id TEXT NOT NULL,
-    added_at INTEGER NOT NULL,
-    role TEXT DEFAULT 'member',
-    FOREIGN KEY (chatroom_id) REFERENCES chatrooms(id) ON DELETE CASCADE,
-    FOREIGN KEY (agent_id) REFERENCES agents(id),
-    UNIQUE(chatroom_id, agent_id)
-);
-
--- Update messages table
-ALTER TABLE messages ADD COLUMN chatroom_id TEXT;
+-- Added agent_id to messages
 ALTER TABLE messages ADD COLUMN agent_id TEXT;
--- Migrate existing session_id data, then drop session_id
+
+-- Backfill existing data
+INSERT OR IGNORE INTO session_agents (session_id, agent_id, added_at)
+SELECT id, agent_id, created_at FROM sessions WHERE agent_id IS NOT NULL;
+
+UPDATE messages SET agent_id = (SELECT agent_id FROM sessions WHERE sessions.id = messages.session_id)
+WHERE role = 'assistant' AND agent_id IS NULL;
 ```
 
-### 1.2 Create Repository
+### 1.2 SessionRepository Extended ✅
 
-**File:** `backend/db/repositories/chatrooms.py`
+**File:** `backend/db/repositories/sessions.py`
 
-```python
-class ChatroomRepository:
-    def create(self, user_id: str, agent_ids: list[str], name: str = None) -> Chatroom
-    def get(self, chatroom_id: str) -> Chatroom
-    def get_by_user(self, user_id: str) -> list[Chatroom]
-    def add_agent(self, chatroom_id: str, agent_id: str) -> None
-    def remove_agent(self, chatroom_id: str, agent_id: str) -> None
-    def get_participants(self, chatroom_id: str) -> list[Agent]
-    def delete(self, chatroom_id: str) -> None
-```
+Added methods:
+- `get_agents(session_id)` — Get all agents in session
+- `add_agent(session_id, agent_id)` — Add agent to session
+- `remove_agent(session_id, agent_id)` — Remove agent (can't remove last)
+- `get_agent_count(session_id)` — Count agents in session
+- `create(..., agent_ids=[])` — Create with multiple agents
 
-### 1.3 Create Router
+### 1.3 Sessions Router Extended ✅
 
-**File:** `backend/routers/chatrooms.py`
+**File:** `backend/routers/sessions.py`
 
-```python
-# CRUD for chatrooms
-POST   /api/chatrooms                    # Create chatroom with initial agent(s)
-GET    /api/chatrooms                    # List user's chatrooms
-GET    /api/chatrooms/:id                # Get chatroom with participants
-DELETE /api/chatrooms/:id                # Delete chatroom
+New endpoints:
+- `POST /api/sessions/multi` — Create multi-agent session
+- `GET /api/sessions/:id/agents` — List session agents
+- `POST /api/sessions/:id/agents` — Add agent to session
+- `DELETE /api/sessions/:id/agents/:agentId` — Remove agent
 
-# Participant management
-POST   /api/chatrooms/:id/participants   # Add agent to chatroom
-DELETE /api/chatrooms/:id/participants/:agentId  # Remove agent
+### 1.4 Chat Router Updated ✅
 
-# Messages (adapt existing)
-GET    /api/chatrooms/:id/messages       # Get message history
-POST   /api/chatrooms/:id/messages       # Send message (with optional @mentions)
-```
+**File:** `backend/routers/chat.py`
 
-### 1.4 Update Chat Router
+- Stores `agent_id` on assistant messages
+- Existing SSE streaming works unchanged
 
-Modify `routers/chat.py` to work with chatroom_id instead of session_id. The SSE streaming endpoint becomes:
+### 1.5 MessageRepository Updated ✅
 
-```python
-GET /api/chatrooms/:id/stream   # SSE for real-time messages
-POST /api/chatrooms/:id/chat    # Send message, get streamed response
-```
+**File:** `backend/db/repositories/messages.py`
+
+- `add()` now accepts `agent_id` parameter
+- `get_by_session()` includes `agent_id` in results
 
 ---
 
