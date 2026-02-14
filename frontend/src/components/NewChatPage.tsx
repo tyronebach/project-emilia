@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Users, User, Check } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
 import { useSession } from '../hooks/useSession';
+import { createMultiAgentSession } from '../utils/api';
+import type { Agent } from '../utils/api';
 import { Button } from './ui/button';
 import agentPlaceholder from '../assets/placeholder-agent.jpg';
 import AmbientBackground from './AmbientBackground';
@@ -25,6 +27,12 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
   const { createSession, sessions } = useSession();
 
   const [isCreating, setIsCreating] = useState(false);
+  const [isGroupMode, setIsGroupMode] = useState(false);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  
+  // All agents available to user
+  const userAgents: Agent[] = currentUser?.agents || [];
+  const hasMultipleAgents = userAgents.length > 1;
 
   // Clear any stale session ID when on new chat page
   useEffect(() => {
@@ -32,6 +40,25 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
     // Also clean up any old localStorage entries from previous versions
     localStorage.removeItem('emilia-session-id');
   }, [setSessionId]);
+  
+  const handleModeChange = (groupMode: boolean) => {
+    setIsGroupMode(groupMode);
+    // Reset selection when toggling modes
+    if (groupMode) {
+      // Start with current agent selected
+      setSelectedAgents(currentAgent ? [currentAgent.id] : []);
+    } else {
+      setSelectedAgents([]);
+    }
+  };
+  
+  const toggleAgentSelection = (agentId: string) => {
+    setSelectedAgents(prev => 
+      prev.includes(agentId)
+        ? prev.filter(id => id !== agentId)
+        : [...prev, agentId]
+    );
+  };
 
   const handleBack = () => {
     // Go back to most recent session if exists, otherwise to agent selection
@@ -46,12 +73,30 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
   };
 
   const handleStartChat = async () => {
-    if (!currentAgent?.id || !currentUser?.id || isCreating) return;
+    if (!currentUser?.id || isCreating) return;
+    
+    // Validate selection
+    if (isGroupMode) {
+      if (selectedAgents.length < 2) {
+        console.warn('Group chat requires at least 2 agents');
+        return;
+      }
+    } else {
+      if (!currentAgent?.id) return;
+    }
 
     setIsCreating(true);
     try {
-      // Create a new session
-      const newSessionId = await createSession();
+      let newSessionId: string | null = null;
+      
+      if (isGroupMode && selectedAgents.length >= 2) {
+        // Create multi-agent session
+        const session = await createMultiAgentSession(selectedAgents);
+        newSessionId = session.id;
+      } else {
+        // Create single-agent session
+        newSessionId = await createSession();
+      }
 
       if (newSessionId) {
         // Navigate to initializing page
@@ -88,8 +133,62 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
 
             <div className="px-6 pb-6 pt-5 text-center">
               <p className="text-text-secondary text-base md:text-lg text-balance">
-                Start a fresh conversation and bring your companion to life.
+                {isGroupMode 
+                  ? 'Select agents for your group chat'
+                  : 'Start a fresh conversation and bring your companion to life.'
+                }
               </p>
+              
+              {/* Mode toggle - only show if user has multiple agents */}
+              {hasMultipleAgents && (
+                <div className="flex justify-center gap-2 mt-4">
+                  <Button
+                    variant={isGroupMode ? 'ghost' : 'default'}
+                    size="sm"
+                    onClick={() => handleModeChange(false)}
+                    className="gap-2"
+                  >
+                    <User className="w-4 h-4" />
+                    Solo
+                  </Button>
+                  <Button
+                    variant={isGroupMode ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => handleModeChange(true)}
+                    className="gap-2"
+                  >
+                    <Users className="w-4 h-4" />
+                    Group
+                  </Button>
+                </div>
+              )}
+              
+              {/* Agent selection grid for group mode */}
+              {isGroupMode && (
+                <div className="mt-4 grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                  {userAgents.map(agent => {
+                    const isSelected = selectedAgents.includes(agent.id);
+                    return (
+                      <button
+                        key={agent.id}
+                        onClick={() => toggleAgentSelection(agent.id)}
+                        className={`flex items-center gap-2 p-3 rounded-lg border transition-all ${
+                          isSelected 
+                            ? 'border-accent bg-accent/10' 
+                            : 'border-white/10 bg-bg-secondary/50 hover:bg-bg-secondary'
+                        }`}
+                      >
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                          isSelected ? 'bg-accent text-white' : 'bg-bg-tertiary'
+                        }`}>
+                          {isSelected ? <Check className="w-4 h-4" /> : agent.display_name.charAt(0)}
+                        </div>
+                        <span className="text-sm truncate">{agent.display_name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {isCreating ? (
                 <div className="mt-6 flex flex-col items-center gap-4">
@@ -101,12 +200,15 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
               ) : (
                 <Button
                   onClick={handleStartChat}
-                  disabled={!currentAgent}
+                  disabled={isGroupMode ? selectedAgents.length < 2 : !currentAgent}
                   size="lg"
                   className="mt-6 px-10 py-7 text-lg gap-3 shadow-lg hover:shadow-xl transition-shadow"
                 >
                   <Sparkles className="w-6 h-6" />
-                  Chat with {currentAgent?.display_name || 'Agent'}
+                  {isGroupMode 
+                    ? `Start Group (${selectedAgents.length} agents)`
+                    : `Chat with ${currentAgent?.display_name || 'Agent'}`
+                  }
                 </Button>
               )}
             </div>

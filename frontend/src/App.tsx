@@ -21,6 +21,7 @@ import BondModal from './components/BondModal';
 import AboutModal from './components/AboutModal';
 import AwakeningOverlay from './components/AwakeningOverlay';
 import GamePanel from './components/GamePanel';
+import { ManageParticipantsPanel } from './components/chat';
 import { STATUS_COLORS } from './types';
 import type { AppStatus } from './types';
 import { isGamesV2EnabledForAgent } from './config/features';
@@ -50,6 +51,7 @@ function App({ userId, sessionId }: AppProps) {
   const [bondOpen, setBondOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [userSettingsOpen, setUserSettingsOpen] = useState(false);
+  const [participantsOpen, setParticipantsOpen] = useState(false);
   const hasValidatedRef = useRef(false);
 
   const setSessionId = useAppStore((state) => state.setSessionId);
@@ -142,6 +144,8 @@ function App({ userId, sessionId }: AppProps) {
       setAboutOpen={setAboutOpen}
       userSettingsOpen={userSettingsOpen}
       setUserSettingsOpen={setUserSettingsOpen}
+      participantsOpen={participantsOpen}
+      setParticipantsOpen={setParticipantsOpen}
     />
   );
 }
@@ -163,6 +167,8 @@ function AppContent({
   setAboutOpen,
   userSettingsOpen,
   setUserSettingsOpen,
+  participantsOpen,
+  setParticipantsOpen,
 }: {
   drawerOpen: boolean;
   setDrawerOpen: (open: boolean) => void;
@@ -176,11 +182,15 @@ function AppContent({
   setAboutOpen: (open: boolean) => void;
   userSettingsOpen: boolean;
   setUserSettingsOpen: (open: boolean) => void;
+  participantsOpen: boolean;
+  setParticipantsOpen: (open: boolean) => void;
 }) {
   const messages = useChatStore((s) => s.messages);
   const addMessage = useChatStore((s) => s.addMessage);
   const currentMood = useChatStore((s) => s.currentMood);
+  const sessionAgents = useChatStore((s) => s.sessionAgents);
   const status = useAppStore((s) => s.status);
+  const sessionId = useAppStore((s) => s.sessionId);
   const ttsEnabled = useAppStore((s) => s.ttsEnabled);
   const setTtsEnabled = useAppStore((s) => s.setTtsEnabled);
   const addError = useAppStore((s) => s.addError);
@@ -388,6 +398,25 @@ function AppContent({
 
       {/* User Settings Modal */}
       <UserSettingsModal open={userSettingsOpen} onClose={() => setUserSettingsOpen(false)} />
+      
+      {/* Participants button - shows only for multi-agent sessions */}
+      {sessionAgents.length > 0 && sessionId && !participantsOpen && (
+        <button
+          onClick={() => setParticipantsOpen(true)}
+          className="fixed top-16 right-4 z-20 flex items-center gap-2 px-3 py-2 rounded-full bg-bg-secondary/80 border border-white/10 backdrop-blur-sm hover:bg-bg-tertiary/80 transition-colors shadow-lg"
+          title="Manage participants"
+        >
+          <span className="text-sm">{sessionAgents.length} agent{sessionAgents.length !== 1 ? 's' : ''}</span>
+        </button>
+      )}
+      
+      {/* Manage Participants Panel (multi-agent) */}
+      {participantsOpen && sessionId && (
+        <ManageParticipantsPanel 
+          sessionId={sessionId} 
+          onClose={() => setParticipantsOpen(false)} 
+        />
+      )}
     </div>
   );
 }
