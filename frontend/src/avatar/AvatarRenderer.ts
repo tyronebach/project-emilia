@@ -559,11 +559,13 @@ export class AvatarRenderer {
           }
 
           this.vrm = vrm;
+
+          // Hide VRM IMMEDIATELY to avoid T-pose flash
+          // Must be set before any VRM utilities or scene.add()
+          vrm.scene.visible = false;
+
           VRMUtils.rotateVRM0(vrm);
           VRMUtils.combineSkeletons(vrm.scene);
-
-          // Hide VRM initially to avoid T-pose flash while idle animation loads
-          vrm.scene.visible = false;
 
           this.scene?.add(vrm.scene);
 
