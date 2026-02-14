@@ -3,6 +3,8 @@ import type { Room, RoomAgent, RoomMessage } from '../utils/api';
 import type { AvatarCommand } from '../types';
 import type { SoulMoodSnapshot } from '../types/soulWindow';
 
+export type AgentStatus = 'idle' | 'thinking' | 'streaming';
+
 interface RoomStoreState {
   currentRoomId: string | null;
   currentRoom: Room | null;
@@ -13,6 +15,7 @@ interface RoomStoreState {
   avatarCommandByAgent: Record<string, AvatarCommand>;
   lastAvatarEventAtByAgent: Record<string, number>;
   emotionByAgent: Record<string, SoulMoodSnapshot>;
+  statusByAgent: Record<string, AgentStatus>;
 
   setCurrentRoom: (room: Room | null) => void;
   setAgents: (agents: RoomAgent[]) => void;
@@ -27,6 +30,9 @@ interface RoomStoreState {
   resetRoomAvatars: () => void;
   setAgentEmotion: (agentId: string, snapshot: SoulMoodSnapshot) => void;
   clearAgentEmotion: (agentId: string) => void;
+  setAgentStatus: (agentId: string, status: AgentStatus) => void;
+  clearAgentStatus: (agentId: string) => void;
+  resetAgentStatuses: () => void;
   clearRoomState: () => void;
 }
 
@@ -40,6 +46,7 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
   avatarCommandByAgent: {},
   lastAvatarEventAtByAgent: {},
   emotionByAgent: {},
+  statusByAgent: {},
 
   setCurrentRoom: (room) => set({
     currentRoom: room,
@@ -113,6 +120,21 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
     return { emotionByAgent: next };
   }),
 
+  setAgentStatus: (agentId, status) => set((state) => ({
+    statusByAgent: {
+      ...state.statusByAgent,
+      [agentId]: status,
+    },
+  })),
+
+  clearAgentStatus: (agentId) => set((state) => {
+    const next = { ...state.statusByAgent };
+    delete next[agentId];
+    return { statusByAgent: next };
+  }),
+
+  resetAgentStatuses: () => set({ statusByAgent: {} }),
+
   clearRoomState: () => set({
     currentRoomId: null,
     currentRoom: null,
@@ -123,5 +145,6 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
     avatarCommandByAgent: {},
     lastAvatarEventAtByAgent: {},
     emotionByAgent: {},
+    statusByAgent: {},
   }),
 }));

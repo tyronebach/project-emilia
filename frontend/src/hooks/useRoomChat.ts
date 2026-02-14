@@ -15,6 +15,9 @@ export function useRoomChat(roomId: string) {
   const focusedAgentId = useRoomStore((state) => state.focusedAgentId);
   const setAgentAvatarCommand = useRoomStore((state) => state.setAgentAvatarCommand);
   const setAgentEmotion = useRoomStore((state) => state.setAgentEmotion);
+  const setAgentStatus = useRoomStore((state) => state.setAgentStatus);
+  const clearAgentStatus = useRoomStore((state) => state.clearAgentStatus);
+  const resetAgentStatuses = useRoomStore((state) => state.resetAgentStatuses);
   const applyAvatarCommand = useAppStore((state) => state.applyAvatarCommand);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -68,16 +71,19 @@ export function useRoomChat(roomId: string) {
       (event) => {
         if (event.type === 'agent_start') {
           clearStreamingContent(event.agent_id);
+          setAgentStatus(event.agent_id, 'thinking');
           return;
         }
 
         if (event.type === 'content') {
           appendStreamingContent(event.agent_id, event.content);
+          setAgentStatus(event.agent_id, 'streaming');
           return;
         }
 
         if (event.type === 'agent_done') {
           clearStreamingContent(event.agent_id);
+          clearAgentStatus(event.agent_id);
           addMessage(event.message);
           return;
         }
@@ -108,6 +114,7 @@ export function useRoomChat(roomId: string) {
 
         if (event.type === 'agent_error') {
           clearStreamingContent(event.agent_id);
+          clearAgentStatus(event.agent_id);
           addMessage({
             id: `local-error-${Date.now()}-${event.agent_id}`,
             room_id: roomId,
@@ -126,11 +133,13 @@ export function useRoomChat(roomId: string) {
 
         if (event.type === 'done') {
           resetStreaming();
+          resetAgentStatuses();
         }
       },
       (error) => {
         console.error('streamRoomChat error:', error);
         resetStreaming();
+        resetAgentStatuses();
         addMessage({
           id: `local-error-${Date.now()}`,
           room_id: roomId,
@@ -160,6 +169,9 @@ export function useRoomChat(roomId: string) {
     focusedAgentId,
     setAgentAvatarCommand,
     setAgentEmotion,
+    setAgentStatus,
+    clearAgentStatus,
+    resetAgentStatuses,
     isLoading,
     resetStreaming,
     applyAvatarCommand,

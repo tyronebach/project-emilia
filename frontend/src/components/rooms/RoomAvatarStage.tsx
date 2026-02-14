@@ -63,6 +63,7 @@ function RoomAvatarStage({ className = '' }: RoomAvatarStageProps) {
   const avatarCommandByAgent = useRoomStore((state) => state.avatarCommandByAgent);
   const lastAvatarEventAtByAgent = useRoomStore((state) => state.lastAvatarEventAtByAgent);
   const emotionByAgent = useRoomStore((state) => state.emotionByAgent);
+  const statusByAgent = useRoomStore((state) => state.statusByAgent);
   const isMobile = useIsMobileViewport();
   const [tileErrors, setTileErrors] = useState<Record<string, string>>({});
 
@@ -172,6 +173,7 @@ function RoomAvatarStage({ className = '' }: RoomAvatarStageProps) {
           const isActive = activeAgentIds.has(agentId);
           const command = avatarCommandByAgent[agentId];
           const emotion = emotionByAgent[agentId];
+          const status = statusByAgent[agentId];
           const lastEventTs = lastAvatarEventAtByAgent[agentId];
 
           return (
@@ -191,7 +193,11 @@ function RoomAvatarStage({ className = '' }: RoomAvatarStageProps) {
                       Focus
                     </span>
                   ) : null}
-                  {isStreaming ? (
+                  {status === 'thinking' ? (
+                    <span className="rounded-full border border-warning/40 bg-warning/15 px-2 py-0.5 text-text-primary">
+                      Thinking
+                    </span>
+                  ) : status === 'streaming' ? (
                     <span className="rounded-full border border-success/40 bg-success/15 px-2 py-0.5 text-text-primary">
                       Speaking
                     </span>
