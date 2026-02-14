@@ -15,11 +15,24 @@ class SessionRepository:
                 "SELECT * FROM sessions WHERE id = ?", (session_id,)
             ).fetchone()
             if session:
+                # Get user participants
                 participants = conn.execute(
                     "SELECT user_id FROM session_participants WHERE session_id = ?",
                     (session_id,)
                 ).fetchall()
                 session["participants"] = [p["user_id"] for p in participants]
+
+                # Get agent participants (multi-agent support)
+                agents = conn.execute(
+                    """SELECT a.*, sa.added_at, sa.role as session_role
+                       FROM session_agents sa
+                       JOIN agents a ON sa.agent_id = a.id
+                       WHERE sa.session_id = ?
+                       ORDER BY sa.added_at ASC""",
+                    (session_id,)
+                ).fetchall()
+                session["agents"] = [dict(a) for a in agents]
+
             return session
 
     @staticmethod
@@ -61,32 +74,60 @@ class SessionRepository:
             return sessions
 
     @staticmethod
-    def create(agent_id: str, user_id: str, name: str | None = None) -> dict:
+    def create(agent_id: str | None, user_id: str, name: str | None = None, agent_ids: list[str] | None = None) -> dict:
+        """Create a new session with one or more agents.
+
+        Args:
+            agent_id: Primary agent ID (for backwards compat, stored in sessions.agent_id)
+            user_id: User creating the session
+            name: Optional session name
+            agent_ids: List of agent IDs for multi-agent sessions. If provided, agent_id is ignored.
+        """
         session_id = str(uuid.uuid4())
         now = int(time.time())
 
+        # Normalize agent_ids
+        if agent_ids:
+            agents_to_add = agent_ids
+            primary_agent_id = agent_ids[0]  # First agent is primary
+        elif agent_id:
+            agents_to_add = [agent_id]
+            primary_agent_id = agent_id
+        else:
+            raise ValueError("Either agent_id or agent_ids must be provided")
+
         with get_db() as conn:
             if not name:
-                agent = conn.execute(
-                    "SELECT display_name FROM agents WHERE id = ?", (agent_id,)
-                ).fetchone()
-                agent_name = agent["display_name"] if agent else "Chat"
+                # Generate name from agent(s)
+                if len(agents_to_add) == 1:
+                    agent = conn.execute(
+                        "SELECT display_name FROM agents WHERE id = ?", (primary_agent_id,)
+                    ).fetchone()
+                    agent_name = agent["display_name"] if agent else "Chat"
+                else:
+                    agent_name = f"Group ({len(agents_to_add)} agents)"
                 name = f"{agent_name} {datetime.now(timezone.utc).strftime('%m.%d.%y')}"
 
+            # Create session (agent_id kept for backwards compat)
             conn.execute(
                 "INSERT INTO sessions (id, agent_id, name, created_at, last_used) VALUES (?, ?, ?, ?, ?)",
-                (session_id, agent_id, name, now, now)
+                (session_id, primary_agent_id, name, now, now)
             )
+
+            # Add user participant
             conn.execute(
                 "INSERT INTO session_participants (session_id, user_id) VALUES (?, ?)",
                 (session_id, user_id)
             )
 
-            session = conn.execute(
-                "SELECT * FROM sessions WHERE id = ?", (session_id,)
-            ).fetchone()
-            session["participants"] = [user_id]
-            return session
+            # Add all agents to session_agents
+            for aid in agents_to_add:
+                conn.execute(
+                    "INSERT INTO session_agents (session_id, agent_id, added_at) VALUES (?, ?, ?)",
+                    (session_id, aid, now)
+                )
+
+        return SessionRepository.get_by_id(session_id)
 
     @staticmethod
     def get_or_create_default(user_id: str, agent_id: str) -> dict:
@@ -167,6 +208,83 @@ class SessionRepository:
                 "INSERT OR IGNORE INTO session_participants (session_id, user_id) VALUES (?, ?)",
                 (session_id, user_id)
             )
+
+    # --- Multi-agent support ---
+
+    @staticmethod
+    def get_agents(session_id: str) -> list[dict]:
+        """Get all agents in a session."""
+        with get_db() as conn:
+            agents = conn.execute(
+                """SELECT a.*, sa.added_at, sa.role as session_role
+                   FROM session_agents sa
+                   JOIN agents a ON sa.agent_id = a.id
+                   WHERE sa.session_id = ?
+                   ORDER BY sa.added_at ASC""",
+                (session_id,)
+            ).fetchall()
+            return [dict(a) for a in agents]
+
+    @staticmethod
+    def add_agent(session_id: str, agent_id: str) -> bool:
+        """Add an agent to a session. Returns True if added, False if already present."""
+        with get_db() as conn:
+            try:
+                conn.execute(
+                    "INSERT INTO session_agents (session_id, agent_id, added_at) VALUES (?, ?, ?)",
+                    (session_id, agent_id, int(time.time()))
+                )
+                return True
+            except Exception:
+                # Already exists (UNIQUE constraint)
+                return False
+
+    @staticmethod
+    def remove_agent(session_id: str, agent_id: str) -> bool:
+        """Remove an agent from a session. Returns True if removed."""
+        with get_db() as conn:
+            # Don't allow removing the last agent
+            count = conn.execute(
+                "SELECT COUNT(*) as cnt FROM session_agents WHERE session_id = ?",
+                (session_id,)
+            ).fetchone()["cnt"]
+
+            if count <= 1:
+                return False  # Can't remove last agent
+
+            result = conn.execute(
+                "DELETE FROM session_agents WHERE session_id = ? AND agent_id = ?",
+                (session_id, agent_id)
+            )
+
+            # Update primary agent_id if we removed the primary
+            if result.rowcount > 0:
+                session = conn.execute(
+                    "SELECT agent_id FROM sessions WHERE id = ?", (session_id,)
+                ).fetchone()
+                if session and session["agent_id"] == agent_id:
+                    # Set new primary to first remaining agent
+                    new_primary = conn.execute(
+                        "SELECT agent_id FROM session_agents WHERE session_id = ? ORDER BY added_at LIMIT 1",
+                        (session_id,)
+                    ).fetchone()
+                    if new_primary:
+                        conn.execute(
+                            "UPDATE sessions SET agent_id = ? WHERE id = ?",
+                            (new_primary["agent_id"], session_id)
+                        )
+
+            return result.rowcount > 0
+
+    @staticmethod
+    def get_agent_count(session_id: str) -> int:
+        """Get number of agents in a session."""
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM session_agents WHERE session_id = ?",
+                (session_id,)
+            ).fetchone()
+            return row["cnt"] if row else 0
 
     @staticmethod
     def user_can_access(user_id: str, session_id: str) -> bool:

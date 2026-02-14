@@ -112,12 +112,24 @@ def init_db():
             )
         """)
 
-        # Session participants (many-to-many)
+        # Session participants (many-to-many for users)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS session_participants (
                 session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
                 user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 PRIMARY KEY (session_id, user_id)
+            )
+        """)
+
+        # Session agents (many-to-many for multi-agent support)
+        # This extends sessions to support 1-N agents (unified chat)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS session_agents (
+                session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                added_at INTEGER DEFAULT (strftime('%s', 'now')),
+                role TEXT DEFAULT 'participant',
+                PRIMARY KEY (session_id, agent_id)
             )
         """)
 
@@ -349,6 +361,22 @@ def init_db():
         # Mood weights (JSON dict of mood->weight)
         _add_column(cur, "emotional_state", "mood_weights_json", "TEXT")
 
+        # Multi-agent support: agent_id on messages (which agent sent this message)
+        _add_column(cur, "messages", "agent_id", "TEXT")
+
+        # Backfill session_agents from sessions.agent_id for existing sessions
+        cur.execute("""
+            INSERT OR IGNORE INTO session_agents (session_id, agent_id, added_at)
+            SELECT id, agent_id, created_at FROM sessions WHERE agent_id IS NOT NULL
+        """)
+
+        # Backfill messages.agent_id from session's agent_id for assistant messages
+        cur.execute("""
+            UPDATE messages
+            SET agent_id = (SELECT agent_id FROM sessions WHERE sessions.id = messages.session_id)
+            WHERE role = 'assistant' AND agent_id IS NULL
+        """)
+
         # Async trigger batching (LLM classification runs every N messages)
         _add_column(cur, "emotional_state", "trigger_buffer", "TEXT")  # JSON array of recent messages
         _add_column(cur, "emotional_state", "pending_triggers", "TEXT")  # JSON array of LLM-detected triggers
@@ -427,6 +455,9 @@ def init_db():
         # Indexes for common queries
         cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_used ON sessions(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_session_participants_user ON session_participants(user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_session_agents_agent ON session_agents(agent_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_session_agents_session ON session_agents(session_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_agent ON messages(agent_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_rooms_last_activity ON rooms(last_activity DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_rooms_created_by ON rooms(created_by)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_room_participants_user ON room_participants(user_id)")
