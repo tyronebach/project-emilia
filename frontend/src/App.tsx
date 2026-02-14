@@ -12,6 +12,7 @@ import type { VoiceDebugEntry } from './components/VoiceDebugTimeline';
 import Header from './components/Header';
 import Drawer from './components/Drawer';
 import AvatarPanel from './components/AvatarPanel';
+import { AvatarStage } from './components/chat';
 import ChatPanel from './components/ChatPanel';
 import InputControls from './components/InputControls';
 import DebugPanel from './components/DebugPanel';
@@ -333,10 +334,20 @@ function AppContent({
     }
   }, [handsFreeEnabled]);
 
+  // Multi-agent: use AvatarStage for adaptive layouts
+  const isMultiAgent = sessionAgents.length > 1;
+  
   return (
     <div className="min-h-[100svh] w-full bg-bg-primary text-text-primary overflow-hidden relative flex flex-col">
-      {/* Full-screen Avatar Background */}
-      <AvatarPanel />
+      {/* Full-screen Avatar Background - use AvatarStage for multi-agent */}
+      {isMultiAgent && currentUser?.id && sessionId ? (
+        <AvatarStage 
+          userId={currentUser.id} 
+          sessionId={sessionId}
+        />
+      ) : (
+        <AvatarPanel />
+      )}
 
       {/* Awakening overlay - shows during first message */}
       {isAwakening && <AwakeningOverlay />}
