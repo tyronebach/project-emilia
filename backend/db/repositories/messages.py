@@ -20,7 +20,7 @@ class MessageRepository:
         with get_db() as conn:
             return conn.execute(
                 f"""SELECT id, session_id, role, origin, content, timestamp,
-                          model, processing_ms,
+                          agent_id, model, processing_ms,
                           usage_prompt_tokens, usage_completion_tokens,
                           behavior_intent, behavior_mood, behavior_mood_intensity,
                           behavior_energy, behavior_move, behavior_game_action
@@ -52,8 +52,24 @@ class MessageRepository:
             return list(reversed(rows))
 
     @staticmethod
-    def add(session_id: str, role: str, content: str, origin: str | None = None, **meta) -> dict:
-        """Store a message. Returns the inserted row as dict."""
+    def add(
+        session_id: str,
+        role: str,
+        content: str,
+        origin: str | None = None,
+        agent_id: str | None = None,
+        **meta,
+    ) -> dict:
+        """Store a message. Returns the inserted row as dict.
+
+        Args:
+            session_id: Session this message belongs to
+            role: 'user' or 'assistant'
+            content: Message text
+            origin: Message origin ('user', 'assistant', 'game_runtime', etc.)
+            agent_id: For assistant messages, which agent sent this (multi-agent support)
+            **meta: Additional metadata (model, processing_ms, usage_*, behavior_*)
+        """
         msg_id = str(uuid.uuid4())
         now = time.time()
         resolved_origin = origin or ("assistant" if role == "assistant" else "user")
@@ -62,13 +78,14 @@ class MessageRepository:
             conn.execute(
                 """INSERT INTO messages
                    (id, session_id, role, origin, content, timestamp,
-                    model, processing_ms,
+                    agent_id, model, processing_ms,
                     usage_prompt_tokens, usage_completion_tokens,
                     behavior_intent, behavior_mood, behavior_mood_intensity,
                     behavior_energy, behavior_move, behavior_game_action)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     msg_id, session_id, role, resolved_origin, content, now,
+                    agent_id,
                     meta.get("model"),
                     meta.get("processing_ms"),
                     meta.get("usage_prompt_tokens"),
@@ -88,6 +105,7 @@ class MessageRepository:
                 "origin": resolved_origin,
                 "content": content,
                 "timestamp": now,
+                "agent_id": agent_id,
             }
 
     @staticmethod

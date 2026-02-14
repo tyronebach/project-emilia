@@ -313,6 +313,7 @@ async def chat(
         MessageRepository.add(
             sid, "assistant", parsed["response_text"],
             origin="assistant",
+            agent_id=agent_id,  # Track which agent sent this (multi-agent support)
             model=result.get("model"),
             processing_ms=processing_ms,
             usage_prompt_tokens=usage.get("prompt_tokens"),
@@ -550,6 +551,7 @@ async def _stream_chat_sse(
             MessageRepository.add(
                 session_id, "assistant", clean_full,
                 origin="assistant",
+                agent_id=agent_id,  # Track which agent sent this (multi-agent support)
                 model=None,
                 processing_ms=processing_ms,
                 usage_prompt_tokens=usage_data.get("prompt_tokens"),
