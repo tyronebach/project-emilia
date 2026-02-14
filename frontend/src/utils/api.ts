@@ -44,6 +44,7 @@ export interface Session {
   last_used: number;
   message_count: number;
   participants: string[];
+  agents?: Agent[];  // Multi-agent support
 }
 
 export interface HistoryMessage {
@@ -514,6 +515,47 @@ export async function renameSession(sessionId: string, name: string): Promise<Se
     body: JSON.stringify({ name }),
   });
   if (!response.ok) throw new Error(`Failed to rename session: ${response.status}`);
+  return response.json();
+}
+
+// --- Multi-Agent Session Functions ---
+
+export async function createMultiAgentSession(agentIds: string[], name?: string): Promise<Session> {
+  const response = await fetchWithAuth(`${API_URL}/api/sessions/multi`, {
+    method: 'POST',
+    body: JSON.stringify({ agent_ids: agentIds, name }),
+  });
+  if (!response.ok) throw new Error(`Failed to create multi-agent session: ${response.status}`);
+  return response.json();
+}
+
+export async function getSessionAgents(sessionId: string): Promise<Agent[]> {
+  const response = await fetchWithAuth(
+    `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/agents`
+  );
+  if (!response.ok) throw new Error(`Failed to fetch session agents: ${response.status}`);
+  const data = await response.json();
+  return data.agents || [];
+}
+
+export async function addAgentToSession(sessionId: string, agentId: string): Promise<Session> {
+  const response = await fetchWithAuth(
+    `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/agents`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ agent_id: agentId }),
+    }
+  );
+  if (!response.ok) throw new Error(`Failed to add agent to session: ${response.status}`);
+  return response.json();
+}
+
+export async function removeAgentFromSession(sessionId: string, agentId: string): Promise<Session> {
+  const response = await fetchWithAuth(
+    `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/agents/${encodeURIComponent(agentId)}`,
+    { method: 'DELETE' }
+  );
+  if (!response.ok) throw new Error(`Failed to remove agent from session: ${response.status}`);
   return response.json();
 }
 
@@ -1097,10 +1139,14 @@ export default {
   deleteAgentGameConfig,
   getSessions,
   createSession,
+  createMultiAgentSession,
   getSession,
   getSessionHistory,
   deleteSession,
   renameSession,
+  getSessionAgents,
+  addAgentToSession,
+  removeAgentFromSession,
   getRooms,
   createRoom,
   getRoom,
