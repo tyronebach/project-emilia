@@ -80,6 +80,7 @@ export function useSession() {
         timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
         meta: {
           origin: (msg.origin ?? undefined) as MessageOrigin | undefined,
+          agent_id: msg.agent_id,  // Multi-agent support
         },
       }));
 

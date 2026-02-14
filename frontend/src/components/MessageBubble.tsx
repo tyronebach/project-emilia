@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { Volume2 } from 'lucide-react';
+import { useChatStore } from '../store/chatStore';
 import type { Message } from '../types';
 import { base64ToAudioBlob } from '../utils/helpers';
 
@@ -13,6 +14,18 @@ function MessageBubble({ message }: MessageBubbleProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
+  
+  // Multi-agent support: look up agent name from sessionAgents
+  const sessionAgents = useChatStore(state => state.sessionAgents);
+  const agentId = meta?.agent_id;
+  const agentInfo = useMemo(() => {
+    if (isUser || !agentId) return null;
+    return sessionAgents.find(a => a.id === agentId);
+  }, [isUser, agentId, sessionAgents]);
+  
+  // Agent initial for avatar (fallback to 'E' for backwards compat)
+  const agentInitial = agentInfo?.display_name?.charAt(0).toUpperCase() ?? 'E';
+  const isMultiAgent = sessionAgents.length > 1;
 
   const cleanupAudio = useCallback(() => {
     if (audioRef.current) {
@@ -84,12 +97,18 @@ function MessageBubble({ message }: MessageBubbleProps) {
       {/* Avatar */}
       <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 border ${
         isUser ? 'bg-accent/15 border-accent/30' : 'bg-bg-tertiary/80 border-white/10'
-      }`}>
-        <span className="text-xs text-text-primary">{isUser ? 'U' : 'E'}</span>
+      }`} title={!isUser && agentInfo ? agentInfo.display_name : undefined}>
+        <span className="text-xs text-text-primary">{isUser ? 'U' : agentInitial}</span>
       </div>
 
       {/* Bubble */}
       <div className={`max-w-[85%] md:max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}>
+        {/* Agent name label for multi-agent chats */}
+        {!isUser && isMultiAgent && agentInfo && (
+          <span className="text-xs text-text-secondary/70 mb-1 block">
+            {agentInfo.display_name}
+          </span>
+        )}
         <div className={`rounded-2xl px-4 py-2 border shadow-sm ${
           isUser 
             ? 'bg-accent/15 border-accent/30 rounded-tr-sm' 

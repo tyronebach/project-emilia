@@ -52,6 +52,7 @@ export interface HistoryMessage {
   origin?: 'user' | 'assistant' | 'game_runtime' | 'system' | null;
   content: string;
   timestamp?: string;
+  agent_id?: string;  // Multi-agent: which agent sent this message
 }
 
 export interface RoomAgent {
