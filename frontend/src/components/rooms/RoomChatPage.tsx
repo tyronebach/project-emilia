@@ -108,15 +108,29 @@ function RoomChatPage({ userId, roomId }: RoomChatPageProps) {
     ));
   };
 
-  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  // Extracted send logic - called by both form submit and Enter key
+  const handleSend = async () => {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
 
     setInput('');
-    const mentions = mentionAgents;
+    const mentions = [...mentionAgents];
     setMentionAgents([]);
     await sendMessage(trimmed, mentions.length ? mentions : undefined);
+  };
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void handleSend();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      if (input.trim() && !isLoading) {
+        void handleSend();
+      }
+    }
   };
 
   const unavailable = roomQuery.isError || !roomQuery.data;
@@ -255,14 +269,7 @@ function RoomChatPage({ userId, roomId }: RoomChatPageProps) {
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-                      e.preventDefault();
-                      if (input.trim() && !isLoading) {
-                        void onSubmit(e as unknown as FormEvent<HTMLFormElement>);
-                      }
-                    }
-                  }}
+                  onKeyDown={handleKeyDown}
                   rows={2}
                   placeholder="Send a message to the room"
                   className="min-h-[3.5rem] flex-1 resize-none rounded-xl border border-white/10 bg-bg-tertiary/70 px-3 py-2 text-sm text-text-primary outline-none focus:border-accent/50"
