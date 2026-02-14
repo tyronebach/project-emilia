@@ -3,7 +3,7 @@
 **Issue:** #12  
 **Date:** 2026-02-14 (Updated)  
 **Author:** Ram  
-**Status:** IN PROGRESS — Phase 2 underway
+**Status:** CORE COMPLETE — Phase 1 & 2 done, Phase 3+ optional
 
 ---
 
@@ -165,9 +165,11 @@ Extended existing App.tsx (no separate ChatPage needed):
 - Agent selection grid for group mode
 - Calls `createMultiAgentSession()` for group chats
 
-### 2.3 Adaptive Avatar Stage
+### 2.4 Adaptive Avatar Stage ✅
 
 **File:** `frontend/src/components/chat/AvatarStage.tsx`
+
+Wired into App.tsx — uses AvatarStage when sessionAgents > 1.
 
 Follows Zoom Mobile / Google Meet conventions:
 
