@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AvatarRenderer } from '../../avatar/AvatarRenderer';
 import type { AvatarCommand } from '../../types';
+import type { SoulMoodSnapshot } from '../../types/soulWindow';
 import { useRenderStore } from '../../store/renderStore';
 
 const DEFAULT_VRM_URL = '/vrm/emilia.vrm';
@@ -17,6 +18,7 @@ interface RoomAvatarTileProps {
   displayName: string;
   vrmModel?: string | null;
   command?: AvatarCommand;
+  emotion?: SoulMoodSnapshot | null;
   isFocused?: boolean;
   isStreaming?: boolean;
   onLoadError?: (agentId: string, message: string) => void;
@@ -28,6 +30,7 @@ function RoomAvatarTile({
   displayName,
   vrmModel,
   command,
+  emotion,
   isFocused = false,
   isStreaming = false,
   onLoadError,
@@ -162,6 +165,16 @@ function RoomAvatarTile({
       {isStreaming ? (
         <div className="pointer-events-none absolute right-2 top-2 rounded-full border border-accent/40 bg-accent/20 px-2 py-0.5 text-[10px] uppercase tracking-wide text-text-primary">
           Live
+        </div>
+      ) : null}
+
+      {/* Mood badge - bottom left */}
+      {emotion?.dominant_mood ? (
+        <div className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1 rounded-full border border-white/10 bg-bg-secondary/80 px-2 py-0.5 text-[10px] text-text-secondary backdrop-blur-sm">
+          {emotion.dominant_mood.emoji ? (
+            <span className="text-xs">{emotion.dominant_mood.emoji}</span>
+          ) : null}
+          <span className="capitalize">{emotion.dominant_mood.id}</span>
         </div>
       ) : null}
     </div>

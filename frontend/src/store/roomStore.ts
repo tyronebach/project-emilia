@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Room, RoomAgent, RoomMessage } from '../utils/api';
 import type { AvatarCommand } from '../types';
+import type { SoulMoodSnapshot } from '../types/soulWindow';
 
 interface RoomStoreState {
   currentRoomId: string | null;
@@ -11,6 +12,7 @@ interface RoomStoreState {
   focusedAgentId: string | null;
   avatarCommandByAgent: Record<string, AvatarCommand>;
   lastAvatarEventAtByAgent: Record<string, number>;
+  emotionByAgent: Record<string, SoulMoodSnapshot>;
 
   setCurrentRoom: (room: Room | null) => void;
   setAgents: (agents: RoomAgent[]) => void;
@@ -23,6 +25,8 @@ interface RoomStoreState {
   setAgentAvatarCommand: (agentId: string, command: AvatarCommand, timestamp?: number) => void;
   clearAgentAvatarCommand: (agentId: string) => void;
   resetRoomAvatars: () => void;
+  setAgentEmotion: (agentId: string, snapshot: SoulMoodSnapshot) => void;
+  clearAgentEmotion: (agentId: string) => void;
   clearRoomState: () => void;
 }
 
@@ -35,6 +39,7 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
   focusedAgentId: null,
   avatarCommandByAgent: {},
   lastAvatarEventAtByAgent: {},
+  emotionByAgent: {},
 
   setCurrentRoom: (room) => set({
     currentRoom: room,
@@ -95,6 +100,19 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
     lastAvatarEventAtByAgent: {},
   }),
 
+  setAgentEmotion: (agentId, snapshot) => set((state) => ({
+    emotionByAgent: {
+      ...state.emotionByAgent,
+      [agentId]: snapshot,
+    },
+  })),
+
+  clearAgentEmotion: (agentId) => set((state) => {
+    const next = { ...state.emotionByAgent };
+    delete next[agentId];
+    return { emotionByAgent: next };
+  }),
+
   clearRoomState: () => set({
     currentRoomId: null,
     currentRoom: null,
@@ -104,5 +122,6 @@ export const useRoomStore = create<RoomStoreState>((set) => ({
     focusedAgentId: null,
     avatarCommandByAgent: {},
     lastAvatarEventAtByAgent: {},
+    emotionByAgent: {},
   }),
 }));
