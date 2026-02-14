@@ -62,6 +62,7 @@ function RoomAvatarStage({ className = '' }: RoomAvatarStageProps) {
   const streamingByAgent = useRoomStore((state) => state.streamingByAgent);
   const avatarCommandByAgent = useRoomStore((state) => state.avatarCommandByAgent);
   const lastAvatarEventAtByAgent = useRoomStore((state) => state.lastAvatarEventAtByAgent);
+  const emotionByAgent = useRoomStore((state) => state.emotionByAgent);
   const isMobile = useIsMobileViewport();
   const [tileErrors, setTileErrors] = useState<Record<string, string>>({});
 
@@ -170,6 +171,7 @@ function RoomAvatarStage({ className = '' }: RoomAvatarStageProps) {
           const isStreaming = Boolean((streamingByAgent[agentId] ?? '').trim());
           const isActive = activeAgentIds.has(agentId);
           const command = avatarCommandByAgent[agentId];
+          const emotion = emotionByAgent[agentId];
           const lastEventTs = lastAvatarEventAtByAgent[agentId];
 
           return (
@@ -203,6 +205,7 @@ function RoomAvatarStage({ className = '' }: RoomAvatarStageProps) {
                   displayName={agent.display_name}
                   vrmModel={agent.vrm_model}
                   command={command}
+                  emotion={emotion}
                   isFocused={isFocused}
                   isStreaming={isStreaming}
                   onLoadError={handleTileError}

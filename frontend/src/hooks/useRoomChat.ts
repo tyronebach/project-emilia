@@ -14,6 +14,7 @@ export function useRoomChat(roomId: string) {
   const resetStreaming = useRoomStore((state) => state.resetStreaming);
   const focusedAgentId = useRoomStore((state) => state.focusedAgentId);
   const setAgentAvatarCommand = useRoomStore((state) => state.setAgentAvatarCommand);
+  const setAgentEmotion = useRoomStore((state) => state.setAgentEmotion);
   const applyAvatarCommand = useAppStore((state) => state.applyAvatarCommand);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -99,6 +100,9 @@ export function useRoomChat(roomId: string) {
         }
 
         if (event.type === 'emotion') {
+          if (event.snapshot) {
+            setAgentEmotion(event.agent_id, event.snapshot);
+          }
           return;
         }
 
@@ -155,6 +159,7 @@ export function useRoomChat(roomId: string) {
     clearStreamingContent,
     focusedAgentId,
     setAgentAvatarCommand,
+    setAgentEmotion,
     isLoading,
     resetStreaming,
     applyAvatarCommand,
