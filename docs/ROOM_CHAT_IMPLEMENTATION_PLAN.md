@@ -1,325 +1,631 @@
-# Room Chat Implementation Plan
+# Unified Chat Implementation Plan
 
 **Issue:** #12  
-**Date:** 2026-02-14  
-**Author:** Ram
+**Date:** 2026-02-14 (Updated)  
+**Author:** Ram  
+**Status:** APPROVED — Unified approach confirmed
 
 ---
 
 ## Executive Summary
 
-Two architectural options exist:
+We're building a unified chat system where every conversation is a "room" that supports 1-N agents. The existing `/chat/:sessionId` interface becomes the foundation, extended to support multiple participants.
 
-1. **Unified Chat** — Merge single-agent and room chat into one interface. Single chat becomes a room with one agent.
-2. **Parallel Parity** — Keep separate routes but share components and achieve feature parity.
-
-**Recommendation:** Option 1 (Unified Chat) — simpler long-term maintenance, single source of truth. Thai's Discord analogy (group chat + DM) fits this well: DMs are just 1-on-1 rooms.
-
----
-
-## Architecture Decision
-
-### Option 1: Unified Chat (Recommended)
-
-**Concept:** Every chat is a room. `/chat/:sessionId` internally uses the room interface with a single agent.
-
-**Pros:**
-- One interface to maintain
-- No feature drift between single/multi
-- Natural scaling: add agents to any chat
-- Matches Discord/Slack mental model
-
-**Cons:**
-- Breaking change to existing routes
-- Migration path needed
-- Avatar layout needs graceful fallback (full-screen when 1 agent, grid when 2+)
-
-**Migration Path:**
-1. Build shared components in `components/chat/`
-2. Refactor RoomChatPage to use them
-3. Refactor App.tsx (single chat) to use them
-4. Optionally merge routes: `/chat/:sessionId` redirects to `/room/:roomId` with room created on-demand
-
-### Option 2: Parallel Parity
-
-**Concept:** Keep both interfaces but extract shared components.
-
-**Pros:**
-- Non-breaking
-- Can ship incrementally
-
-**Cons:**
-- Two interfaces to maintain forever
-- Feature drift inevitable
-- More code long-term
+**Key Decisions (Thai-approved):**
+- ✅ Unified route — no dual interfaces
+- ✅ Backend restructure — chatrooms with participants table
+- ✅ No backwards compatibility concerns — not in prod
+- ✅ UI follows Zoom Mobile / Google Meet conventions
+- ✅ Games support variable player count
 
 ---
 
-## Phase 1: Quick Wins (1-2 days)
+## Architecture Overview
 
-### 1.1 Fix Enter Key Bug
+### Data Model
 
-**Problem:** Enter key doesn't send in room chat.
+```
+chatrooms
+├── id (UUID)
+├── user_id (owner)
+├── name (optional, auto-generated for 1:1)
+├── created_at
+└── updated_at
 
-**Root Cause:** The `onKeyDown` handler casts `KeyboardEvent` to `FormEvent`, then `onSubmit` calls `event.preventDefault()` on it. While not technically breaking, the type coercion is unsafe.
+chatroom_participants
+├── id
+├── chatroom_id (FK)
+├── agent_id (FK)
+├── added_at
+├── role (default: 'member', future: 'moderator')
+└── UNIQUE(chatroom_id, agent_id)
 
-**Fix:** Extract send logic from form submission:
+messages
+├── id
+├── chatroom_id (FK) -- replaces session_id
+├── agent_id (nullable, null = user message)
+├── content
+├── role (user/assistant)
+├── created_at
+└── metadata (JSON: emotion, mentions, etc.)
+```
+
+**Migration:** Existing `sessions` table data maps to `chatrooms` with single participant.
+
+### Route Structure
+
+```
+/user/:userId/chat/:chatroomId   -- unified chat (1 or N agents)
+/user/:userId/chat/new           -- create new chat (select agent(s))
+/user/:userId                    -- dashboard with chat list
+```
+
+The old `/room` routes are deprecated — everything is a "chat" now.
+
+---
+
+## Phase 1: Backend Restructure (2-3 days)
+
+### 1.1 Create New Tables
+
+```sql
+-- chatrooms table
+CREATE TABLE chatrooms (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- participants junction table
+CREATE TABLE chatroom_participants (
+    id TEXT PRIMARY KEY,
+    chatroom_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    added_at INTEGER NOT NULL,
+    role TEXT DEFAULT 'member',
+    FOREIGN KEY (chatroom_id) REFERENCES chatrooms(id) ON DELETE CASCADE,
+    FOREIGN KEY (agent_id) REFERENCES agents(id),
+    UNIQUE(chatroom_id, agent_id)
+);
+
+-- Update messages table
+ALTER TABLE messages ADD COLUMN chatroom_id TEXT;
+ALTER TABLE messages ADD COLUMN agent_id TEXT;
+-- Migrate existing session_id data, then drop session_id
+```
+
+### 1.2 Create Repository
+
+**File:** `backend/db/repositories/chatrooms.py`
+
+```python
+class ChatroomRepository:
+    def create(self, user_id: str, agent_ids: list[str], name: str = None) -> Chatroom
+    def get(self, chatroom_id: str) -> Chatroom
+    def get_by_user(self, user_id: str) -> list[Chatroom]
+    def add_agent(self, chatroom_id: str, agent_id: str) -> None
+    def remove_agent(self, chatroom_id: str, agent_id: str) -> None
+    def get_participants(self, chatroom_id: str) -> list[Agent]
+    def delete(self, chatroom_id: str) -> None
+```
+
+### 1.3 Create Router
+
+**File:** `backend/routers/chatrooms.py`
+
+```python
+# CRUD for chatrooms
+POST   /api/chatrooms                    # Create chatroom with initial agent(s)
+GET    /api/chatrooms                    # List user's chatrooms
+GET    /api/chatrooms/:id                # Get chatroom with participants
+DELETE /api/chatrooms/:id                # Delete chatroom
+
+# Participant management
+POST   /api/chatrooms/:id/participants   # Add agent to chatroom
+DELETE /api/chatrooms/:id/participants/:agentId  # Remove agent
+
+# Messages (adapt existing)
+GET    /api/chatrooms/:id/messages       # Get message history
+POST   /api/chatrooms/:id/messages       # Send message (with optional @mentions)
+```
+
+### 1.4 Update Chat Router
+
+Modify `routers/chat.py` to work with chatroom_id instead of session_id. The SSE streaming endpoint becomes:
+
+```python
+GET /api/chatrooms/:id/stream   # SSE for real-time messages
+POST /api/chatrooms/:id/chat    # Send message, get streamed response
+```
+
+---
+
+## Phase 2: Frontend Core (3-4 days)
+
+### 2.1 New Store
+
+**File:** `frontend/src/store/chatroomStore.ts`
 
 ```typescript
-// RoomChatPage.tsx
-const handleSend = async () => {
-  const trimmed = input.trim();
-  if (!trimmed || isLoading) return;
+interface ChatroomState {
+  chatrooms: Chatroom[];
+  activeChatroom: Chatroom | null;
+  participants: Agent[];
+  messages: Message[];
   
-  setInput('');
-  const mentions = [...mentionAgents];
-  setMentionAgents([]);
-  await sendMessage(trimmed, mentions.length ? mentions : undefined);
-};
+  // Per-agent state
+  agentStatus: Record<string, 'idle' | 'thinking' | 'speaking'>;
+  agentEmotion: Record<string, EmotionSnapshot>;
+  
+  // UI state
+  focusedAgentId: string | null;  // For maximized view
+  isChatHistoryOpen: boolean;
+  
+  // Actions
+  loadChatroom: (id: string) => Promise<void>;
+  sendMessage: (content: string, mentions?: string[]) => Promise<void>;
+  addParticipant: (agentId: string) => Promise<void>;
+  removeParticipant: (agentId: string) => Promise<void>;
+  setFocusedAgent: (agentId: string | null) => void;
+}
+```
 
-const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-  event.preventDefault();
-  void handleSend();
-};
+### 2.2 Unified Chat Page
 
-// In textarea:
-onKeyDown={(e) => {
-  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-    e.preventDefault();
-    if (!isLoading && input.trim()) {
-      void handleSend();
+**File:** `frontend/src/routes/user/$userId/chat.$chatroomId.tsx`
+
+Adapts existing `App.tsx` functionality with multi-agent support:
+
+```typescript
+function ChatPage() {
+  const { chatroomId } = useParams();
+  const { participants, messages, agentStatus } = useChatroomStore();
+  
+  return (
+    <div className="chat-container">
+      {/* Adaptive avatar display */}
+      <AvatarStage participants={participants} />
+      
+      {/* Chat history button (Google Meet style) */}
+      <ChatHistoryButton />
+      
+      {/* Manage participants */}
+      <ParticipantsButton />
+      
+      {/* Input bar (existing, works as-is) */}
+      <ChatInputBar />
+      
+      {/* Slide-out panels */}
+      <ChatHistoryPanel />
+      <ManageParticipantsPanel />
+    </div>
+  );
+}
+```
+
+### 2.3 Adaptive Avatar Stage
+
+**File:** `frontend/src/components/chat/AvatarStage.tsx`
+
+Follows Zoom Mobile / Google Meet conventions:
+
+```typescript
+function AvatarStage({ participants }: { participants: Agent[] }) {
+  const { focusedAgentId, agentStatus } = useChatroomStore();
+  
+  // Sort by recent activity (speaking > thinking > idle)
+  const sorted = sortByActivity(participants, agentStatus);
+  
+  if (participants.length === 1) {
+    // Full-screen single avatar (existing behavior)
+    return <FullScreenAvatar agent={participants[0]} />;
+  }
+  
+  if (focusedAgentId) {
+    // One agent maximized, others as thumbnails
+    return (
+      <FocusedLayout
+        focused={participants.find(p => p.id === focusedAgentId)}
+        others={participants.filter(p => p.id !== focusedAgentId)}
+      />
+    );
+  }
+  
+  // Default: Last 2 active agents prominent, others as thumbnails
+  return (
+    <SplitLayout
+      primary={sorted.slice(0, 2)}
+      thumbnails={sorted.slice(2)}
+      onThumbnailClick={(agentId) => setFocusedAgent(agentId)}
+    />
+  );
+}
+```
+
+**Layouts:**
+
+1. **Single (1 agent):** Full-screen avatar, existing App.tsx behavior
+2. **Split (2+ agents):** Two prominent avatars (last speaking), thumbnail strip for others
+3. **Focused:** One maximized, thumbnail strip for others (click thumbnail to swap)
+
+### 2.4 Chat History Panel
+
+**File:** `frontend/src/components/chat/ChatHistoryPanel.tsx`
+
+Google Meet mobile style — slides in from right:
+
+```typescript
+function ChatHistoryPanel() {
+  const { messages, isChatHistoryOpen, participants } = useChatroomStore();
+  
+  if (!isChatHistoryOpen) return null;
+  
+  return (
+    <SlidePanel side="right" onClose={() => setHistoryOpen(false)}>
+      <div className="chat-history">
+        {messages.map(msg => (
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            agent={participants.find(p => p.id === msg.agent_id)}
+            isUser={msg.role === 'user'}
+          />
+        ))}
+      </div>
+    </SlidePanel>
+  );
+}
+```
+
+### 2.5 Manage Participants Panel
+
+**File:** `frontend/src/components/chat/ManageParticipantsPanel.tsx`
+
+WhatsApp-style member management:
+
+```typescript
+function ManageParticipantsPanel() {
+  const { participants, addParticipant, removeParticipant } = useChatroomStore();
+  const { agents } = useUserStore();  // All user's available agents
+  
+  const availableToAdd = agents.filter(
+    a => !participants.some(p => p.id === a.id)
+  );
+  
+  return (
+    <SlidePanel side="right">
+      <h2>Participants ({participants.length})</h2>
+      
+      {/* Current participants */}
+      {participants.map(agent => (
+        <ParticipantRow
+          key={agent.id}
+          agent={agent}
+          onRemove={() => removeParticipant(agent.id)}
+          canRemove={participants.length > 1}
+        />
+      ))}
+      
+      {/* Add new */}
+      {availableToAdd.length > 0 && (
+        <>
+          <h3>Add to Chat</h3>
+          {availableToAdd.map(agent => (
+            <AgentRow
+              key={agent.id}
+              agent={agent}
+              onAdd={() => addParticipant(agent.id)}
+            />
+          ))}
+        </>
+      )}
+    </SlidePanel>
+  );
+}
+```
+
+---
+
+## Phase 3: Voice & TTS (3-4 days)
+
+### 3.1 Multi-Agent TTS
+
+**File:** `frontend/src/hooks/useChatroomTTS.ts`
+
+Queue-based playback — one agent speaks at a time:
+
+```typescript
+function useChatroomTTS(chatroomId: string) {
+  const [queue, setQueue] = useState<TTSQueueItem[]>([]);
+  const [speakingAgentId, setSpeakingAgentId] = useState<string | null>(null);
+  
+  const enqueue = (agentId: string, text: string) => {
+    setQueue(q => [...q, { agentId, text }]);
+  };
+  
+  useEffect(() => {
+    if (!speakingAgentId && queue.length > 0) {
+      const next = queue[0];
+      setSpeakingAgentId(next.agentId);
+      playTTS(next.text).then(() => {
+        setQueue(q => q.slice(1));
+        setSpeakingAgentId(null);
+      });
     }
-  }
-}}
-```
-
-### 1.2 Extract Shared InputBar Component
-
-Create `components/chat/ChatInputBar.tsx`:
-
-```typescript
-interface ChatInputBarProps {
-  value: string;
-  onChange: (value: string) => void;
-  onSend: () => Promise<void>;
-  isLoading: boolean;
-  placeholder?: string;
-  // Voice props (optional for rooms initially)
-  voiceEnabled?: boolean;
-  onVoiceToggle?: () => void;
-  voiceState?: VoiceState;
-}
-```
-
-Both App.tsx and RoomChatPage use this. Single chat adds voice controls; room chat starts without.
-
-### 1.3 Display Emotion in Room
-
-**Files:**
-- `store/roomStore.ts` — Add `emotionByAgent: Record<string, EmotionSnapshot>`
-- `hooks/useRoomChat.ts` — Store emotion events (currently discarded)
-- `components/rooms/RoomAvatarTile.tsx` — Show mood badge
-
----
-
-## Phase 2: Feature Parity (3-5 days)
-
-### 2.1 Add Status Indicators
-
-Per-agent status chips in room tiles: "Thinking" / "Speaking" / "Idle"
-
-**Files:**
-- `store/roomStore.ts` — Add `statusByAgent: Record<string, AgentStatus>`
-- `components/rooms/RoomAvatarTile.tsx` — Render status pill
-
-### 2.2 Add TTS Playback
-
-**New Hook:** `hooks/useRoomTTS.ts`
-
-Queue-based TTS for rooms:
-- Only one agent speaks at a time
-- Show "🔊 Speaking" badge on active agent
-- Auto-advance queue
-
-```typescript
-interface RoomTTSState {
-  queue: Array<{ agentId: string; text: string }>;
-  speakingAgentId: string | null;
-}
-
-function useRoomTTS() {
-  const [state, setState] = useState<RoomTTSState>({ queue: [], speakingAgentId: null });
+  }, [queue, speakingAgentId]);
   
-  const enqueue = (agentId: string, text: string) => { ... };
-  const speakNext = async () => { ... };
+  return { enqueue, speakingAgentId };
+}
+```
+
+### 3.2 Voice Input with Mentions
+
+Adapt existing `useVoiceChat` for multi-agent:
+
+- Voice → STT → parse for agent names → route to mentioned agent(s)
+- "Hey Emilia" auto-mentions Emilia
+- If no mention detected, routes to last-speaking agent or all
+
+---
+
+## Phase 4: Games Integration (2-3 days)
+
+### 4.1 Player Count Validation
+
+Games define min/max players:
+
+```typescript
+interface GameConfig {
+  id: string;
+  name: string;
+  minPlayers: number;
+  maxPlayers: number;
+  // ...
+}
+```
+
+UI grays out incompatible games:
+
+```typescript
+function GameSelector({ participants }: { participants: Agent[] }) {
+  const playerCount = participants.length + 1;  // agents + user
   
-  return { enqueue, speakingAgentId: state.speakingAgentId };
+  return (
+    <div className="game-grid">
+      {games.map(game => {
+        const compatible = 
+          playerCount >= game.minPlayers && 
+          playerCount <= game.maxPlayers;
+        
+        return (
+          <GameCard
+            key={game.id}
+            game={game}
+            disabled={!compatible}
+            disabledReason={
+              !compatible 
+                ? `Requires ${game.minPlayers}-${game.maxPlayers} players`
+                : undefined
+            }
+          />
+        );
+      })}
+    </div>
+  );
 }
 ```
 
-### 2.3 Add Drawer (Session List)
+### 4.2 Game Prompt Routing
 
-Port `Drawer` component to room chat. Shows:
-- Other rooms
-- Single chat sessions
-- Quick navigation
-
-**Implementation:** Extract `components/chat/SessionDrawer.tsx` from existing Drawer, use in both interfaces.
-
-### 2.4 Add/Remove Agents from Room
-
-**UI Changes:**
-- Room header shows agent count with manage button
-- Modal to add agents from user's available agents
-- Remove agent via X button on tile
-
-**API:**
-- `POST /api/rooms/:roomId/agents` — Add agent
-- `DELETE /api/rooms/:roomId/agents/:agentId` — Remove agent
-
-**Backend:** Add routes to `routers/rooms.py` (or create if missing).
+Game module handles multi-agent prompts internally. The chatroom just provides:
+- List of participants
+- Send message to specific agent(s)
+- Receive responses
 
 ---
 
-## Phase 3: Voice (5-7 days)
+## Phase 5: Migration & Cleanup (1-2 days)
 
-### 3.1 Voice Input for Rooms
+### 5.1 Data Migration
 
-**New Hook:** `hooks/useRoomVoiceChat.ts`
+Script to migrate existing sessions to chatrooms:
 
-Adapts `useVoiceChat` for room context:
-- Voice → STT → detect @mentions in text
-- "Hey Emilia" triggers mention automatically
-- Route to correct agent
-
-```typescript
-function useRoomVoiceChat(roomId: string, agents: Agent[]) {
-  // Reuse VoiceActivityDetector from useVoiceChat
-  // On transcription, parse for agent names
-  // Call sendMessage with detected mentions
-}
+```python
+def migrate_sessions_to_chatrooms():
+    sessions = db.query(Session).all()
+    
+    for session in sessions:
+        # Create chatroom
+        chatroom = Chatroom(
+            id=session.id,  # Preserve ID for URL compatibility
+            user_id=session.user_id,
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+        )
+        db.add(chatroom)
+        
+        # Add single participant
+        participant = ChatroomParticipant(
+            chatroom_id=chatroom.id,
+            agent_id=session.agent_id,
+            added_at=session.created_at,
+        )
+        db.add(participant)
+        
+        # Update messages
+        db.query(Message).filter(
+            Message.session_id == session.id
+        ).update({
+            'chatroom_id': chatroom.id,
+            'agent_id': session.agent_id,
+        })
+    
+    db.commit()
 ```
 
-### 3.2 Hands-Free Mode for Rooms
+### 5.2 Remove Old Code
 
-Full VAD loop:
-- User speaks → STT → parse mentions → send → TTS response → resume listening
-
-Requires both `useRoomVoiceChat` and `useRoomTTS` integrated.
-
----
-
-## Phase 4: Unified Interface (Optional, 5+ days)
-
-If Thai approves Option 1:
-
-### 4.1 Create Room from Session
-
-When user starts single chat:
-1. Create room with 1 agent
-2. Store mapping: `session_id → room_id`
-3. Frontend uses unified room UI
-
-### 4.2 Route Migration
-
-```typescript
-// routes/user/$userId/chat.$sessionId.tsx
-function ChatRoute() {
-  const { sessionId } = useParams();
-  // Look up room_id for this session, render RoomChatPage
-}
-```
-
-### 4.3 Avatar Layout
-
-- 1 agent: Full-screen avatar (existing App.tsx behavior)
-- 2+ agents: Grid tiles (existing RoomChatPage behavior)
-
-```typescript
-function AdaptiveAvatarLayout({ agents }: { agents: Agent[] }) {
-  if (agents.length === 1) {
-    return <FullScreenAvatar agent={agents[0]} />;
-  }
-  return <RoomAvatarStage agents={agents} />;
-}
-```
+- Delete `RoomChatPage.tsx` and room-specific components
+- Delete `routers/rooms.py`
+- Delete `store/roomStore.ts`
+- Remove room routes from router config
+- Update any remaining references
 
 ---
 
-## Shared Components Extraction
-
-| New Component | Extracts From | Used By |
-|---------------|--------------|---------|
-| `ChatInputBar` | App.tsx InputControls + RoomChatPage form | Both |
-| `SessionDrawer` | App.tsx Drawer | Both |
-| `MessageBubble` | ChatPanel + RoomChatPage inline | Both |
-| `StatusPill` | Header | Both (per-agent in rooms) |
-| `ChatHeader` | Header + AppTopNav | Both |
-
----
-
-## Files to Create/Modify
+## File Structure
 
 ### New Files
 ```
+backend/
+├── db/
+│   ├── models.py              # Add Chatroom, ChatroomParticipant
+│   └── repositories/
+│       └── chatrooms.py       # Chatroom CRUD
+├── routers/
+│   └── chatrooms.py           # Chatroom API endpoints
+└── schemas/
+    └── chatrooms.py           # Request/response models
+
 frontend/src/
-├── components/chat/
-│   ├── ChatInputBar.tsx
-│   ├── SessionDrawer.tsx
-│   ├── MessageBubble.tsx
-│   └── ChatLayout.tsx
+├── store/
+│   └── chatroomStore.ts       # Unified chat state
 ├── hooks/
-│   ├── useRoomTTS.ts
-│   └── useRoomVoiceChat.ts
+│   ├── useChatroom.ts         # Chatroom data fetching
+│   └── useChatroomTTS.ts      # Multi-agent TTS
+├── components/chat/
+│   ├── AvatarStage.tsx        # Adaptive avatar layout
+│   ├── ChatHistoryPanel.tsx   # Slide-out message history
+│   ├── ManageParticipantsPanel.tsx
+│   ├── FocusedLayout.tsx      # One maximized + thumbnails
+│   └── SplitLayout.tsx        # Two prominent + thumbnails
+└── routes/user/$userId/
+    └── chat.$chatroomId.tsx   # Unified chat page
 ```
 
 ### Modified Files
 ```
+backend/
+├── main.py                    # Add chatrooms router
+├── db/models.py               # Add new models
+└── routers/chat.py            # Update to use chatroom_id
+
 frontend/src/
-├── store/roomStore.ts         # Add emotion, status
-├── hooks/useRoomChat.ts       # Store emotion, integrate TTS
-├── components/rooms/
-│   ├── RoomChatPage.tsx       # Use shared components
-│   └── RoomAvatarTile.tsx     # Add mood/status display
-├── App.tsx                    # Use shared ChatInputBar
+├── App.tsx                    # Refactor to use chatroomStore
+├── routes/user/$userId/index.tsx  # Update chat list
+└── utils/api.ts               # Add chatroom API functions
 ```
 
-### Backend (if add/remove agents)
+### Deleted Files
 ```
-backend/routers/rooms.py       # Add/remove agent endpoints
-backend/db/repositories/rooms.py  # Room agent management
+frontend/src/
+├── components/rooms/          # All room-specific components
+├── store/roomStore.ts
+├── hooks/useRoomChat.ts
+└── routes/user/$userId/room.$roomId.tsx
+
+backend/
+└── routers/rooms.py
 ```
 
 ---
 
-## Questions for Thai
+## Implementation Order
 
-1. **Unified vs Parallel?** I recommend Unified (Option 1). Confirm?
+| Phase | Task | Est. Time |
+|-------|------|-----------|
+| 1.1 | Create chatrooms + participants tables | 2h |
+| 1.2 | Create ChatroomRepository | 3h |
+| 1.3 | Create chatrooms router | 3h |
+| 1.4 | Update chat router for chatroom_id | 2h |
+| 2.1 | Create chatroomStore | 3h |
+| 2.2 | Build unified ChatPage | 4h |
+| 2.3 | Build AvatarStage (adaptive layouts) | 4h |
+| 2.4 | Build ChatHistoryPanel | 2h |
+| 2.5 | Build ManageParticipantsPanel | 3h |
+| 3.1 | Multi-agent TTS queue | 3h |
+| 3.2 | Voice input with mentions | 4h |
+| 4.1 | Games player count validation | 2h |
+| 5.1 | Data migration script | 2h |
+| 5.2 | Remove old code | 1h |
 
-2. **Add/Remove Agents Priority?** Want this in Phase 2 or defer?
-
-3. **Voice Priority?** Full voice parity is significant effort. Prioritize over UI polish?
-
-4. **Games in Rooms?** The review flagged this as a gap. Worth supporting?
-
-5. **Migration Path?** If unified, do we:
-   - Hard redirect `/chat/:id` → `/room/:id`?
-   - Soft migration (both routes work, `/chat` wraps room)?
-
----
-
-## Recommended Order
-
-1. **Phase 1.1** — Fix Enter key (today, PR ready)
-2. **Phase 1.2** — Extract ChatInputBar (1 day)
-3. **Phase 1.3** — Emotion display (1 day)
-4. **Phase 2.1-2.3** — Status, TTS, Drawer (3-5 days)
-5. **Phase 2.4** — Add/remove agents (2 days)
-6. **Phase 3** — Voice (5-7 days)
-7. **Phase 4** — Unified interface (5+ days, if approved)
-
-Total: ~3-4 weeks for full parity, or ~1 week for Phases 1-2.
+**Total: ~38 hours (~5 working days)**
 
 ---
 
-*Implementation plan ready. Awaiting Thai's decisions on questions above.*
+## UI Reference
+
+### Single Agent (1:1)
+```
+┌─────────────────────────────────┐
+│  [☰]              [💬] [👥]    │  <- Menu, History, Participants
+│                                 │
+│                                 │
+│         ┌─────────┐             │
+│         │         │             │
+│         │  AVATAR │             │  <- Full-screen avatar
+│         │  (VRM)  │             │
+│         │         │             │
+│         └─────────┘             │
+│                                 │
+│  😊 Happy                       │  <- Emotion badge
+│                                 │
+├─────────────────────────────────┤
+│  [     Type a message...    ]  │  <- Input bar
+└─────────────────────────────────┘
+```
+
+### Multiple Agents (Split View)
+```
+┌─────────────────────────────────┐
+│  [☰]              [💬] [👥]    │
+│                                 │
+│  ┌──────────┐ ┌──────────┐     │
+│  │  AGENT   │ │  AGENT   │     │  <- Two prominent (last active)
+│  │    1     │ │    2     │     │
+│  │ Speaking │ │ Thinking │     │
+│  └──────────┘ └──────────┘     │
+│                                 │
+│  [A3] [A4] [A5]  +2 more        │  <- Thumbnail strip
+│                                 │
+├─────────────────────────────────┤
+│  [     Type a message...    ]  │
+└─────────────────────────────────┘
+```
+
+### Chat History Panel (Slide-out)
+```
+┌──────────────────┬──────────────┐
+│                  │ Chat History │
+│   AVATAR VIEW    │──────────────│
+│                  │ You: Hello   │
+│                  │              │
+│                  │ Emilia: Hi!  │
+│                  │              │
+│                  │ Rem: Hello~  │
+│                  │              │
+├──────────────────┴──────────────┤
+│  [     Type a message...    ]  │
+└─────────────────────────────────┘
+```
+
+---
+
+## Questions Resolved
+
+| Question | Decision |
+|----------|----------|
+| Unified vs Parallel? | ✅ Unified (Option A) |
+| Add/Remove Agents? | ✅ Yes, WhatsApp-style sidebar |
+| Voice Priority? | ✅ Phase 3, after core UI |
+| Games in Rooms? | ✅ Yes, gray out incompatible |
+| Migration Path? | ✅ Hard migration, no backwards compat |
+| Avatar Layout? | ✅ Zoom/Meet style (split + thumbnails) |
+| Chat History? | ✅ Slide-out panel (Meet mobile style) |
+
+---
+
+*Ready to implement. Starting with Phase 1 (Backend Restructure).*
