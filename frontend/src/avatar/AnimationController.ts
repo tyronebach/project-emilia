@@ -122,6 +122,7 @@ export class AnimationController {
   private emotionSetTime: number = 0;
   private emotionDecayDelayMs: number = 4000;  // Hold emotion for 4s before decaying
   private isDecaying: boolean = false;
+  private emotionCleared: boolean = false;  // Track if emotion channel was cleared
 
   constructor() {
     this.expressionMixer = new ExpressionMixer();
@@ -393,6 +394,7 @@ export class AnimationController {
     if (normalizedEmotion !== 'neutral' || intensity > 0.1) {
       this.emotionSetTime = Date.now();
       this.isDecaying = false;
+      this.emotionCleared = false;  // Reset cleared flag for new emotion
     }
   }
 
@@ -442,6 +444,11 @@ export class AnimationController {
     const expr = EMOTION_MAP[this.currentEmotion];
     if (expr && this.emotionIntensity > 0.01) {
       this.expressionMixer.setExpression('emotion', expr, this.emotionIntensity);
+    } else if (this.currentEmotion === 'neutral' && !this.emotionCleared) {
+      // Fully decayed to neutral - clear emotion channel to reset to rest state
+      this.expressionMixer.clearChannel('emotion');
+      this.emotionCleared = true;
+      console.log('[AnimationController] Emotion channel cleared - rest state');
     }
 
     // Update blink base from emotion (additive blink respects eye state)
