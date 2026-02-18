@@ -50,20 +50,12 @@
 - `GET /api/users/{user_id}`: Returns user + accessible agents list.
 - `PATCH /api/users/{user_id}/preferences`: Merge JSON preferences. Body `UserPreferencesUpdate`.
 - `GET /api/users/{user_id}/agents`: Lists agents for user. Response `AgentsListResponse`.
-- `GET /api/users/{user_id}/agents/{agent_id}/sessions`: Lists sessions for user+agent. Response `SessionsListResponse`.
+- `GET /api/users/{user_id}/agents/{agent_id}/rooms`: Lists rooms for user+agent. Response `RoomsListResponse`.
 
 **Agents** (`backend/routers/agents.py`)
 - `GET /api/agents/{agent_id}`: Returns agent with owner user IDs; access check via user header.
 
-**Sessions** (`backend/routers/sessions.py`)
-- `GET /api/sessions`: Lists sessions for user, optional filter by `X-Agent-Id` header.
-- `POST /api/sessions`: Creates session. Body `CreateSessionRequest`.
-- `GET /api/sessions/{session_id}`: Returns session details + participants.
-- `PATCH /api/sessions/{session_id}`: Rename session. Body `UpdateSessionRequest`.
-- `DELETE /api/sessions/{session_id}`: Deletes session. Response `DeleteResponse`.
-- `GET /api/sessions/{session_id}/history?limit=`: Returns history for session. Response `SessionHistoryResponse`.
-
-**Rooms (Group Chat)** (`backend/routers/rooms.py`)
+**Rooms** (`backend/routers/rooms.py`)
 - `GET /api/rooms`: Lists rooms for current user. Response `RoomsListResponse`.
 - `POST /api/rooms`: Creates room with 1+ agents. Body `CreateRoomRequest`.
 - `GET /api/rooms/{room_id}`: Room detail with agent and participant lists. Response `RoomDetailResponse`.
@@ -85,16 +77,13 @@
   - Stream response emits additive room events: `agent_start`, `agent_done`, `agent_error`, `avatar`, `emotion`.
 
 **Chat / Media** (`backend/routers/chat.py`)
-- `POST /api/chat?stream=0|1`: Main chat endpoint.
+- `POST /api/chat?stream=0|1`: DM chat facade — resolves a DM room for the (user, agent) pair via `RoomRepository.get_or_create_dm_room()` and delegates to the room chat pipeline.
   - Request: `ChatRequest` (`message`, optional `game_context`, optional `runtime_trigger`).
-  - Headers: `Authorization`, `X-User-Id`, `X-Agent-Id`, optional `X-Session-Id`.
-  - Logic: builds message list (summary + recent history + emotion context + first-turn timezone-aware facts + game context), then routes by `agents.chat_mode`:
-    - `openclaw`: gateway `/v1/chat/completions`
-    - `direct`: OpenAI-compatible `/chat/completions` via `run_tool_loop()` with memory tools (`memory_search`, `memory_read`, `memory_write`). The tool loop runs non-stream internally; streaming callers receive final content as a single SSE chunk.
-  - Direct mode optionally prepends `workspace/SOUL.md` as the first system message when present.
-  - On LLM failure, user-message rollback semantics are preserved (orphaned user message cleanup).
-  - Non-stream response: `{response, session_id, processing_ms, model, behavior, usage, emotion_debug?}`.
+  - Headers: `Authorization`, `X-User-Id`, `X-Agent-Id`.
+  - Internally stores the user message in `room_messages`, then calls `_call_llm_non_stream` (non-stream) or wraps `_stream_room_chat_sse` in `_dm_stream_wrapper` (stream). The wrapper strips agent attribution from SSE events to preserve the legacy single-agent contract.
+  - Non-stream response: `{response, room_id, processing_ms, model, behavior, usage, emotion_debug?}`.
   - Stream response: SSE data chunks plus `event: avatar` and `event: emotion` (`emotion.snapshot` carries structured mood telemetry for UI).
+  - On LLM failure, user-message rollback semantics are preserved (orphaned user message cleanup).
 - `POST /api/transcribe`: Multipart audio upload, forwards to STT service, returns transcription JSON.
 - `POST /api/speak`: TTS via ElevenLabs REST with alignment data, returns `{audio_base64, alignment, voice_id, duration_estimate}`.
 
@@ -111,14 +100,13 @@
 - `POST /api/soul-window/events`: Idempotent timeline mutations (`add_milestone`, `add_event`, `remove_event`).
 
 **Admin / Manage** (`backend/routers/admin.py`)
-- `GET /api/manage/sessions`: Lists all sessions.
-- `DELETE /api/manage/sessions/agent/{agent_id}`: Deletes sessions for agent.
-- `DELETE /api/manage/sessions/all`: Deletes all sessions.
+- `DELETE /api/manage/rooms/all`: Deletes all rooms.
 - `GET /api/manage/agents`: Lists all agents.
 - `POST /api/manage/agents`: Creates agent. Body `AgentCreate`.
 - `PUT /api/manage/agents/{agent_id}`: Updates agent. Body `AgentUpdate`.
-- `GET /api/manage/debug/compaction/{session_id}`: Compaction diagnostics.
-- `POST /api/manage/debug/compaction/{session_id}/trigger`: Manual compaction.
+- `DELETE /api/manage/agents/{agent_id}`: Deletes agent + related rooms, messages, emotional data.
+- `GET /api/manage/debug/compaction/{room_id}`: Compaction diagnostics for a room.
+- `POST /api/manage/debug/compaction/{room_id}/trigger`: Manual compaction for a room.
 
 **Emotion Debug** (`backend/routers/emotional.py`)
 - `GET /api/debug/emotional-state/{user_id}/{agent_id}`: Current state + behavior levers + profile.
@@ -174,8 +162,6 @@ This includes:
 
 **Pydantic requests** (`backend/schemas/requests.py`)
 - `ChatRequest`: `{message, game_context?, runtime_trigger?}`
-- `CreateSessionRequest`: `{agent_id, name?}`
-- `UpdateSessionRequest`: `{name?}`
 - `CreateRoomRequest`, `UpdateRoomRequest`, `AddRoomAgentRequest`, `UpdateRoomAgentRequest`, `RoomChatRequest`
   - `RoomChatRequest`: `{message, mention_agents?, game_context?, runtime_trigger?}`
 - `SpeakRequest`: `{text, voice_id?}`
@@ -185,10 +171,10 @@ This includes:
 - `SoulWindowEventsRequest`: `{action, id?, item?}`
 
 **Pydantic responses** (`backend/schemas/responses.py`)
-- `UserResponse`, `AgentResponse`, `SessionResponse`, `SessionHistoryResponse`
+- `UserResponse`, `AgentResponse`
 - `RoomResponse`, `RoomDetailResponse`, `RoomAgentResponse`, `RoomHistoryResponse`, `RoomChatResponse`
 - `ChatResponse`, `TTSResponse`, `TranscriptionResponse`
-- `UsersListResponse`, `AgentsListResponse`, `SessionsListResponse`
+- `UsersListResponse`, `AgentsListResponse`, `RoomsListResponse`
 - `MemoryFilesResponse`, `MemoryContentResponse`, `DeleteResponse`, `AgentDeleteResponse`, `StatusResponse`
 
 ### Database Schema (SQLite)
@@ -199,15 +185,12 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `users`: `id`, `display_name`, `preferences`, `created_at`
 - `agents`: `id`, `display_name`, `clawdbot_agent_id`, `vrm_model`, `voice_id`, `workspace`, `chat_mode`, `direct_model`, `direct_api_base`, emotional baselines + profile JSON
 - `user_agents`: many-to-many access
-- `sessions`: `id`, `agent_id`, `name`, `created_at`, `last_used`, `message_count`, compaction summary fields
-- `session_participants`: many-to-many
-- `messages`: chat history with LLM metadata and behavior tags
-- `rooms`: group-chat container (`created_by`, settings, activity counters, optional summary)
+- `rooms`: canonical chat container (`room_type` = `dm` or `group`, `created_by`, settings, activity counters, optional compaction summary)
 - `room_participants`: many-to-many user membership in rooms
 - `room_agents`: many-to-many agent membership + response modes (`mention|always|manual`)
-- `room_messages`: group-chat message log with sender attribution and behavior tags
+- `room_messages`: chat message log with sender attribution (`sender_type`, `sender_id`) and behavior tags
 - `tts_cache`: TTS caching data
-- `game_stats`: per-session game results
+- `game_stats`: per-room game results (`room_id` FK to rooms)
 - `drift_archetypes`: global drift replay datasets used by Designer V2 simulation
 
 **Emotion engine tables**
@@ -249,7 +232,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 
 **Auth & Security**
 - All endpoints require `Authorization: Bearer {token}` via `verify_token`.
-- User/agent/session context via headers: `X-User-Id`, `X-Agent-Id`, `X-Session-Id`.
+- User/agent context via headers: `X-User-Id`, `X-Agent-Id`.
 - Memory endpoint validates user-agent access and path traversal.
 
 ### Services & Logic
@@ -268,7 +251,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `background_tasks.py`: shared background task scheduler with retained task references.
 
 **Compaction** (`backend/services/compaction.py`)
-- Summarizes older session history via Clawdbot model; stored in `sessions.summary` and old messages pruned.
+- Summarizes older room history via Clawdbot model; stored in `rooms.summary` and old messages pruned.
 
 **SOUL Simulator** (`backend/services/soul_simulator.py`)
 - Runs a ping-pong exchange (archetype user vs SOUL persona) and returns judge-scored consistency hints.
@@ -307,7 +290,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `frontend/src/store/`: Zustand stores.
 - `frontend/src/utils/`: API wrapper, helpers, schemas.
 - `frontend/src/types/soulWindow.ts`: Soul Window API payload types.
-- `frontend/src/hooks/`: Chat, voice, session, room, game, and logout hooks.
+- `frontend/src/hooks/`: Chat, voice, room, game, and logout hooks.
 - `frontend/public/`: VRM + animation assets and manifests.
 
 ### Routing
@@ -315,10 +298,9 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 Routes are file-based via TanStack Router.
 - `/`: `UserSelection`
 - `/user/$userId/`: `AgentSelection`
-- `/user/$userId/chat/new`: `NewChatPage`
-- `/user/$userId/chat/$sessionId`: Main `App` (chat UI)
-- `/user/$userId/chat/initializing/$sessionId`: `InitializingPage`
-- `/user/$userId/rooms`: Room list + room creation
+- `/user/$userId/chat/new`: `NewChatPage` (creates a room)
+- `/user/$userId/chat/$roomId`: Main `App` (chat UI)
+- `/user/$userId/chat/initializing/$roomId`: `InitializingPage`
 - `/user/$userId/rooms/$roomId`: Group room chat UI
 - `/manage`: `AdminPanel`
 - `/debug`: `AvatarDebugPanel`
@@ -326,7 +308,7 @@ Routes are file-based via TanStack Router.
 
 ### State Management (Zustand)
 
-- `frontend/src/store/index.ts`: App state (status, errors, session, TTS, avatar commands).
+- `frontend/src/store/index.ts`: App state (status, errors, roomId, TTS, avatar commands).
 - `frontend/src/store/userStore.ts`: Current user/agent, persisted to localStorage.
 - `frontend/src/store/chatStore.ts`: Messages + streaming content + emotion debug + `currentMood` snapshot.
 - `frontend/src/store/roomStore.ts`: Group room state (room, agents, messages, per-agent streaming chunks, per-agent avatar commands + avatar-event timestamps).
@@ -338,10 +320,10 @@ Routes are file-based via TanStack Router.
 ### API Integration
 
 `frontend/src/utils/api.ts`
-- Adds auth + context headers (`Authorization`, `X-User-Id`, `X-Agent-Id`, `X-Session-Id`).
+- Adds auth + context headers (`Authorization`, `X-User-Id`, `X-Agent-Id`).
 - SSE streaming via `streamChat()` for `/api/chat?stream=1`.
 - Room APIs for `/api/rooms/*` plus room SSE parsing via `streamRoomChat()`.
-- Helpers for users, agents, sessions, memory, TTS and history.
+- Helpers for users, agents, rooms, memory, TTS and history.
 - `EmotionDebug` includes optional structured `snapshot` payload from backend `event: emotion`.
 
 `frontend/src/utils/soulWindowApi.ts`
@@ -356,13 +338,13 @@ Routes are file-based via TanStack Router.
 - `components/rooms/RoomAvatarStage`: Multi-agent room avatar stage with renderer caps and fallback cards.
 - `components/rooms/RoomAvatarTile`: Per-agent VRM tile renderer for room chat.
 - `GamePanel` + `GameSelector`: Game UX and move flow.
-- `Drawer`: Sessions list + settings entry points.
+- `Drawer`: Room (chat) list + settings entry points.
 - `Header` + `MoodIndicator`: status + current mood display.
 - `BondModal` + `AboutModal`: Soul Window relationship/personality modals.
 - `UserSelection`, `AgentSelection`: Login-like selection flow.
 
 **Debug & Admin**
-- `AdminPanel`: Manage agents + sessions via `/api/manage`.
+- `AdminPanel`: Manage agents + rooms via `/api/manage`.
 - `DebugPanel`: LLM/voice/emotion debug HUD (latency, state log, errors, compaction, TTS, emotion engine, voice input).
 - `AvatarDebugPanel`: VRM rendering + animation debugging tools.
 
@@ -432,11 +414,13 @@ Assets
 
 **Chat Flow**
 - Frontend `useChat` → `streamChat()` → `POST /api/chat?stream=1`.
-- Backend builds context: summary + recent DB messages + emotion context + first-turn timezone-aware facts + game context.
-- Backend routes by `agents.chat_mode`:
+- Backend resolves DM room via `get_or_create_dm_room(user_id, agent_id)`, then delegates to room chat pipeline.
+- Room pipeline builds context: summary + recent `room_messages` + emotion context + first-turn timezone-aware facts + game context.
+- LLM routing by `agents.chat_mode`:
   - `openclaw`: Clawdbot gateway `/v1/chat/completions` with `model: agent:{clawdbot_agent_id}`.
   - `direct`: `run_tool_loop()` with memory tools → OpenAI-compatible `/chat/completions`. Tool loop runs non-stream; final content emitted as single SSE chunk.
 - Backend parses `[MOOD]`, `[INTENT]`, `[ENERGY]`, `[MOVE]`, `[GAME]` tags for avatar behavior.
+- `_dm_stream_wrapper` reshapes room SSE events to legacy single-agent format (strips agent_id, converts `agent_done` → `done`).
 - SSE emits text chunks + `avatar` events + `emotion` events.
 - `emotion` event includes optional `snapshot` used by frontend mood indicator + bond modal entry.
 
@@ -484,7 +468,7 @@ Assets
 - Emotion engine updates are serialized per `(user_id, agent_id)` in `backend/services/emotion_runtime.py` (5s timeout + warning on contention).
 - First non-runtime turn context facts use configured timezone (`DEFAULT_TIMEZONE`; UTC fallback) in `backend/services/chat_context_runtime.py`.
 - Soul Window events are file-backed and supplemental; relationship dimensions remain canonical in DB.
-- Session compaction is best-effort and run in background.
+- Room compaction is best-effort and run in background.
 - Zustand stores are the single source of truth for UI state; React Query is used for server state in some components.
 
 ---
@@ -492,15 +476,16 @@ Assets
 ## Existing Docs
 
 **Docs present**
-- `docs/IMPL-DIRECT-MODE.md`: Direct mode V1+V2 implementation doc (toggle, tool loop, memory bridge).
-- `docs/CODE-REVIEW-GROUP-CHAT.md`: Group chat (rooms) code review and gap analysis.
+- `docs/AUDIT-UNIFIED-CHAT.md`: Unified chat audit (session→room migration analysis).
+- `docs/PLAN-UNIFIED-CHAT.md`: Unified chat implementation plan.
+- `docs/DECISIONS-UNIFIED-CHAT.md`: Unified chat architectural decisions.
 - `docs/SOUL-SIMULATOR-API.md`: SOUL simulator endpoint contract.
 - `docs/P006-soul-window-dev-guide.md`: Soul Window implementation/extension guide.
 - `docs/planning/P010-direct-mode-v2-checklist.md`: Direct mode V2 implementation checklist (completed).
 - `docs/planning/archive/P006-soul-window.md`: canonical Soul Window plan.
 - `docs/planning/archive/DRIFT-API.md`: drift simulator endpoint contract.
 - `docs/animation/*`: VRM/animation research and pipeline notes.
-- `docs/archive/*`: older plans/specs and previous API docs.
+- `docs/archive/*`: older plans/specs and previous API docs (including archived IMPL-DIRECT-MODE.md, CODE-REVIEW-GROUP-CHAT.md).
 
 ---
 

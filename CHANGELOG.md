@@ -4,6 +4,42 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.7.0] - 2026-02-17
+
+### Changed - Unified Chat: Rooms as Canonical Path
+
+Merged the two parallel chat stacks (session-based and room-based) into a single room-based architecture. DM chats (1 user + 1 agent) are now `room_type='dm'` rooms auto-created on first use. No data migration — session/room chat data scrapped; top-level tables (users, agents, personas, user-agent mapping) preserved.
+
+#### Backend
+
+- **Database cleanup** — Removed `sessions`, `session_participants`, and `messages` tables. Rooms are the sole chat container. Migrated `game_stats.session_id` → `room_id` (drop + recreate for correct FK).
+- **DM room auto-resolution** — `RoomRepository.get_or_create_dm_room(user_id, agent_id)` finds or creates a DM room for 1:1 chats.
+- **`/api/chat` as thin facade** — Resolves DM room, delegates to room chat pipeline. `_dm_stream_wrapper()` reshapes room SSE events to legacy DM format for backward compatibility.
+- **Agent delete cleanup** — `AgentRepository.delete()` now removes room data (room_messages, room_participants, room_agents, rooms) instead of removed session tables.
+- **ValueError handling** — DirectLLMClient config errors (e.g., missing API key) now return 503 instead of 500.
+- **Removed** — `backend/routers/sessions.py`, `backend/db/repositories/sessions.py`, `backend/db/repositories/messages.py`, `SessionRepository`, `MessageRepository` exports.
+- **Updated** — `backend/routers/users.py` user-agent rooms endpoint (`/sessions` → `/rooms`, `RoomsListResponse`).
+
+#### Frontend
+
+- **Session → Room rename** — All stores, hooks, components, and routes renamed `sessionId` → `roomId`, `sessionAgents` → `roomAgents`, etc.
+- **`useSession` rewritten** — Now uses room APIs (`getRooms`, `getRoom`, `getRoomHistory`, `deleteRoom`, `updateRoom`) with `RoomMessage` → `Message` conversion.
+- **`App.tsx` rewritten** — Validates rooms instead of sessions, populates `roomAgents` from room data.
+- **Drawer** — Lists rooms as "Chats" instead of sessions.
+- **NewChatPage** — Creates rooms via `createRoom()` instead of sessions.
+- **Routes renamed** — `chat.$sessionId.tsx` → `chat.$roomId.tsx`, `chat.initializing.$sessionId.tsx` → `chat.initializing.$roomId.tsx`.
+- **Removed** — `Session` and `HistoryMessage` types, all session API functions, `X-Session-Id` header from `getHeaders()`.
+
+#### Tests
+
+- Removed `TestSessionEndpoints` (session API removed), manage sessions test.
+- Updated chat test patches to target `routers.rooms` for `DirectLLMClient`.
+- Updated assertions: `session_id` → `room_id`, `messages` → `room_messages`, `role` → `sender_type`.
+- Rewritten `test_delete_agent_removes_related_data` to use room tables.
+- Validation: backend 254 passed, frontend 132 passed, frontend build clean.
+
+---
+
 ## [5.6.6] - 2026-02-13
 
 ### Added - P012 Shared Runtime + Room Multi-VRM

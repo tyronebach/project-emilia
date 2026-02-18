@@ -7,7 +7,7 @@ Instructions for Claude / Codex coding agents working on this project.
 | Item | Value |
 |------|-------|
 | Location | `/home/tbach/Projects/emilia-project/emilia-webapp` |
-| Version | Backend reports `5.5.3` in `backend/main.py` (CHANGELOG contains 5.6.x entries) |
+| Version | See CHANGELOG.md (latest: 5.7.0) |
 | Frontend | React 19 + Vite + TanStack Router + Zustand |
 | Backend | FastAPI (modular routers) + SQLite |
 | Tests | `backend/tests/`, `frontend/src/**/*.test.ts(x)` |
@@ -29,8 +29,8 @@ emilia-webapp/
 │   ├── routers/             # API routes (8 modules)
 │   │   ├── users.py         # User management
 │   │   ├── agents.py        # Agent details
-│   │   ├── sessions.py      # Session CRUD + history
-│   │   ├── chat.py          # Chat, transcribe, speak
+│   │   ├── rooms.py         # Room CRUD, history, multi-agent chat
+│   │   ├── chat.py          # DM chat facade, transcribe, speak
 │   │   ├── memory.py        # Memory file access
 │   │   ├── admin.py         # Admin/manage operations
 │   │   ├── emotional.py     # Emotion engine debug endpoints
@@ -108,7 +108,7 @@ npm run lint                  # ESLint
 
 ### API Authentication
 All endpoints require `Authorization: Bearer {token}` header.
-User context via `X-User-Id`, `X-Agent-Id`, `X-Session-Id` headers.
+User context via `X-User-Id`, `X-Agent-Id` headers.
 
 ### State Management
 - **Zustand** for client state (user, agent, session, UI)
@@ -147,24 +147,29 @@ users (id, display_name, preferences, created_at)
 
 -- Agents (linked to OpenClaw agents)
 agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
+        chat_mode, direct_model, direct_api_base,
         baseline_valence, baseline_arousal, baseline_dominance,
         emotional_volatility, emotional_recovery, emotional_profile, created_at)
 
 -- User-Agent access (many-to-many)
 user_agents (user_id, agent_id)
 
--- Sessions
-sessions (id, agent_id, name, created_at, last_used, message_count,
-          summary, summary_updated_at, compaction_count)
+-- Rooms (canonical chat container — DM or group)
+rooms (id, name, room_type, created_by, created_at, last_activity,
+       message_count, settings, summary, summary_updated_at, compaction_count)
 
--- Session participants (many-to-many)
-session_participants (session_id, user_id)
+-- Room participants (many-to-many users)
+room_participants (room_id, user_id)
 
--- Messages
-messages (id, session_id, role, content, timestamp,
-          model, processing_ms, usage_prompt_tokens, usage_completion_tokens,
-          behavior_intent, behavior_mood, behavior_mood_intensity,
-          behavior_energy, behavior_move, behavior_game_action)
+-- Room agents (many-to-many agents + response mode)
+room_agents (room_id, agent_id, response_mode, joined_at)
+
+-- Room messages (chat history with sender attribution)
+room_messages (id, room_id, sender_type, sender_id, content, timestamp,
+              origin, model, processing_ms, usage_prompt_tokens,
+              usage_completion_tokens, behavior_intent, behavior_mood,
+              behavior_mood_intensity, behavior_energy, behavior_move,
+              behavior_game_action)
 
 -- TTS cache
 tts_cache (key, voice_id, model_id, voice_settings, text,
@@ -172,7 +177,7 @@ tts_cache (key, voice_id, model_id, voice_settings, text,
            audio_bytes, created_at, last_used, hits)
 
 -- Game stats
-game_stats (id, session_id, user_id, agent_id, game_id,
+game_stats (id, room_id, user_id, agent_id, game_id,
             result, moves, duration_seconds, played_at)
 
 -- Emotional state (per user-agent pair)
@@ -182,12 +187,6 @@ emotional_state (id, user_id, agent_id, valence, arousal, dominance,
                  mood_weights_json, trigger_calibration_json,
                  trigger_buffer, pending_triggers,
                  interaction_count, last_interaction, last_updated)
-
--- Emotional events (V1 legacy)
-emotional_events (id, user_id, agent_id, session_id, timestamp,
-                  trigger_type, trigger_value,
-                  delta_valence, delta_arousal, delta_dominance,
-                  delta_trust, delta_attachment, state_after_json)
 
 -- Emotional events V2
 emotional_events_v2 (id, user_id, agent_id, session_id, timestamp,
