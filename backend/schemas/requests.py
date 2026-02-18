@@ -80,40 +80,6 @@ class ChatRequest(BaseModel):
         return stripped
 
 
-class CreateSessionRequest(BaseModel):
-    """Create session request."""
-    agent_id: str = Field(..., min_length=1, max_length=100, description="Agent ID")
-    name: Optional[str] = Field(None, max_length=200, description="Session name")
-
-    @field_validator('agent_id')
-    @classmethod
-    def strip_agent_id(cls, v: str) -> str:
-        """Strip whitespace from agent_id."""
-        return v.strip()
-
-    @field_validator('name')
-    @classmethod
-    def strip_name(cls, v: Optional[str]) -> Optional[str]:
-        """Strip whitespace from name."""
-        return v.strip() if v else None
-
-
-class UpdateSessionRequest(BaseModel):
-    """Update session request."""
-    name: Optional[str] = Field(None, min_length=1, max_length=200, description="New session name")
-
-    @field_validator('name')
-    @classmethod
-    def strip_and_validate_name(cls, v: Optional[str]) -> Optional[str]:
-        """Strip whitespace from name and validate."""
-        if v is not None:
-            stripped = v.strip()
-            if not stripped:
-                raise ValueError("Name cannot be empty if provided")
-            return stripped
-        return None
-
-
 class SpeakRequest(BaseModel):
     """Text-to-speech request."""
     text: str = Field(..., min_length=1, max_length=5000, description="Text to synthesize")
