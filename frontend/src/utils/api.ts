@@ -7,7 +7,6 @@ import type { AvatarCommand } from '../types';
 import type { GameContext } from '../games/types';
 import type { SoulMoodSnapshot } from '../types/soulWindow';
 import { useUserStore } from '../store/userStore';
-import { useAppStore } from '../store';
 
 const API_URL = '';
 const AUTH_TOKEN = import.meta.env.VITE_AUTH_TOKEN || 'emilia-dev-token-2026';
@@ -34,25 +33,6 @@ export interface User {
   preferences?: string;
   agents?: Agent[];
   avatar_count?: number;
-}
-
-export interface Session {
-  id: string;
-  agent_id: string;
-  name: string | null;
-  created_at: number;
-  last_used: number;
-  message_count: number;
-  participants: string[];
-  agents?: Agent[];  // Multi-agent support
-}
-
-export interface HistoryMessage {
-  role: 'user' | 'assistant' | 'system';
-  origin?: 'user' | 'assistant' | 'game_runtime' | 'system' | null;
-  content: string;
-  timestamp?: string;
-  agent_id?: string;  // Multi-agent: which agent sent this message
 }
 
 export interface RoomAgent {
@@ -82,7 +62,7 @@ export interface Room {
   created_at: number;
   last_activity: number;
   message_count: number;
-  room_type: 'group' | 'game_lobby' | 'debate' | string;
+  room_type: 'dm' | 'group' | 'game_lobby' | 'debate' | string;
   settings: Record<string, unknown>;
   agents?: RoomAgent[];
   participants?: RoomParticipant[];
@@ -186,7 +166,6 @@ export interface AgentGameConfig {
 
 function getHeaders(): Record<string, string> {
   const { currentUser, currentAgent } = useUserStore.getState();
-  const { sessionId } = useAppStore.getState();
 
   const headers: Record<string, string> = {
     'Authorization': `Bearer ${AUTH_TOKEN}`,
@@ -198,9 +177,6 @@ function getHeaders(): Record<string, string> {
   }
   if (currentAgent?.id) {
     headers['X-Agent-Id'] = currentAgent.id;
-  }
-  if (sessionId) {
-    headers['X-Session-Id'] = sessionId;
   }
 
   return headers;
@@ -456,111 +432,6 @@ export async function deleteAgentGameConfig(agentId: string, gameId: string): Pr
 }
 
 
-// ============ SESSION API ============
-
-export async function getSessions(agentId?: string): Promise<Session[]> {
-  const headers = getHeaders();
-  if (agentId) {
-    headers['X-Agent-Id'] = agentId;
-  }
-
-  const response = await fetch(`${API_URL}/api/sessions`, { headers });
-  if (!response.ok) throw new Error(`Failed to fetch sessions: ${response.status}`);
-  const data = await response.json();
-  return data.sessions || [];
-}
-
-export async function createSession(agentId: string, name?: string): Promise<Session> {
-  const response = await fetchWithAuth(`${API_URL}/api/sessions`, {
-    method: 'POST',
-    body: JSON.stringify({ agent_id: agentId, name }),
-  });
-  if (!response.ok) throw new Error(`Failed to create session: ${response.status}`);
-  return response.json();
-}
-
-export async function getSession(sessionId: string): Promise<Session> {
-  const response = await fetchWithAuth(`${API_URL}/api/sessions/${encodeURIComponent(sessionId)}`);
-  if (!response.ok) throw new Error(`Failed to fetch session: ${response.status}`);
-  return response.json();
-}
-
-export async function getSessionHistory(
-  sessionId: string,
-  limit = 50,
-  includeRuntime = false,
-): Promise<HistoryMessage[]> {
-  const response = await fetchWithAuth(
-    `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/history?limit=${limit}&includeRuntime=${includeRuntime ? 'true' : 'false'}`
-  );
-  // Return empty array for 403/404 instead of throwing (session doesn't exist or not accessible)
-  if (response.status === 403 || response.status === 404) {
-    return [];
-  }
-  if (!response.ok) throw new Error(`Failed to fetch history: ${response.status}`);
-  const data = await response.json();
-  return data.messages || [];
-}
-
-export async function deleteSession(sessionId: string): Promise<void> {
-  const response = await fetchWithAuth(`${API_URL}/api/sessions/${encodeURIComponent(sessionId)}`, {
-    method: 'DELETE',
-  });
-  if (!response.ok) throw new Error(`Failed to delete session: ${response.status}`);
-}
-
-
-export async function renameSession(sessionId: string, name: string): Promise<Session> {
-  const response = await fetchWithAuth(`${API_URL}/api/sessions/${encodeURIComponent(sessionId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ name }),
-  });
-  if (!response.ok) throw new Error(`Failed to rename session: ${response.status}`);
-  return response.json();
-}
-
-// --- Multi-Agent Session Functions ---
-
-export async function createMultiAgentSession(agentIds: string[], name?: string): Promise<Session> {
-  const response = await fetchWithAuth(`${API_URL}/api/sessions/multi`, {
-    method: 'POST',
-    body: JSON.stringify({ agent_ids: agentIds, name }),
-  });
-  if (!response.ok) throw new Error(`Failed to create multi-agent session: ${response.status}`);
-  return response.json();
-}
-
-export async function getSessionAgents(sessionId: string): Promise<Agent[]> {
-  const response = await fetchWithAuth(
-    `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/agents`
-  );
-  if (!response.ok) throw new Error(`Failed to fetch session agents: ${response.status}`);
-  const data = await response.json();
-  return data.agents || [];
-}
-
-export async function addAgentToSession(sessionId: string, agentId: string): Promise<Session> {
-  const response = await fetchWithAuth(
-    `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/agents`,
-    {
-      method: 'POST',
-      body: JSON.stringify({ agent_id: agentId }),
-    }
-  );
-  if (!response.ok) throw new Error(`Failed to add agent to session: ${response.status}`);
-  return response.json();
-}
-
-export async function removeAgentFromSession(sessionId: string, agentId: string): Promise<Session> {
-  const response = await fetchWithAuth(
-    `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/agents/${encodeURIComponent(agentId)}`,
-    { method: 'DELETE' }
-  );
-  if (!response.ok) throw new Error(`Failed to remove agent from session: ${response.status}`);
-  return response.json();
-}
-
-
 // ============ ROOM API ============
 
 export async function getRooms(): Promise<Room[]> {
@@ -733,7 +604,7 @@ interface CompactionInfo {
 
 interface StreamResponse {
   response?: string;
-  session_id?: string;
+  room_id?: string;
   processing_ms?: number;
   model?: string;
   behavior?: {
@@ -849,7 +720,7 @@ export async function streamChat(
               receivedDone = true;
               onDone({
                 response: data.response || stripAvatarTags(fullContent),
-                session_id: data.session_id,
+                room_id: data.room_id,
                 processing_ms: data.processing_ms,
                 model: data.model,
                 behavior: data.behavior,
@@ -870,7 +741,7 @@ export async function streamChat(
     if (!receivedDone && fullContent) {
       onDone({
         response: stripAvatarTags(fullContent),
-        session_id: '',
+        room_id: '',
         processing_ms: 0,
         model: '',
         behavior: undefined,
@@ -1138,16 +1009,6 @@ export default {
   fetchAgentGames,
   updateAgentGameConfig,
   deleteAgentGameConfig,
-  getSessions,
-  createSession,
-  createMultiAgentSession,
-  getSession,
-  getSessionHistory,
-  deleteSession,
-  renameSession,
-  getSessionAgents,
-  addAgentToSession,
-  removeAgentFromSession,
   getRooms,
   createRoom,
   getRoom,

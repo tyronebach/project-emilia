@@ -4,25 +4,25 @@ import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
 import { useAppStore } from '../store';
 import { useChat } from '../hooks/useChat';
-import { getSession } from '../utils/api';
+import { getRoom } from '../utils/api';
 import { preloadVRM } from '../avatar/preloadVRM';
 import AppTopNav from './AppTopNav';
 
 interface InitializingPageProps {
   userId: string;
-  sessionId: string;
+  roomId: string;
 }
 
 /**
- * Loading page while initializing a new chat session
- * Verifies session exists, sends initial greeting, then navigates to chat
+ * Loading page while initializing a new chat room
+ * Verifies room exists, sends initial greeting, then navigates to chat
  */
-function InitializingPage({ userId, sessionId }: InitializingPageProps) {
+function InitializingPage({ userId, roomId }: InitializingPageProps) {
   const navigate = useNavigate();
   const currentUser = useUserStore((state) => state.currentUser);
   const currentAgent = useUserStore((state) => state.currentAgent);
   const addMessage = useChatStore((state) => state.addMessage);
-  const setSessionId = useAppStore((state) => state.setSessionId);
+  const setRoomId = useAppStore((state) => state.setRoomId);
   const { sendMessage } = useChat();
 
   const [status, setStatus] = useState<'verifying' | 'initializing' | 'preloading' | 'error'>('verifying');
@@ -33,14 +33,12 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
 
   // Preload avatar while waiting (fire-and-forget)
   useEffect(() => {
-    // Start preloading immediately in parallel with session verification
     preloadVRM('/vrm/emilia.vrm').catch((err) => {
       console.warn('[InitializingPage] Avatar preload failed (non-critical):', err);
     });
   }, []);
 
   useEffect(() => {
-    // Prevent duplicate initialization - this is critical!
     if (hasStartedRef.current) {
       console.log('[InitializingPage] Already started, skipping');
       return;
@@ -48,32 +46,30 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
     hasStartedRef.current = true;
 
     const initialize = async () => {
-      console.log('[InitializingPage] Starting initialization for session:', sessionId);
+      console.log('[InitializingPage] Starting initialization for room:', roomId);
 
       try {
-        // Step 1: Verify session exists (with retries using direct session lookup)
+        // Step 1: Verify room exists (with retries)
         setStatus('verifying');
         let attempts = 0;
-        let sessionExists = false;
+        let roomExists = false;
 
-        while (attempts < 10 && !sessionExists) {
+        while (attempts < 10 && !roomExists) {
           try {
-            // Use direct session lookup - more efficient than fetching all sessions
-            await getSession(sessionId);
-            sessionExists = true;
-            console.log(`[InitializingPage] Attempt ${attempts + 1}: session exists = true`);
+            await getRoom(roomId);
+            roomExists = true;
+            console.log(`[InitializingPage] Attempt ${attempts + 1}: room exists = true`);
           } catch {
-            // Session not found yet, wait and retry
-            console.log(`[InitializingPage] Attempt ${attempts + 1}: session not found, retrying...`);
+            console.log(`[InitializingPage] Attempt ${attempts + 1}: room not found, retrying...`);
             await new Promise(resolve => setTimeout(resolve, 300));
             attempts++;
           }
         }
 
-        if (!sessionExists) {
-          console.log('[InitializingPage] Session not found after retries');
+        if (!roomExists) {
+          console.log('[InitializingPage] Room not found after retries');
           setStatus('error');
-          setErrorMessage('Failed to create session');
+          setErrorMessage('Failed to create chat');
           setTimeout(() => {
             navigate({
               to: '/user/$userId/chat/new',
@@ -85,17 +81,17 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
 
         // Step 2: Initialize agent with greeting
         setStatus('initializing');
-        console.log('[InitializingPage] Session verified, sending greeting');
+        console.log('[InitializingPage] Room verified, sending greeting');
 
-        // Set sessionId in store so useChat hook can use it
-        setSessionId(sessionId);
+        // Set roomId in store so useChat hook can use it
+        setRoomId(roomId);
 
         const greeting = `*${currentUser?.display_name} is bringing you to life...* hi there`;
         addMessage('user', greeting, { source: 'text', origin: 'user' });
 
         // Fire and forget - don't block navigation on response/TTS
         sendMessage(greeting);
-        
+
         // Small delay to ensure assistant placeholder is added before navigation
         await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -103,8 +99,8 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
 
         // Navigate immediately - chat page will show streaming response
         navigate({
-          to: '/user/$userId/chat/$sessionId',
-          params: { userId, sessionId },
+          to: '/user/$userId/chat/$roomId',
+          params: { userId, roomId },
           replace: true
         });
       } catch (error) {
@@ -122,7 +118,7 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
 
     initialize();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]); // Only re-run if sessionId changes
+  }, [roomId]); // Only re-run if roomId changes
 
   return (
     <div className="min-h-[100svh] w-full bg-bg-primary text-text-primary flex flex-col overflow-hidden">
@@ -149,7 +145,7 @@ function InitializingPage({ userId, sessionId }: InitializingPageProps) {
             </h2>
             <p className="text-text-secondary text-center">
               {status === 'verifying'
-                ? 'Creating your chat session'
+                ? 'Creating your chat'
                 : `Waking up ${currentAgent?.display_name || 'your AI companion'}`
               }
             </p>

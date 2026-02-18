@@ -39,10 +39,10 @@ interface ChatState {
   setCurrentMood: (snapshot: SoulMoodSnapshot | null) => void;
   
   // Multi-agent state
-  sessionAgents: Agent[];
-  setSessionAgents: (agents: Agent[]) => void;
-  addSessionAgent: (agent: Agent) => void;
-  removeSessionAgent: (agentId: string) => void;
+  roomAgents: Agent[];
+  setRoomAgents: (agents: Agent[]) => void;
+  addRoomAgent: (agent: Agent) => void;
+  removeRoomAgent: (agentId: string) => void;
   
   // Per-agent status (thinking/speaking/idle)
   agentStatus: Record<string, AgentStatus>;
@@ -116,13 +116,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setCurrentMood: (snapshot) => set({ currentMood: snapshot }),
   
   // Multi-agent state
-  sessionAgents: [],
-  setSessionAgents: (agents) => set({ sessionAgents: agents }),
-  addSessionAgent: (agent) => set((state) => ({
-    sessionAgents: [...state.sessionAgents.filter(a => a.id !== agent.id), agent]
+  roomAgents: [],
+  setRoomAgents: (agents) => set({ roomAgents: agents }),
+  addRoomAgent: (agent) => set((state) => ({
+    roomAgents: [...state.roomAgents.filter(a => a.id !== agent.id), agent]
   })),
-  removeSessionAgent: (agentId) => set((state) => ({
-    sessionAgents: state.sessionAgents.filter(a => a.id !== agentId),
+  removeRoomAgent: (agentId) => set((state) => ({
+    roomAgents: state.roomAgents.filter(a => a.id !== agentId),
     // Also clear status/mood for removed agent
     agentStatus: Object.fromEntries(
       Object.entries(state.agentStatus).filter(([id]) => id !== agentId)
@@ -156,7 +156,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Computed helpers
   getActiveAgents: () => {
     const state = get();
-    const { sessionAgents, agentStatus, messages } = state;
+    const { roomAgents, agentStatus, messages } = state;
     
     // Sort by: speaking > thinking > idle, then by last message time
     const lastMessageTime: Record<string, number> = {};
@@ -175,7 +175,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       idle: 1,
     };
     
-    return [...sessionAgents].sort((a, b) => {
+    return [...roomAgents].sort((a, b) => {
       const statusA = agentStatus[a.id] || 'idle';
       const statusB = agentStatus[b.id] || 'idle';
       
@@ -196,7 +196,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const speakingId = Object.entries(state.agentStatus)
       .find(([, status]) => status === 'speaking')?.[0];
     return speakingId 
-      ? state.sessionAgents.find(a => a.id === speakingId) || null 
+      ? state.roomAgents.find(a => a.id === speakingId) || null 
       : null;
   },
 }));

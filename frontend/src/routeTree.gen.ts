@@ -15,11 +15,11 @@ import { Route as DebugRouteImport } from './routes/debug'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UserUserIdRouteImport } from './routes/user/$userId'
 import { Route as UserUserIdIndexRouteImport } from './routes/user/$userId/index'
-import { Route as UserUserIdChatNewRouteImport } from './routes/user/$userId/chat.new'
-import { Route as UserUserIdChatSessionIdRouteImport } from './routes/user/$userId/chat.$sessionId'
-import { Route as UserUserIdChatInitializingSessionIdRouteImport } from './routes/user/$userId/chat.initializing.$sessionId'
 import { Route as UserUserIdRoomsRouteImport } from './routes/user/$userId/rooms'
 import { Route as UserUserIdRoomsRoomIdRouteImport } from './routes/user/$userId/rooms.$roomId'
+import { Route as UserUserIdChatNewRouteImport } from './routes/user/$userId/chat.new'
+import { Route as UserUserIdChatRoomIdRouteImport } from './routes/user/$userId/chat.$roomId'
+import { Route as UserUserIdChatInitializingRoomIdRouteImport } from './routes/user/$userId/chat.initializing.$roomId'
 
 const ManageRoute = ManageRouteImport.update({
   id: '/manage',
@@ -51,32 +51,32 @@ const UserUserIdIndexRoute = UserUserIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => UserUserIdRoute,
 } as any)
-const UserUserIdChatNewRoute = UserUserIdChatNewRouteImport.update({
-  id: '/chat/new',
-  path: '/chat/new',
-  getParentRoute: () => UserUserIdRoute,
-} as any)
-const UserUserIdChatSessionIdRoute = UserUserIdChatSessionIdRouteImport.update({
-  id: '/chat/$sessionId',
-  path: '/chat/$sessionId',
-  getParentRoute: () => UserUserIdRoute,
-} as any)
-const UserUserIdChatInitializingSessionIdRoute =
-  UserUserIdChatInitializingSessionIdRouteImport.update({
-    id: '/chat/initializing/$sessionId',
-    path: '/chat/initializing/$sessionId',
-    getParentRoute: () => UserUserIdRoute,
-  } as any)
 const UserUserIdRoomsRoute = UserUserIdRoomsRouteImport.update({
   id: '/rooms',
   path: '/rooms',
   getParentRoute: () => UserUserIdRoute,
 } as any)
 const UserUserIdRoomsRoomIdRoute = UserUserIdRoomsRoomIdRouteImport.update({
-  id: '/rooms/$roomId',
-  path: '/rooms/$roomId',
+  id: '/$roomId',
+  path: '/$roomId',
+  getParentRoute: () => UserUserIdRoomsRoute,
+} as any)
+const UserUserIdChatNewRoute = UserUserIdChatNewRouteImport.update({
+  id: '/chat/new',
+  path: '/chat/new',
   getParentRoute: () => UserUserIdRoute,
 } as any)
+const UserUserIdChatRoomIdRoute = UserUserIdChatRoomIdRouteImport.update({
+  id: '/chat/$roomId',
+  path: '/chat/$roomId',
+  getParentRoute: () => UserUserIdRoute,
+} as any)
+const UserUserIdChatInitializingRoomIdRoute =
+  UserUserIdChatInitializingRoomIdRouteImport.update({
+    id: '/chat/initializing/$roomId',
+    path: '/chat/initializing/$roomId',
+    getParentRoute: () => UserUserIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -84,24 +84,24 @@ export interface FileRoutesByFullPath {
   '/designer-v2': typeof DesignerV2Route
   '/manage': typeof ManageRoute
   '/user/$userId': typeof UserUserIdRouteWithChildren
+  '/user/$userId/rooms': typeof UserUserIdRoomsRouteWithChildren
   '/user/$userId/': typeof UserUserIdIndexRoute
-  '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
+  '/user/$userId/chat/$roomId': typeof UserUserIdChatRoomIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
-  '/user/$userId/chat/initializing/$sessionId': typeof UserUserIdChatInitializingSessionIdRoute
-  '/user/$userId/rooms': typeof UserUserIdRoomsRoute
   '/user/$userId/rooms/$roomId': typeof UserUserIdRoomsRoomIdRoute
+  '/user/$userId/chat/initializing/$roomId': typeof UserUserIdChatInitializingRoomIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/debug': typeof DebugRoute
   '/designer-v2': typeof DesignerV2Route
   '/manage': typeof ManageRoute
+  '/user/$userId/rooms': typeof UserUserIdRoomsRouteWithChildren
   '/user/$userId': typeof UserUserIdIndexRoute
-  '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
+  '/user/$userId/chat/$roomId': typeof UserUserIdChatRoomIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
-  '/user/$userId/chat/initializing/$sessionId': typeof UserUserIdChatInitializingSessionIdRoute
-  '/user/$userId/rooms': typeof UserUserIdRoomsRoute
   '/user/$userId/rooms/$roomId': typeof UserUserIdRoomsRoomIdRoute
+  '/user/$userId/chat/initializing/$roomId': typeof UserUserIdChatInitializingRoomIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -110,12 +110,12 @@ export interface FileRoutesById {
   '/designer-v2': typeof DesignerV2Route
   '/manage': typeof ManageRoute
   '/user/$userId': typeof UserUserIdRouteWithChildren
+  '/user/$userId/rooms': typeof UserUserIdRoomsRouteWithChildren
   '/user/$userId/': typeof UserUserIdIndexRoute
-  '/user/$userId/chat/$sessionId': typeof UserUserIdChatSessionIdRoute
+  '/user/$userId/chat/$roomId': typeof UserUserIdChatRoomIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
-  '/user/$userId/chat/initializing/$sessionId': typeof UserUserIdChatInitializingSessionIdRoute
-  '/user/$userId/rooms': typeof UserUserIdRoomsRoute
   '/user/$userId/rooms/$roomId': typeof UserUserIdRoomsRoomIdRoute
+  '/user/$userId/chat/initializing/$roomId': typeof UserUserIdChatInitializingRoomIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -125,24 +125,24 @@ export interface FileRouteTypes {
     | '/designer-v2'
     | '/manage'
     | '/user/$userId'
-    | '/user/$userId/'
-    | '/user/$userId/chat/$sessionId'
-    | '/user/$userId/chat/new'
-    | '/user/$userId/chat/initializing/$sessionId'
     | '/user/$userId/rooms'
+    | '/user/$userId/'
+    | '/user/$userId/chat/$roomId'
+    | '/user/$userId/chat/new'
     | '/user/$userId/rooms/$roomId'
+    | '/user/$userId/chat/initializing/$roomId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/debug'
     | '/designer-v2'
     | '/manage'
-    | '/user/$userId'
-    | '/user/$userId/chat/$sessionId'
-    | '/user/$userId/chat/new'
-    | '/user/$userId/chat/initializing/$sessionId'
     | '/user/$userId/rooms'
+    | '/user/$userId'
+    | '/user/$userId/chat/$roomId'
+    | '/user/$userId/chat/new'
     | '/user/$userId/rooms/$roomId'
+    | '/user/$userId/chat/initializing/$roomId'
   id:
     | '__root__'
     | '/'
@@ -150,12 +150,12 @@ export interface FileRouteTypes {
     | '/designer-v2'
     | '/manage'
     | '/user/$userId'
-    | '/user/$userId/'
-    | '/user/$userId/chat/$sessionId'
-    | '/user/$userId/chat/new'
-    | '/user/$userId/chat/initializing/$sessionId'
     | '/user/$userId/rooms'
+    | '/user/$userId/'
+    | '/user/$userId/chat/$roomId'
+    | '/user/$userId/chat/new'
     | '/user/$userId/rooms/$roomId'
+    | '/user/$userId/chat/initializing/$roomId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -210,27 +210,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UserUserIdIndexRouteImport
       parentRoute: typeof UserUserIdRoute
     }
-    '/user/$userId/chat/new': {
-      id: '/user/$userId/chat/new'
-      path: '/chat/new'
-      fullPath: '/user/$userId/chat/new'
-      preLoaderRoute: typeof UserUserIdChatNewRouteImport
-      parentRoute: typeof UserUserIdRoute
-    }
-    '/user/$userId/chat/$sessionId': {
-      id: '/user/$userId/chat/$sessionId'
-      path: '/chat/$sessionId'
-      fullPath: '/user/$userId/chat/$sessionId'
-      preLoaderRoute: typeof UserUserIdChatSessionIdRouteImport
-      parentRoute: typeof UserUserIdRoute
-    }
-    '/user/$userId/chat/initializing/$sessionId': {
-      id: '/user/$userId/chat/initializing/$sessionId'
-      path: '/chat/initializing/$sessionId'
-      fullPath: '/user/$userId/chat/initializing/$sessionId'
-      preLoaderRoute: typeof UserUserIdChatInitializingSessionIdRouteImport
-      parentRoute: typeof UserUserIdRoute
-    }
     '/user/$userId/rooms': {
       id: '/user/$userId/rooms'
       path: '/rooms'
@@ -240,31 +219,61 @@ declare module '@tanstack/react-router' {
     }
     '/user/$userId/rooms/$roomId': {
       id: '/user/$userId/rooms/$roomId'
-      path: '/rooms/$roomId'
+      path: '/$roomId'
       fullPath: '/user/$userId/rooms/$roomId'
       preLoaderRoute: typeof UserUserIdRoomsRoomIdRouteImport
+      parentRoute: typeof UserUserIdRoomsRoute
+    }
+    '/user/$userId/chat/new': {
+      id: '/user/$userId/chat/new'
+      path: '/chat/new'
+      fullPath: '/user/$userId/chat/new'
+      preLoaderRoute: typeof UserUserIdChatNewRouteImport
+      parentRoute: typeof UserUserIdRoute
+    }
+    '/user/$userId/chat/$roomId': {
+      id: '/user/$userId/chat/$roomId'
+      path: '/chat/$roomId'
+      fullPath: '/user/$userId/chat/$roomId'
+      preLoaderRoute: typeof UserUserIdChatRoomIdRouteImport
+      parentRoute: typeof UserUserIdRoute
+    }
+    '/user/$userId/chat/initializing/$roomId': {
+      id: '/user/$userId/chat/initializing/$roomId'
+      path: '/chat/initializing/$roomId'
+      fullPath: '/user/$userId/chat/initializing/$roomId'
+      preLoaderRoute: typeof UserUserIdChatInitializingRoomIdRouteImport
       parentRoute: typeof UserUserIdRoute
     }
   }
 }
 
-interface UserUserIdRouteChildren {
-  UserUserIdIndexRoute: typeof UserUserIdIndexRoute
-  UserUserIdChatSessionIdRoute: typeof UserUserIdChatSessionIdRoute
-  UserUserIdChatNewRoute: typeof UserUserIdChatNewRoute
-  UserUserIdChatInitializingSessionIdRoute: typeof UserUserIdChatInitializingSessionIdRoute
-  UserUserIdRoomsRoute: typeof UserUserIdRoomsRoute
+interface UserUserIdRoomsRouteChildren {
   UserUserIdRoomsRoomIdRoute: typeof UserUserIdRoomsRoomIdRoute
 }
 
-const UserUserIdRouteChildren: UserUserIdRouteChildren = {
-  UserUserIdIndexRoute: UserUserIdIndexRoute,
-  UserUserIdChatSessionIdRoute: UserUserIdChatSessionIdRoute,
-  UserUserIdChatNewRoute: UserUserIdChatNewRoute,
-  UserUserIdChatInitializingSessionIdRoute:
-    UserUserIdChatInitializingSessionIdRoute,
-  UserUserIdRoomsRoute: UserUserIdRoomsRoute,
+const UserUserIdRoomsRouteChildren: UserUserIdRoomsRouteChildren = {
   UserUserIdRoomsRoomIdRoute: UserUserIdRoomsRoomIdRoute,
+}
+
+const UserUserIdRoomsRouteWithChildren = UserUserIdRoomsRoute._addFileChildren(
+  UserUserIdRoomsRouteChildren,
+)
+
+interface UserUserIdRouteChildren {
+  UserUserIdRoomsRoute: typeof UserUserIdRoomsRouteWithChildren
+  UserUserIdIndexRoute: typeof UserUserIdIndexRoute
+  UserUserIdChatRoomIdRoute: typeof UserUserIdChatRoomIdRoute
+  UserUserIdChatNewRoute: typeof UserUserIdChatNewRoute
+  UserUserIdChatInitializingRoomIdRoute: typeof UserUserIdChatInitializingRoomIdRoute
+}
+
+const UserUserIdRouteChildren: UserUserIdRouteChildren = {
+  UserUserIdRoomsRoute: UserUserIdRoomsRouteWithChildren,
+  UserUserIdIndexRoute: UserUserIdIndexRoute,
+  UserUserIdChatRoomIdRoute: UserUserIdChatRoomIdRoute,
+  UserUserIdChatNewRoute: UserUserIdChatNewRoute,
+  UserUserIdChatInitializingRoomIdRoute: UserUserIdChatInitializingRoomIdRoute,
 }
 
 const UserUserIdRouteWithChildren = UserUserIdRoute._addFileChildren(

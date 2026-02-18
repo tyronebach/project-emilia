@@ -3,10 +3,10 @@ import type { AppStatus, AvatarState, AvatarCommand } from '../types';
 import type { AvatarRenderer } from '../avatar/AvatarRenderer';
 
 interface AppState {
-  // Session
-  sessionId: string;
-  setSessionId: (id: string) => void;
-  clearSessionId: () => void;
+  // Room
+  roomId: string;
+  setRoomId: (id: string) => void;
+  clearRoomId: () => void;
 
   // Status
   status: AppStatus;
@@ -36,17 +36,16 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  // Session - kept only in memory, not persisted to avoid issues when switching users/agents
-  sessionId: '',
-  setSessionId: (id) => {
-    // Allow empty string for new sessions
+  // Room - kept only in memory, not persisted to avoid issues when switching users/agents
+  roomId: '',
+  setRoomId: (id) => {
     if (id === undefined || id === null) {
-      console.warn('[Store] Attempted to set undefined/null sessionId');
+      console.warn('[Store] Attempted to set undefined/null roomId');
       return;
     }
-    set({ sessionId: id });
+    set({ roomId: id });
   },
-  clearSessionId: () => set({ sessionId: '' }),
+  clearRoomId: () => set({ roomId: '' }),
 
   // Status
   status: 'ready',

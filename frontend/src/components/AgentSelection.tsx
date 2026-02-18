@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Sliders, Bug, Palette, Users2 } from 'lucide-react';
-import { getUser, getSessions } from '../utils/api';
+import { getUser, getRooms } from '../utils/api';
 import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
 import type { Agent } from '../utils/api';
@@ -48,24 +48,24 @@ function AgentSelection({ userId }: AgentSelectionProps) {
     }
     setAgent(agent);
 
-    // Try to get existing sessions for this agent
+    // Try to get existing rooms for this user
     try {
-      const sessions = await getSessions(agent.id);
-      if (sessions.length > 0) {
-        // Use most recent session
+      const rooms = await getRooms();
+      if (rooms.length > 0) {
+        // Use most recent room
         navigate({
-          to: '/user/$userId/chat/$sessionId',
-          params: { userId, sessionId: sessions[0].id }
+          to: '/user/$userId/chat/$roomId',
+          params: { userId, roomId: rooms[0].id }
         });
       } else {
-        // No sessions - go to new chat page
+        // No rooms - go to new chat page
         navigate({
           to: '/user/$userId/chat/new',
           params: { userId }
         });
       }
     } catch (e) {
-      console.error('Failed to fetch sessions:', e);
+      console.error('Failed to fetch rooms:', e);
       // On error, default to new chat page
       navigate({
         to: '/user/$userId/chat/new',

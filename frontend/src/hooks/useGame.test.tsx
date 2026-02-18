@@ -31,7 +31,7 @@ function setAgent(agentId: string) {
 
 function resetStores() {
   useAppStore.setState({
-    sessionId: '',
+    roomId: '',
     status: 'ready',
     errors: [],
     ttsEnabled: false,
@@ -69,7 +69,7 @@ describe('useGame catalog gating', () => {
     sessionStorage.clear();
     localStorage.clear();
     resetStores();
-    useAppStore.getState().setSessionId('session-1');
+    useAppStore.getState().setRoomId('room-1');
     setAgent('agent-1');
   });
 

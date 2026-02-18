@@ -8,9 +8,10 @@ export interface DebugSection {
   defaultEnabled?: boolean;
 }
 
-/** Compaction debug info returned by /api/manage/debug/compaction/{sessionId} */
+/** Compaction debug info returned by /api/manage/debug/compaction/room/{roomId} */
 export interface CompactionDebug {
-  session_id: string;
+  session_id?: string;
+  room_id?: string;
   session_name: string | null;
   message_count_cached: number;
   message_count_actual: number;

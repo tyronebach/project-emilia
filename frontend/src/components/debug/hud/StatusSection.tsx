@@ -9,7 +9,7 @@ const getStatusColor = (s: AppStatus): string => STATUS_COLORS[s] ?? 'bg-text-se
 
 export function StatusSection() {
   const status = useAppStore((s) => s.status);
-  const sessionId = useAppStore((s) => s.sessionId);
+  const roomId = useAppStore((s) => s.roomId);
   const currentUser = useUserStore((state) => state.currentUser);
   const currentAgent = useUserStore((state) => state.currentAgent);
 
@@ -28,7 +28,7 @@ export function StatusSection() {
           <span className="text-xs font-medium text-text-primary capitalize">{status}</span>
         </div>
         <div className="text-xs text-text-secondary font-mono">
-          {sessionId ? sessionId.slice(0, 8) + '...' : '—'}
+          {roomId ? roomId.slice(0, 8) + '...' : '—'}
         </div>
       </div>
 

@@ -22,16 +22,16 @@ export const useUserStore = create<UserState>()(
       currentUser: null,
       currentAgent: null,
       setUser: (user) => {
-        // Clear sessionId and messages when user changes
-        useAppStore.getState().clearSessionId();
+        // Clear roomId and messages when user changes
+        useAppStore.getState().clearRoomId();
         useChatStore.getState().clearMessages();
         // Load user's render settings
         useRenderStore.getState().setCurrentUser(user?.id ?? null);
         set({ currentUser: user });
       },
       setAgent: (agent) => {
-        // Clear sessionId and messages when agent changes
-        useAppStore.getState().clearSessionId();
+        // Clear roomId and messages when agent changes
+        useAppStore.getState().clearRoomId();
         useChatStore.getState().clearMessages();
         set({ currentAgent: agent });
       },

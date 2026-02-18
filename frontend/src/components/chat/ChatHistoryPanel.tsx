@@ -45,7 +45,7 @@ function MessageBubble({ message, agent, isUser }: MessageBubbleProps) {
 
 export default function ChatHistoryPanel({ onClose }: ChatHistoryPanelProps) {
   const messages = useChatStore(state => state.messages);
-  const sessionAgents = useChatStore(state => state.sessionAgents);
+  const roomAgents = useChatStore(state => state.roomAgents);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new messages
@@ -58,7 +58,7 @@ export default function ChatHistoryPanel({ onClose }: ChatHistoryPanelProps) {
   // Get agent by ID
   const getAgent = (agentId?: string): Agent | undefined => {
     if (!agentId) return undefined;
-    return sessionAgents.find(a => a.id === agentId);
+    return roomAgents.find(a => a.id === agentId);
   };
 
   return (
@@ -90,10 +90,10 @@ export default function ChatHistoryPanel({ onClose }: ChatHistoryPanelProps) {
       </div>
 
       {/* Agent legend (for multi-agent) */}
-      {sessionAgents.length > 1 && (
+      {roomAgents.length > 1 && (
         <div className="border-t border-base-300 p-3">
           <div className="flex flex-wrap gap-2">
-            {sessionAgents.map(agent => (
+            {roomAgents.map(agent => (
               <div key={agent.id} className="flex items-center gap-1 text-xs">
                 <div className="w-2 h-2 rounded-full bg-primary" />
                 <span>{agent.display_name}</span>

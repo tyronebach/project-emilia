@@ -5,7 +5,7 @@ import { useUserStore } from '../store/userStore';
 
 export function useLogout() {
   return useCallback(() => {
-    useAppStore.getState().clearSessionId();
+    useAppStore.getState().clearRoomId();
     useChatStore.getState().clearMessages();
     useUserStore.getState().clearUser();
   }, []);
