@@ -9,10 +9,10 @@ const STORAGE_PREFIX = 'emilia-game-state';
 function getStorageContextKey(): string | null {
   const userId = useUserStore.getState().currentUser?.id;
   const agentId = useUserStore.getState().currentAgent?.id;
-  const sessionId = useAppStore.getState().sessionId;
+  const roomId = useAppStore.getState().roomId;
 
-  if (!userId || !agentId || !sessionId) return null;
-  return `${STORAGE_PREFIX}:${userId}:${agentId}:${sessionId}`;
+  if (!userId || !agentId || !roomId) return null;
+  return `${STORAGE_PREFIX}:${userId}:${agentId}:${roomId}`;
 }
 
 function getPointerKey(contextKey: string): string {

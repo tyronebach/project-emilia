@@ -16,7 +16,7 @@ import AvatarPanel from '../AvatarPanel';
 
 interface AvatarStageProps {
   userId: string;
-  sessionId: string;
+  roomId: string;
   onAvatarReady?: () => void;
 }
 
@@ -51,7 +51,7 @@ interface AgentTileProps {
   isFocused?: boolean;
   onClick?: () => void;
   userId: string;
-  sessionId: string;
+  roomId: string;
   onAvatarReady?: () => void;
 }
 
@@ -63,7 +63,7 @@ function AgentTile({
   isFocused,
   onClick,
   userId,
-  sessionId,
+  roomId,
   onAvatarReady,
 }: AgentTileProps) {
   const sizeClasses = {
@@ -106,7 +106,7 @@ function AgentTile({
       {/* Full avatar panel */}
       <AvatarPanel
         userId={userId}
-        sessionId={sessionId}
+        roomId={roomId}
         agentId={agent.id}
         onReady={onAvatarReady}
       />
@@ -121,8 +121,8 @@ function AgentTile({
   );
 }
 
-export default function AvatarStage({ userId, sessionId, onAvatarReady }: AvatarStageProps) {
-  const sessionAgents = useChatStore(state => state.sessionAgents);
+export default function AvatarStage({ userId, roomId, onAvatarReady }: AvatarStageProps) {
+  const roomAgents = useChatStore(state => state.roomAgents);
   const agentStatus = useChatStore(state => state.agentStatus);
   const agentMoods = useChatStore(state => state.agentMoods);
   const focusedAgentId = useChatStore(state => state.focusedAgentId);
@@ -130,11 +130,11 @@ export default function AvatarStage({ userId, sessionId, onAvatarReady }: Avatar
   const getActiveAgents = useChatStore(state => state.getActiveAgents);
 
   // Sort agents by activity
-  const sortedAgents = useMemo(() => getActiveAgents(), [getActiveAgents, agentStatus, sessionAgents]);
+  const sortedAgents = useMemo(() => getActiveAgents(), [getActiveAgents, agentStatus, roomAgents]);
 
   // Single agent - full screen
-  if (sessionAgents.length === 1) {
-    const agent = sessionAgents[0];
+  if (roomAgents.length === 1) {
+    const agent = roomAgents[0];
     return (
       <div className="w-full h-full">
         <AgentTile
@@ -143,7 +143,7 @@ export default function AvatarStage({ userId, sessionId, onAvatarReady }: Avatar
           mood={agentMoods[agent.id]}
           size="full"
           userId={userId}
-          sessionId={sessionId}
+          roomId={roomId}
           onAvatarReady={onAvatarReady}
         />
       </div>
@@ -152,8 +152,8 @@ export default function AvatarStage({ userId, sessionId, onAvatarReady }: Avatar
 
   // Focused mode - one maximized, others as thumbnails
   if (focusedAgentId) {
-    const focusedAgent = sessionAgents.find(a => a.id === focusedAgentId);
-    const otherAgents = sessionAgents.filter(a => a.id !== focusedAgentId);
+    const focusedAgent = roomAgents.find(a => a.id === focusedAgentId);
+    const otherAgents = roomAgents.filter(a => a.id !== focusedAgentId);
 
     if (!focusedAgent) {
       setFocusedAgentId(null);
@@ -171,7 +171,7 @@ export default function AvatarStage({ userId, sessionId, onAvatarReady }: Avatar
             size="full"
             isFocused
             userId={userId}
-            sessionId={sessionId}
+            roomId={roomId}
             onAvatarReady={onAvatarReady}
           />
           
@@ -195,7 +195,7 @@ export default function AvatarStage({ userId, sessionId, onAvatarReady }: Avatar
               size="thumbnail"
               onClick={() => setFocusedAgentId(agent.id)}
               userId={userId}
-              sessionId={sessionId}
+              roomId={roomId}
             />
           ))}
         </div>
@@ -204,7 +204,7 @@ export default function AvatarStage({ userId, sessionId, onAvatarReady }: Avatar
   }
 
   // Two agents - split view
-  if (sessionAgents.length === 2) {
+  if (roomAgents.length === 2) {
     return (
       <div className="w-full h-full flex">
         {sortedAgents.map(agent => (
@@ -216,7 +216,7 @@ export default function AvatarStage({ userId, sessionId, onAvatarReady }: Avatar
             size="half"
             onClick={() => setFocusedAgentId(agent.id)}
             userId={userId}
-            sessionId={sessionId}
+            roomId={roomId}
             onAvatarReady={agent.id === sortedAgents[0].id ? onAvatarReady : undefined}
           />
         ))}
@@ -241,7 +241,7 @@ export default function AvatarStage({ userId, sessionId, onAvatarReady }: Avatar
             size="half"
             onClick={() => setFocusedAgentId(agent.id)}
             userId={userId}
-            sessionId={sessionId}
+            roomId={roomId}
             onAvatarReady={idx === 0 ? onAvatarReady : undefined}
           />
         ))}
@@ -258,7 +258,7 @@ export default function AvatarStage({ userId, sessionId, onAvatarReady }: Avatar
             size="thumbnail"
             onClick={() => setFocusedAgentId(agent.id)}
             userId={userId}
-            sessionId={sessionId}
+            roomId={roomId}
           />
         ))}
         

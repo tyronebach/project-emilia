@@ -29,22 +29,22 @@ import { isGamesV2EnabledForAgent } from './config/features';
 
 interface AppProps {
   userId: string;
-  sessionId: string;
+  roomId: string;
 }
 
 /**
- * Main App Layout - Only for existing chat sessions
+ * Main App Layout - Only for existing chat rooms
  *
  * Structure:
  * - Full-screen avatar background
  * - Header overlay at top (with drawer toggle + debug/memory buttons)
  * - Chat history overlay on bottom half (semi-transparent)
  * - Floating input bar at bottom
- * - Side drawer for sessions/settings
+ * - Side drawer for rooms/settings
  * - Debug panel (right side modal)
  * - Memory modal (top half modal)
  */
-function App({ userId, sessionId }: AppProps) {
+function App({ userId, roomId }: AppProps) {
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
@@ -55,7 +55,7 @@ function App({ userId, sessionId }: AppProps) {
   const [participantsOpen, setParticipantsOpen] = useState(false);
   const hasValidatedRef = useRef(false);
 
-  const setSessionId = useAppStore((state) => state.setSessionId);
+  const setRoomId = useAppStore((state) => state.setRoomId);
   const currentUser = useUserStore((state) => state.currentUser);
   const logout = useLogout();
 
@@ -66,38 +66,35 @@ function App({ userId, sessionId }: AppProps) {
     }
   }, [currentUser?.id]);
 
-  // Sync sessionId from route to store
+  // Sync roomId from route to store
   useEffect(() => {
-    const currentStoreSessionId = useAppStore.getState().sessionId;
-    // Only clear messages if sessionId actually changed (not on initial mount with same ID)
-    if (currentStoreSessionId && currentStoreSessionId !== sessionId) {
+    const currentStoreRoomId = useAppStore.getState().roomId;
+    // Only clear messages if roomId actually changed (not on initial mount with same ID)
+    if (currentStoreRoomId && currentStoreRoomId !== roomId) {
       useChatStore.getState().clearMessages();
     }
-    setSessionId(sessionId);
-  }, [sessionId, setSessionId]);
+    setRoomId(roomId);
+  }, [roomId, setRoomId]);
 
-  // Reset validation flag when sessionId changes
+  // Reset validation flag when roomId changes
   useEffect(() => {
     hasValidatedRef.current = false;
-  }, [sessionId]);
+  }, [roomId]);
 
-  // Validate sessionId exists - redirect to /chat/new if not found
-  // Also populates sessionAgents for multi-agent support
-  // Only validate ONCE per sessionId using direct session lookup (no agent dependency)
+  // Validate roomId exists - redirect to /chat/new if not found
+  // Also populates roomAgents for multi-agent support
   useEffect(() => {
-    // Don't validate if no user or already validated this sessionId
-    if (!currentUser || hasValidatedRef.current || !sessionId) return;
+    if (!currentUser || hasValidatedRef.current || !roomId) return;
 
-    // Mark as validated to prevent re-checking
     hasValidatedRef.current = true;
 
-    console.log('[App] Validating session:', sessionId);
+    console.log('[App] Validating room:', roomId);
 
-    const validateSession = async () => {
+    const validateRoom = async () => {
       try {
-        const response = await fetchWithAuth(`/api/sessions/${encodeURIComponent(sessionId)}`);
+        const response = await fetchWithAuth(`/api/rooms/${encodeURIComponent(roomId)}`);
         if (response.status === 404 || response.status === 403) {
-          console.log('[App] Session not found, redirecting to /chat/new');
+          console.log('[App] Room not found, redirecting to /chat/new');
           navigate({
             to: '/user/$userId/chat/new',
             params: { userId: currentUser.id },
@@ -106,23 +103,23 @@ function App({ userId, sessionId }: AppProps) {
           return;
         }
         if (!response.ok) {
-          console.warn('[App] Session validation failed:', response.status);
+          console.warn('[App] Room validation failed:', response.status);
           return;
         }
-        
-        // Extract session data and populate sessionAgents (multi-agent support)
-        const session = await response.json();
-        if (session.agents && Array.isArray(session.agents)) {
-          console.log('[App] Session has %d agents', session.agents.length);
-          useChatStore.getState().setSessionAgents(session.agents);
+
+        // Extract room data and populate roomAgents (multi-agent support)
+        const room = await response.json();
+        if (room.agents && Array.isArray(room.agents)) {
+          console.log('[App] Room has %d agents', room.agents.length);
+          useChatStore.getState().setRoomAgents(room.agents);
         }
       } catch (error) {
-        console.warn('[App] Session validation error:', error);
+        console.warn('[App] Room validation error:', error);
       }
     };
 
-    validateSession();
-  }, [sessionId, currentUser, navigate]);
+    validateRoom();
+  }, [roomId, currentUser, navigate]);
 
   // Verify user matches route
   useEffect(() => {
@@ -189,9 +186,9 @@ function AppContent({
   const messages = useChatStore((s) => s.messages);
   const addMessage = useChatStore((s) => s.addMessage);
   const currentMood = useChatStore((s) => s.currentMood);
-  const sessionAgents = useChatStore((s) => s.sessionAgents);
+  const roomAgents = useChatStore((s) => s.roomAgents);
   const status = useAppStore((s) => s.status);
-  const sessionId = useAppStore((s) => s.sessionId);
+  const roomId = useAppStore((s) => s.roomId);
   const ttsEnabled = useAppStore((s) => s.ttsEnabled);
   const setTtsEnabled = useAppStore((s) => s.setTtsEnabled);
   const addError = useAppStore((s) => s.addError);
@@ -335,15 +332,15 @@ function AppContent({
   }, [handsFreeEnabled]);
 
   // Multi-agent: use AvatarStage for adaptive layouts
-  const isMultiAgent = sessionAgents.length > 1;
-  
+  const isMultiAgent = roomAgents.length > 1;
+
   return (
     <div className="min-h-[100svh] w-full bg-bg-primary text-text-primary overflow-hidden relative flex flex-col">
       {/* Full-screen Avatar Background - use AvatarStage for multi-agent */}
-      {isMultiAgent && currentUser?.id && sessionId ? (
-        <AvatarStage 
-          userId={currentUser.id} 
-          sessionId={sessionId}
+      {isMultiAgent && currentUser?.id && roomId ? (
+        <AvatarStage
+          userId={currentUser.id}
+          roomId={roomId}
         />
       ) : (
         <AvatarPanel />
@@ -409,23 +406,23 @@ function AppContent({
 
       {/* User Settings Modal */}
       <UserSettingsModal open={userSettingsOpen} onClose={() => setUserSettingsOpen(false)} />
-      
-      {/* Participants button - shows only for multi-agent sessions */}
-      {sessionAgents.length > 0 && sessionId && !participantsOpen && (
+
+      {/* Participants button - shows only for multi-agent rooms */}
+      {roomAgents.length > 0 && roomId && !participantsOpen && (
         <button
           onClick={() => setParticipantsOpen(true)}
           className="fixed top-16 right-4 z-20 flex items-center gap-2 px-3 py-2 rounded-full bg-bg-secondary/80 border border-white/10 backdrop-blur-sm hover:bg-bg-tertiary/80 transition-colors shadow-lg"
           title="Manage participants"
         >
-          <span className="text-sm">{sessionAgents.length} agent{sessionAgents.length !== 1 ? 's' : ''}</span>
+          <span className="text-sm">{roomAgents.length} agent{roomAgents.length !== 1 ? 's' : ''}</span>
         </button>
       )}
-      
+
       {/* Manage Participants Panel (multi-agent) */}
-      {participantsOpen && sessionId && (
-        <ManageParticipantsPanel 
-          sessionId={sessionId} 
-          onClose={() => setParticipantsOpen(false)} 
+      {participantsOpen && roomId && (
+        <ManageParticipantsPanel
+          roomId={roomId}
+          onClose={() => setParticipantsOpen(false)}
         />
       )}
     </div>

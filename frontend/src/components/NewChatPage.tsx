@@ -4,7 +4,7 @@ import { Sparkles, Users, User, Check } from 'lucide-react';
 import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
 import { useSession } from '../hooks/useSession';
-import { createMultiAgentSession } from '../utils/api';
+import { createRoom } from '../utils/api';
 import type { Agent } from '../utils/api';
 import { Button } from './ui/button';
 import agentPlaceholder from '../assets/placeholder-agent.jpg';
@@ -23,37 +23,33 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
   const navigate = useNavigate();
   const currentAgent = useUserStore((state) => state.currentAgent);
   const currentUser = useUserStore((state) => state.currentUser);
-  const setSessionId = useAppStore((state) => state.setSessionId);
-  const { createSession, sessions } = useSession();
+  const setRoomId = useAppStore((state) => state.setRoomId);
+  const { rooms } = useSession();
 
   const [isCreating, setIsCreating] = useState(false);
   const [isGroupMode, setIsGroupMode] = useState(false);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
-  
+
   // All agents available to user
   const userAgents: Agent[] = currentUser?.agents || [];
   const hasMultipleAgents = userAgents.length > 1;
 
-  // Clear any stale session ID when on new chat page
+  // Clear any stale room ID when on new chat page
   useEffect(() => {
-    setSessionId('');
-    // Also clean up any old localStorage entries from previous versions
-    localStorage.removeItem('emilia-session-id');
-  }, [setSessionId]);
-  
+    setRoomId('');
+  }, [setRoomId]);
+
   const handleModeChange = (groupMode: boolean) => {
     setIsGroupMode(groupMode);
-    // Reset selection when toggling modes
     if (groupMode) {
-      // Start with current agent selected
       setSelectedAgents(currentAgent ? [currentAgent.id] : []);
     } else {
       setSelectedAgents([]);
     }
   };
-  
+
   const toggleAgentSelection = (agentId: string) => {
-    setSelectedAgents(prev => 
+    setSelectedAgents(prev =>
       prev.includes(agentId)
         ? prev.filter(id => id !== agentId)
         : [...prev, agentId]
@@ -61,11 +57,10 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
   };
 
   const handleBack = () => {
-    // Go back to most recent session if exists, otherwise to agent selection
-    if (sessions.length > 0 && currentUser?.id) {
+    if (rooms.length > 0 && currentUser?.id) {
       navigate({
-        to: '/user/$userId/chat/$sessionId',
-        params: { userId: currentUser.id, sessionId: sessions[0].id }
+        to: '/user/$userId/chat/$roomId',
+        params: { userId: currentUser.id, roomId: rooms[0].id }
       });
     } else if (currentUser?.id) {
       navigate({ to: '/user/$userId', params: { userId: currentUser.id } });
@@ -74,8 +69,7 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
 
   const handleStartChat = async () => {
     if (!currentUser?.id || isCreating) return;
-    
-    // Validate selection
+
     if (isGroupMode) {
       if (selectedAgents.length < 2) {
         console.warn('Group chat requires at least 2 agents');
@@ -87,26 +81,26 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
 
     setIsCreating(true);
     try {
-      let newSessionId: string | null = null;
-      
-      if (isGroupMode && selectedAgents.length >= 2) {
-        // Create multi-agent session
-        const session = await createMultiAgentSession(selectedAgents);
-        newSessionId = session.id;
-      } else {
-        // Create single-agent session
-        newSessionId = await createSession();
-      }
+      const agentIds = isGroupMode ? selectedAgents : [currentAgent!.id];
+      const agentNames = agentIds
+        .map(id => userAgents.find(a => a.id === id)?.display_name || id)
+        .join(', ');
+      const roomName = isGroupMode
+        ? `Group: ${agentNames}`
+        : `Chat with ${currentAgent?.display_name || 'Agent'}`;
 
-      if (newSessionId) {
-        // Navigate to initializing page
-        navigate({
-          to: '/user/$userId/chat/initializing/$sessionId',
-          params: { userId: currentUser.id, sessionId: newSessionId }
-        });
-      }
+      const room = await createRoom({
+        name: roomName,
+        agent_ids: agentIds,
+      });
+
+      // Navigate to initializing page
+      navigate({
+        to: '/user/$userId/chat/initializing/$roomId',
+        params: { userId: currentUser.id, roomId: room.id }
+      });
     } catch (error) {
-      console.error('Failed to create session:', error);
+      console.error('Failed to create room:', error);
       setIsCreating(false);
     }
   };
@@ -133,12 +127,12 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
 
             <div className="px-6 pb-6 pt-5 text-center">
               <p className="text-text-secondary text-base md:text-lg text-balance">
-                {isGroupMode 
+                {isGroupMode
                   ? 'Select agents for your group chat'
                   : 'Start a fresh conversation and bring your companion to life.'
                 }
               </p>
-              
+
               {/* Mode toggle - only show if user has multiple agents */}
               {hasMultipleAgents && (
                 <div className="flex justify-center gap-2 mt-4">
@@ -162,7 +156,7 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
                   </Button>
                 </div>
               )}
-              
+
               {/* Agent selection grid for group mode */}
               {isGroupMode && (
                 <div className="mt-4 grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
@@ -173,8 +167,8 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
                         key={agent.id}
                         onClick={() => toggleAgentSelection(agent.id)}
                         className={`flex items-center gap-2 p-3 rounded-lg border transition-all ${
-                          isSelected 
-                            ? 'border-accent bg-accent/10' 
+                          isSelected
+                            ? 'border-accent bg-accent/10'
                             : 'border-white/10 bg-bg-secondary/50 hover:bg-bg-secondary'
                         }`}
                       >
@@ -194,7 +188,7 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
                 <div className="mt-6 flex flex-col items-center gap-4">
                   <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin" />
                   <span className="text-sm text-text-secondary">
-                    Creating session...
+                    Creating chat...
                   </span>
                 </div>
               ) : (
@@ -205,7 +199,7 @@ function NewChatPage({ userId: _userId }: NewChatPageProps) {
                   className="mt-6 px-10 py-7 text-lg gap-3 shadow-lg hover:shadow-xl transition-shadow"
                 >
                   <Sparkles className="w-6 h-6" />
-                  {isGroupMode 
+                  {isGroupMode
                     ? `Start Group (${selectedAgents.length} agents)`
                     : `Chat with ${currentAgent?.display_name || 'Agent'}`
                   }

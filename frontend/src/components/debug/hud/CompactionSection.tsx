@@ -6,17 +6,17 @@ import { CollapsibleSection } from './CollapsibleSection';
 import type { CompactionDebug } from '../types';
 
 export function CompactionSection() {
-  const sessionId = useAppStore((s) => s.sessionId);
+  const roomId = useAppStore((s) => s.roomId);
   const [compactionData, setCompactionData] = useState<CompactionDebug | null>(null);
   const [compactionLoading, setCompactionLoading] = useState(false);
   const [compactionError, setCompactionError] = useState<string | null>(null);
 
   const fetchCompaction = useCallback(async () => {
-    if (!sessionId) return;
+    if (!roomId) return;
     setCompactionLoading(true);
     setCompactionError(null);
     try {
-      const res = await fetchWithAuth(`/api/manage/debug/compaction/${encodeURIComponent(sessionId)}`);
+      const res = await fetchWithAuth(`/api/manage/debug/compaction/${encodeURIComponent(roomId)}`);
       if (!res.ok) throw new Error(`${res.status}`);
       setCompactionData(await res.json());
     } catch (e) {
@@ -24,14 +24,14 @@ export function CompactionSection() {
     } finally {
       setCompactionLoading(false);
     }
-  }, [sessionId]);
+  }, [roomId]);
 
-  // Fetch on mount/sessionId change
+  // Fetch on mount/roomId change
   useEffect(() => {
-    if (sessionId) {
+    if (roomId) {
       fetchCompaction();
     }
-  }, [sessionId, fetchCompaction]);
+  }, [roomId, fetchCompaction]);
 
   const statusBadge = compactionData ? (
     <span
@@ -48,21 +48,21 @@ export function CompactionSection() {
   return (
     <CollapsibleSection
       id="hud-compaction"
-      label="Session Compaction"
+      label="Room Compaction"
       icon={Archive}
       iconColor="text-orange-400"
       loading={compactionLoading}
       onRefresh={fetchCompaction}
-      refreshDisabled={!sessionId}
+      refreshDisabled={!roomId}
       badge={statusBadge}
     >
       {compactionError && (
         <div className="text-xs text-error bg-error/10 rounded px-2 py-1">{compactionError}</div>
       )}
 
-      {!sessionId ? (
+      {!roomId ? (
         <div className="text-[10px] text-text-secondary text-center py-2">
-          No active session
+          No active room
         </div>
       ) : compactionData ? (
         <>
@@ -85,9 +85,9 @@ export function CompactionSection() {
           {/* Config Details */}
           <div className="space-y-1 text-xs">
             <div className="flex justify-between">
-              <span className="text-text-secondary">Session</span>
+              <span className="text-text-secondary">Room</span>
               <span className="text-text-primary font-mono text-[10px]">
-                {compactionData.session_name || compactionData.session_id.slice(0, 12)}
+                {compactionData.session_name || compactionData.session_id?.slice(0, 12) || roomId.slice(0, 12)}
               </span>
             </div>
             <div className="flex justify-between">

@@ -62,4 +62,4 @@ export const STATUS_COLORS: Record<AppStatus, string> = {
 };
 
 // Re-export from api.ts for convenience
-export type { User, Agent, Session, HistoryMessage } from '../utils/api';
+export type { User, Agent } from '../utils/api';

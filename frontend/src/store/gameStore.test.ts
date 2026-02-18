@@ -12,7 +12,7 @@ const DEFAULT_STATUS = {
 
 function resetStores() {
   useAppStore.setState({
-    sessionId: '',
+    roomId: '',
     status: 'ready',
     errors: [],
     ttsEnabled: false,
@@ -34,7 +34,7 @@ function resetStores() {
   });
 }
 
-function setContext(userId: string, agentId: string, sessionId: string) {
+function setContext(userId: string, agentId: string, roomId: string) {
   useUserStore.setState({
     currentUser: {
       id: userId,
@@ -49,7 +49,7 @@ function setContext(userId: string, agentId: string, sessionId: string) {
       voice_id: null,
     },
   });
-  useAppStore.getState().setSessionId(sessionId);
+  useAppStore.getState().setRoomId(roomId);
   useGameStore.getState().hydrateForContext();
 }
 
@@ -60,17 +60,17 @@ describe('gameStore context hydration', () => {
     resetStores();
   });
 
-  test('does not leak game state across sessions', async () => {
+  test('does not leak game state across rooms', async () => {
     await loadGame('tic-tac-toe');
-    setContext('user-a', 'agent-a', 'session-1');
+    setContext('user-a', 'agent-a', 'room-1');
     useGameStore.getState().startGame('tic-tac-toe');
     expect(useGameStore.getState().activeGameId).toBe('tic-tac-toe');
 
-    useAppStore.getState().setSessionId('session-2');
+    useAppStore.getState().setRoomId('room-2');
     useGameStore.getState().hydrateForContext();
     expect(useGameStore.getState().activeGameId).toBeNull();
 
-    useAppStore.getState().setSessionId('session-1');
+    useAppStore.getState().setRoomId('room-1');
     useGameStore.getState().hydrateForContext();
     expect(useGameStore.getState().activeGameId).toBe('tic-tac-toe');
   });

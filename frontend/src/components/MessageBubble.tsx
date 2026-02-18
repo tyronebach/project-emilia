@@ -15,17 +15,17 @@ function MessageBubble({ message }: MessageBubbleProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
   
-  // Multi-agent support: look up agent name from sessionAgents
-  const sessionAgents = useChatStore(state => state.sessionAgents);
+  // Multi-agent support: look up agent name from roomAgents
+  const roomAgents = useChatStore(state => state.roomAgents);
   const agentId = meta?.agent_id;
   const agentInfo = useMemo(() => {
     if (isUser || !agentId) return null;
-    return sessionAgents.find(a => a.id === agentId);
-  }, [isUser, agentId, sessionAgents]);
+    return roomAgents.find(a => a.id === agentId);
+  }, [isUser, agentId, roomAgents]);
   
   // Agent initial for avatar (fallback to 'E' for backwards compat)
   const agentInitial = agentInfo?.display_name?.charAt(0).toUpperCase() ?? 'E';
-  const isMultiAgent = sessionAgents.length > 1;
+  const isMultiAgent = roomAgents.length > 1;
 
   const cleanupAudio = useCallback(() => {
     if (audioRef.current) {

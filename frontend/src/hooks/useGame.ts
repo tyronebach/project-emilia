@@ -30,12 +30,12 @@ export function useGame() {
   const refreshCatalog = useGameCatalogStore((state) => state.refresh);
   const currentUserId = useUserStore((state) => state.currentUser?.id ?? null);
   const currentAgentId = useUserStore((state) => state.currentAgent?.id ?? null);
-  const sessionId = useAppStore((state) => state.sessionId);
+  const roomId = useAppStore((state) => state.roomId);
   const gamesEnabledForAgent = isGamesV2EnabledForAgent(currentAgentId);
 
   useEffect(() => {
     hydrateForContext();
-  }, [hydrateForContext, currentUserId, currentAgentId, sessionId]);
+  }, [hydrateForContext, currentUserId, currentAgentId, roomId]);
 
   useEffect(() => {
     if (!activeGameId || getGame(activeGameId)) return;

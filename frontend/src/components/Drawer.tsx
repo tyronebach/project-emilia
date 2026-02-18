@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { X, Plus, MessageSquare, User, Sparkles, Users2, MoreVertical, Pencil, Trash2, Settings } from 'lucide-react';
+import { X, Plus, MessageSquare, User, Sparkles, MoreVertical, Pencil, Trash2, Settings } from 'lucide-react';
 import { useSession } from '../hooks/useSession';
 import { useLogout } from '../hooks/useLogout';
 import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
-import { renameSession as renameSessionApi } from '../utils/api';
-import { formatSessionName, formatDate } from '../utils/helpers';
+import { formatDate } from '../utils/helpers';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
@@ -19,7 +18,7 @@ interface DrawerProps {
 
 function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
   const navigate = useNavigate();
-  const { sessions, sessionId, fetchSessions, deleteSession, isLoading } = useSession();
+  const { rooms, roomId, fetchRooms, deleteRoom, renameRoom, isLoading } = useSession();
   const currentUser = useUserStore((state) => state.currentUser);
   const currentAgent = useUserStore((state) => state.currentAgent);
   const logout = useLogout();
@@ -27,17 +26,17 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
   // Menu state
   const [menuOpenFor, setMenuOpenFor] = useState<string | null>(null);
   const [renameModalOpen, setRenameModalOpen] = useState(false);
-  const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
+  const [renameRoomId, setRenameRoomId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteSessionId, setDeleteSessionId] = useState<string | null>(null);
+  const [deleteRoomId, setDeleteRoomId] = useState<string | null>(null);
 
-  // Fetch sessions when drawer opens
+  // Fetch rooms when drawer opens
   useEffect(() => {
     if (open) {
-      fetchSessions();
+      fetchRooms();
     }
-  }, [open, fetchSessions]);
+  }, [open, fetchRooms]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -48,9 +47,8 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
     }
   }, [menuOpenFor]);
 
-  const handleNewSession = async () => {
+  const handleNewChat = async () => {
     if (!currentUser?.id) return;
-    // Navigate to the new chat page instead of creating session here
     navigate({
       to: '/user/$userId/chat/new',
       params: { userId: currentUser.id }
@@ -58,8 +56,8 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
     onClose();
   };
 
-  const handleSwitchSession = async (sid: string) => {
-    if (sid === sessionId) {
+  const handleSwitchRoom = async (rid: string) => {
+    if (rid === roomId) {
       onClose();
       return;
     }
@@ -69,8 +67,8 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
 
     if (currentUser?.id) {
       navigate({
-        to: '/user/$userId/chat/$sessionId',
-        params: { userId: currentUser.id, sessionId: sid }
+        to: '/user/$userId/chat/$roomId',
+        params: { userId: currentUser.id, roomId: rid }
       });
     }
     onClose();
@@ -89,61 +87,48 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
     onClose();
   };
 
-  const handleOpenRename = (sid: string, currentName: string | null) => {
-    setRenameSessionId(sid);
+  const handleOpenRename = (rid: string, currentName: string) => {
+    setRenameRoomId(rid);
     setRenameValue(currentName || '');
     setRenameModalOpen(true);
     setMenuOpenFor(null);
   };
 
   const handleRename = async () => {
-    if (!renameSessionId) return;
+    if (!renameRoomId) return;
     try {
-      await renameSessionApi(renameSessionId, renameValue);
-      await fetchSessions();
+      await renameRoom(renameRoomId, renameValue);
       setRenameModalOpen(false);
-      setRenameSessionId(null);
+      setRenameRoomId(null);
       setRenameValue('');
     } catch (error) {
-      console.error('Failed to rename session:', error);
+      console.error('Failed to rename room:', error);
     }
   };
 
-  const handleOpenDelete = (sid: string) => {
-    setDeleteSessionId(sid);
+  const handleOpenDelete = (rid: string) => {
+    setDeleteRoomId(rid);
     setDeleteModalOpen(true);
     setMenuOpenFor(null);
   };
 
-  const handleOpenRooms = () => {
-    if (currentUser?.id) {
-      navigate({ to: '/user/$userId/rooms', params: { userId: currentUser.id } });
-    }
-    onClose();
-  };
-
   const handleConfirmDelete = async () => {
-    if (!deleteSessionId) return;
+    if (!deleteRoomId) return;
     try {
-      const wasCurrentSession = deleteSessionId === sessionId;
-      await deleteSession(deleteSessionId);
+      const wasCurrentRoom = deleteRoomId === roomId;
+      await deleteRoom(deleteRoomId);
       setDeleteModalOpen(false);
-      setDeleteSessionId(null);
+      setDeleteRoomId(null);
 
-      // If we deleted the current session, navigate appropriately
-      if (wasCurrentSession && currentUser?.id) {
-        // Fetch fresh sessions to see what's left
-        const remainingSessions = await fetchSessions();
+      if (wasCurrentRoom && currentUser?.id) {
+        const remainingRooms = await fetchRooms();
 
-        if (remainingSessions.length > 0) {
-          // Navigate to the most recent session (sorted by last_used desc)
-          const latestSession = remainingSessions[0];
+        if (remainingRooms.length > 0) {
           navigate({
-            to: '/user/$userId/chat/$sessionId',
-            params: { userId: currentUser.id, sessionId: latestSession.id }
+            to: '/user/$userId/chat/$roomId',
+            params: { userId: currentUser.id, roomId: remainingRooms[0].id }
           });
         } else {
-          // No sessions left, go to new chat page
           navigate({
             to: '/user/$userId/chat/new',
             params: { userId: currentUser.id }
@@ -152,8 +137,12 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
         onClose();
       }
     } catch (error) {
-      console.error('Failed to delete session:', error);
+      console.error('Failed to delete room:', error);
     }
+  };
+
+  const formatRoomName = (room: { name: string; id: string; room_type: string }) => {
+    return room.name || `Chat ${room.id.slice(0, 8)}`;
   };
 
   return (
@@ -177,12 +166,11 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
           </DialogClose>
         </div>
         <DialogDescription className="sr-only">
-          Navigate sessions, switch users, and manage settings.
+          Navigate chats, switch users, and manage settings.
         </DialogDescription>
 
-        {/* Top Actions - Switch User, Select Agent, TTS */}
+        {/* Top Actions - Switch User, Select Agent */}
         <div className="border-b border-white/10 p-3 space-y-1 shrink-0">
-          {/* Switch User */}
           <Button
             variant="ghost"
             className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10"
@@ -192,7 +180,6 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
             Switch User
           </Button>
 
-          {/* Select Character */}
           <Button
             variant="ghost"
             className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10"
@@ -201,53 +188,43 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
             <Sparkles className="w-4 h-4" />
             Select Character
           </Button>
-
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10"
-            onClick={handleOpenRooms}
-          >
-            <Users2 className="w-4 h-4" />
-            Group Rooms
-          </Button>
-
         </div>
 
-        {/* New Session Button - transparent background */}
+        {/* New Chat Button */}
         <div className="p-3 border-b border-white/10">
           <Button
             variant="ghost"
             className="w-full justify-start gap-2 text-text-secondary hover:text-text-primary hover:bg-white/10"
-            onClick={handleNewSession}
+            onClick={handleNewChat}
             disabled={!currentAgent}
           >
             <Plus className="w-4 h-4" />
-            New Session
+            New Chat
           </Button>
         </div>
 
-        {/* Sessions List */}
+        {/* Rooms List */}
         <ScrollArea className="flex-1">
           <div className="p-2">
             <div className="text-xs text-text-secondary uppercase tracking-wide px-2 py-1">
-              Sessions
+              Chats
             </div>
             {!currentAgent ? (
               <div className="px-2 py-4 text-sm text-text-secondary">Select a character first</div>
             ) : isLoading ? (
               <div className="px-2 py-4 text-sm text-text-secondary">Loading...</div>
-            ) : sessions.length === 0 ? (
-              <div className="px-2 py-4 text-sm text-text-secondary">No sessions yet</div>
+            ) : rooms.length === 0 ? (
+              <div className="px-2 py-4 text-sm text-text-secondary">No chats yet</div>
             ) : (
               <div className="space-y-1">
-                {sessions.map((session) => {
-                  const isActive = session.id === sessionId;
-                  const isMenuOpen = menuOpenFor === session.id;
+                {rooms.map((room) => {
+                  const isActive = room.id === roomId;
+                  const isMenuOpen = menuOpenFor === room.id;
 
                   return (
-                    <div key={session.id} className="relative group">
+                    <div key={room.id} className="relative group">
                       <button
-                        onClick={() => handleSwitchSession(session.id)}
+                        onClick={() => handleSwitchRoom(room.id)}
                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-colors text-left ${
                           isActive
                             ? 'bg-accent/15 text-accent border border-accent/30'
@@ -256,9 +233,9 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
                       >
                         <MessageSquare className="w-4 h-4 shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <div className="truncate">{formatSessionName(session.name, session.id)}</div>
+                          <div className="truncate">{formatRoomName(room)}</div>
                           <div className="text-xs text-text-secondary/70">
-                            {formatDate(session.last_used)} · {session.message_count} msgs
+                            {formatDate(room.last_activity)} · {room.message_count} msgs
                           </div>
                         </div>
                       </button>
@@ -267,7 +244,7 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setMenuOpenFor(isMenuOpen ? null : session.id);
+                          setMenuOpenFor(isMenuOpen ? null : room.id);
                         }}
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded text-text-secondary/50 hover:text-text-primary hover:bg-white/10"
                       >
@@ -281,14 +258,14 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
-                            onClick={() => handleOpenRename(session.id, session.name)}
+                            onClick={() => handleOpenRename(room.id, room.name)}
                             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:text-text-primary hover:bg-white/10"
                           >
                             <Pencil className="w-4 h-4" />
                             Rename
                           </button>
                           <button
-                            onClick={() => handleOpenDelete(session.id)}
+                            onClick={() => handleOpenDelete(room.id)}
                             className="w-full flex items-center gap-2 px-3 py-2 text-sm text-error hover:bg-white/10"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -333,15 +310,15 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
         }}
       >
         <DialogContent className="w-80 max-w-[92vw] p-5">
-          <DialogTitle className="font-display text-lg mb-4">Rename Session</DialogTitle>
+          <DialogTitle className="font-display text-lg mb-4">Rename Chat</DialogTitle>
           <DialogDescription className="sr-only">
-            Update the session name for easier identification.
+            Update the chat name for easier identification.
           </DialogDescription>
           <input
             type="text"
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
-            placeholder="Session name"
+            placeholder="Chat name"
             className="w-full bg-bg-tertiary/80 border border-white/10 text-text-primary rounded-lg px-3 py-2 mb-4 outline-none focus:ring-2 focus:ring-accent"
             autoFocus
             onKeyDown={(e) => e.key === 'Enter' && handleRename()}
@@ -365,9 +342,9 @@ function Drawer({ open, onClose, onOpenUserSettings }: DrawerProps) {
         }}
       >
         <DialogContent className="w-80 max-w-[92vw] p-5">
-          <DialogTitle className="font-display text-lg mb-2">Delete Session</DialogTitle>
+          <DialogTitle className="font-display text-lg mb-2">Delete Chat</DialogTitle>
           <DialogDescription className="text-text-secondary text-sm mb-4">
-            Are you sure you want to delete this session? This action cannot be undone.
+            Are you sure you want to delete this chat? This action cannot be undone.
           </DialogDescription>
           <div className="flex gap-2 justify-end">
             <Button variant="ghost" onClick={() => setDeleteModalOpen(false)}>

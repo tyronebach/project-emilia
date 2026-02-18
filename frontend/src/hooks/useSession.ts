@@ -2,90 +2,93 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
-import { getSessions, createSession, getSession, getSessionHistory, deleteSession as deleteSessionApi } from '../utils/api';
-import type { Session, Message, MessageOrigin } from '../types';
+import { getRooms, getRoom, getRoomHistory, deleteRoom as deleteRoomApi, updateRoom as updateRoomApi } from '../utils/api';
+import type { Room, RoomMessage } from '../utils/api';
+import type { Message, MessageOrigin } from '../types';
 
 export function useSession() {
-  const sessionId = useAppStore((state) => state.sessionId);
-  const setSessionId = useAppStore((state) => state.setSessionId);
+  const roomId = useAppStore((state) => state.roomId);
+  const setRoomId = useAppStore((state) => state.setRoomId);
   const clearMessages = useChatStore((state) => state.clearMessages);
   const setMessages = useChatStore((state) => state.setMessages);
 
+  const currentUser = useUserStore((state) => state.currentUser);
   const currentAgent = useUserStore((state) => state.currentAgent);
 
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const fetchingRef = useRef<string | null>(null);
   const fetchHistoryIdRef = useRef(0);
 
   /**
-   * Fetch sessions for current agent
+   * Fetch rooms for current user
    */
-  const fetchSessions = useCallback(async (): Promise<Session[]> => {
-    if (!currentAgent?.id) return [];
+  const fetchRooms = useCallback(async (): Promise<Room[]> => {
+    if (!currentUser?.id) return [];
 
     try {
       setIsLoading(true);
-      const data = await getSessions(currentAgent.id);
-      setSessions(data);
-      return data;
+      const data = await getRooms();
+      // Filter to rooms that contain the current agent (if one is selected)
+      const filtered = currentAgent?.id
+        ? data.filter(r =>
+            r.agents?.some(a => a.agent_id === currentAgent.id) ||
+            r.room_type === 'dm' // DM rooms are always relevant
+          )
+        : data;
+      setRooms(filtered);
+      return filtered;
     } catch (error) {
-      console.error('fetchSessions error:', error);
+      console.error('fetchRooms error:', error);
       return [];
     } finally {
       setIsLoading(false);
     }
-  }, [currentAgent?.id]);
+  }, [currentUser?.id, currentAgent?.id]);
 
   /**
-   * Fetch history for a session
+   * Fetch history for a room
    */
-  const fetchHistory = useCallback(async (sid: string): Promise<Message[]> => {
-    // Don't fetch if no session or agent not loaded yet
-    if (!sid || !currentAgent?.id) return [];
-    
-    // Guard against duplicate fetches for same session
-    if (fetchingRef.current === sid) return [];
+  const fetchHistory = useCallback(async (rid: string): Promise<Message[]> => {
+    if (!rid || !currentUser?.id) return [];
+
+    // Guard against duplicate fetches for same room
+    if (fetchingRef.current === rid) return [];
 
     const requestId = ++fetchHistoryIdRef.current;
     try {
-      fetchingRef.current = sid;
+      fetchingRef.current = rid;
       setIsLoading(true);
 
-      // Validate session belongs to current agent
+      // Validate room exists
       try {
-        const session = await getSession(sid);
-        if (session.agent_id !== currentAgent.id) {
-          console.warn('[useSession] Session agent mismatch, clearing messages');
-          setMessages([]);
-          return [];
-        }
+        await getRoom(rid);
       } catch {
-        console.warn('[useSession] Session not found:', sid);
+        console.warn('[useSession] Room not found:', rid);
         setMessages([]);
         return [];
       }
 
-      const rawMessages = await getSessionHistory(sid);
+      const roomMessages = await getRoomHistory(rid);
 
       // Only apply if this is the latest request
       if (requestId !== fetchHistoryIdRef.current) {
         return [];
       }
 
-      const messages: Message[] = rawMessages.map((msg, idx) => ({
-        id: idx,
-        role: msg.role,
+      const messages: Message[] = roomMessages.map((msg: RoomMessage) => ({
+        id: msg.id,
+        role: msg.sender_type === 'user' ? 'user' as const : 'assistant' as const,
         content: msg.content,
-        timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+        timestamp: new Date(msg.timestamp * 1000),
         meta: {
-          origin: (msg.origin ?? undefined) as MessageOrigin | undefined,
-          agent_id: msg.agent_id,  // Multi-agent support
+          origin: (msg.origin ?? (msg.sender_type === 'user' ? 'user' : 'assistant')) as MessageOrigin,
+          agent_id: msg.sender_type === 'agent' ? msg.sender_id : undefined,
+          processing_ms: msg.processing_ms ?? undefined,
         },
       }));
 
       // Don't overwrite if chatStore already has MORE messages than backend
-      // This prevents wiping out messages from InitializingPage that haven't been persisted yet
       const currentMessages = useChatStore.getState().messages;
       if (currentMessages.length > messages.length) {
         return currentMessages;
@@ -97,105 +100,79 @@ export function useSession() {
       console.error('fetchHistory error:', error);
       return [];
     } finally {
-      // Only clear loading state for the latest request
       if (requestId === fetchHistoryIdRef.current) {
         setIsLoading(false);
         fetchingRef.current = null;
       }
     }
-  }, [setMessages, currentAgent?.id]);
+  }, [setMessages, currentUser?.id]);
 
   /**
-   * Switch to a different session
+   * Switch to a different room
    */
-  const switchSession = useCallback(async (newSessionId: string): Promise<void> => {
-    if (newSessionId === sessionId) return;
+  const switchRoom = useCallback(async (newRoomId: string): Promise<void> => {
+    if (newRoomId === roomId) return;
 
     clearMessages();
-    setSessionId(newSessionId);
-    await fetchHistory(newSessionId);
+    setRoomId(newRoomId);
+    await fetchHistory(newRoomId);
 
-    console.log('Switched to session:', newSessionId);
-  }, [sessionId, setSessionId, clearMessages, fetchHistory]);
-
-  /**
-   * Create a new session
-   */
-  const newSession = useCallback(async (name?: string): Promise<string | null> => {
-    if (!currentAgent?.id) {
-      console.error('No agent selected');
-      return null;
-    }
-
-    try {
-      setIsLoading(true);
-      const session = await createSession(currentAgent.id, name);
-
-      clearMessages();
-      setSessionId(session.id);
-
-      // Refresh sessions list
-      await fetchSessions();
-
-      console.log('Created new session:', session.id);
-      return session.id;
-    } catch (error) {
-      console.error('createSession error:', error);
-      return null;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentAgent?.id, setSessionId, clearMessages, fetchSessions]);
+    console.log('Switched to room:', newRoomId);
+  }, [roomId, setRoomId, clearMessages, fetchHistory]);
 
   /**
-   * Delete a session
+   * Delete a room
    */
-  const deleteSession = useCallback(async (sid: string): Promise<boolean> => {
+  const deleteRoom = useCallback(async (rid: string): Promise<boolean> => {
     try {
-      await deleteSessionApi(sid);
+      await deleteRoomApi(rid);
 
-      // If deleted current session, clear state
-      if (sid === sessionId) {
+      if (rid === roomId) {
         clearMessages();
-        setSessionId('');
+        setRoomId('');
       }
 
-      // Refresh sessions list
-      await fetchSessions();
+      await fetchRooms();
       return true;
     } catch (error) {
-      console.error('deleteSession error:', error);
+      console.error('deleteRoom error:', error);
       return false;
     }
-  }, [sessionId, setSessionId, clearMessages, fetchSessions]);
+  }, [roomId, setRoomId, clearMessages, fetchRooms]);
 
-  // Load sessions when agent changes
+  /**
+   * Rename a room
+   */
+  const renameRoom = useCallback(async (rid: string, name: string): Promise<void> => {
+    await updateRoomApi(rid, { name });
+    await fetchRooms();
+  }, [fetchRooms]);
+
+  // Load rooms when user/agent changes
   useEffect(() => {
-    if (currentAgent?.id) {
-      fetchSessions();
+    if (currentUser?.id) {
+      fetchRooms();
     } else {
-      setSessions([]);
+      setRooms([]);
     }
-  }, [currentAgent?.id, fetchSessions]);
+  }, [currentUser?.id, currentAgent?.id, fetchRooms]);
 
-  // Load history when sessionId or agent changes (but not for empty/new sessions)
-  // Always fetch - don't skip based on existing messages (they may be stale from another agent)
-  // Also re-fetch when currentAgent loads (handles refresh scenario where agent hydrates after sessionId)
+  // Load history when roomId or user changes
   useEffect(() => {
-    if (sessionId && sessionId !== '' && currentAgent?.id) {
-      fetchHistory(sessionId);
+    if (roomId && roomId !== '' && currentUser?.id) {
+      fetchHistory(roomId);
     }
-  }, [sessionId, currentAgent?.id, fetchHistory]);
+  }, [roomId, currentUser?.id, fetchHistory]);
 
   return {
-    sessions,
-    sessionId,
+    rooms,
+    roomId,
     isLoading,
-    fetchSessions,
+    fetchRooms,
     fetchHistory,
-    switchSession,
-    createSession: newSession,
-    deleteSession,
+    switchRoom,
+    deleteRoom,
+    renameRoom,
   };
 }
 
