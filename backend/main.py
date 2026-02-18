@@ -10,7 +10,6 @@ from schemas import HealthResponse
 from routers import (
     users_router,
     agents_router,
-    sessions_router,
     chat_router,
     memory_router,
     admin_router,
@@ -30,12 +29,11 @@ app.add_middleware(
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-User-Id", "X-Agent-Id", "X-Session-Id"],
+    allow_headers=["Authorization", "Content-Type", "X-User-Id", "X-Agent-Id"],
 )
 
 app.include_router(users_router)
 app.include_router(agents_router)
-app.include_router(sessions_router)
 app.include_router(chat_router)
 app.include_router(memory_router)
 app.include_router(admin_router)
