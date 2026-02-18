@@ -111,6 +111,50 @@ class RoomRepository:
             return [RoomRepository._hydrate_room(row) for row in rows]
 
     @staticmethod
+    def get_dm_room_for_user_agent(user_id: str, agent_id: str) -> dict | None:
+        """Find existing DM room for a (user, agent) pair."""
+        with get_db() as conn:
+            row = conn.execute(
+                """SELECT r.*
+                   FROM rooms r
+                   JOIN room_participants rp ON rp.room_id = r.id
+                   JOIN room_agents ra ON ra.room_id = r.id
+                   WHERE rp.user_id = ?
+                     AND ra.agent_id = ?
+                     AND r.room_type = 'dm'
+                   ORDER BY r.last_activity DESC
+                   LIMIT 1""",
+                (user_id, agent_id),
+            ).fetchone()
+            return RoomRepository._hydrate_room(row)
+
+    @staticmethod
+    def get_or_create_dm_room(user_id: str, agent_id: str) -> dict:
+        """Get or create a DM room for a (user, agent) pair.
+
+        DM rooms have room_type='dm' and the single agent has
+        response_mode='always' so they always respond.
+        """
+        existing = RoomRepository.get_dm_room_for_user_agent(user_id, agent_id)
+        if existing:
+            return existing
+
+        from db.repositories import AgentRepository
+        agent = AgentRepository.get_by_id(agent_id)
+        agent_name = agent["display_name"] if agent else "Agent"
+
+        room = RoomRepository.create(
+            name=f"Chat with {agent_name}",
+            created_by=user_id,
+            agent_ids=[agent_id],
+            room_type="dm",
+        )
+
+        # DM agent always responds (no mention required)
+        RoomRepository.update_agent(room["id"], agent_id, response_mode="always")
+        return room
+
+    @staticmethod
     def user_can_access(user_id: str, room_id: str) -> bool:
         with get_db() as conn:
             row = conn.execute(

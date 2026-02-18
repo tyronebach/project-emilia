@@ -28,31 +28,6 @@ class AgentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class SessionResponse(BaseModel):
-    id: str
-    agent_id: str
-    name: str | None = None
-    created_at: int
-    last_used: int
-    message_count: int = 0
-    participants: list[str] = []
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class MessageHistoryItem(BaseModel):
-    role: str
-    origin: str | None = None
-    content: str
-    timestamp: float | str | None = None
-
-
-class SessionHistoryResponse(BaseModel):
-    messages: list[MessageHistoryItem]
-    session_id: str
-    count: int
-
-
 class AvatarBehavior(BaseModel):
     intent: str | None = None
     mood: str | None = None
@@ -64,7 +39,7 @@ class AvatarBehavior(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
-    session_id: str
+    room_id: str
     processing_ms: int
     model: str | None = None
     behavior: AvatarBehavior = AvatarBehavior()
@@ -101,11 +76,6 @@ class AgentsListResponse(BaseModel):
 
 class UserAgentsResponse(BaseModel):
     agents: list[AgentResponse]
-    count: int
-
-
-class SessionsListResponse(BaseModel):
-    sessions: list[SessionResponse]
     count: int
 
 
