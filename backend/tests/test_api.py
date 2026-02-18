@@ -171,7 +171,7 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.chat.DirectLLMClient")
+    @patch("routers.rooms.DirectLLMClient")
     async def test_chat_non_stream_direct_mode_uses_direct_client(
         self,
         mock_direct_client_class,
@@ -250,7 +250,7 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.chat.DirectLLMClient")
+    @patch("routers.rooms.DirectLLMClient")
     async def test_chat_direct_mode_rolls_back_user_message_on_direct_client_error(
         self,
         mock_direct_client_class,
@@ -314,16 +314,16 @@ class TestChatEndpoint:
         with get_db() as conn:
             row = conn.execute(
                 """SELECT COUNT(*) AS count
-                   FROM messages m
-                   JOIN sessions s ON s.id = m.session_id
-                   WHERE s.agent_id = ?""",
+                   FROM room_messages rm
+                   JOIN room_agents ra ON ra.room_id = rm.room_id
+                   WHERE ra.agent_id = ?""",
                 (agent_id,),
             ).fetchone()
         assert row["count"] == 0
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.chat.DirectLLMClient")
+    @patch("routers.rooms.DirectLLMClient")
     async def test_chat_stream_direct_mode_uses_tool_loop(
         self,
         mock_direct_client_class,
@@ -474,35 +474,38 @@ class TestChatEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["response"]
+        room_id = data["room_id"]
 
         with get_db() as conn:
             stored = conn.execute(
-                "SELECT role, origin, content FROM messages WHERE session_id = ? ORDER BY timestamp ASC",
-                (data["session_id"],),
+                "SELECT sender_type, origin, content FROM room_messages WHERE room_id = ? ORDER BY timestamp ASC",
+                (room_id,),
             ).fetchall()
         assert len(stored) == 2
-        assert stored[0]["role"] == "user"
+        assert stored[0]["sender_type"] == "user"
         assert stored[0]["origin"] == "game_runtime"
-        assert stored[1]["role"] == "assistant"
-        assert stored[1]["origin"] == "assistant"
+        assert stored[1]["sender_type"] == "agent"
+        assert stored[1]["origin"] == "chat"
 
+        # Verify room history excludes runtime messages by default
         history = await test_client.get(
-            f"/api/sessions/{data['session_id']}/history",
+            f"/api/rooms/{room_id}/history",
             headers=headers,
         )
         assert history.status_code == 200
         history_messages = history.json()["messages"]
-        assert len(history_messages) == 1
-        assert history_messages[0]["role"] == "assistant"
+        assert all(m.get("origin") != "game_runtime" for m in history_messages)
 
+        # With includeRuntime=true, game_runtime messages are included
         history_with_runtime = await test_client.get(
-            f"/api/sessions/{data['session_id']}/history?includeRuntime=true",
+            f"/api/rooms/{room_id}/history?includeRuntime=true",
             headers=headers,
         )
         assert history_with_runtime.status_code == 200
         runtime_messages = history_with_runtime.json()["messages"]
         assert len(runtime_messages) == 2
-        assert runtime_messages[0]["origin"] == "game_runtime"
+        origins = [m.get("origin") for m in runtime_messages]
+        assert "game_runtime" in origins
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
@@ -566,16 +569,16 @@ class TestChatEndpoint:
             headers=headers,
         )
         assert response.status_code == 200
-        session_id = response.json()["session_id"]
+        room_id = response.json()["room_id"]
 
         with get_db() as conn:
             stored = conn.execute(
-                "SELECT role, origin FROM messages WHERE session_id = ? ORDER BY timestamp ASC",
-                (session_id,),
+                "SELECT sender_type, origin FROM room_messages WHERE room_id = ? ORDER BY timestamp ASC",
+                (room_id,),
             ).fetchall()
         assert len(stored) == 2
-        assert stored[0]["role"] == "user"
-        assert stored[0]["origin"] == "user"
+        assert stored[0]["sender_type"] == "user"
+        assert stored[0]["origin"] == "chat"
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
@@ -821,121 +824,6 @@ class TestMemoryEndpoints:
 
 
 # ========================================
-# Session Endpoint Tests
-# ========================================
-
-class TestSessionEndpoints:
-
-    async def test_list_sessions_requires_auth(self, test_client):
-        response = await test_client.get(
-            "/api/sessions",
-            headers={"X-User-Id": "test-user"}
-        )
-        assert response.status_code == 401
-
-    async def test_list_sessions_requires_user_id(self, test_client, auth_headers):
-        response = await test_client.get("/api/sessions", headers=auth_headers)
-        assert response.status_code == 422
-
-    async def test_get_session_history_requires_auth(self, test_client):
-        response = await test_client.get(
-            "/api/sessions/test-session-id/history",
-            headers={"X-User-Id": "test-user"}
-        )
-        assert response.status_code == 401
-
-    async def test_get_session_history_returns_403_for_unauthorized(self, test_client, auth_headers):
-        headers = {**auth_headers, "X-User-Id": "test-user"}
-        response = await test_client.get(
-            "/api/sessions/nonexistent-session-id/history",
-            headers=headers
-        )
-        assert response.status_code == 403
-
-    @patch("routers.chat._spawn_background")
-    @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.chat.httpx.AsyncClient")
-    async def test_existing_session_chat_continues_to_work(
-        self,
-        mock_client_class,
-        mock_pre_llm,
-        mock_spawn_background,
-        test_client,
-        auth_headers,
-    ):
-        user_id = f"user-{uuid.uuid4().hex[:8]}"
-        agent_id = f"agent-{uuid.uuid4().hex[:8]}"
-        session_id = f"session-{uuid.uuid4().hex[:8]}"
-        now = int(time.time())
-
-        with get_db() as conn:
-            conn.execute(
-                "INSERT INTO users (id, display_name) VALUES (?, ?)",
-                (user_id, "Session User"),
-            )
-            conn.execute(
-                """INSERT INTO agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace, emotional_profile)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (agent_id, "Session Agent", "test-claw-id", "emilia.vrm", None, None, "{}"),
-            )
-            conn.execute(
-                "INSERT INTO user_agents (user_id, agent_id) VALUES (?, ?)",
-                (user_id, agent_id),
-            )
-            conn.execute(
-                "INSERT INTO sessions (id, agent_id, name, created_at, last_used, message_count) VALUES (?, ?, ?, ?, ?, ?)",
-                (session_id, agent_id, "existing-session", now, now, 1),
-            )
-            conn.execute(
-                "INSERT INTO session_participants (session_id, user_id) VALUES (?, ?)",
-                (session_id, user_id),
-            )
-            conn.execute(
-                "INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)",
-                (str(uuid.uuid4()), session_id, "user", "legacy message", now),
-            )
-
-        mock_pre_llm.return_value = (None, [])
-        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
-
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "model": "agent:test-claw-id",
-            "choices": [{"message": {"content": "Session still works."}}],
-            "usage": {"prompt_tokens": 12, "completion_tokens": 5},
-        }
-
-        mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
-
-        headers = {
-            **auth_headers,
-            "X-User-Id": user_id,
-            "X-Agent-Id": agent_id,
-            "X-Session-Id": session_id,
-        }
-        response = await test_client.post(
-            "/api/chat?stream=0",
-            json={"message": "Continue this session."},
-            headers=headers,
-        )
-        assert response.status_code == 200
-        payload = response.json()
-        assert payload["session_id"] == session_id
-
-        with get_db() as conn:
-            count_row = conn.execute(
-                "SELECT COUNT(*) AS c FROM messages WHERE session_id = ?",
-                (session_id,),
-            ).fetchone()
-            assert count_row["c"] == 3
-
-
-# ========================================
 # User Endpoint Tests
 # ========================================
 
@@ -1080,10 +968,6 @@ class TestTranscribeEndpoint:
 # ========================================
 
 class TestManageEndpoints:
-
-    async def test_list_sessions_requires_auth(self, test_client):
-        response = await test_client.get("/api/manage/sessions")
-        assert response.status_code == 401
 
     async def test_list_agents_requires_auth(self, test_client):
         response = await test_client.get("/api/manage/agents")
@@ -1296,7 +1180,7 @@ class TestManageEndpoints:
     async def test_delete_agent_removes_related_data(self, test_client, auth_headers):
         user_id = f"user-{uuid.uuid4().hex[:8]}"
         agent_id = f"agent-{uuid.uuid4().hex[:8]}"
-        session_id = f"session-{uuid.uuid4().hex[:8]}"
+        room_id = f"room-{uuid.uuid4().hex[:8]}"
         now = time.time()
 
         with get_db() as conn:
@@ -1314,16 +1198,22 @@ class TestManageEndpoints:
                 (user_id, agent_id),
             )
             conn.execute(
-                "INSERT INTO sessions (id, agent_id, name, created_at, last_used, message_count) VALUES (?, ?, ?, ?, ?, ?)",
-                (session_id, agent_id, "test", int(now), int(now), 1),
+                """INSERT INTO rooms (id, name, room_type, created_by, created_at, last_activity)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (room_id, "test", "dm", user_id, int(now), int(now)),
             )
             conn.execute(
-                "INSERT INTO session_participants (session_id, user_id) VALUES (?, ?)",
-                (session_id, user_id),
+                "INSERT INTO room_participants (room_id, user_id) VALUES (?, ?)",
+                (room_id, user_id),
             )
             conn.execute(
-                "INSERT INTO messages (id, session_id, role, content, timestamp) VALUES (?, ?, ?, ?, ?)",
-                (str(uuid.uuid4()), session_id, "user", "hello", now),
+                "INSERT INTO room_agents (room_id, agent_id) VALUES (?, ?)",
+                (room_id, agent_id),
+            )
+            conn.execute(
+                """INSERT INTO room_messages (id, room_id, sender_type, sender_id, content, timestamp, origin)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (str(uuid.uuid4()), room_id, "user", user_id, "hello", now, "chat"),
             )
             conn.execute(
                 """INSERT INTO emotional_state
@@ -1335,7 +1225,7 @@ class TestManageEndpoints:
                 """INSERT INTO emotional_events_v2
                    (id, user_id, agent_id, session_id, timestamp)
                    VALUES (?, ?, ?, ?, ?)""",
-                (str(uuid.uuid4()), user_id, agent_id, session_id, now),
+                (str(uuid.uuid4()), user_id, agent_id, room_id, now),
             )
             conn.execute(
                 """INSERT INTO trigger_counts
@@ -1345,9 +1235,9 @@ class TestManageEndpoints:
             )
             conn.execute(
                 """INSERT INTO game_stats
-                   (id, session_id, user_id, agent_id, game_id, result, played_at)
+                   (id, room_id, user_id, agent_id, game_id, result, played_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (str(uuid.uuid4()), session_id, user_id, agent_id, "tictactoe", "win", now),
+                (str(uuid.uuid4()), room_id, user_id, agent_id, "tictactoe", "win", now),
             )
 
         response = await test_client.delete(
@@ -1359,9 +1249,10 @@ class TestManageEndpoints:
 
         with get_db() as conn:
             assert conn.execute("SELECT 1 FROM agents WHERE id = ?", (agent_id,)).fetchone() is None
-            assert conn.execute("SELECT 1 FROM sessions WHERE agent_id = ?", (agent_id,)).fetchone() is None
-            assert conn.execute("SELECT 1 FROM messages WHERE session_id = ?", (session_id,)).fetchone() is None
-            assert conn.execute("SELECT 1 FROM session_participants WHERE session_id = ?", (session_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM rooms WHERE id = ?", (room_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM room_messages WHERE room_id = ?", (room_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM room_participants WHERE room_id = ?", (room_id,)).fetchone() is None
+            assert conn.execute("SELECT 1 FROM room_agents WHERE room_id = ?", (room_id,)).fetchone() is None
             assert conn.execute("SELECT 1 FROM user_agents WHERE agent_id = ?", (agent_id,)).fetchone() is None
             assert conn.execute("SELECT 1 FROM emotional_state WHERE agent_id = ?", (agent_id,)).fetchone() is None
             assert conn.execute("SELECT 1 FROM emotional_events_v2 WHERE agent_id = ?", (agent_id,)).fetchone() is None

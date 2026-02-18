@@ -64,7 +64,7 @@ async def get_user_agents(user_id: str, token: str = Depends(verify_token)):
     return AgentsListResponse(agents=agents, count=len(agents))
 
 
-@router.get("/{user_id}/agents/{agent_id}/sessions", response_model=SessionsListResponse)
+@router.get("/{user_id}/agents/{agent_id}/rooms", response_model=RoomsListResponse)
 async def get_user_agent_rooms(
     user_id: str,
     agent_id: str,
