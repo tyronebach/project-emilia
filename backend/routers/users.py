@@ -3,9 +3,9 @@ import json
 from fastapi import APIRouter, Depends
 from dependencies import verify_token
 from core.exceptions import not_found, forbidden, bad_request
-from schemas import UsersListResponse, AgentsListResponse, SessionsListResponse
+from schemas import UsersListResponse, AgentsListResponse, RoomsListResponse, RoomResponse
 from schemas.requests import UserPreferencesUpdate
-from db.repositories import UserRepository, SessionRepository
+from db.repositories import UserRepository, RoomRepository
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -65,15 +65,21 @@ async def get_user_agents(user_id: str, token: str = Depends(verify_token)):
 
 
 @router.get("/{user_id}/agents/{agent_id}/sessions", response_model=SessionsListResponse)
-async def get_user_agent_sessions(
+async def get_user_agent_rooms(
     user_id: str,
     agent_id: str,
     token: str = Depends(verify_token)
 ):
+    """Get rooms for a user-agent pair."""
     if not UserRepository.get_by_id(user_id):
         raise not_found("User")
     if not UserRepository.can_access_agent(user_id, agent_id):
         raise forbidden("User cannot access this agent")
 
-    sessions = SessionRepository.get_for_user(user_id, agent_id)
-    return SessionsListResponse(sessions=sessions, count=len(sessions))
+    rooms = RoomRepository.get_for_user(user_id)
+    # Filter to rooms that include this agent
+    filtered = [r for r in rooms if any(
+        a.get("agent_id") == agent_id
+        for a in (RoomRepository.get_agents(r["id"]) or [])
+    )]
+    return RoomsListResponse(rooms=[RoomResponse(**r) for r in filtered], count=len(filtered))

@@ -3,7 +3,7 @@ import sqlite3
 from fastapi import APIRouter, Depends
 from dependencies import verify_token
 from core.exceptions import not_found, bad_request
-from db.repositories import AgentRepository, SessionRepository, MessageRepository, UserRepository, GameRepository
+from db.repositories import AgentRepository, RoomRepository, RoomMessageRepository, UserRepository, GameRepository
 from db.connection import get_db
 from config import settings
 from schemas import (
@@ -19,7 +19,8 @@ from schemas import (
     UserResponse,
     AgentResponse,
     AgentsListResponse,
-    SessionsListResponse,
+    RoomsListResponse,
+    RoomResponse,
     GameRegistryListResponse,
     GameRegistryItemResponse,
     AgentGameConfigListResponse,
@@ -32,21 +33,17 @@ from schemas import (
 router = APIRouter(prefix="/api/manage", tags=["admin"])
 
 
-@router.get("/sessions", response_model=SessionsListResponse)
-async def list_all_sessions(token: str = Depends(verify_token)):
-    sessions = SessionRepository.get_all()
-    return SessionsListResponse(sessions=sessions, count=len(sessions))
+@router.get("/rooms", response_model=RoomsListResponse)
+async def list_all_rooms(token: str = Depends(verify_token)):
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM rooms ORDER BY last_activity DESC").fetchall()
+    return RoomsListResponse(rooms=[RoomResponse(**r) for r in rows], count=len(rows))
 
 
-@router.delete("/sessions/agent/{agent_id}", response_model=AgentDeleteResponse)
-async def delete_agent_sessions(agent_id: str, token: str = Depends(verify_token)):
-    count = SessionRepository.delete_by_agent(agent_id)
-    return AgentDeleteResponse(deleted=count, agent_id=agent_id)
-
-
-@router.delete("/sessions/all", response_model=DeleteResponse)
-async def delete_all_sessions(token: str = Depends(verify_token)):
-    count = SessionRepository.delete_all()
+@router.delete("/rooms/all", response_model=DeleteResponse)
+async def delete_all_rooms(token: str = Depends(verify_token)):
+    with get_db() as conn:
+        count = conn.execute("DELETE FROM rooms").rowcount
     return DeleteResponse(deleted=count)
 
 
@@ -307,29 +304,24 @@ async def remove_manage_user_agent(
     return StatusResponse(status="ok", message="mapping_removed")
 
 
-@router.get("/debug/compaction/{session_id}")
-async def get_compaction_debug(session_id: str, token: str = Depends(verify_token)):
-    """Get compaction debug info for a session."""
-    session = SessionRepository.get_by_id(session_id)
-    if not session:
-        raise not_found("Session")
-    
-    # Get actual message count from messages table
-    with get_db() as conn:
-        actual_count = conn.execute(
-            "SELECT COUNT(*) as count FROM messages WHERE session_id = ?",
-            (session_id,)
-        ).fetchone()["count"]
-    
+@router.get("/debug/compaction/{room_id}")
+async def get_compaction_debug(room_id: str, token: str = Depends(verify_token)):
+    """Get compaction debug info for a room."""
+    room = RoomRepository.get_by_id(room_id)
+    if not room:
+        raise not_found("Room")
+
+    actual_count = RoomRepository.get_message_count(room_id)
+
     return {
-        "session_id": session_id,
-        "session_name": session.get("name"),
-        "message_count_cached": session.get("message_count", 0),
+        "room_id": room_id,
+        "room_name": room.get("name"),
+        "message_count_cached": room.get("message_count", 0),
         "message_count_actual": actual_count,
-        "summary": session.get("summary"),
-        "summary_length": len(session.get("summary") or ""),
-        "summary_updated_at": session.get("summary_updated_at"),
-        "compaction_count": session.get("compaction_count", 0),
+        "summary": room.get("summary"),
+        "summary_length": len(room.get("summary") or ""),
+        "summary_updated_at": room.get("summary_updated_at"),
+        "compaction_count": room.get("compaction_count", 0),
         "config": {
             "threshold": settings.compact_threshold,
             "keep_recent": settings.compact_keep_recent,
@@ -339,39 +331,39 @@ async def get_compaction_debug(session_id: str, token: str = Depends(verify_toke
     }
 
 
-@router.post("/debug/compaction/{session_id}/trigger")
-async def trigger_compaction(session_id: str, token: str = Depends(verify_token)):
-    """Manually trigger compaction for a session."""
+@router.post("/debug/compaction/{room_id}/trigger")
+async def trigger_compaction(room_id: str, token: str = Depends(verify_token)):
+    """Manually trigger compaction for a room."""
     from services.compaction import CompactionService
-    
-    session = SessionRepository.get_by_id(session_id)
-    if not session:
-        raise not_found("Session")
-    
-    all_msgs = MessageRepository.get_all_for_session(session_id)
+
+    room = RoomRepository.get_by_id(room_id)
+    if not room:
+        raise not_found("Room")
+
+    all_msgs = RoomMessageRepository.get_all_for_room(room_id)
     if len(all_msgs) <= settings.compact_keep_recent:
         return {
             "status": "skipped",
             "reason": f"Only {len(all_msgs)} messages, need more than {settings.compact_keep_recent} to compact"
         }
-    
+
     split_at = len(all_msgs) - settings.compact_keep_recent
     old_msgs = all_msgs[:split_at]
-    
-    # Build messages to summarize
-    existing_summary = SessionRepository.get_summary(session_id)
+
+    existing_summary = RoomRepository.get_summary(room_id)
     to_summarize = []
     if existing_summary:
         to_summarize.append({"role": "system", "content": f"Prior summary: {existing_summary}"})
-    to_summarize.extend({"role": m["role"], "content": m["content"]} for m in old_msgs)
-    
-    # Generate summary
+    for msg in old_msgs:
+        sender_name = str(msg.get("sender_name") or msg.get("sender_id") or "Unknown")
+        content = str(msg.get("content") or "")
+        to_summarize.append({"role": "user", "content": f"[{sender_name}]: {content}"})
+
     summary = await CompactionService.summarize_messages(to_summarize)
-    
-    # Persist
-    SessionRepository.update_summary(session_id, summary)
-    deleted = MessageRepository.delete_oldest(session_id, settings.compact_keep_recent)
-    
+
+    RoomRepository.update_summary(room_id, summary)
+    deleted = RoomMessageRepository.delete_oldest(room_id, settings.compact_keep_recent)
+
     return {
         "status": "ok",
         "messages_summarized": len(old_msgs),

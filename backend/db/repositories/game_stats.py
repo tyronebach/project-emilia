@@ -8,7 +8,7 @@ class GameStatsRepository:
 
     @staticmethod
     def record_game(
-        session_id: str,
+        room_id: str,
         user_id: str,
         agent_id: str,
         game_id: str,
@@ -23,15 +23,15 @@ class GameStatsRepository:
         with get_db() as conn:
             conn.execute(
                 """INSERT INTO game_stats
-                   (id, session_id, user_id, agent_id, game_id, result,
+                   (id, room_id, user_id, agent_id, game_id, result,
                     moves, duration_seconds, played_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (row_id, session_id, user_id, agent_id, game_id, result,
+                (row_id, room_id, user_id, agent_id, game_id, result,
                  moves, duration_seconds, now)
             )
             return {
                 "id": row_id,
-                "session_id": session_id,
+                "room_id": room_id,
                 "user_id": user_id,
                 "agent_id": agent_id,
                 "game_id": game_id,

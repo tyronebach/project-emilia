@@ -134,15 +134,14 @@ def _first_interaction_stats(user_id: str, agent_id: str) -> tuple[float | None,
         row = conn.execute(
             """
             SELECT MIN(m.timestamp) AS first_ts, COUNT(*) AS msg_count
-            FROM messages m
-            JOIN sessions s ON s.id = m.session_id
-            JOIN session_participants sp ON sp.session_id = s.id
-            WHERE sp.user_id = ?
-              AND s.agent_id = ?
-              AND m.role IN ('user', 'assistant')
+            FROM room_messages m
+            JOIN room_participants rp ON rp.room_id = m.room_id
+            JOIN room_agents ra ON ra.room_id = m.room_id AND ra.agent_id = ?
+            WHERE rp.user_id = ?
+              AND m.sender_type IN ('user', 'agent')
               AND COALESCE(m.origin, '') != 'game_runtime'
             """,
-            (user_id, agent_id),
+            (agent_id, user_id),
         ).fetchone()
 
     if not row:

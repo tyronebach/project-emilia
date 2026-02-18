@@ -100,40 +100,7 @@ def init_db():
             )
         """)
 
-        # Sessions table
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS sessions (
-                id TEXT PRIMARY KEY,
-                agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-                name TEXT,
-                created_at INTEGER DEFAULT (strftime('%s', 'now')),
-                last_used INTEGER DEFAULT (strftime('%s', 'now')),
-                message_count INTEGER DEFAULT 0
-            )
-        """)
-
-        # Session participants (many-to-many for users)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS session_participants (
-                session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                PRIMARY KEY (session_id, user_id)
-            )
-        """)
-
-        # Session agents (many-to-many for multi-agent support)
-        # This extends sessions to support 1-N agents (unified chat)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS session_agents (
-                session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-                agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-                added_at INTEGER DEFAULT (strftime('%s', 'now')),
-                role TEXT DEFAULT 'participant',
-                PRIMARY KEY (session_id, agent_id)
-            )
-        """)
-
-        # Rooms table (group chats)
+        # Rooms table (DM + group chats — canonical chat container)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS rooms (
                 id TEXT PRIMARY KEY,
@@ -219,15 +186,14 @@ def init_db():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS game_stats (
                 id TEXT PRIMARY KEY,
-                session_id TEXT NOT NULL,
+                room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
                 user_id TEXT NOT NULL,
                 agent_id TEXT NOT NULL,
                 game_id TEXT NOT NULL,
                 result TEXT NOT NULL,
                 moves INTEGER,
                 duration_seconds INTEGER,
-                played_at REAL NOT NULL,
-                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+                played_at REAL NOT NULL
             )
         """)
 
@@ -320,29 +286,6 @@ def init_db():
             )
         """)
 
-        # Messages table (webapp-managed history)
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS messages (
-                id TEXT PRIMARY KEY,
-                session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-                role TEXT NOT NULL,
-                origin TEXT DEFAULT 'user',
-                content TEXT NOT NULL,
-                timestamp REAL NOT NULL,
-                model TEXT,
-                processing_ms INTEGER,
-                usage_prompt_tokens INTEGER,
-                usage_completion_tokens INTEGER,
-                behavior_intent TEXT,
-                behavior_mood TEXT,
-                behavior_mood_intensity REAL,
-                behavior_energy TEXT,
-                behavior_move TEXT,
-                behavior_game_action TEXT,
-                audio_base64 TEXT
-            )
-        """)
-
         # Drift archetypes (global replay datasets for Drift Simulator V2)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS drift_archetypes (
@@ -360,22 +303,6 @@ def init_db():
 
         # Mood weights (JSON dict of mood->weight)
         _add_column(cur, "emotional_state", "mood_weights_json", "TEXT")
-
-        # Multi-agent support: agent_id on messages (which agent sent this message)
-        _add_column(cur, "messages", "agent_id", "TEXT")
-
-        # Backfill session_agents from sessions.agent_id for existing sessions
-        cur.execute("""
-            INSERT OR IGNORE INTO session_agents (session_id, agent_id, added_at)
-            SELECT id, agent_id, created_at FROM sessions WHERE agent_id IS NOT NULL
-        """)
-
-        # Backfill messages.agent_id from session's agent_id for assistant messages
-        cur.execute("""
-            UPDATE messages
-            SET agent_id = (SELECT agent_id FROM sessions WHERE sessions.id = messages.session_id)
-            WHERE role = 'assistant' AND agent_id IS NULL
-        """)
 
         # Async trigger batching (LLM classification runs every N messages)
         _add_column(cur, "emotional_state", "trigger_buffer", "TEXT")  # JSON array of recent messages
@@ -407,23 +334,6 @@ def init_db():
                   OR LOWER(chat_mode) NOT IN ('openclaw', 'direct')"""
         )
 
-        # Session compaction columns (Phase 3.1)
-        _add_column(cur, "sessions", "summary", "TEXT")
-        _add_column(cur, "sessions", "summary_updated_at", "INTEGER")
-        _add_column(cur, "sessions", "compaction_count", "INTEGER DEFAULT 0")
-
-        # Message origin metadata for runtime/system filtering.
-        _add_column(cur, "messages", "origin", "TEXT")
-        cur.execute(
-            """UPDATE messages
-               SET origin = CASE
-                   WHEN role = 'assistant' THEN 'assistant'
-                   WHEN role = 'user' THEN 'user'
-                   ELSE 'system'
-               END
-               WHERE origin IS NULL OR TRIM(origin) = ''"""
-        )
-
         # Mood definitions
         cur.execute("""
             CREATE TABLE IF NOT EXISTS moods (
@@ -453,11 +363,6 @@ def init_db():
         """)
 
         # Indexes for common queries
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_last_used ON sessions(last_used DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_session_participants_user ON session_participants(user_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_session_agents_agent ON session_agents(agent_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_session_agents_session ON session_agents(session_id)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_agent ON messages(agent_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_rooms_last_activity ON rooms(last_activity DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_rooms_created_by ON rooms(created_by)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_room_participants_user ON room_participants(user_id)")
@@ -466,8 +371,7 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_room_messages_sender ON room_messages(sender_type, sender_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_last_used ON tts_cache(last_used DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tts_cache_created_at ON tts_cache(created_at DESC)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp)")
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_session_origin ON messages(session_id, origin, timestamp)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_game_stats_room ON game_stats(room_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_game_stats_user ON game_stats(user_id, agent_id, game_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_game_registry_active ON game_registry(active)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_agent_game_config_agent ON agent_game_config(agent_id)")

@@ -35,13 +35,6 @@ async def get_optional_agent_id(
     return x_agent_id.strip() if x_agent_id else None
 
 
-async def get_session_id(
-    x_session_id: str | None = Header(None, alias="X-Session-Id")
-) -> str | None:
-    """Extract optional X-Session-Id header."""
-    return x_session_id.strip() if x_session_id else None
-
-
 async def get_agent_workspace(
     user_id: str = Depends(get_user_id),
     agent_id: str = Query(..., description="Agent ID"),
