@@ -54,6 +54,13 @@ def _add_column(cur, table: str, column: str, col_type: str):
         cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
 
 
+def _rename_column(cur, table: str, old_name: str, new_name: str):
+    """Rename a column if the old name still exists (idempotent migration)."""
+    cols = {row["name"] for row in cur.execute(f"PRAGMA table_info({table})").fetchall()}
+    if old_name in cols and new_name not in cols:
+        cur.execute(f"ALTER TABLE {table} RENAME COLUMN {old_name} TO {new_name}")
+
+
 def init_db():
     """Initialize database schema."""
     with get_db() as conn:
@@ -361,6 +368,25 @@ def init_db():
                 created_at INTEGER DEFAULT (strftime('%s', 'now'))
             )
         """)
+
+        # Migration: game_stats had session_id FK to (removed) sessions table.
+        # SQLite can't alter FKs, so drop and recreate if old schema detected.
+        gs_cols = {row["name"] for row in cur.execute("PRAGMA table_info(game_stats)").fetchall()}
+        if "session_id" in gs_cols:
+            cur.execute("DROP TABLE game_stats")
+            cur.execute("""
+                CREATE TABLE game_stats (
+                    id TEXT PRIMARY KEY,
+                    room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                    user_id TEXT NOT NULL,
+                    agent_id TEXT NOT NULL,
+                    game_id TEXT NOT NULL,
+                    result TEXT NOT NULL,
+                    moves INTEGER,
+                    duration_seconds INTEGER,
+                    played_at REAL NOT NULL
+                )
+            """)
 
         # Indexes for common queries
         cur.execute("CREATE INDEX IF NOT EXISTS idx_rooms_last_activity ON rooms(last_activity DESC)")

@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from routers.chat import inject_game_context
+from services.chat_context_runtime import inject_game_context
 
 
 def test_no_game_context():

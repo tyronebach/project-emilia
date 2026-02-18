@@ -221,6 +221,10 @@ async def chat(
         if user_msg_id:
             RoomMessageRepository.delete_by_id(user_msg_id)
         raise service_unavailable("Chat")
+    except ValueError as e:
+        if user_msg_id:
+            RoomMessageRepository.delete_by_id(user_msg_id)
+        raise service_unavailable(str(e))
     except Exception:
         if user_msg_id:
             RoomMessageRepository.delete_by_id(user_msg_id)
