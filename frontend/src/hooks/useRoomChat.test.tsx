@@ -1,8 +1,8 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useRoomChat } from './useRoomChat';
+import { useChat } from './useChat';
 import { useUserStore } from '../store/userStore';
-import { useRoomStore } from '../store/roomStore';
+import { useChatStore } from '../store/chatStore';
 import { useAppStore } from '../store';
 
 vi.mock('../utils/api', async (importOriginal) => {
@@ -14,9 +14,16 @@ vi.mock('../utils/api', async (importOriginal) => {
   };
 });
 
+vi.mock('./useGame', () => ({
+  useGame: () => ({
+    getGameContext: () => null,
+    handleAvatarResponse: vi.fn(),
+  }),
+}));
+
 import { streamRoomChat } from '../utils/api';
 
-describe('useRoomChat avatar events', () => {
+describe('useChat room-mode avatar events', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -31,7 +38,12 @@ describe('useRoomChat avatar events', () => {
       currentAgent: null,
     });
 
-    useRoomStore.setState({
+    useAppStore.setState({
+      roomId: 'room-1',
+      status: 'ready',
+    });
+
+    useChatStore.setState({
       currentRoomId: 'room-1',
       currentRoom: null,
       agents: [],
@@ -43,7 +55,7 @@ describe('useRoomChat avatar events', () => {
     });
   });
 
-  it('applies avatar commands for the focused room agent', async () => {
+  it('stores avatar commands for all agents via chatStore (no global applyAvatarCommand)', async () => {
     const applyAvatarCommand = vi.fn();
     useAppStore.setState({ applyAvatarCommand });
 
@@ -60,23 +72,17 @@ describe('useRoomChat avatar events', () => {
       onEvent({ type: 'done', room_id: 'room-1' });
     });
 
-    const { result } = renderHook(() => useRoomChat('room-1'));
+    const { result } = renderHook(() => useChat('room'));
 
     await act(async () => {
       await result.current.sendMessage('hello room');
     });
 
-    expect(applyAvatarCommand).toHaveBeenCalledTimes(1);
-    expect(applyAvatarCommand).toHaveBeenCalledWith({
-      intent: 'greeting',
-      mood: 'happy',
-      intensity: 0.7,
-      energy: 'high',
-      move: undefined,
-      game_action: undefined,
-    });
+    // Room mode no longer calls the global applyAvatarCommand —
+    // each RoomAvatarTile picks up commands from the store.
+    expect(applyAvatarCommand).not.toHaveBeenCalled();
 
-    const state = useRoomStore.getState();
+    const state = useChatStore.getState();
     expect(state.avatarCommandByAgent['agent-1']).toEqual({
       intent: 'greeting',
       mood: 'happy',
@@ -88,10 +94,10 @@ describe('useRoomChat avatar events', () => {
     expect(state.lastAvatarEventAtByAgent['agent-1']).toBeTypeOf('number');
   });
 
-  it('ignores avatar commands for non-focused agents', async () => {
+  it('stores avatar commands for non-focused agents too', async () => {
     const applyAvatarCommand = vi.fn();
     useAppStore.setState({ applyAvatarCommand });
-    useRoomStore.setState({ focusedAgentId: 'agent-2' });
+    useChatStore.setState({ focusedAgentId: 'agent-2' });
 
     vi.mocked(streamRoomChat).mockImplementation(async (_roomId, _data, onEvent) => {
       onEvent({
@@ -103,7 +109,7 @@ describe('useRoomChat avatar events', () => {
       onEvent({ type: 'done', room_id: 'room-1' });
     });
 
-    const { result } = renderHook(() => useRoomChat('room-1'));
+    const { result } = renderHook(() => useChat('room'));
 
     await act(async () => {
       await result.current.sendMessage('hello room');
@@ -111,7 +117,7 @@ describe('useRoomChat avatar events', () => {
 
     expect(applyAvatarCommand).not.toHaveBeenCalled();
 
-    const state = useRoomStore.getState();
+    const state = useChatStore.getState();
     expect(state.avatarCommandByAgent['agent-1']).toEqual({
       intent: 'greeting',
       mood: undefined,

@@ -36,7 +36,7 @@
 - `backend/dependencies.py`: Auth + header dependencies.
 - `backend/routers/`: API endpoints.
 - `backend/schemas/`: Pydantic request/response models.
-- `backend/services/`: ElevenLabs client, emotion engine, shared emotion runtime hooks, shared chat-context runtime helpers, background task scheduler, drift simulator, room chat orchestration, compaction, Soul Window helpers, SOUL simulator helpers, direct LLM client, direct tool runtime, memory bridge.
+- `backend/services/`: ElevenLabs client, emotion engine, shared emotion runtime hooks, shared chat-context runtime helpers, background task scheduler, drift simulator, room chat orchestration, compaction, Soul Window helpers, SOUL simulator helpers, direct LLM client, direct tool runtime, memory bridge, extracted LLM caller, extracted room chat stream SSE.
 - `backend/db/`: SQLite connection + repositories.
 - `backend/core/exceptions.py`: Exception helpers.
 
@@ -188,7 +188,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `rooms`: canonical chat container (`room_type` = `dm` or `group`, `created_by`, settings, activity counters, optional compaction summary)
 - `room_participants`: many-to-many user membership in rooms
 - `room_agents`: many-to-many agent membership + response modes (`mention|always|manual`)
-- `room_messages`: chat message log with sender attribution (`sender_type`, `sender_id`) and behavior tags
+- `room_messages`: chat message log with sender attribution (`sender_type`: `user`|`agent`, `sender_id`) and behavior tags. Frontend `ChatMessage` also supports `sender_type: 'system'` for local error messages.
 - `tts_cache`: TTS caching data
 - `game_stats`: per-room game results (`room_id` FK to rooms)
 - `drift_archetypes`: global drift replay datasets used by Designer V2 simulation
@@ -257,6 +257,15 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - Runs a ping-pong exchange (archetype user vs SOUL persona) and returns judge-scored consistency hints.
 - Used by `POST /api/designer/v2/soul/simulate`.
 
+**LLM Caller** (`backend/services/llm_caller.py`)
+- Extracted from `rooms.py`. Provides `call_llm_streaming()` async generator for both `direct` and `openclaw` modes.
+- Yields `{"content": str}` chunks or `{"done": True, "usage": dict}` terminal event.
+- Used by both streaming and non-streaming room chat paths.
+
+**Room Chat Stream** (`backend/services/room_chat_stream.py`)
+- Extracted `_stream_room_chat_sse` and helpers (`_extract_behavior_dict`, `_room_message_row`, `_maybe_compact_room`) from `rooms.py`.
+- Both `rooms.py` and `chat.py` import at module level — eliminates the previous fragile late import circular dependency.
+
 **Direct LLM + Tool Runtime** (`backend/services/direct_llm.py`, `backend/services/direct_tool_runtime.py`)
 - `DirectLLMClient`: OpenAI-compatible chat completion (non-stream + stream), with optional `tools` param.
 - `normalize_messages_for_direct()`: shared message normalization used by both `chat.py` and `rooms.py`.
@@ -290,7 +299,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `frontend/src/store/`: Zustand stores.
 - `frontend/src/utils/`: API wrapper, helpers, schemas.
 - `frontend/src/types/soulWindow.ts`: Soul Window API payload types.
-- `frontend/src/hooks/`: Chat, voice, room, game, and logout hooks.
+- `frontend/src/hooks/`: Unified chat (`useChat`), voice, game, session, and logout hooks.
 - `frontend/public/`: VRM + animation assets and manifests.
 
 ### Routing
@@ -299,9 +308,8 @@ Routes are file-based via TanStack Router.
 - `/`: `UserSelection`
 - `/user/$userId/`: `AgentSelection`
 - `/user/$userId/chat/new`: `NewChatPage` (creates a room)
-- `/user/$userId/chat/$roomId`: Main `App` (chat UI)
+- `/user/$userId/chat/$roomId`: Main `App` (chat UI — handles both 1:1 and multi-agent rooms)
 - `/user/$userId/chat/initializing/$roomId`: `InitializingPage`
-- `/user/$userId/rooms/$roomId`: Group room chat UI
 - `/manage`: `AdminPanel`
 - `/debug`: `AvatarDebugPanel`
 - `/designer-v2`: `DesignerPageV2`
@@ -309,10 +317,9 @@ Routes are file-based via TanStack Router.
 ### State Management (Zustand)
 
 - `frontend/src/store/index.ts`: App state (status, errors, roomId, TTS, avatar commands).
-- `frontend/src/store/userStore.ts`: Current user/agent, persisted to localStorage.
-- `frontend/src/store/chatStore.ts`: Messages + streaming content + emotion debug + `currentMood` snapshot.
-- `frontend/src/store/roomStore.ts`: Group room state (room, agents, messages, per-agent streaming chunks, per-agent avatar commands + avatar-event timestamps).
-- `frontend/src/store/renderStore.ts`: Render quality, per-user persisted settings.
+- `frontend/src/store/userStore.ts`: Current user/agent, persisted to localStorage. `setAgent()` clears room state (for agent switch navigation). `syncAgent()` updates identity only (for post-removal sync without clearing messages/room).
+- `frontend/src/store/chatStore.ts`: Unified chat + room state. Holds messages (`ChatMessage[]`), room context (`currentRoom`, `agents`), per-agent maps (`streamingByAgent`, `statusByAgent`, `emotionByAgent`, `avatarCommandByAgent`, `lastAvatarEventAtByAgent`), emotion debug, `currentMood` snapshot, and `focusedAgentId`. Replaces the former separate `roomStore`.
+- `frontend/src/store/renderStore.ts`: Render quality, per-user persisted settings. Per-agent camera positions via `cameraPositionByAgent` map (scoped by agentId, persisted to localStorage).
 - `frontend/src/store/gameStore.ts`: Game session state, persisted to sessionStorage.
 - `frontend/src/store/statsStore.ts`: Latency + state logs for debug HUD.
 - `ttsEnabled` no longer mirrors localStorage; it is synced from backend `users.preferences`.
@@ -332,14 +339,15 @@ Routes are file-based via TanStack Router.
 ### Major Components
 
 **Core UI**
-- `AvatarPanel`: VRM renderer mount + controls.
+- `AvatarPanel`: Single-agent full-screen VRM renderer mount + orbit controls.
+- `AvatarStage`: Multi-agent avatar grid layout (1=full, 2=side-by-side, 3-4=2x2). Uses `RoomAvatarTile` per agent.
 - `ChatPanel`: Chat overlay with message list.
 - `InputControls`: Text input, voice toggle, send controls.
-- `components/rooms/RoomAvatarStage`: Multi-agent room avatar stage with renderer caps and fallback cards.
-- `components/rooms/RoomAvatarTile`: Per-agent VRM tile renderer for room chat.
-- `GamePanel` + `GameSelector`: Game UX and move flow.
+- `components/rooms/RoomAvatarTile`: Per-agent VRM tile renderer with independent orbit controls, per-agent camera persistence, and `AvatarRendererRegistry` integration.
+- `ParticipantsDrawer`: Right-side drawer for viewing/adding/removing room participants. DM→group promotion with confirmation dialog.
+- `GamePanel` + `GameSelector`: Game UX and move flow. Games only render in single-agent (DM) mode; hidden in multi-agent rooms.
 - `Drawer`: Room (chat) list + settings entry points.
-- `Header` + `MoodIndicator`: status + current mood display.
+- `Header` + `MoodIndicator`: status + current mood display + participants button with agent count badge.
 - `BondModal` + `AboutModal`: Soul Window relationship/personality modals.
 - `UserSelection`, `AgentSelection`: Login-like selection flow.
 
@@ -354,7 +362,8 @@ Routes are file-based via TanStack Router.
 ### VRM / Animation System
 
 Located in `frontend/src/avatar/`.
-- `AvatarRenderer`: Three.js + VRM scene setup, quality presets, post-processing.
+- `AvatarRenderer`: Three.js + VRM scene setup, quality presets, post-processing. Accepts optional `agentId` for per-agent camera position persistence (saves/loads via `renderStore.cameraPositionByAgent` instead of global position).
+- `AvatarRendererRegistry`: Singleton registry for per-agent renderer lookup (room mode). `RoomAvatarTile` registers renderers on VRM load; `useChat` uses the registry for per-agent lip-sync routing.
 - `AnimationController`, `AnimationGraph`, `AnimationStateMachine`: Behavior-driven animation routing.
 - `LipSyncEngine`: Uses ElevenLabs alignment data to drive mouth shapes.
 - `LookAtSystem`, `IdleRotator`, `IdleMicroBehaviors`, `BlinkController`: Ambient motion.
@@ -389,6 +398,8 @@ Assets
 - `VoiceService` + `VoiceActivityDetector` orchestrate hands-free VAD + STT.
 - `useVoiceChat` hook wires VAD, STT, and chat send.
 - `useChat` handles SSE, avatar commands, and optional TTS playback + lip sync.
+- In room (multi-agent) mode, TTS plays agents sequentially with per-agent `voice_id` override.
+- Lip-sync routes through `AvatarRendererRegistry` for per-agent renderer targeting in room mode, falling back to the global `avatarRenderer` in DM mode.
 
 ### Styling / UI
 
@@ -413,16 +424,25 @@ Assets
 ## Integration & Data Flows
 
 **Chat Flow**
-- Frontend `useChat` → `streamChat()` → `POST /api/chat?stream=1` (with `room_id` from store).
+- Frontend `useChat('dm')` → `streamChat()` → `POST /api/chat?stream=1` (with `room_id` from store).
+- Frontend `useChat('room')` → `streamRoomChat()` → `POST /api/rooms/{roomId}/chat?stream=1`.
+- The unified `useChat` hook auto-detects mode from `chatStore.agents.length` if not specified.
 - Backend uses provided `room_id` if present, otherwise resolves DM room via `get_or_create_dm_room()`, then delegates to room chat pipeline.
 - Room pipeline builds context: summary + recent `room_messages` + emotion context + first-turn timezone-aware facts + game context.
+- LLM calling extracted to `backend/services/llm_caller.py`; SSE framing extracted to `backend/services/room_chat_stream.py`.
 - LLM routing by `agents.chat_mode`:
   - `openclaw`: Clawdbot gateway `/v1/chat/completions` with `model: agent:{clawdbot_agent_id}`.
   - `direct`: `run_tool_loop()` with memory tools → OpenAI-compatible `/chat/completions`. Tool loop runs non-stream; final content emitted as single SSE chunk.
 - Backend parses `[MOOD]`, `[INTENT]`, `[ENERGY]`, `[MOVE]`, `[GAME]` tags for avatar behavior.
 - `_dm_stream_wrapper` reshapes room SSE events to legacy single-agent format (strips agent_id, converts `agent_done` → `done`).
 - SSE emits text chunks + `avatar` events + `emotion` events.
+- Room-mode streaming content is wrapped in `stripAvatarTagsStreaming()` before display (same as DM mode).
 - `emotion` event includes optional `snapshot` used by frontend mood indicator + bond modal entry.
+- Room-mode avatar events update `chatStore.avatarCommandByAgent` for ALL agents (no `focusedAgentId` gating). Each `RoomAvatarTile` reactively picks up its own command. Avatar `move` events are routed through `handleAvatarResponse()` for game move parsing in both DM and room modes.
+- Room-mode TTS: sequential per-agent queue drains after streaming. Each agent's `voice_id` is used; lip-sync routes through `AvatarRendererRegistry`.
+- Room-mode game context: `sendRoomMessage()` calls `getGameContext()` and passes it to `streamRoomChat()` (same as DM path). Games UI (`GamePanel`) is only rendered in single-agent mode.
+- Room error messages use `sender_type: 'system'` (not `'agent'`) for both per-agent errors and stream-level errors.
+- Failed agent responses show a "Retry" button that re-sends only to the failed agent.
 
 **Soul Window Flow**
 - Header mood indicator reflects `chatStore.currentMood` from SSE `emotion.snapshot`.
@@ -436,7 +456,8 @@ Assets
 
 **TTS + Lip Sync**
 - `POST /api/speak` returns audio + alignment.
-- Frontend decodes audio, starts playback, and passes alignment to `LipSyncEngine`.
+- DM: Frontend decodes audio, starts playback, and passes alignment to global `avatarRenderer.lipSyncEngine`.
+- Room: `speakText(text, voiceId, agentId)` looks up the agent's renderer via `AvatarRendererRegistry` for per-agent lip-sync, falling back to the global renderer.
 
 **Voice Input (Hands-free)**
 - VAD records audio → `POST /api/transcribe` → transcript → `sendMessage()`.
@@ -476,17 +497,16 @@ Assets
 ## Existing Docs
 
 **Docs present**
+- `docs/AUDIT-CHAT-2026-02-18.md`: Chat system architectural audit (current).
+- `docs/PLAN-CHAT-IMPL-2026-02-18.md`: Unified chat implementation plan (6 phases, all completed).
 - `docs/GLOBAL-DYNAMICS-TUNING.md`: Global Dynamics mood injection tuning guide (knobs, presets, per-agent vs global).
-- `docs/AUDIT-UNIFIED-CHAT.md`: Unified chat audit (session→room migration analysis).
-- `docs/PLAN-UNIFIED-CHAT.md`: Unified chat implementation plan.
-- `docs/DECISIONS-UNIFIED-CHAT.md`: Unified chat architectural decisions.
 - `docs/SOUL-SIMULATOR-API.md`: SOUL simulator endpoint contract.
 - `docs/P006-soul-window-dev-guide.md`: Soul Window implementation/extension guide.
 - `docs/planning/P010-direct-mode-v2-checklist.md`: Direct mode V2 implementation checklist (completed).
 - `docs/planning/archive/P006-soul-window.md`: canonical Soul Window plan.
 - `docs/planning/archive/DRIFT-API.md`: drift simulator endpoint contract.
 - `docs/animation/*`: VRM/animation research and pipeline notes.
-- `docs/archive/*`: older plans/specs and previous API docs (including archived IMPL-DIRECT-MODE.md, CODE-REVIEW-GROUP-CHAT.md).
+- `docs/archive/*`: older plans/specs and previous API docs (including archived AUDIT-UNIFIED-CHAT, PLAN-UNIFIED-CHAT, DECISIONS-UNIFIED-CHAT, IMPL-DIRECT-MODE, CODE-REVIEW-GROUP-CHAT).
 
 ---
 
@@ -495,6 +515,8 @@ Assets
 - `backend/main.py`: app entry + router registration.
 - `backend/routers/`: API surface.
 - `backend/services/emotion_engine.py`: core emotion engine.
+- `backend/services/llm_caller.py`: extracted LLM calling (streaming) for both direct and openclaw modes.
+- `backend/services/room_chat_stream.py`: extracted room SSE generator + helpers (shared by rooms.py and chat.py).
 - `backend/services/direct_llm.py`: direct LLM client + shared message normalization.
 - `backend/services/direct_tool_runtime.py`: bounded tool loop with memory tools.
 - `backend/services/memory_bridge.py`: memory search/read/write via OpenClaw SQLite index.
@@ -505,11 +527,15 @@ Assets
 - `backend/services/background_tasks.py`: shared background task scheduling helper.
 - `backend/services/soul_parser.py`: SOUL markdown parser.
 - `backend/db/connection.py`: schema + migrations.
-- `frontend/src/App.tsx`: main chat UI.
+- `frontend/src/App.tsx`: main chat UI (handles both single-agent and multi-agent rooms).
+- `frontend/src/components/ParticipantsDrawer.tsx`: right-side drawer for room participant management.
 - `frontend/src/components/MoodIndicator.tsx`: compact mood chip in header.
 - `frontend/src/components/BondModal.tsx`: relationship modal.
 - `frontend/src/components/AboutModal.tsx`: SOUL profile modal.
 - `frontend/src/avatar/AvatarRenderer.ts`: VRM renderer.
+- `frontend/src/avatar/AvatarRendererRegistry.ts`: per-agent renderer lookup for room-mode lip-sync.
+- `frontend/src/types/chat.ts`: unified ChatMessage type + AgentStatus + roomMessageToChatMessage converter.
+- `frontend/src/hooks/useChat.ts`: unified chat hook (DM + room mode).
 - `frontend/src/utils/api.ts`: API client + SSE.
 - `frontend/src/utils/soulWindowApi.ts`: Soul Window API wrappers.
 - `frontend/src/routes/*`: routing map.

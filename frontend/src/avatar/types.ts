@@ -12,6 +12,8 @@ export interface AvatarRendererOptions {
   cameraHeight?: number;
   enableShadows?: boolean;
   enableOrbitControls?: boolean;
+  /** Used to scope camera position persistence per-agent */
+  agentId?: string;
   onLoad?: (vrm: VRM) => void;
   onError?: (error: Error) => void;
   onProgress?: (percent: number) => void;

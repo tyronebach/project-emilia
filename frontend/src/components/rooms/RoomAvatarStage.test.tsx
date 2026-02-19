@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RoomAgent } from '../../utils/api';
-import { useRoomStore } from '../../store/roomStore';
+import { useChatStore } from '../../store/chatStore';
 import RoomAvatarStage from './RoomAvatarStage';
 
 vi.mock('../../avatar/preloadVRM', () => ({
@@ -67,11 +67,11 @@ describe('RoomAvatarStage', () => {
       value: vi.fn().mockReturnValue({}),
     });
 
-    useRoomStore.getState().clearRoomState();
+    useChatStore.getState().clearRoomState();
   });
 
   it('enforces desktop renderer cap and shows overflow fallback cards', () => {
-    useRoomStore.setState({
+    useChatStore.setState({
       agents: [
         makeAgent('agent-1', 'Alpha'),
         makeAgent('agent-2', 'Beta'),
@@ -94,7 +94,7 @@ describe('RoomAvatarStage', () => {
   });
 
   it('prioritizes focused agent into active renderers under cap', () => {
-    useRoomStore.setState({
+    useChatStore.setState({
       agents: [
         makeAgent('agent-1', 'Alpha'),
         makeAgent('agent-2', 'Beta'),
@@ -117,7 +117,7 @@ describe('RoomAvatarStage', () => {
 
   it('uses mobile cap and renders timestamped overflow fallback', () => {
     setMatchMedia(true);
-    useRoomStore.setState({
+    useChatStore.setState({
       agents: [
         makeAgent('agent-1', 'Alpha'),
         makeAgent('agent-2', 'Beta'),

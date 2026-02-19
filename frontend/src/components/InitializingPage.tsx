@@ -21,7 +21,7 @@ function InitializingPage({ userId, roomId }: InitializingPageProps) {
   const navigate = useNavigate();
   const currentUser = useUserStore((state) => state.currentUser);
   const currentAgent = useUserStore((state) => state.currentAgent);
-  const addMessage = useChatStore((state) => state.addMessage);
+  const addUserMessage = useChatStore((state) => state.addUserMessage);
   const clearMessages = useChatStore((state) => state.clearMessages);
   const setRoomId = useAppStore((state) => state.setRoomId);
   const { sendMessage } = useChat();
@@ -89,7 +89,7 @@ function InitializingPage({ userId, roomId }: InitializingPageProps) {
         setRoomId(roomId);
 
         const greeting = `*${currentUser?.display_name} is bringing you to life...* hi there`;
-        addMessage('user', greeting, { source: 'text', origin: 'user' });
+        addUserMessage(currentUser?.id ?? '', currentUser?.display_name ?? '', greeting, roomId, { source: 'text' });
 
         // Fire and forget - don't block navigation on response/TTS
         sendMessage(greeting);

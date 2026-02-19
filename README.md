@@ -2,7 +2,7 @@
 
 Voice + text chat with animated VRM avatar, including 1:1 sessions and group rooms.
 
-Current backend app version: `5.6.3`.
+Current backend app version: `5.9.0`.
 
 ## Stack
 
@@ -17,9 +17,10 @@ Current backend app version: `5.6.3`.
 
 ## Core Features
 
-- 1:1 chat sessions with streaming SSE responses and avatar behavior tags.
-- Group rooms with multi-agent participation.
-- Room multi-VRM avatar stage with focused-agent priority and renderer caps (desktop 4 / mobile 2).
+- Unified chat architecture — single `useChat` hook and `chatStore` handles both 1:1 DM and multi-agent rooms.
+- Inline participants drawer for adding/removing agents (right-side, mirrors left Drawer). Adding to a DM creates a new group room.
+- Multi-agent avatar stage with per-agent VRM renderer, independent orbit controls, and per-agent camera persistence.
+- Group chat TTS with sequential per-agent voice queue and per-agent lip-sync routing.
 - Per-agent chat backend toggle:
   - `openclaw` -> `agent:{clawdbot_agent_id}` via gateway
   - `direct` -> OpenAI-compatible `/chat/completions` with memory tool loop (`memory_search`, `memory_read`, `memory_write`)
@@ -75,7 +76,6 @@ If the backend catalog contains a game but no frontend loader exists, the select
 | Backend | http://localhost:8080 |
 | API Docs | http://localhost:8080/docs |
 | Agent Settings | https://localhost:3443/manage |
-| Group Rooms | https://localhost:3443/user/{userId}/rooms |
 | User Settings | In-app modal (Drawer → User Settings) |
 
 ## Development
@@ -108,9 +108,8 @@ npm run build         # Production build
 | `AGENTS.md` | Guide for coding agents |
 | `CHANGELOG.md` | Version history |
 | `DOCUMENTATION.md` | LLM-focused repo map |
-| `docs/IMPL-DIRECT-MODE.md` | Direct mode V1+V2 implementation doc |
-| `docs/CODE-REVIEW-GROUP-CHAT.md` | Group chat revalidation and closure notes |
-| `docs/planning/P012-shared-runtime-and-room-multi-vrm.md` | Shared runtime extraction + room multi-VRM plan (completed) |
+| `docs/AUDIT-CHAT-2026-02-18.md` | Chat system architectural audit |
+| `docs/PLAN-CHAT-IMPL-2026-02-18.md` | Unified chat implementation plan (6 phases, completed) |
 | `docs/SOUL-SIMULATOR-API.md` | SOUL simulator endpoint contract |
 | `docs/P006-soul-window-dev-guide.md` | Soul Window implementation and extension guide |
 | `docs/planning/P010-direct-mode-v2-checklist.md` | Direct mode V2 checklist (completed) |

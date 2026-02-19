@@ -11,7 +11,7 @@ import httpx
 from fastapi import APIRouter, UploadFile, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from dependencies import verify_token, get_user_id, get_agent_id, get_optional_agent_id
-from schemas import ChatRequest, SpeakRequest, RoomChatRequest
+from schemas import ChatRequest, SpeakRequest
 from config import settings
 from core.exceptions import TTSError, not_found, forbidden, service_unavailable, timeout_error
 from parse_chat import parse_chat_completion
@@ -33,7 +33,14 @@ from services.chat_context_runtime import (
     ensure_workspace_milestones as _ensure_workspace_milestones,
     safe_get_mood_snapshot as _safe_get_mood_snapshot,
 )
-from services.room_chat import build_room_llm_messages, determine_responding_agents
+from services.llm_caller import call_llm_non_stream
+from services.room_chat import (
+    build_room_llm_messages,
+    determine_responding_agents,
+    inject_first_turn_context_if_present,
+    inject_game_context_if_present,
+)
+from services.room_chat_stream import maybe_compact_room, stream_room_chat_sse
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +125,6 @@ async def chat(
         )
 
     # Non-streaming: run room chat orchestration for the single DM agent
-    from routers.rooms import _call_llm_non_stream, _maybe_compact_room
-    from routers.rooms import _inject_game_context_if_present, _inject_first_turn_context_if_present
-
     start_time = time.time()
     emotion_input_message = "" if runtime_trigger else request.message
     agent_data = responding_agents[0]
@@ -153,10 +157,10 @@ async def chat(
             emotional_context=emotional_context,
             include_game_runtime=bool(game_context),
         )
-        llm_messages = _inject_first_turn_context_if_present(llm_messages, first_turn_context)
-        llm_messages = _inject_game_context_if_present(llm_messages, agent_id, game_context)
+        llm_messages = inject_first_turn_context_if_present(llm_messages, first_turn_context)
+        llm_messages = inject_game_context_if_present(llm_messages, agent_id, game_context)
 
-        result = await _call_llm_non_stream(agent_data, llm_messages, room_id)
+        result = await call_llm_non_stream(agent_data, llm_messages, room_id)
         parsed = parse_chat_completion(result)
         processing_ms = int((time.time() - start_time) * 1000)
 
@@ -202,7 +206,7 @@ async def chat(
                 game_id=game_id,
             ))
 
-        _spawn_background(_maybe_compact_room(room_id))
+        _spawn_background(maybe_compact_room(room_id))
 
         resp = {
             "response": parsed["response_text"],
@@ -256,10 +260,8 @@ async def _dm_stream_wrapper(
     Strips agent_id from content events and reshapes done event to match
     the old /api/chat format expected by the frontend SSE parser.
     """
-    from routers.rooms import _stream_room_chat_sse
-
     try:
-        async for event_line in _stream_room_chat_sse(
+        async for event_line in stream_room_chat_sse(
             room_id=room_id,
             user_id=user_id,
             message=message,

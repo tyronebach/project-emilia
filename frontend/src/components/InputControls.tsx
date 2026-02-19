@@ -4,13 +4,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { AudioLines, Paperclip, ArrowUp, Gamepad2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useChatStore } from '../store/chatStore';
+import { useUserStore } from '../store/userStore';
 import { useChat } from '../hooks/useChat';
 import { chatInputSchema, ChatInput } from '../schemas/chat';
 import type { VoiceState } from '../services/VoiceService';
 import { useGameStore } from '../store/gameStore';
 import GameSelector from './GameSelector';
 import { isGamesV2EnabledForAgent } from '../config/features';
-import { useUserStore } from '../store/userStore';
 
 /**
  * ChatGPT-style floating input bar
@@ -23,7 +23,9 @@ interface InputControlsProps {
 function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
   const status = useAppStore((s) => s.status);
   const ttsEnabled = useAppStore((s) => s.ttsEnabled);
-  const addMessage = useChatStore((s) => s.addMessage);
+  const roomId = useAppStore((s) => s.roomId);
+  const addUserMessage = useChatStore((s) => s.addUserMessage);
+  const currentUser = useUserStore((s) => s.currentUser);
   const { sendMessage, isLoading } = useChat();
   const handsFreeEnabled = useAppStore((s) => s.handsFreeEnabled);
   const setHandsFreeEnabled = useAppStore((s) => s.setHandsFreeEnabled);
@@ -62,7 +64,7 @@ function InputControls({ voiceState = 'PASSIVE' }: InputControlsProps) {
     reset();
 
     // Add user message
-    addMessage('user', trimmedText, { source: 'text', origin: 'user' });
+    addUserMessage(currentUser?.id ?? '', currentUser?.display_name ?? '', trimmedText, roomId ?? '', { source: 'text' });
 
     // Send to API
     await sendMessage(trimmedText);

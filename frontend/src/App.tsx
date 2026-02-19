@@ -22,7 +22,7 @@ import BondModal from './components/BondModal';
 import AboutModal from './components/AboutModal';
 import AwakeningOverlay from './components/AwakeningOverlay';
 import GamePanel from './components/GamePanel';
-import { ManageParticipantsPanel } from './components/chat';
+import ParticipantsDrawer from './components/ParticipantsDrawer';
 import { STATUS_COLORS } from './types';
 import type { AppStatus } from './types';
 import { isGamesV2EnabledForAgent } from './config/features';
@@ -82,7 +82,7 @@ function App({ userId, roomId }: AppProps) {
   }, [roomId]);
 
   // Validate roomId exists - redirect to /chat/new if not found
-  // Also populates roomAgents for multi-agent support
+  // Also populates agents for multi-agent support
   useEffect(() => {
     if (!currentUser || hasValidatedRef.current || !roomId) return;
 
@@ -107,11 +107,11 @@ function App({ userId, roomId }: AppProps) {
           return;
         }
 
-        // Extract room data and populate roomAgents (multi-agent support)
+        // Extract room data and populate agents (multi-agent support)
         const room = await response.json();
         if (room.agents && Array.isArray(room.agents)) {
           console.log('[App] Room has %d agents', room.agents.length);
-          useChatStore.getState().setRoomAgents(room.agents);
+          useChatStore.getState().setAgents(room.agents);
         }
       } catch (error) {
         console.warn('[App] Room validation error:', error);
@@ -184,9 +184,9 @@ function AppContent({
   setParticipantsOpen: (open: boolean) => void;
 }) {
   const messages = useChatStore((s) => s.messages);
-  const addMessage = useChatStore((s) => s.addMessage);
+  const addUserMessage = useChatStore((s) => s.addUserMessage);
   const currentMood = useChatStore((s) => s.currentMood);
-  const roomAgents = useChatStore((s) => s.roomAgents);
+  const agents = useChatStore((s) => s.agents);
   const status = useAppStore((s) => s.status);
   const roomId = useAppStore((s) => s.roomId);
   const ttsEnabled = useAppStore((s) => s.ttsEnabled);
@@ -218,7 +218,7 @@ function AppContent({
   const voiceChat = useVoiceChat({
     onTranscript: (text) => {
       setVoiceTranscript(text);
-      addMessage('user', text, { source: 'voice', origin: 'user' });
+      addUserMessage(currentUser?.id ?? '', currentUser?.display_name ?? '', text, roomId ?? '', { source: 'voice' });
       void sendMessage(text);
     },
     onError: (error) => {
@@ -234,7 +234,7 @@ function AppContent({
   const [hasAwakened, setHasAwakened] = useState(false);
 
   // Check if there are any assistant messages with content
-  const hasAssistantMessage = messages.some(m => m.role === 'assistant' && m.content.trim() !== '');
+  const hasAssistantMessage = messages.some(m => m.sender_type === 'agent' && m.content.trim() !== '');
 
   // Awakening mode: no assistant messages AND thinking
   const isAwakening = !hasAwakened && !hasAssistantMessage && status === 'thinking';
@@ -332,7 +332,7 @@ function AppContent({
   }, [handsFreeEnabled]);
 
   // Multi-agent: use AvatarStage for adaptive layouts
-  const isMultiAgent = roomAgents.length > 1;
+  const isMultiAgent = agents.length > 1;
 
   return (
     <div className="min-h-[100svh] w-full bg-bg-primary text-text-primary overflow-hidden relative flex flex-col">
@@ -356,10 +356,12 @@ function AppContent({
         onMemoryClick={() => setMemoryOpen(!memoryOpen)}
         onBondClick={() => setBondOpen(!bondOpen)}
         onAboutClick={() => setAboutOpen(!aboutOpen)}
+        onParticipantsClick={() => setParticipantsOpen(!participantsOpen)}
         debugOpen={debugOpen}
         memoryOpen={memoryOpen}
         bondOpen={bondOpen}
         aboutOpen={aboutOpen}
+        participantsOpen={participantsOpen}
         currentMood={currentMood}
         handsFreeEnabled={handsFreeEnabled}
         voicePermissionWarning={voicePermissionWarning}
@@ -368,8 +370,8 @@ function AppContent({
       {/* Status pill - left side */}
       <StatusPill status={status} immersive={immersiveMode} />
 
-      {/* Game Panel */}
-      {!isAwakening && gamesEnabledForAgent && <GamePanel />}
+      {/* Game Panel — single-agent only; games are not supported in group rooms */}
+      {!isAwakening && !isMultiAgent && gamesEnabledForAgent && <GamePanel />}
 
       {/* Chat History Overlay - hidden during awakening */}
       {!isAwakening && <ChatPanel />}
@@ -407,24 +409,11 @@ function AppContent({
       {/* User Settings Modal */}
       <UserSettingsModal open={userSettingsOpen} onClose={() => setUserSettingsOpen(false)} />
 
-      {/* Participants button - shows only for multi-agent rooms */}
-      {roomAgents.length > 0 && roomId && !participantsOpen && (
-        <button
-          onClick={() => setParticipantsOpen(true)}
-          className="fixed top-16 right-4 z-20 flex items-center gap-2 px-3 py-2 rounded-full bg-bg-secondary/80 border border-white/10 backdrop-blur-sm hover:bg-bg-tertiary/80 transition-colors shadow-lg"
-          title="Manage participants"
-        >
-          <span className="text-sm">{roomAgents.length} agent{roomAgents.length !== 1 ? 's' : ''}</span>
-        </button>
-      )}
-
-      {/* Manage Participants Panel (multi-agent) */}
-      {participantsOpen && roomId && (
-        <ManageParticipantsPanel
-          roomId={roomId}
-          onClose={() => setParticipantsOpen(false)}
-        />
-      )}
+      {/* Participants Drawer (right side) */}
+      <ParticipantsDrawer
+        open={participantsOpen}
+        onClose={() => setParticipantsOpen(false)}
+      />
     </div>
   );
 }

@@ -1,6 +1,10 @@
-"""Room chat helpers: mention routing + per-agent context building."""
+"""Room chat helpers: mention routing, context building, message helpers."""
 import re
 from db.repositories import RoomRepository, RoomMessageRepository
+from services.chat_context_runtime import (
+    inject_game_context,
+    resolve_trusted_prompt_instructions,
+)
 
 _MENTION_PATTERN = re.compile(r"@([a-zA-Z0-9_.-]+)")
 _NON_ALNUM_PATTERN = re.compile(r"[^a-z0-9]")
@@ -153,5 +157,118 @@ def build_room_llm_messages(
             continue
 
         messages.append({"role": "user", "content": f"[{sender_name}]: {content}"})
+
+    return messages
+
+
+# ========== Shared helpers (used by both streaming and non-streaming paths) ==========
+
+
+def extract_behavior_dict(
+    *,
+    intent: str | None = None,
+    mood: str | None = None,
+    mood_intensity: float | None = None,
+    energy: str | None = None,
+    move: str | None = None,
+    game_action: str | None = None,
+) -> dict:
+    return {
+        "intent": intent,
+        "mood": mood,
+        "mood_intensity": mood_intensity if mood_intensity is not None else 1.0,
+        "energy": energy,
+        "move": move,
+        "game_action": game_action,
+    }
+
+
+def room_message_row(
+    room_id: str,
+    sender_type: str,
+    sender_id: str,
+    sender_name: str,
+    content: str,
+    origin: str,
+    timestamp: float,
+    model: str | None,
+    processing_ms: int | None,
+    usage_prompt_tokens: int | None,
+    usage_completion_tokens: int | None,
+    behavior: dict | None,
+) -> dict:
+    behavior = behavior or {}
+    behavior_values = extract_behavior_dict(
+        intent=behavior.get("intent"),
+        mood=behavior.get("mood"),
+        mood_intensity=behavior.get("mood_intensity"),
+        energy=behavior.get("energy"),
+        move=behavior.get("move"),
+        game_action=behavior.get("game_action"),
+    )
+    return {
+        "id": "",
+        "room_id": room_id,
+        "sender_type": sender_type,
+        "sender_id": sender_id,
+        "sender_name": sender_name,
+        "content": content,
+        "timestamp": timestamp,
+        "origin": origin,
+        "model": model,
+        "processing_ms": processing_ms,
+        "usage_prompt_tokens": usage_prompt_tokens,
+        "usage_completion_tokens": usage_completion_tokens,
+        "behavior_intent": behavior_values["intent"],
+        "behavior_mood": behavior_values["mood"],
+        "behavior_mood_intensity": behavior_values["mood_intensity"],
+        "behavior_energy": behavior_values["energy"],
+        "behavior_move": behavior_values["move"],
+        "behavior_game_action": behavior_values["game_action"],
+    }
+
+
+def inject_game_context_if_present(
+    messages: list[dict],
+    agent_id: str,
+    game_context: object | None,
+) -> list[dict]:
+    if not game_context:
+        return messages
+
+    trusted_prompt = resolve_trusted_prompt_instructions(agent_id, game_context)
+
+    for idx in range(len(messages) - 1, -1, -1):
+        if messages[idx].get("role") != "user":
+            continue
+        messages[idx] = {
+            **messages[idx],
+            "content": inject_game_context(
+                messages[idx].get("content") or "",
+                game_context,
+                prompt_instructions=trusted_prompt,
+            ),
+        }
+        break
+
+    return messages
+
+
+def inject_first_turn_context_if_present(
+    messages: list[dict],
+    first_turn_context: str | None,
+) -> list[dict]:
+    if not first_turn_context:
+        return messages
+
+    for idx in range(len(messages) - 1, -1, -1):
+        if messages[idx].get("role") != "user":
+            continue
+        existing_content = str(messages[idx].get("content") or "")
+        messages[idx] = {
+            **messages[idx],
+            "content": first_turn_context + "\n\n" + existing_content,
+        }
+        break
 
     return messages

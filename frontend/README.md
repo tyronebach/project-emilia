@@ -33,15 +33,18 @@ Optional allowlist override for local frontend:
 VITE_GAMES_V2_AGENT_ALLOWLIST=emilia,rem npm run dev -- --host
 ```
 
-## Group Rooms
+## Unified Chat Architecture
 
-- Room list: `/user/:userId/rooms`
-- Room chat: `/user/:userId/rooms/:roomId`
-- APIs used: `/api/rooms/*` (`getRooms`, `createRoom`, `getRoomHistory`, `streamRoomChat`)
+- Single `useChat(mode?: 'dm' | 'room')` hook handles both DM and multi-agent room chat.
+- Single `chatStore` (Zustand) — no separate roomStore. Per-agent state maps: `streamingByAgent`, `statusByAgent`, `emotionByAgent`, `avatarCommandByAgent`.
+- Canonical `ChatMessage` type in `types/chat.ts` mirrors API `RoomMessage` format.
 - Room chat renders a multi-VRM avatar stage (`RoomAvatarStage`) with:
   - active renderer caps (desktop 4 / mobile 2)
   - focused/streaming/recent-event prioritization
   - overflow fallback cards + WebGL/load-failure fallback UI
+  - `AvatarRendererRegistry` for per-agent lip-sync routing
+- Group TTS: sequential per-agent queue with per-agent `voice_id` override.
+- Error retry: failed agent messages show a "Retry" button targeting only the failed agent.
 
 ## Build
 
@@ -67,10 +70,10 @@ src/
 ├── avatar/       # VRM rendering, animation, lip-sync, behaviors
 ├── components/   # UI components + debug panels (incl. rooms/)
 ├── games/        # Game modules + registry
-├── hooks/        # useChat, useVoiceChat, useGame, useSession, useRoomChat, useLogout
+├── hooks/        # useChat (unified DM+room), useVoiceChat, useGame, useSession, useLogout
 ├── routes/       # TanStack Router pages
 ├── services/     # Voice service + VAD
-├── store/        # Zustand stores (app, chat, room, render, game, stats)
+├── store/        # Zustand stores (app, chat [unified], render, game, stats)
 ├── types/        # TypeScript types (+ soulWindow payload types)
 └── utils/        # API client, helpers, schemas (+ soulWindowApi)
 ```

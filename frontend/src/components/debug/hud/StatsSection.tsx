@@ -9,8 +9,8 @@ export function StatsSection() {
   const ttsEnabled = useAppStore((s) => s.ttsEnabled);
   const { totalLatency, latencyCount } = useStatsStore();
 
-  const userMessages = messages.filter((m) => m.role === 'user').length;
-  const assistantMessages = messages.filter((m) => m.role === 'assistant').length;
+  const userMessages = messages.filter((m) => m.sender_type === 'user').length;
+  const assistantMessages = messages.filter((m) => m.sender_type === 'agent').length;
   const avgLatency = latencyCount > 0 ? Math.round(totalLatency / latencyCount) : 0;
 
   return (

@@ -15,8 +15,6 @@ import { Route as DebugRouteImport } from './routes/debug'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UserUserIdRouteImport } from './routes/user/$userId'
 import { Route as UserUserIdIndexRouteImport } from './routes/user/$userId/index'
-import { Route as UserUserIdRoomsRouteImport } from './routes/user/$userId/rooms'
-import { Route as UserUserIdRoomsRoomIdRouteImport } from './routes/user/$userId/rooms.$roomId'
 import { Route as UserUserIdChatNewRouteImport } from './routes/user/$userId/chat.new'
 import { Route as UserUserIdChatRoomIdRouteImport } from './routes/user/$userId/chat.$roomId'
 import { Route as UserUserIdChatInitializingRoomIdRouteImport } from './routes/user/$userId/chat.initializing.$roomId'
@@ -51,16 +49,6 @@ const UserUserIdIndexRoute = UserUserIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => UserUserIdRoute,
 } as any)
-const UserUserIdRoomsRoute = UserUserIdRoomsRouteImport.update({
-  id: '/rooms',
-  path: '/rooms',
-  getParentRoute: () => UserUserIdRoute,
-} as any)
-const UserUserIdRoomsRoomIdRoute = UserUserIdRoomsRoomIdRouteImport.update({
-  id: '/$roomId',
-  path: '/$roomId',
-  getParentRoute: () => UserUserIdRoomsRoute,
-} as any)
 const UserUserIdChatNewRoute = UserUserIdChatNewRouteImport.update({
   id: '/chat/new',
   path: '/chat/new',
@@ -84,11 +72,9 @@ export interface FileRoutesByFullPath {
   '/designer-v2': typeof DesignerV2Route
   '/manage': typeof ManageRoute
   '/user/$userId': typeof UserUserIdRouteWithChildren
-  '/user/$userId/rooms': typeof UserUserIdRoomsRouteWithChildren
   '/user/$userId/': typeof UserUserIdIndexRoute
   '/user/$userId/chat/$roomId': typeof UserUserIdChatRoomIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
-  '/user/$userId/rooms/$roomId': typeof UserUserIdRoomsRoomIdRoute
   '/user/$userId/chat/initializing/$roomId': typeof UserUserIdChatInitializingRoomIdRoute
 }
 export interface FileRoutesByTo {
@@ -96,11 +82,9 @@ export interface FileRoutesByTo {
   '/debug': typeof DebugRoute
   '/designer-v2': typeof DesignerV2Route
   '/manage': typeof ManageRoute
-  '/user/$userId/rooms': typeof UserUserIdRoomsRouteWithChildren
   '/user/$userId': typeof UserUserIdIndexRoute
   '/user/$userId/chat/$roomId': typeof UserUserIdChatRoomIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
-  '/user/$userId/rooms/$roomId': typeof UserUserIdRoomsRoomIdRoute
   '/user/$userId/chat/initializing/$roomId': typeof UserUserIdChatInitializingRoomIdRoute
 }
 export interface FileRoutesById {
@@ -110,11 +94,9 @@ export interface FileRoutesById {
   '/designer-v2': typeof DesignerV2Route
   '/manage': typeof ManageRoute
   '/user/$userId': typeof UserUserIdRouteWithChildren
-  '/user/$userId/rooms': typeof UserUserIdRoomsRouteWithChildren
   '/user/$userId/': typeof UserUserIdIndexRoute
   '/user/$userId/chat/$roomId': typeof UserUserIdChatRoomIdRoute
   '/user/$userId/chat/new': typeof UserUserIdChatNewRoute
-  '/user/$userId/rooms/$roomId': typeof UserUserIdRoomsRoomIdRoute
   '/user/$userId/chat/initializing/$roomId': typeof UserUserIdChatInitializingRoomIdRoute
 }
 export interface FileRouteTypes {
@@ -125,11 +107,9 @@ export interface FileRouteTypes {
     | '/designer-v2'
     | '/manage'
     | '/user/$userId'
-    | '/user/$userId/rooms'
     | '/user/$userId/'
     | '/user/$userId/chat/$roomId'
     | '/user/$userId/chat/new'
-    | '/user/$userId/rooms/$roomId'
     | '/user/$userId/chat/initializing/$roomId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -137,11 +117,9 @@ export interface FileRouteTypes {
     | '/debug'
     | '/designer-v2'
     | '/manage'
-    | '/user/$userId/rooms'
     | '/user/$userId'
     | '/user/$userId/chat/$roomId'
     | '/user/$userId/chat/new'
-    | '/user/$userId/rooms/$roomId'
     | '/user/$userId/chat/initializing/$roomId'
   id:
     | '__root__'
@@ -150,11 +128,9 @@ export interface FileRouteTypes {
     | '/designer-v2'
     | '/manage'
     | '/user/$userId'
-    | '/user/$userId/rooms'
     | '/user/$userId/'
     | '/user/$userId/chat/$roomId'
     | '/user/$userId/chat/new'
-    | '/user/$userId/rooms/$roomId'
     | '/user/$userId/chat/initializing/$roomId'
   fileRoutesById: FileRoutesById
 }
@@ -210,20 +186,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof UserUserIdIndexRouteImport
       parentRoute: typeof UserUserIdRoute
     }
-    '/user/$userId/rooms': {
-      id: '/user/$userId/rooms'
-      path: '/rooms'
-      fullPath: '/user/$userId/rooms'
-      preLoaderRoute: typeof UserUserIdRoomsRouteImport
-      parentRoute: typeof UserUserIdRoute
-    }
-    '/user/$userId/rooms/$roomId': {
-      id: '/user/$userId/rooms/$roomId'
-      path: '/$roomId'
-      fullPath: '/user/$userId/rooms/$roomId'
-      preLoaderRoute: typeof UserUserIdRoomsRoomIdRouteImport
-      parentRoute: typeof UserUserIdRoomsRoute
-    }
     '/user/$userId/chat/new': {
       id: '/user/$userId/chat/new'
       path: '/chat/new'
@@ -248,20 +210,7 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface UserUserIdRoomsRouteChildren {
-  UserUserIdRoomsRoomIdRoute: typeof UserUserIdRoomsRoomIdRoute
-}
-
-const UserUserIdRoomsRouteChildren: UserUserIdRoomsRouteChildren = {
-  UserUserIdRoomsRoomIdRoute: UserUserIdRoomsRoomIdRoute,
-}
-
-const UserUserIdRoomsRouteWithChildren = UserUserIdRoomsRoute._addFileChildren(
-  UserUserIdRoomsRouteChildren,
-)
-
 interface UserUserIdRouteChildren {
-  UserUserIdRoomsRoute: typeof UserUserIdRoomsRouteWithChildren
   UserUserIdIndexRoute: typeof UserUserIdIndexRoute
   UserUserIdChatRoomIdRoute: typeof UserUserIdChatRoomIdRoute
   UserUserIdChatNewRoute: typeof UserUserIdChatNewRoute
@@ -269,7 +218,6 @@ interface UserUserIdRouteChildren {
 }
 
 const UserUserIdRouteChildren: UserUserIdRouteChildren = {
-  UserUserIdRoomsRoute: UserUserIdRoomsRouteWithChildren,
   UserUserIdIndexRoute: UserUserIdIndexRoute,
   UserUserIdChatRoomIdRoute: UserUserIdChatRoomIdRoute,
   UserUserIdChatNewRoute: UserUserIdChatNewRoute,

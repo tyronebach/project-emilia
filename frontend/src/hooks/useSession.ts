@@ -3,8 +3,9 @@ import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
 import { useChatStore } from '../store/chatStore';
 import { getRooms, getRoom, getRoomHistory, deleteRoom as deleteRoomApi, updateRoom as updateRoomApi } from '../utils/api';
-import type { Room, RoomMessage } from '../utils/api';
-import type { Message, MessageOrigin } from '../types';
+import type { Room } from '../utils/api';
+import type { ChatMessage } from '../types/chat';
+import { roomMessageToChatMessage } from '../types/chat';
 
 export function useSession() {
   const roomId = useAppStore((state) => state.roomId);
@@ -43,7 +44,7 @@ export function useSession() {
   /**
    * Fetch history for a room
    */
-  const fetchHistory = useCallback(async (rid: string): Promise<Message[]> => {
+  const fetchHistory = useCallback(async (rid: string): Promise<ChatMessage[]> => {
     if (!rid || !currentUser?.id) return [];
 
     // Guard against duplicate fetches for same room
@@ -70,17 +71,7 @@ export function useSession() {
         return [];
       }
 
-      const messages: Message[] = roomMessages.map((msg: RoomMessage) => ({
-        id: msg.id,
-        role: msg.sender_type === 'user' ? 'user' as const : 'assistant' as const,
-        content: msg.content,
-        timestamp: new Date(msg.timestamp * 1000),
-        meta: {
-          origin: (msg.origin ?? (msg.sender_type === 'user' ? 'user' : 'assistant')) as MessageOrigin,
-          agent_id: msg.sender_type === 'agent' ? msg.sender_id : undefined,
-          processing_ms: msg.processing_ms ?? undefined,
-        },
-      }));
+      const messages: ChatMessage[] = roomMessages.map(roomMessageToChatMessage);
 
       // Don't overwrite if chatStore already has MORE messages than backend
       // (e.g. streaming added new messages since fetch started) — but only

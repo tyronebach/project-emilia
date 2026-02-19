@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { preloadVRM } from '../../avatar/preloadVRM';
-import { useRoomStore } from '../../store/roomStore';
+import { useChatStore } from '../../store/chatStore';
 import RoomAvatarTile from './RoomAvatarTile';
 
 const MOBILE_QUERY = '(max-width: 1023px)';
@@ -57,13 +57,13 @@ interface RoomAvatarStageProps {
 }
 
 function RoomAvatarStage({ className = '' }: RoomAvatarStageProps) {
-  const agents = useRoomStore((state) => state.agents);
-  const focusedAgentId = useRoomStore((state) => state.focusedAgentId);
-  const streamingByAgent = useRoomStore((state) => state.streamingByAgent);
-  const avatarCommandByAgent = useRoomStore((state) => state.avatarCommandByAgent);
-  const lastAvatarEventAtByAgent = useRoomStore((state) => state.lastAvatarEventAtByAgent);
-  const emotionByAgent = useRoomStore((state) => state.emotionByAgent);
-  const statusByAgent = useRoomStore((state) => state.statusByAgent);
+  const agents = useChatStore((state) => state.agents);
+  const focusedAgentId = useChatStore((state) => state.focusedAgentId);
+  const streamingByAgent = useChatStore((state) => state.streamingByAgent);
+  const avatarCommandByAgent = useChatStore((state) => state.avatarCommandByAgent);
+  const lastAvatarEventAtByAgent = useChatStore((state) => state.lastAvatarEventAtByAgent);
+  const emotionByAgent = useChatStore((state) => state.emotionByAgent);
+  const statusByAgent = useChatStore((state) => state.statusByAgent);
   const isMobile = useIsMobileViewport();
   const [tileErrors, setTileErrors] = useState<Record<string, string>>({});
 

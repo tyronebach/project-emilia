@@ -27,6 +27,7 @@ interface ResolvedOptions {
   cameraHeight: number;
   enableShadows: boolean;
   enableOrbitControls: boolean;
+  agentId: string | null;
   onLoad: ((vrm: VRM) => void) | null;
   onError: ((error: Error) => void) | null;
   onProgress: ((percent: number) => void) | null;
@@ -75,6 +76,7 @@ export class AvatarRenderer {
       cameraHeight: options.cameraHeight ?? 1.3,
       enableShadows: options.enableShadows !== false,
       enableOrbitControls: options.enableOrbitControls ?? false,
+      agentId: options.agentId ?? null,
       onLoad: options.onLoad ?? null,
       onError: options.onError ?? null,
       onProgress: options.onProgress ?? null
@@ -428,18 +430,22 @@ export class AvatarRenderer {
    */
   private saveCameraPosition(): void {
     if (!this.camera || !this.controls) return;
-    
-    try {
-      // Dynamic import to avoid circular dependency
 
-      useRenderStore.getState().setCameraPosition({
+    try {
+      const pos = {
         x: this.camera.position.x,
         y: this.camera.position.y,
         z: this.camera.position.z,
         targetX: this.controls.target.x,
         targetY: this.controls.target.y,
         targetZ: this.controls.target.z,
-      });
+      };
+
+      if (this.options.agentId) {
+        useRenderStore.getState().setCameraPositionForAgent(this.options.agentId, pos);
+      } else {
+        useRenderStore.getState().setCameraPosition(pos);
+      }
     } catch (e) {
       console.warn('[AvatarRenderer] Could not save camera position:', e);
     }
@@ -451,22 +457,25 @@ export class AvatarRenderer {
    */
   private loadCameraPosition(): boolean {
     if (!this.camera || !this.controls) return false;
-    
-    try {
 
-      const saved = useRenderStore.getState().cameraPosition;
-      
+    try {
+      const store = useRenderStore.getState();
+      const saved = this.options.agentId
+        ? store.getCameraPositionForAgent(this.options.agentId)
+        : store.cameraPosition;
+
       if (saved) {
         this.camera.position.set(saved.x, saved.y, saved.z);
         this.controls.target.set(saved.targetX, saved.targetY, saved.targetZ);
         this.controls.update();
-        console.log('[AvatarRenderer] Restored saved camera position');
+        console.log('[AvatarRenderer] Restored saved camera position' +
+          (this.options.agentId ? ` for agent ${this.options.agentId}` : ''));
         return true;
       }
     } catch (e) {
       console.warn('[AvatarRenderer] Could not load camera position:', e);
     }
-    
+
     return false;
   }
 
