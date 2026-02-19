@@ -1,25 +1,26 @@
 /**
  * ChatHistoryPanel - Slide-out message history (Google Meet mobile style)
- * 
+ *
  * Shows all messages with agent attribution for multi-agent chats.
  */
 import { useRef, useEffect } from 'react';
-import { useChatStore, type MultiAgentMessage } from '../../store/chatStore';
-import type { Agent } from '../../utils/api';
+import { useChatStore } from '../../store/chatStore';
+import type { ChatMessage } from '../../types/chat';
+import type { RoomAgent } from '../../utils/api';
 
 interface ChatHistoryPanelProps {
   onClose: () => void;
 }
 
 interface MessageBubbleProps {
-  message: MultiAgentMessage;
-  agent?: Agent;
+  message: ChatMessage;
+  agent?: RoomAgent;
   isUser: boolean;
 }
 
 function MessageBubble({ message, agent, isUser }: MessageBubbleProps) {
-  const bubbleClass = isUser 
-    ? 'bg-primary text-primary-content ml-auto' 
+  const bubbleClass = isUser
+    ? 'bg-primary text-primary-content ml-auto'
     : 'bg-base-200 text-base-content';
 
   return (
@@ -30,14 +31,14 @@ function MessageBubble({ message, agent, isUser }: MessageBubbleProps) {
           {agent.display_name}
         </span>
       )}
-      
+
       <div className={`rounded-2xl px-4 py-2 ${bubbleClass}`}>
         <p className="whitespace-pre-wrap break-words">{message.content}</p>
       </div>
-      
+
       {/* Timestamp */}
       <span className="text-xs text-base-content/40 mx-1">
-        {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        {new Date(message.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
       </span>
     </div>
   );
@@ -45,7 +46,7 @@ function MessageBubble({ message, agent, isUser }: MessageBubbleProps) {
 
 export default function ChatHistoryPanel({ onClose }: ChatHistoryPanelProps) {
   const messages = useChatStore(state => state.messages);
-  const roomAgents = useChatStore(state => state.roomAgents);
+  const agents = useChatStore(state => state.agents);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new messages
@@ -56,9 +57,9 @@ export default function ChatHistoryPanel({ onClose }: ChatHistoryPanelProps) {
   }, [messages.length]);
 
   // Get agent by ID
-  const getAgent = (agentId?: string): Agent | undefined => {
-    if (!agentId) return undefined;
-    return roomAgents.find(a => a.id === agentId);
+  const getAgent = (senderId?: string): RoomAgent | undefined => {
+    if (!senderId) return undefined;
+    return agents.find(a => a.agent_id === senderId);
   };
 
   return (
@@ -82,19 +83,19 @@ export default function ChatHistoryPanel({ onClose }: ChatHistoryPanelProps) {
             <MessageBubble
               key={message.id}
               message={message}
-              agent={getAgent(message.agentId)}
-              isUser={message.role === 'user'}
+              agent={message.sender_type === 'agent' ? getAgent(message.sender_id) : undefined}
+              isUser={message.sender_type === 'user'}
             />
           ))
         )}
       </div>
 
       {/* Agent legend (for multi-agent) */}
-      {roomAgents.length > 1 && (
+      {agents.length > 1 && (
         <div className="border-t border-base-300 p-3">
           <div className="flex flex-wrap gap-2">
-            {roomAgents.map(agent => (
-              <div key={agent.id} className="flex items-center gap-1 text-xs">
+            {agents.map(agent => (
+              <div key={agent.agent_id} className="flex items-center gap-1 text-xs">
                 <div className="w-2 h-2 rounded-full bg-primary" />
                 <span>{agent.display_name}</span>
               </div>

@@ -171,7 +171,7 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.DirectLLMClient")
+    @patch("services.llm_caller.DirectLLMClient")
     async def test_chat_non_stream_direct_mode_uses_direct_client(
         self,
         mock_direct_client_class,
@@ -250,7 +250,7 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.DirectLLMClient")
+    @patch("services.llm_caller.DirectLLMClient")
     async def test_chat_direct_mode_rolls_back_user_message_on_direct_client_error(
         self,
         mock_direct_client_class,
@@ -323,7 +323,7 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.DirectLLMClient")
+    @patch("services.room_chat_stream.DirectLLMClient")
     async def test_chat_stream_direct_mode_uses_tool_loop(
         self,
         mock_direct_client_class,

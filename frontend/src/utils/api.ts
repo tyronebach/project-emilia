@@ -504,25 +504,6 @@ export async function addRoomAgent(
   return response.json();
 }
 
-export async function updateRoomAgent(
-  roomId: string,
-  agentId: string,
-  data: {
-    response_mode?: 'mention' | 'always' | 'manual';
-    role?: 'participant' | 'moderator' | 'observer';
-  },
-): Promise<RoomAgent> {
-  const response = await fetchWithAuth(
-    `${API_URL}/api/rooms/${encodeURIComponent(roomId)}/agents/${encodeURIComponent(agentId)}`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    },
-  );
-  if (!response.ok) throw new Error(`Failed to update room agent: ${response.status}`);
-  return response.json();
-}
-
 export async function removeRoomAgent(roomId: string, agentId: string): Promise<void> {
   const response = await fetchWithAuth(
     `${API_URL}/api/rooms/${encodeURIComponent(roomId)}/agents/${encodeURIComponent(agentId)}`,
@@ -549,27 +530,6 @@ export async function getRoomHistory(
   return data.messages || [];
 }
 
-export async function sendRoomMessage(
-  roomId: string,
-  data: {
-    message: string;
-    mention_agents?: string[];
-    game_context?: GameContext | undefined;
-    runtime_trigger?: boolean;
-    runtimeTrigger?: boolean;
-  },
-): Promise<RoomChatResponsePayload> {
-  const { runtimeTrigger, runtime_trigger, ...rest } = data;
-  const response = await fetchWithAuth(`${API_URL}/api/rooms/${encodeURIComponent(roomId)}/chat?stream=0`, {
-    method: 'POST',
-    body: JSON.stringify({
-      ...rest,
-      runtime_trigger: runtime_trigger ?? runtimeTrigger ?? undefined,
-    }),
-  });
-  if (!response.ok) throw new Error(`Failed to send room message: ${response.status}`);
-  return response.json();
-}
 
 
 // ============ CHAT API ============
@@ -1020,10 +980,8 @@ export default {
   deleteRoom,
   getRoomAgents,
   addRoomAgent,
-  updateRoomAgent,
   removeRoomAgent,
   getRoomHistory,
-  sendRoomMessage,
   updateAgent,
   streamChat,
   streamRoomChat,

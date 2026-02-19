@@ -1,6 +1,7 @@
-import { Menu, Activity, MicOff, Volume2, VolumeX } from 'lucide-react';
+import { Menu, Activity, MicOff, Users, Volume2, VolumeX } from 'lucide-react';
 import { useAppStore } from '../store';
 import { useUserStore } from '../store/userStore';
+import { useChatStore } from '../store/chatStore';
 import { STATUS_COLORS } from '../types';
 import type { SoulMoodSnapshot } from '../types/soulWindow';
 import { Button } from './ui/button';
@@ -14,10 +15,12 @@ interface HeaderProps {
   onMemoryClick: () => void;
   onBondClick: () => void;
   onAboutClick: () => void;
+  onParticipantsClick: () => void;
   debugOpen: boolean;
   memoryOpen: boolean;
   bondOpen: boolean;
   aboutOpen: boolean;
+  participantsOpen: boolean;
   currentMood: SoulMoodSnapshot | null;
   handsFreeEnabled?: boolean;
   voicePermissionWarning?: string | null;
@@ -29,8 +32,10 @@ function Header({
   onMemoryClick,
   onBondClick,
   onAboutClick,
+  onParticipantsClick,
   debugOpen,
   currentMood,
+  participantsOpen,
   handsFreeEnabled = false,
   voicePermissionWarning,
 }: HeaderProps) {
@@ -40,6 +45,8 @@ function Header({
   const currentAgent = useUserStore((state) => state.currentAgent);
   const currentUser = useUserStore((state) => state.currentUser);
   const updatePreferences = useUserStore((state) => state.updatePreferences);
+  const agents = useChatStore((s) => s.agents);
+  const roomId = useAppStore((s) => s.roomId);
 
   const handleToggleTts = async () => {
     const nextEnabled = !ttsEnabled;
@@ -116,6 +123,22 @@ function Header({
             onAboutClick={onAboutClick}
             onMemoryClick={onMemoryClick}
           />
+
+          {/* Participants button */}
+          {agents.length > 0 && roomId && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onParticipantsClick}
+              className={`text-text-primary hover:bg-white/10 bg-bg-secondary/45 border border-white/10 relative ${participantsOpen ? 'bg-white/15' : ''}`}
+              title="Participants"
+            >
+              <Users className="w-5 h-5" />
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white px-1">
+                {agents.length}
+              </span>
+            </Button>
+          )}
 
           {/* Debug panel button */}
           <Button

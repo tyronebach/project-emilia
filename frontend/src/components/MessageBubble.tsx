@@ -1,31 +1,30 @@
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { Volume2 } from 'lucide-react';
 import { useChatStore } from '../store/chatStore';
-import type { Message } from '../types';
+import type { ChatMessage } from '../types/chat';
 import { base64ToAudioBlob } from '../utils/helpers';
 
 interface MessageBubbleProps {
-  message: Message;
+  message: ChatMessage;
 }
 
 function MessageBubble({ message }: MessageBubbleProps) {
-  const { role, content, timestamp, meta } = message;
-  const isUser = role === 'user';
+  const { sender_type, sender_id, content, timestamp, meta, behavior, processing_ms, model } = message;
+  const isUser = sender_type === 'user';
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
-  
-  // Multi-agent support: look up agent name from roomAgents
-  const roomAgents = useChatStore(state => state.roomAgents);
-  const agentId = meta?.agent_id;
+
+  // Multi-agent support: look up agent name from agents
+  const agents = useChatStore(state => state.agents);
   const agentInfo = useMemo(() => {
-    if (isUser || !agentId) return null;
-    return roomAgents.find(a => a.id === agentId);
-  }, [isUser, agentId, roomAgents]);
-  
+    if (isUser || !sender_id) return null;
+    return agents.find(a => a.agent_id === sender_id);
+  }, [isUser, sender_id, agents]);
+
   // Agent initial for avatar (fallback to 'E' for backwards compat)
   const agentInitial = agentInfo?.display_name?.charAt(0).toUpperCase() ?? 'E';
-  const isMultiAgent = roomAgents.length > 1;
+  const isMultiAgent = agents.length > 1;
 
   const cleanupAudio = useCallback(() => {
     if (audioRef.current) {
@@ -74,24 +73,23 @@ function MessageBubble({ message }: MessageBubbleProps) {
       setIsPlaying(false);
     }
   }, [meta?.audio_base64, isPlaying, cleanupAudio]);
-  
-  // Format timestamp
+
+  // Format timestamp (epoch seconds → local time)
   const timeString = useMemo(() => {
     if (!timestamp) return '';
-    const date = new Date(timestamp);
+    const date = new Date(timestamp * 1000);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }, [timestamp]);
-  
+
   // Format processing time
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- compiler limitation with optional chain deps
   const processingTime = useMemo(() => {
-    if (!meta?.processing_ms) return null;
-    if (meta.processing_ms < 1000) {
-      return `${meta.processing_ms}ms`;
+    if (!processing_ms) return null;
+    if (processing_ms < 1000) {
+      return `${processing_ms}ms`;
     }
-    return `${(meta.processing_ms / 1000).toFixed(1)}s`;
-  }, [meta?.processing_ms]);
-  
+    return `${(processing_ms / 1000).toFixed(1)}s`;
+  }, [processing_ms]);
+
   return (
     <div className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
       {/* Avatar */}
@@ -110,8 +108,8 @@ function MessageBubble({ message }: MessageBubbleProps) {
           </span>
         )}
         <div className={`rounded-2xl px-4 py-2 border shadow-sm ${
-          isUser 
-            ? 'bg-accent/15 border-accent/30 rounded-tr-sm' 
+          isUser
+            ? 'bg-accent/15 border-accent/30 rounded-tr-sm'
             : 'bg-bg-secondary/80 border-white/10 rounded-tl-sm'
         }`}>
           <p className="text-sm whitespace-pre-wrap break-words text-text-primary">{content}</p>
@@ -128,16 +126,16 @@ function MessageBubble({ message }: MessageBubbleProps) {
               <span>🔄 {processingTime}</span>
             </>
           )}
-          {meta?.behavior?.intent && (
+          {behavior?.intent && (
             <>
               <span>•</span>
-              <span>🎭 {meta.behavior.intent}{meta.behavior.mood ? ` (${meta.behavior.mood})` : ''}</span>
+              <span>🎭 {behavior.intent}{behavior.mood ? ` (${behavior.mood})` : ''}</span>
             </>
           )}
-          {!meta?.behavior?.intent && meta?.behavior?.mood && (
+          {!behavior?.intent && behavior?.mood && (
             <>
               <span>•</span>
-              <span>🎭 {meta.behavior.mood}</span>
+              <span>🎭 {behavior.mood}</span>
             </>
           )}
           {meta?.audio_base64 && (
@@ -156,10 +154,10 @@ function MessageBubble({ message }: MessageBubbleProps) {
               </button>
             </>
           )}
-          {meta?.model && (
+          {model && (
             <>
               <span>•</span>
-              <span>🤖 {meta.model}</span>
+              <span>🤖 {model}</span>
             </>
           )}
           {meta?.source && meta.source !== 'text' && (

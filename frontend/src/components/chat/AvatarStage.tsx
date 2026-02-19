@@ -1,18 +1,21 @@
 /**
- * AvatarStage - Adaptive avatar layout for 1-N agents
- * 
- * Layouts (Zoom/Meet style):
+ * AvatarStage - Grid avatar layout for 1-N agents
+ *
+ * Layouts:
  * - 1 agent: Full-screen avatar
- * - 2 agents: Split view (side by side)
- * - 3+ agents: Two prominent + thumbnail strip
- * 
- * Click thumbnail to focus/maximize an agent.
+ * - 2 agents: Side by side (50/50)
+ * - 3-4 agents: 2x2 grid
+ * - 5+ agents: 2-col grid, scrollable
+ *
+ * Each agent gets an independent RoomAvatarTile with its own VRM renderer,
+ * animation system, and lip-sync engine — registered in the avatar registry.
  */
 import { useMemo } from 'react';
-import { useChatStore, type AgentStatus } from '../../store/chatStore';
-import type { Agent } from '../../utils/api';
+import { useChatStore } from '../../store/chatStore';
+import type { AgentStatus } from '../../types/chat';
+import type { RoomAgent } from '../../utils/api';
 import type { SoulMoodSnapshot } from '../../types/soulWindow';
-import AvatarPanel from '../AvatarPanel';
+import RoomAvatarTile from '../rooms/RoomAvatarTile';
 
 interface AvatarStageProps {
   userId: string;
@@ -24,95 +27,52 @@ interface AvatarStageProps {
 const STATUS_BADGE_COLORS: Record<AgentStatus, string> = {
   idle: 'bg-gray-500',
   thinking: 'bg-yellow-500 animate-pulse',
+  streaming: 'bg-blue-500 animate-pulse',
   speaking: 'bg-green-500 animate-pulse',
 };
 
-// Mood emoji map (simplified)
+// Mood emoji from SoulMoodSnapshot
 function getMoodEmoji(mood?: SoulMoodSnapshot): string {
   if (!mood?.dominant_mood) return '';
+  if (mood.dominant_mood.emoji) return mood.dominant_mood.emoji;
   const moodEmojis: Record<string, string> = {
-    happy: '😊',
-    sad: '😢',
-    angry: '😠',
-    surprised: '😲',
-    neutral: '😐',
-    playful: '😜',
-    loving: '🥰',
-    anxious: '😰',
+    happy: '\u{1F60A}',
+    sad: '\u{1F622}',
+    angry: '\u{1F620}',
+    surprised: '\u{1F632}',
+    neutral: '\u{1F610}',
+    playful: '\u{1F61C}',
+    loving: '\u{1F970}',
+    anxious: '\u{1F630}',
   };
-  return moodEmojis[mood.dominant_mood.toLowerCase()] || '';
+  return moodEmojis[mood.dominant_mood.id?.toLowerCase()] || '';
 }
 
 interface AgentTileProps {
-  agent: Agent;
+  agent: RoomAgent;
   status: AgentStatus;
   mood?: SoulMoodSnapshot;
-  size: 'full' | 'half' | 'thumbnail';
-  isFocused?: boolean;
-  onClick?: () => void;
-  userId: string;
-  roomId: string;
-  onAvatarReady?: () => void;
+  command?: { intent?: string; mood?: string; energy?: string; move?: string; game_action?: string; intensity?: number };
 }
 
-function AgentTile({ 
-  agent, 
-  status, 
-  mood, 
-  size, 
-  isFocused,
-  onClick,
-  userId,
-  roomId,
-  onAvatarReady,
-}: AgentTileProps) {
-  const sizeClasses = {
-    full: 'w-full h-full',
-    half: 'w-1/2 h-full',
-    thumbnail: 'w-24 h-24 md:w-32 md:h-32 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary',
-  };
-
+function AgentTile({ agent, status, mood, command }: AgentTileProps) {
   const moodEmoji = getMoodEmoji(mood);
 
-  if (size === 'thumbnail') {
-    return (
-      <div 
-        className={`relative ${sizeClasses[size]} ${isFocused ? 'ring-2 ring-primary' : ''}`}
-        onClick={onClick}
-      >
-        {/* Thumbnail avatar - simplified view */}
-        <div className="w-full h-full bg-base-300 flex items-center justify-center">
-          <span className="text-2xl">{agent.display_name.charAt(0)}</span>
-        </div>
-        
-        {/* Status badge */}
-        <div className={`absolute bottom-1 right-1 w-3 h-3 rounded-full ${STATUS_BADGE_COLORS[status]}`} />
-        
-        {/* Mood emoji */}
-        {moodEmoji && (
-          <div className="absolute top-1 left-1 text-sm">{moodEmoji}</div>
-        )}
-        
-        {/* Name */}
-        <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 truncate">
-          {agent.display_name}
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className={`relative ${sizeClasses[size]}`}>
-      {/* Full avatar panel */}
-      <AvatarPanel
-        userId={userId}
-        roomId={roomId}
-        agentId={agent.id}
-        onReady={onAvatarReady}
-      />
-      
+    <div className="relative w-full h-full">
+      <div className="absolute inset-0">
+        <RoomAvatarTile
+          agentId={agent.agent_id}
+          displayName={agent.display_name}
+          vrmModel={agent.vrm_model}
+          command={command}
+          emotion={mood}
+          isStreaming={status === 'streaming'}
+        />
+      </div>
+
       {/* Agent info overlay */}
-      <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-black/50 rounded-lg px-3 py-2">
+      <div className="absolute bottom-4 left-4 flex items-center gap-2 bg-black/50 rounded-lg px-3 py-2 z-10">
         <div className={`w-3 h-3 rounded-full ${STATUS_BADGE_COLORS[status]}`} />
         <span className="text-white font-medium">{agent.display_name}</span>
         {moodEmoji && <span className="text-lg">{moodEmoji}</span>}
@@ -121,154 +81,61 @@ function AgentTile({
   );
 }
 
-export default function AvatarStage({ userId, roomId, onAvatarReady }: AvatarStageProps) {
-  const roomAgents = useChatStore(state => state.roomAgents);
-  const agentStatus = useChatStore(state => state.agentStatus);
-  const agentMoods = useChatStore(state => state.agentMoods);
-  const focusedAgentId = useChatStore(state => state.focusedAgentId);
-  const setFocusedAgentId = useChatStore(state => state.setFocusedAgentId);
+export default function AvatarStage({ userId: _userId, roomId: _roomId, onAvatarReady: _onAvatarReady }: AvatarStageProps) {
+  const agents = useChatStore(state => state.agents);
+  const statusByAgent = useChatStore(state => state.statusByAgent);
+  const emotionByAgent = useChatStore(state => state.emotionByAgent);
+  const avatarCommandByAgent = useChatStore(state => state.avatarCommandByAgent);
   const getActiveAgents = useChatStore(state => state.getActiveAgents);
 
-  // Sort agents by activity
-  const sortedAgents = useMemo(() => getActiveAgents(), [getActiveAgents, agentStatus, roomAgents]);
+  const sortedAgents = useMemo(() => getActiveAgents(), [getActiveAgents, statusByAgent, agents]);
 
   // Single agent - full screen
-  if (roomAgents.length === 1) {
-    const agent = roomAgents[0];
+  if (agents.length === 1) {
+    const agent = agents[0];
     return (
-      <div className="w-full h-full">
+      <div className="absolute inset-0 z-0">
         <AgentTile
           agent={agent}
-          status={agentStatus[agent.id] || 'idle'}
-          mood={agentMoods[agent.id]}
-          size="full"
-          userId={userId}
-          roomId={roomId}
-          onAvatarReady={onAvatarReady}
+          status={statusByAgent[agent.agent_id] || 'idle'}
+          mood={emotionByAgent[agent.agent_id]}
+          command={avatarCommandByAgent[agent.agent_id]}
         />
       </div>
     );
   }
 
-  // Focused mode - one maximized, others as thumbnails
-  if (focusedAgentId) {
-    const focusedAgent = roomAgents.find(a => a.id === focusedAgentId);
-    const otherAgents = roomAgents.filter(a => a.id !== focusedAgentId);
-
-    if (!focusedAgent) {
-      setFocusedAgentId(null);
-      return null;
-    }
-
+  // Two agents - side by side
+  if (agents.length === 2) {
     return (
-      <div className="w-full h-full flex flex-col">
-        {/* Focused agent - main view */}
-        <div className="flex-1 relative">
-          <AgentTile
-            agent={focusedAgent}
-            status={agentStatus[focusedAgent.id] || 'idle'}
-            mood={agentMoods[focusedAgent.id]}
-            size="full"
-            isFocused
-            userId={userId}
-            roomId={roomId}
-            onAvatarReady={onAvatarReady}
-          />
-          
-          {/* Unfocus button */}
-          <button
-            className="absolute top-4 right-4 btn btn-circle btn-sm btn-ghost bg-black/50"
-            onClick={() => setFocusedAgentId(null)}
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Thumbnail strip */}
-        <div className="h-28 md:h-36 bg-base-200 flex items-center gap-2 p-2 overflow-x-auto">
-          {otherAgents.map(agent => (
-            <AgentTile
-              key={agent.id}
-              agent={agent}
-              status={agentStatus[agent.id] || 'idle'}
-              mood={agentMoods[agent.id]}
-              size="thumbnail"
-              onClick={() => setFocusedAgentId(agent.id)}
-              userId={userId}
-              roomId={roomId}
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  // Two agents - split view
-  if (roomAgents.length === 2) {
-    return (
-      <div className="w-full h-full flex">
+      <div className="absolute inset-0 z-0 flex">
         {sortedAgents.map(agent => (
-          <AgentTile
-            key={agent.id}
-            agent={agent}
-            status={agentStatus[agent.id] || 'idle'}
-            mood={agentMoods[agent.id]}
-            size="half"
-            onClick={() => setFocusedAgentId(agent.id)}
-            userId={userId}
-            roomId={roomId}
-            onAvatarReady={agent.id === sortedAgents[0].id ? onAvatarReady : undefined}
-          />
+          <div key={agent.agent_id} className="w-1/2 h-full">
+            <AgentTile
+              agent={agent}
+              status={statusByAgent[agent.agent_id] || 'idle'}
+              mood={emotionByAgent[agent.agent_id]}
+              command={avatarCommandByAgent[agent.agent_id]}
+            />
+          </div>
         ))}
       </div>
     );
   }
 
-  // 3+ agents - two prominent + thumbnail strip
-  const prominentAgents = sortedAgents.slice(0, 2);
-  const thumbnailAgents = sortedAgents.slice(2);
-
+  // 3+ agents - 2-column grid
   return (
-    <div className="w-full h-full flex flex-col">
-      {/* Two prominent agents */}
-      <div className="flex-1 flex">
-        {prominentAgents.map((agent, idx) => (
+    <div className="absolute inset-0 z-0 grid grid-cols-2 grid-rows-[1fr_1fr] overflow-hidden">
+      {sortedAgents.slice(0, 4).map(agent => (
+        <div key={agent.agent_id} className="relative">
           <AgentTile
-            key={agent.id}
             agent={agent}
-            status={agentStatus[agent.id] || 'idle'}
-            mood={agentMoods[agent.id]}
-            size="half"
-            onClick={() => setFocusedAgentId(agent.id)}
-            userId={userId}
-            roomId={roomId}
-            onAvatarReady={idx === 0 ? onAvatarReady : undefined}
+            status={statusByAgent[agent.agent_id] || 'idle'}
+            mood={emotionByAgent[agent.agent_id]}
+            command={avatarCommandByAgent[agent.agent_id]}
           />
-        ))}
-      </div>
-
-      {/* Thumbnail strip */}
-      <div className="h-28 md:h-36 bg-base-200 flex items-center gap-2 p-2 overflow-x-auto">
-        {thumbnailAgents.map(agent => (
-          <AgentTile
-            key={agent.id}
-            agent={agent}
-            status={agentStatus[agent.id] || 'idle'}
-            mood={agentMoods[agent.id]}
-            size="thumbnail"
-            onClick={() => setFocusedAgentId(agent.id)}
-            userId={userId}
-            roomId={roomId}
-          />
-        ))}
-        
-        {/* Show count if many */}
-        {thumbnailAgents.length > 4 && (
-          <div className="w-24 h-24 md:w-32 md:h-32 rounded-lg bg-base-300 flex items-center justify-center">
-            <span className="text-lg font-medium">+{thumbnailAgents.length - 4}</span>
-          </div>
-        )}
-      </div>
+        </div>
+      ))}
     </div>
   );
 }

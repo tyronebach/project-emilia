@@ -10,6 +10,8 @@ interface UserState {
   currentAgent: Agent | null;
   setUser: (user: User | null) => void;
   setAgent: (agent: Agent | null) => void;
+  /** Update current agent identity without clearing room/messages (use after room agent changes) */
+  syncAgent: (agent: Agent | null) => void;
   clearUser: () => void;
   updatePreferences: (preferences: string) => void;
   updateCurrentAgent: (updates: Partial<Agent>) => void;
@@ -35,6 +37,7 @@ export const useUserStore = create<UserState>()(
         useChatStore.getState().clearMessages();
         set({ currentAgent: agent });
       },
+      syncAgent: (agent) => set({ currentAgent: agent }),
       clearUser: () => {
         // Reset to default render settings when user context is removed.
         useRenderStore.getState().setCurrentUser(null);

@@ -1,62 +1,53 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useChatStore } from './chatStore';
+import type { ChatMessage } from '../types/chat';
+
+function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
+  return {
+    id: `test-${Date.now()}-${Math.random()}`,
+    room_id: 'room-1',
+    sender_type: 'user',
+    sender_id: 'user-1',
+    sender_name: 'Test User',
+    content: 'Hello',
+    timestamp: Date.now() / 1000,
+    ...overrides,
+  };
+}
 
 describe('chatStore', () => {
   beforeEach(() => {
-    // Reset store before each test
-    useChatStore.setState({
-      messages: [],
-      streamingContent: '',
-      lastEmotionDebug: null,
-      currentMood: null,
-    });
+    useChatStore.getState().clearRoomState();
   });
 
   describe('addMessage', () => {
     it('should add a user message', () => {
       const store = useChatStore.getState();
-      const id = store.addMessage('user', 'Hello world');
+      const msg = makeMessage({ sender_type: 'user', content: 'Hello world' });
+      store.addMessage(msg);
 
       const messages = useChatStore.getState().messages;
       expect(messages).toHaveLength(1);
-      expect(messages[0].role).toBe('user');
+      expect(messages[0].sender_type).toBe('user');
       expect(messages[0].content).toBe('Hello world');
-      expect(messages[0].id).toBe(id);
+      expect(messages[0].id).toBe(msg.id);
     });
 
-    it('should add an assistant message', () => {
+    it('should add an agent message', () => {
       const store = useChatStore.getState();
-      store.addMessage('assistant', 'Hello there!');
+      store.addMessage(makeMessage({ sender_type: 'agent', content: 'Hello there!' }));
 
       const messages = useChatStore.getState().messages;
       expect(messages).toHaveLength(1);
-      expect(messages[0].role).toBe('assistant');
+      expect(messages[0].sender_type).toBe('agent');
       expect(messages[0].content).toBe('Hello there!');
-    });
-
-    it('should add message with metadata', () => {
-      const store = useChatStore.getState();
-      const meta = { processing_ms: 100, model: 'gpt-4' };
-      store.addMessage('assistant', 'Response', meta);
-
-      const messages = useChatStore.getState().messages;
-      expect(messages[0].meta.processing_ms).toBe(100);
-      expect(messages[0].meta.model).toBe('gpt-4');
-    });
-
-    it('should return unique IDs for each message', () => {
-      const store = useChatStore.getState();
-      const id1 = store.addMessage('user', 'First');
-      const id2 = store.addMessage('user', 'Second');
-
-      expect(id1).not.toBe(id2);
     });
 
     it('should add messages in order', () => {
       const store = useChatStore.getState();
-      store.addMessage('user', 'First');
-      store.addMessage('assistant', 'Second');
-      store.addMessage('user', 'Third');
+      store.addMessage(makeMessage({ content: 'First' }));
+      store.addMessage(makeMessage({ sender_type: 'agent', content: 'Second' }));
+      store.addMessage(makeMessage({ content: 'Third' }));
 
       const messages = useChatStore.getState().messages;
       expect(messages).toHaveLength(3);
@@ -66,36 +57,76 @@ describe('chatStore', () => {
     });
   });
 
+  describe('addUserMessage', () => {
+    it('should add a user message and return ID', () => {
+      const store = useChatStore.getState();
+      const id = store.addUserMessage('u1', 'User', 'Hello world', 'room-1', { source: 'text' });
+
+      const messages = useChatStore.getState().messages;
+      expect(messages).toHaveLength(1);
+      expect(messages[0].id).toBe(id);
+      expect(messages[0].sender_type).toBe('user');
+      expect(messages[0].content).toBe('Hello world');
+      expect(messages[0].meta?.source).toBe('text');
+    });
+
+    it('should return unique IDs', () => {
+      const store = useChatStore.getState();
+      const id1 = store.addUserMessage('u1', 'User', 'First', 'room-1');
+      const id2 = store.addUserMessage('u1', 'User', 'Second', 'room-1');
+      expect(id1).not.toBe(id2);
+    });
+  });
+
+  describe('addAgentPlaceholder', () => {
+    it('should add a streaming agent placeholder', () => {
+      const store = useChatStore.getState();
+      const id = store.addAgentPlaceholder('agent-1', 'Agent', 'room-1');
+
+      const messages = useChatStore.getState().messages;
+      expect(messages).toHaveLength(1);
+      expect(messages[0].id).toBe(id);
+      expect(messages[0].sender_type).toBe('agent');
+      expect(messages[0].content).toBe('');
+      expect(messages[0].meta?.streaming).toBe(true);
+    });
+  });
+
   describe('updateMessage', () => {
     it('should update message content', () => {
       const store = useChatStore.getState();
-      const id = store.addMessage('user', 'Original');
+      const msg = makeMessage({ content: 'Original' });
+      store.addMessage(msg);
 
-      store.updateMessage(id, { content: 'Updated' });
+      store.updateMessage(msg.id, { content: 'Updated' });
 
       const messages = useChatStore.getState().messages;
       expect(messages[0].content).toBe('Updated');
     });
 
-    it('should update message metadata', () => {
+    it('should update top-level fields', () => {
       const store = useChatStore.getState();
-      const id = store.addMessage('assistant', 'Response');
+      const msg = makeMessage({ sender_type: 'agent', content: 'Response' });
+      store.addMessage(msg);
 
-      store.updateMessage(id, {
-        meta: { processing_ms: 500, error: false },
+      store.updateMessage(msg.id, {
+        processing_ms: 500,
+        model: 'gpt-4',
       });
 
       const messages = useChatStore.getState().messages;
-      expect(messages[0].meta.processing_ms).toBe(500);
-      expect(messages[0].meta.error).toBe(false);
+      expect(messages[0].processing_ms).toBe(500);
+      expect(messages[0].model).toBe('gpt-4');
     });
 
     it('should not affect other messages', () => {
       const store = useChatStore.getState();
-      const id1 = store.addMessage('user', 'First');
-      store.addMessage('user', 'Second');
+      const msg1 = makeMessage({ id: 'msg-1', content: 'First' });
+      const msg2 = makeMessage({ id: 'msg-2', content: 'Second' });
+      store.addMessage(msg1);
+      store.addMessage(msg2);
 
-      store.updateMessage(id1, { content: 'Updated First' });
+      store.updateMessage('msg-1', { content: 'Updated First' });
 
       const messages = useChatStore.getState().messages;
       expect(messages[0].content).toBe('Updated First');
@@ -104,40 +135,39 @@ describe('chatStore', () => {
 
     it('should handle updates to non-existent messages gracefully', () => {
       const store = useChatStore.getState();
-      store.addMessage('user', 'Message');
+      store.addMessage(makeMessage({ content: 'Message' }));
 
-      // Update non-existent message shouldn't crash
-      store.updateMessage(999999, { content: 'New' });
+      store.updateMessage('nonexistent', { content: 'New' });
 
       const messages = useChatStore.getState().messages;
       expect(messages[0].content).toBe('Message');
     });
   });
 
+  describe('updateMessageMeta', () => {
+    it('should merge meta updates', () => {
+      const store = useChatStore.getState();
+      const msg = makeMessage({ meta: { streaming: true } });
+      store.addMessage(msg);
+
+      store.updateMessageMeta(msg.id, { streaming: false, audio_base64: 'abc' });
+
+      const messages = useChatStore.getState().messages;
+      expect(messages[0].meta?.streaming).toBe(false);
+      expect(messages[0].meta?.audio_base64).toBe('abc');
+    });
+  });
+
   describe('setMessages', () => {
     it('should replace all messages', () => {
       const store = useChatStore.getState();
-      store.addMessage('user', 'Old 1');
-      store.addMessage('user', 'Old 2');
+      store.addMessage(makeMessage({ content: 'Old 1' }));
+      store.addMessage(makeMessage({ content: 'Old 2' }));
 
-      const newMessages = [
-        {
-          id: 1,
-          role: 'user' as const,
-          content: 'New 1',
-          timestamp: new Date(),
-          meta: {},
-        },
-        {
-          id: 2,
-          role: 'assistant' as const,
-          content: 'New 2',
-          timestamp: new Date(),
-          meta: {},
-        },
-      ];
-
-      store.setMessages(newMessages);
+      store.setMessages([
+        makeMessage({ id: 'new-1', content: 'New 1' }),
+        makeMessage({ id: 'new-2', sender_type: 'agent', content: 'New 2' }),
+      ]);
 
       const messages = useChatStore.getState().messages;
       expect(messages).toHaveLength(2);
@@ -147,7 +177,7 @@ describe('chatStore', () => {
 
     it('should clear messages with empty array', () => {
       const store = useChatStore.getState();
-      store.addMessage('user', 'Message');
+      store.addMessage(makeMessage({ content: 'Message' }));
 
       store.setMessages([]);
 
@@ -155,30 +185,18 @@ describe('chatStore', () => {
       expect(messages).toHaveLength(0);
     });
 
-    it('should not collide local message IDs with history numeric IDs', () => {
+    it('should not collide local message IDs with history IDs', () => {
       const store = useChatStore.getState();
       store.setMessages([
-        {
-          id: 0,
-          role: 'user',
-          content: 'history 0',
-          timestamp: new Date(),
-          meta: {},
-        },
-        {
-          id: 1,
-          role: 'assistant',
-          content: 'history 1',
-          timestamp: new Date(),
-          meta: {},
-        },
+        makeMessage({ id: 'hist-0', content: 'history 0' }),
+        makeMessage({ id: 'hist-1', sender_type: 'agent', content: 'history 1' }),
       ]);
 
-      const localId = store.addMessage('user', 'new local message');
+      const localId = store.addUserMessage('u1', 'User', 'new local message', 'room-1');
       const ids = useChatStore.getState().messages.map((m) => m.id);
 
       expect(typeof localId).toBe('string');
-      expect(ids.filter((id) => id === 1)).toHaveLength(1);
+      expect(ids.filter((id) => id === 'hist-1')).toHaveLength(1);
       expect(ids.filter((id) => id === localId)).toHaveLength(1);
     });
   });
@@ -186,9 +204,9 @@ describe('chatStore', () => {
   describe('clearMessages', () => {
     it('should remove all messages', () => {
       const store = useChatStore.getState();
-      store.addMessage('user', 'First');
-      store.addMessage('assistant', 'Second');
-      store.addMessage('user', 'Third');
+      store.addMessage(makeMessage({ content: 'First' }));
+      store.addMessage(makeMessage({ sender_type: 'agent', content: 'Second' }));
+      store.addMessage(makeMessage({ content: 'Third' }));
 
       store.clearMessages();
 
@@ -224,28 +242,30 @@ describe('chatStore', () => {
     });
   });
 
-  describe('streamingContent', () => {
-    it('should set streaming content', () => {
+  describe('streamingByAgent', () => {
+    it('should append streaming content per agent', () => {
       const store = useChatStore.getState();
-      store.setStreamingContent('Partial response...');
+      store.appendStreamingContent('agent-1', 'Partial');
+      store.appendStreamingContent('agent-1', ' response');
 
-      expect(useChatStore.getState().streamingContent).toBe('Partial response...');
+      expect(useChatStore.getState().streamingByAgent['agent-1']).toBe('Partial response');
     });
 
-    it('should update streaming content', () => {
+    it('should clear streaming content for an agent', () => {
       const store = useChatStore.getState();
-      store.setStreamingContent('Partial');
-      store.setStreamingContent('Partial response');
+      store.appendStreamingContent('agent-1', 'Content');
+      store.clearStreamingContent('agent-1');
 
-      expect(useChatStore.getState().streamingContent).toBe('Partial response');
+      expect(useChatStore.getState().streamingByAgent['agent-1']).toBeUndefined();
     });
 
-    it('should clear streaming content', () => {
+    it('should reset all streaming', () => {
       const store = useChatStore.getState();
-      store.setStreamingContent('Content');
-      store.setStreamingContent('');
+      store.appendStreamingContent('agent-1', 'Content 1');
+      store.appendStreamingContent('agent-2', 'Content 2');
+      store.resetStreaming();
 
-      expect(useChatStore.getState().streamingContent).toBe('');
+      expect(useChatStore.getState().streamingByAgent).toEqual({});
     });
   });
 

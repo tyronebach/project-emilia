@@ -326,7 +326,7 @@ class TestRoomChat:
 
     @patch("routers.rooms._spawn_background")
     @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.DirectLLMClient")
+    @patch("services.llm_caller.DirectLLMClient")
     @patch("routers.rooms.httpx.AsyncClient")
     async def test_room_chat_non_stream_supports_direct_mode_agents(
         self,
@@ -389,10 +389,10 @@ class TestRoomChat:
         mock_direct.chat_completion.assert_awaited_once()
         mock_client_class.assert_not_called()
 
-    @patch("routers.rooms._spawn_background")
-    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.DirectLLMClient")
-    @patch("routers.rooms.httpx.AsyncClient")
+    @patch("services.room_chat_stream._spawn_background")
+    @patch("services.room_chat_stream._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("services.room_chat_stream.DirectLLMClient")
+    @patch("services.room_chat_stream.httpx.AsyncClient")
     async def test_room_chat_stream_supports_direct_mode_agents(
         self,
         mock_client_class,
@@ -450,11 +450,11 @@ class TestRoomChat:
         mock_direct.chat_completion.assert_awaited_once()
         mock_client_class.assert_not_called()
 
-    @patch("routers.rooms._spawn_background")
-    @patch("routers.rooms._safe_get_mood_snapshot")
-    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.DirectLLMClient")
-    @patch("routers.rooms.httpx.AsyncClient")
+    @patch("services.room_chat_stream._spawn_background")
+    @patch("services.room_chat_stream._safe_get_mood_snapshot")
+    @patch("services.room_chat_stream._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("services.room_chat_stream.DirectLLMClient")
+    @patch("services.room_chat_stream.httpx.AsyncClient")
     async def test_room_chat_stream_emits_avatar_and_emotion_events(
         self,
         mock_client_class,
@@ -935,10 +935,10 @@ class TestRoomChat:
         assert history.status_code == 200
         assert history.json()["count"] == 0
 
-    @patch("routers.rooms._spawn_background")
-    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.DirectLLMClient")
-    @patch("routers.rooms.httpx.AsyncClient")
+    @patch("services.room_chat_stream._spawn_background")
+    @patch("services.room_chat_stream._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("services.room_chat_stream.DirectLLMClient")
+    @patch("services.room_chat_stream.httpx.AsyncClient")
     async def test_room_chat_stream_truncates_oversized_direct_response(
         self,
         mock_client_class,
@@ -1014,10 +1014,10 @@ class TestRoomCompaction:
         auth_headers,
         monkeypatch,
     ):
-        from routers import rooms as rooms_router
+        from services import room_chat_stream as rcs_mod
 
-        monkeypatch.setattr(rooms_router.settings, "compact_threshold", 2)
-        monkeypatch.setattr(rooms_router.settings, "compact_keep_recent", 1)
+        monkeypatch.setattr(rcs_mod.settings, "compact_threshold", 2)
+        monkeypatch.setattr(rcs_mod.settings, "compact_keep_recent", 1)
         mock_summarize.return_value = "Compacted room summary"
 
         user_id = f"user-{uuid.uuid4().hex[:8]}"
@@ -1039,7 +1039,7 @@ class TestRoomCompaction:
         RoomMessageRepository.add(room_id, "agent", alpha, "a1", origin="chat")
         RoomMessageRepository.add(room_id, "user", user_id, "u2", origin="chat")
 
-        result = await rooms_router._maybe_compact_room(room_id)
+        result = await rcs_mod.maybe_compact_room(room_id)
         assert result is not None
         assert result["compacted"] is True
         assert RoomRepository.get_summary(room_id) == "Compacted room summary"
@@ -1053,10 +1053,10 @@ class TestRoomCompaction:
         auth_headers,
         monkeypatch,
     ):
-        from routers import rooms as rooms_router
+        from services import room_chat_stream as rcs_mod
 
-        monkeypatch.setattr(rooms_router.settings, "compact_threshold", 1)
-        monkeypatch.setattr(rooms_router.settings, "compact_keep_recent", 2)
+        monkeypatch.setattr(rcs_mod.settings, "compact_threshold", 1)
+        monkeypatch.setattr(rcs_mod.settings, "compact_keep_recent", 2)
         mock_summarize.return_value = "Pruned summary"
 
         user_id = f"user-{uuid.uuid4().hex[:8]}"
@@ -1079,7 +1079,7 @@ class TestRoomCompaction:
         RoomMessageRepository.add(room_id, "user", user_id, "u2", origin="chat")
         RoomMessageRepository.add(room_id, "agent", alpha, "a2", origin="chat")
 
-        result = await rooms_router._maybe_compact_room(room_id)
+        result = await rcs_mod.maybe_compact_room(room_id)
         assert result is not None
         assert result["compacted"] is True
         assert RoomRepository.get_message_count(room_id) == 2
@@ -1092,10 +1092,10 @@ class TestRoomCompaction:
         auth_headers,
         monkeypatch,
     ):
-        from routers import rooms as rooms_router
+        from services import room_chat_stream as rcs_mod
 
-        monkeypatch.setattr(rooms_router.settings, "compact_threshold", 1)
-        monkeypatch.setattr(rooms_router.settings, "compact_keep_recent", 1)
+        monkeypatch.setattr(rcs_mod.settings, "compact_threshold", 1)
+        monkeypatch.setattr(rcs_mod.settings, "compact_keep_recent", 1)
 
         user_id = f"user-{uuid.uuid4().hex[:8]}"
         alpha = f"agent-{uuid.uuid4().hex[:8]}"
@@ -1120,7 +1120,7 @@ class TestRoomCompaction:
         RoomMessageRepository.add(room_id, "agent", alpha, "a1", origin="chat")
         RoomMessageRepository.add(room_id, "user", user_id, "u2", origin="chat")
 
-        result = await rooms_router._maybe_compact_room(room_id)
+        result = await rcs_mod.maybe_compact_room(room_id)
         assert result is None
         assert RoomRepository.get_message_count(room_id) == 3
         assert RoomRepository.get_summary(room_id) is None

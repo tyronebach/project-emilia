@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Sliders, Bug, Palette, Users2 } from 'lucide-react';
+import { Sliders, Bug, Palette } from 'lucide-react';
 import { getUser, getRooms } from '../utils/api';
 import { useUserStore } from '../store/userStore';
 import { useAppStore } from '../store';
@@ -30,11 +30,7 @@ function AgentSelection({ userId }: AgentSelectionProps) {
   const handleSelect = async (agent: Agent) => {
     // Set user and agent in store
     if (userData) {
-      setUser({
-        id: userId,
-        display_name: userData.display_name,
-        preferences: userData.preferences,
-      });
+      setUser(userData);
       if (userData.preferences) {
         try {
           const parsed = JSON.parse(userData.preferences);
@@ -103,13 +99,6 @@ function AgentSelection({ userId }: AgentSelectionProps) {
                 title="Debug Avatar"
               >
                 <Bug className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => navigate({ to: '/user/$userId/rooms', params: { userId } })}
-                className="p-2 rounded-xl bg-bg-secondary/70 border border-white/10 text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors"
-                title="Group Rooms"
-              >
-                <Users2 className="w-5 h-5" />
               </button>
             </>
           )}

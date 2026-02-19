@@ -40,16 +40,21 @@ interface RenderStore {
   cameraPosition: CameraPosition | null;
   cameraDriftEnabled: boolean;
   lookAtEnabled: boolean;
-  
+
+  // Per-agent camera positions (scoped by agentId)
+  cameraPositionByAgent: Record<string, CameraPosition>;
+
   // Per-user storage
   currentUserId: string;
   userSettings: Record<string, UserRenderSettings>;
-  
+
   // Actions
   setCurrentUser: (userId: string | number | null) => void;
   setPreset: (preset: QualityPreset) => void;
   setSettings: (settings: QualitySettings) => void;
   setCameraPosition: (position: CameraPosition | null) => void;
+  setCameraPositionForAgent: (agentId: string, position: CameraPosition | null) => void;
+  getCameraPositionForAgent: (agentId: string) => CameraPosition | null;
   setCameraDriftEnabled: (enabled: boolean) => void;
   setLookAtEnabled: (enabled: boolean) => void;
 }
@@ -67,7 +72,10 @@ export const useRenderStore = create<RenderStore>()(
       cameraPosition: null,
       cameraDriftEnabled: true,
       lookAtEnabled: true,
-      
+
+      // Per-agent camera positions
+      cameraPositionByAgent: {},
+
       // Per-user storage
       currentUserId: DEFAULT_USER,
       userSettings: {},
@@ -129,6 +137,21 @@ export const useRenderStore = create<RenderStore>()(
         });
       },
       
+      setCameraPositionForAgent: (agentId, position) => {
+        const { cameraPositionByAgent } = get();
+        if (position) {
+          set({ cameraPositionByAgent: { ...cameraPositionByAgent, [agentId]: position } });
+        } else {
+          const next = { ...cameraPositionByAgent };
+          delete next[agentId];
+          set({ cameraPositionByAgent: next });
+        }
+      },
+
+      getCameraPositionForAgent: (agentId) => {
+        return get().cameraPositionByAgent[agentId] ?? null;
+      },
+
       setCameraDriftEnabled: (cameraDriftEnabled) => {
         const { currentUserId, userSettings } = get();
         const current = userSettings[currentUserId] || DEFAULT_USER_SETTINGS;
@@ -157,10 +180,11 @@ export const useRenderStore = create<RenderStore>()(
     }),
     {
       name: STORAGE_KEY,
-      // Only persist the per-user settings map
-      partialize: (state) => ({ 
+      // Only persist the per-user settings map + per-agent camera positions
+      partialize: (state) => ({
         userSettings: state.userSettings,
         currentUserId: state.currentUserId,
+        cameraPositionByAgent: state.cameraPositionByAgent,
       }),
       onRehydrate: () => {
         return (rehydratedState) => {

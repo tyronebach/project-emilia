@@ -4,6 +4,131 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.9.0] - 2026-02-19
+
+### Changed - Participants Drawer & Group Chat Polish
+
+Replaced the dedicated rooms pages with an inline right-side participants drawer, fixed per-agent camera controls in group chat, and resolved multiple group chat rendering bugs.
+
+#### Participants Drawer
+- **`ParticipantsDrawer`** (new) — Right-side Radix Dialog drawer (mirrors left Drawer pattern) showing current room participants with add/remove controls.
+- **DM → Group safety** — Adding an agent to a 1:1 DM shows a confirmation dialog and creates a new group room, preserving the original conversation.
+- **Header integration** — Participants button with agent count badge added to header (between AgentPanelDropdown and Debug).
+- **Removed rooms pages** — Deleted `RoomListPage`, `RoomChatPage`, `CreateRoomModal`, and associated routes (`/user/$userId/rooms`, `/user/$userId/rooms/$roomId`). Multi-agent management is now fully inline.
+- **Removed `ManageParticipantsPanel`** — Replaced by the new drawer.
+- **Removed "Group Rooms" button** from `AgentSelection`.
+
+#### Per-Agent Camera Controls
+- **Orbit controls enabled in group chat** — `RoomAvatarTile` now passes `enableOrbitControls: true` and `agentId` to `AvatarRenderer`, giving each tile independent pan/orbit/zoom.
+- **Per-agent camera persistence** — `renderStore` gained `cameraPositionByAgent` map with `setCameraPositionForAgent()` and `getCameraPositionForAgent()`. `AvatarRenderer` uses agent-scoped storage when `agentId` is set, falling back to global storage for single-agent mode.
+- **`AvatarRendererOptions.agentId`** — New optional field scopes camera save/load to the specific agent.
+
+#### AvatarStage Rewrite
+- **Switched from `AvatarPanel` to `RoomAvatarTile`** — Each agent in group chat now gets an independent VRM renderer registered in `AvatarRendererRegistry`, with correct per-agent VRM model, animation system, and lip-sync.
+- **Static grid layout** — 1 agent = full screen, 2 agents = side by side, 3-4 agents = 2x2 grid. Removed click-to-focus behavior that was breaking camera controls.
+
+#### Agent Sync Fix
+- **`userStore.syncAgent()`** (new) — Lightweight action that updates `currentAgent` without clearing roomId/messages (unlike `setAgent` which resets room state).
+- **Post-removal sync** — `ParticipantsDrawer.handleRemoveAgent()` now syncs `currentAgent` to the first remaining agent when the active agent is removed, fixing Header, AvatarPanel, AgentPanelDropdown, and useChat all showing stale data.
+
+#### Bug Fixes
+- **Duplicate user messages in group chat** — Removed duplicate optimistic message add from `sendRoomMessage` in `useChat.ts` (already added by caller).
+- **Wrong VRM model in group chat** — `AvatarStage` was using `AvatarPanel` (reads global `currentAgent`) instead of per-agent `RoomAvatarTile`.
+- **`TypeError: mood.dominant_mood.toLowerCase`** — Fixed `getMoodEmoji()` in AvatarStage to treat `dominant_mood` as a `SoulMoodEntry` object (access `.id?.toLowerCase()`), not a string.
+- **Agent identity mismatch after removal** — Header, AvatarPanel, and AgentPanelDropdown showed stale removed agent because `userStore.currentAgent` was never updated.
+
+#### Code Review Fixes (Chat System Audit)
+- **Room streaming tag stripping** — `appendStreamingContent()` in room mode now wraps content in `stripAvatarTagsStreaming()` so users don't see raw `[MOOD:...]` / `[INTENT:...]` tags flashing during streaming.
+- **Game context in room mode** — `sendRoomMessage()` now calls `getGameContext()` and passes `game_context` to `streamRoomChat()`. Also routes avatar `move` events through `handleAvatarResponse()` for game move parsing.
+- **Games guard for group chat** — `GamePanel` now only renders in single-agent mode (`!isMultiAgent`). Games are not designed for multi-agent rooms.
+- **System error sender_type** — Room error messages (`agent_error` and stream-level errors) now use `sender_type: 'system'` instead of `'agent'`. Added `'system'` to the `ChatMessage.sender_type` union type.
+
+### Files Added
+- `frontend/src/components/ParticipantsDrawer.tsx`
+- `frontend/src/types/chat.ts`
+
+### Files Deleted
+- `frontend/src/components/chat/ManageParticipantsPanel.tsx`
+- `frontend/src/components/rooms/RoomListPage.tsx`
+- `frontend/src/components/rooms/RoomChatPage.tsx`
+- `frontend/src/components/rooms/RoomChatPage.test.tsx`
+- `frontend/src/components/rooms/CreateRoomModal.tsx`
+- `frontend/src/routes/user/$userId/rooms.tsx`
+- `frontend/src/routes/user/$userId/rooms.$roomId.tsx`
+
+### Files Modified
+- `frontend/src/App.tsx` — Wire ParticipantsDrawer, remove old panel + floating button, games guard for group chat
+- `frontend/src/components/Header.tsx` — Add participants button with count badge
+- `frontend/src/components/AgentSelection.tsx` — Remove Group Rooms button, preserve agents in setUser
+- `frontend/src/components/chat/AvatarStage.tsx` — Rewrite with RoomAvatarTile + static grid
+- `frontend/src/components/chat/index.ts` — Remove ManageParticipantsPanel export
+- `frontend/src/components/rooms/RoomAvatarTile.tsx` — Enable orbit controls, pass agentId, flex height
+- `frontend/src/hooks/useChat.ts` — Room tag stripping, game context, avatar move routing, system error type
+- `frontend/src/types/chat.ts` — Add 'system' to sender_type union
+- `frontend/src/store/userStore.ts` — Add syncAgent action
+- `frontend/src/store/renderStore.ts` — Add per-agent camera position map
+- `frontend/src/avatar/types.ts` — Add agentId to AvatarRendererOptions
+- `frontend/src/avatar/AvatarRenderer.ts` — Add agentId to ResolvedOptions, agent-scoped save/load
+- `frontend/src/routeTree.gen.ts` — Remove rooms route entries
+
+### Tests
+- Frontend: 133 passed (18 test files)
+- Backend: 254 passed, 1 skipped
+- Frontend build: clean
+
+---
+
+## [5.8.0] - 2026-02-18
+
+### Changed - Unified Chat Architecture
+
+Major refactor merging dual chat stacks (DM + room) into a single unified architecture. All 6 phases of the implementation plan completed with full test coverage.
+
+#### Phase 0: Dead Code Removal & Type Fixes
+- **Unified `AgentStatus` type** — Canonical `'idle' | 'thinking' | 'streaming' | 'speaking'` in `frontend/src/types/chat.ts`, replacing conflicting exports from chatStore and roomStore.
+- **Deleted dead backend code** — Removed unused `EmotionalStateRepository.apply_decay()`, 6 dead trigger buffer methods, unused `updateRoomAgent()` and `sendRoomMessage()` API functions.
+- **Fixed mood_weights null fragility** — Added `DEFAULT '{}'` to `emotional_state.mood_weights_json` column and backfill migration.
+
+#### Phase 1: Backend — Extract LLM Service
+- **`backend/services/llm_caller.py`** (new) — Extracted LLM calling logic from `rooms.py` into reusable `call_llm_streaming()` async generator. Handles both `direct` and `openclaw` modes.
+- **`backend/services/room_chat_stream.py`** (new) — Extracted `_stream_room_chat_sse` and helpers from `rooms.py`. Both `rooms.py` and `chat.py` now import from this service at module level, eliminating the fragile late import circular dependency.
+
+#### Phase 2: Frontend — Merge Stores & Hooks
+- **Unified `ChatMessage` type** — `frontend/src/types/chat.ts` defines canonical message type mirroring API `RoomMessage` format (`sender_type`, `sender_id`, `timestamp` as epoch seconds) with UI-only `meta` field.
+- **Merged `roomStore` into `chatStore`** — Single Zustand store handles both DM and room state. Per-agent maps: `statusByAgent`, `emotionByAgent`, `avatarCommandByAgent`, `streamingByAgent`. Deleted `frontend/src/store/roomStore.ts`.
+- **Unified `useChat` hook** — `useChat(mode?: 'dm' | 'room')` auto-detects from `agents.length`. DM path uses `streamChat()`, room path uses `streamRoomChat()`. Deleted `frontend/src/hooks/useRoomChat.ts`.
+
+#### Phase 3: Group Chat TTS & Voice
+- **Sequential TTS queue** — Room-mode TTS collects `{ agentId, text, messageId }` during `agent_done` events and drains sequentially after streaming completes. Each agent speaks in turn with 30s timeout.
+- **Per-agent voice** — `speakText()` accepts optional `voiceId` parameter, using `RoomAgent.voice_id` for per-agent voice override.
+
+#### Phase 4: Multi-Agent Avatar Rendering
+- **`AvatarRendererRegistry`** (new) — `frontend/src/avatar/AvatarRendererRegistry.ts` provides per-agent renderer lookup. `RoomAvatarTile` registers/unregisters its renderer on mount/unmount.
+- **Per-agent lip-sync routing** — `speakText()` accepts optional `agentId` and routes lip-sync through the registry, falling back to the global DM renderer.
+- **Removed `focusedAgentId` guard** — Room-mode avatar events now store commands for ALL agents via `chatStore.setAgentAvatarCommand()`. Each `RoomAvatarTile` picks up its commands reactively.
+
+#### Phase 5: Error Resilience
+- **Retry UI for failed agents** — `ChatMessageMeta.failedAgentId` tags error messages. `RoomChatPage` shows a "Retry" button that re-sends the last user message with `mentionAgents: [failedAgentId]`.
+
+#### Phase 6: Cleanup
+- **Archived stale docs** — Moved `AUDIT-UNIFIED-CHAT.md`, `PLAN-UNIFIED-CHAT.md`, `DECISIONS-UNIFIED-CHAT.md` to `docs/archive/`.
+
+### Files Added
+- `frontend/src/avatar/AvatarRendererRegistry.ts`
+- `backend/services/llm_caller.py`
+- `backend/services/room_chat_stream.py`
+
+### Files Deleted
+- `frontend/src/store/roomStore.ts` (merged into chatStore)
+- `frontend/src/hooks/useRoomChat.ts` (merged into useChat)
+
+### Tests
+- Backend: 254 passed, 1 skipped
+- Frontend: 134 passed (19 test files)
+- Frontend build: clean
+
+---
+
 ## [5.7.1] - 2026-02-18
 
 ### Fixed - Chat Room Isolation & Agent Routing

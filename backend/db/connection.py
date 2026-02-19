@@ -309,7 +309,9 @@ def init_db():
         """)
 
         # Mood weights (JSON dict of mood->weight)
-        _add_column(cur, "emotional_state", "mood_weights_json", "TEXT")
+        _add_column(cur, "emotional_state", "mood_weights_json", "TEXT DEFAULT '{}'")
+        # Backfill NULL mood_weights_json to empty dict
+        cur.execute("UPDATE emotional_state SET mood_weights_json = '{}' WHERE mood_weights_json IS NULL")
 
         # Async trigger batching (LLM classification runs every N messages)
         _add_column(cur, "emotional_state", "trigger_buffer", "TEXT")  # JSON array of recent messages

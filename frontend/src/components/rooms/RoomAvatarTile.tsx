@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AvatarRenderer } from '../../avatar/AvatarRenderer';
+import { avatarRegistry } from '../../avatar/AvatarRendererRegistry';
 import type { AvatarCommand } from '../../types';
 import type { SoulMoodSnapshot } from '../../types/soulWindow';
 import { useRenderStore } from '../../store/renderStore';
@@ -58,10 +59,12 @@ function RoomAvatarTile({
       backgroundColor: 0x0b1220,
       cameraDistance: 1.0,
       cameraHeight: 1.2,
-      enableOrbitControls: false,
+      enableOrbitControls: true,
+      agentId,
       onLoad: () => {
         renderer.applyQualitySettings(settings);
         renderer.setLookAtEnabled(initialLookAtEnabled);
+        avatarRegistry.register(agentId, renderer);
         setLoading(false);
         setError(null);
         onLoadRecovered?.(agentId);
@@ -85,6 +88,7 @@ function RoomAvatarTile({
     currentVrmRef.current = vrmUrl;
 
     return () => {
+      avatarRegistry.unregister(agentId);
       renderer.dispose();
       rendererRef.current = null;
     };
@@ -141,7 +145,7 @@ function RoomAvatarTile({
 
   return (
     <div
-      className={`relative h-44 overflow-hidden rounded-xl border ${
+      className={`relative h-full min-h-[11rem] overflow-hidden rounded-xl border ${
         isFocused
           ? 'border-accent/50 bg-accent/8'
           : 'border-white/10 bg-bg-primary/60'
