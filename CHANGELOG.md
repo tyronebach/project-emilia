@@ -4,6 +4,22 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [5.7.1] - 2026-02-18
+
+### Fixed - Chat Room Isolation & Agent Routing
+
+- **Room-targeted chat** — `/api/chat` now accepts optional `room_id` in request body. When provided, messages go to that specific room instead of auto-resolving via `get_or_create_dm_room()`. Frontend passes current `roomId` from store.
+- **Auto-detect room_type** — `POST /api/rooms` auto-sets `room_type='dm'` for single-agent rooms, `'group'` for multi-agent. DM agents get `response_mode='always'`. `CreateRoomRequest` accepts optional `room_type` override.
+- **Agent-scoped room listing** — `GET /api/rooms?agent_id=X` filters rooms server-side by agent. `AgentSelection` now navigates to the correct agent's DM room (or New Chat if none exists) instead of the most recent room regardless of agent.
+- **Room deletion UI** — Room list page (`/user/$userId/rooms`) now has delete buttons on each room card with confirmation dialog. Uses existing `DELETE /api/rooms/{roomId}` endpoint (CASCADE removes messages, participants, agent mappings).
+- **New Chat clears history** — `InitializingPage` now calls `clearMessages()` before setting up a new room, preventing stale messages from the previous room from showing.
+- **History fetch guard** — `useSession.fetchHistory()` skip-if-more-messages guard now also verifies the store's `roomId` matches, preventing cross-room data leaks.
+- **Nested button fix** — Room list card changed from `<button>` to `<div role="button">` to allow the inner delete button without HTML nesting violation.
+- **Reference data seeding** — Moods and relationship types are now always seeded on backend startup (not gated behind `EMILIA_SEED_DATA`), fixing empty Designer V2 mood baseline sliders.
+- **Global Dynamics doc** — Added `docs/GLOBAL-DYNAMICS-TUNING.md` with knob explanations, tuning presets (Stable/Volatile/Moderate), and code locations.
+
+---
+
 ## [5.7.0] - 2026-02-17
 
 ### Changed - Unified Chat: Rooms as Canonical Path

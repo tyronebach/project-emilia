@@ -434,8 +434,9 @@ export async function deleteAgentGameConfig(agentId: string, gameId: string): Pr
 
 // ============ ROOM API ============
 
-export async function getRooms(): Promise<Room[]> {
-  const response = await fetchWithAuth(`${API_URL}/api/rooms`);
+export async function getRooms(agentId?: string): Promise<Room[]> {
+  const params = agentId ? `?agent_id=${encodeURIComponent(agentId)}` : '';
+  const response = await fetchWithAuth(`${API_URL}/api/rooms${params}`);
   if (!response.ok) throw new Error(`Failed to fetch rooms: ${response.status}`);
   const data = await response.json();
   return data.rooms || [];
@@ -444,6 +445,7 @@ export async function getRooms(): Promise<Room[]> {
 export async function createRoom(data: {
   name: string;
   agent_ids: string[];
+  room_type?: 'dm' | 'group';
   settings?: Record<string, unknown>;
 }): Promise<Room> {
   const response = await fetchWithAuth(`${API_URL}/api/rooms`, {
@@ -636,6 +638,7 @@ export async function streamChat(
   onError: (error: Error) => void,
   options?: {
     signal?: AbortSignal;
+    roomId?: string;
     gameContext?: GameContext;
     runtimeTrigger?: boolean;
     onCompaction?: (data: CompactionInfo) => void;
@@ -647,6 +650,7 @@ export async function streamChat(
       method: 'POST',
       body: JSON.stringify({
         message,
+        room_id: options?.roomId || undefined,
         game_context: options?.gameContext ?? undefined,
         runtime_trigger: options?.runtimeTrigger ?? undefined,
       }),

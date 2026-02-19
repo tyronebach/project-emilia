@@ -60,12 +60,21 @@ async def chat(
     if not agent:
         raise not_found("Agent")
 
-    # Resolve or create DM room for this (user, agent) pair
-    room = RoomRepository.get_or_create_dm_room(user_id, agent_id)
-    room_id = room["id"]
+    # Use explicit room_id if provided, otherwise auto-resolve DM room
+    if request.room_id:
+        if not RoomRepository.user_can_access(user_id, request.room_id):
+            raise forbidden("User cannot access this room")
+        room = RoomRepository.get_by_id(request.room_id)
+        if not room:
+            raise not_found("Room")
+        room_id = room["id"]
+    else:
+        room = RoomRepository.get_or_create_dm_room(user_id, agent_id)
+        room_id = room["id"]
+
     room_agents = RoomRepository.get_agents(room_id)
     if not room_agents:
-        raise service_unavailable("No agents in DM room")
+        raise service_unavailable("No agents in room")
 
     responding_agents = determine_responding_agents(
         user_message=request.message,

@@ -7,7 +7,7 @@ Instructions for Claude / Codex coding agents working on this project.
 | Item | Value |
 |------|-------|
 | Location | `/home/tbach/Projects/emilia-project/emilia-webapp` |
-| Version | See CHANGELOG.md (latest: 5.7.0) |
+| Version | See CHANGELOG.md (latest: 5.7.1) |
 | Frontend | React 19 + Vite + TanStack Router + Zustand |
 | Backend | FastAPI (modular routers) + SQLite |
 | Tests | `backend/tests/`, `frontend/src/**/*.test.ts(x)` |
@@ -110,8 +110,15 @@ npm run lint                  # ESLint
 All endpoints require `Authorization: Bearer {token}` header.
 User context via `X-User-Id`, `X-Agent-Id` headers.
 
+### Chat Room Architecture
+- Each chat is a **room** (`room_type='dm'` for 1:1, `'group'` for multi-agent)
+- Frontend passes `room_id` in `/api/chat` requests to target the correct room
+- `GET /api/rooms?agent_id=X` filters rooms by agent server-side
+- `POST /api/rooms` auto-detects `room_type` from agent count
+- Room deletion cascades to messages, participants, and agent mappings
+
 ### State Management
-- **Zustand** for client state (user, agent, session, UI)
+- **Zustand** for client state (user, agent, room, UI)
 - **React Query** for server state (API calls)
 - Don't mix them
 

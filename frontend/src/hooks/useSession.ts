@@ -28,16 +28,10 @@ export function useSession() {
 
     try {
       setIsLoading(true);
-      const data = await getRooms();
-      // Filter to rooms that contain the current agent (if one is selected)
-      const filtered = currentAgent?.id
-        ? data.filter(r =>
-            r.agents?.some(a => a.agent_id === currentAgent.id) ||
-            r.room_type === 'dm' // DM rooms are always relevant
-          )
-        : data;
-      setRooms(filtered);
-      return filtered;
+      // Filter server-side by agent if one is selected
+      const data = await getRooms(currentAgent?.id);
+      setRooms(data);
+      return data;
     } catch (error) {
       console.error('fetchRooms error:', error);
       return [];
@@ -89,9 +83,14 @@ export function useSession() {
       }));
 
       // Don't overwrite if chatStore already has MORE messages than backend
-      const currentMessages = useChatStore.getState().messages;
-      if (currentMessages.length > messages.length) {
-        return currentMessages;
+      // (e.g. streaming added new messages since fetch started) — but only
+      // if we're still on the same room.
+      const currentStoreRoomId = useAppStore.getState().roomId;
+      if (currentStoreRoomId === rid) {
+        const currentMessages = useChatStore.getState().messages;
+        if (currentMessages.length > messages.length) {
+          return currentMessages;
+        }
       }
 
       setMessages(messages);
