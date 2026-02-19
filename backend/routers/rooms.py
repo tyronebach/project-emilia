@@ -352,9 +352,10 @@ async def _maybe_compact_room(room_id: str) -> dict | None:
 async def list_rooms(
     token: str = Depends(verify_token),
     user_id: str = Depends(get_user_id),
+    agent_id: str | None = Query(None, description="Filter rooms containing this agent"),
 ):
     _ensure_user_exists(user_id)
-    rooms = RoomRepository.get_for_user(user_id)
+    rooms = RoomRepository.get_for_user(user_id, agent_id=agent_id)
     return RoomsListResponse(rooms=[_serialize_room(room) for room in rooms], count=len(rooms))
 
 
@@ -370,12 +371,21 @@ async def create_room(
         if not UserRepository.can_access_agent(user_id, agent_id):
             raise forbidden(f"User cannot access agent '{agent_id}'")
 
+    # Auto-detect room_type: 1 agent = DM, 2+ agents = group
+    room_type = request.room_type or ("dm" if len(request.agent_ids) == 1 else "group")
+
     room = RoomRepository.create(
         name=request.name,
         created_by=user_id,
         agent_ids=request.agent_ids,
         settings=request.settings,
+        room_type=room_type,
     )
+
+    # DM agents always respond (no mention required)
+    if room_type == "dm" and len(request.agent_ids) == 1:
+        RoomRepository.update_agent(room["id"], request.agent_ids[0], response_mode="always")
+
     return _serialize_room(room)
 
 

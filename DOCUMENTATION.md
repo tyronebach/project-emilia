@@ -56,8 +56,8 @@
 - `GET /api/agents/{agent_id}`: Returns agent with owner user IDs; access check via user header.
 
 **Rooms** (`backend/routers/rooms.py`)
-- `GET /api/rooms`: Lists rooms for current user. Response `RoomsListResponse`.
-- `POST /api/rooms`: Creates room with 1+ agents. Body `CreateRoomRequest`.
+- `GET /api/rooms?agent_id=`: Lists rooms for current user, optionally filtered by agent. Response `RoomsListResponse`.
+- `POST /api/rooms`: Creates room with 1+ agents. Auto-detects `room_type` (`dm` for 1 agent, `group` for 2+). Body `CreateRoomRequest`.
 - `GET /api/rooms/{room_id}`: Room detail with agent and participant lists. Response `RoomDetailResponse`.
 - `PATCH /api/rooms/{room_id}`: Updates room name/settings. Body `UpdateRoomRequest`.
 - `DELETE /api/rooms/{room_id}`: Deletes room. Response `DeleteResponse`.
@@ -77,8 +77,8 @@
   - Stream response emits additive room events: `agent_start`, `agent_done`, `agent_error`, `avatar`, `emotion`.
 
 **Chat / Media** (`backend/routers/chat.py`)
-- `POST /api/chat?stream=0|1`: DM chat facade — resolves a DM room for the (user, agent) pair via `RoomRepository.get_or_create_dm_room()` and delegates to the room chat pipeline.
-  - Request: `ChatRequest` (`message`, optional `game_context`, optional `runtime_trigger`).
+- `POST /api/chat?stream=0|1`: DM chat facade — uses explicit `room_id` if provided, otherwise resolves via `get_or_create_dm_room()`, and delegates to the room chat pipeline.
+  - Request: `ChatRequest` (`message`, optional `room_id`, optional `game_context`, optional `runtime_trigger`).
   - Headers: `Authorization`, `X-User-Id`, `X-Agent-Id`.
   - Internally stores the user message in `room_messages`, then calls `_call_llm_non_stream` (non-stream) or wraps `_stream_room_chat_sse` in `_dm_stream_wrapper` (stream). The wrapper strips agent attribution from SSE events to preserve the legacy single-agent contract.
   - Non-stream response: `{response, room_id, processing_ms, model, behavior, usage, emotion_debug?}`.
@@ -161,8 +161,8 @@ This includes:
 ### Data Models
 
 **Pydantic requests** (`backend/schemas/requests.py`)
-- `ChatRequest`: `{message, game_context?, runtime_trigger?}`
-- `CreateRoomRequest`, `UpdateRoomRequest`, `AddRoomAgentRequest`, `UpdateRoomAgentRequest`, `RoomChatRequest`
+- `ChatRequest`: `{message, room_id?, game_context?, runtime_trigger?}`
+- `CreateRoomRequest` (with optional `room_type`), `UpdateRoomRequest`, `AddRoomAgentRequest`, `UpdateRoomAgentRequest`, `RoomChatRequest`
   - `RoomChatRequest`: `{message, mention_agents?, game_context?, runtime_trigger?}`
 - `SpeakRequest`: `{text, voice_id?}`
 - `AgentCreate`: `{id, display_name, clawdbot_agent_id, vrm_model?, voice_id?, workspace?, chat_mode?, direct_model?, direct_api_base?}`
@@ -413,8 +413,8 @@ Assets
 ## Integration & Data Flows
 
 **Chat Flow**
-- Frontend `useChat` → `streamChat()` → `POST /api/chat?stream=1`.
-- Backend resolves DM room via `get_or_create_dm_room(user_id, agent_id)`, then delegates to room chat pipeline.
+- Frontend `useChat` → `streamChat()` → `POST /api/chat?stream=1` (with `room_id` from store).
+- Backend uses provided `room_id` if present, otherwise resolves DM room via `get_or_create_dm_room()`, then delegates to room chat pipeline.
 - Room pipeline builds context: summary + recent `room_messages` + emotion context + first-turn timezone-aware facts + game context.
 - LLM routing by `agents.chat_mode`:
   - `openclaw`: Clawdbot gateway `/v1/chat/completions` with `model: agent:{clawdbot_agent_id}`.
@@ -476,6 +476,7 @@ Assets
 ## Existing Docs
 
 **Docs present**
+- `docs/GLOBAL-DYNAMICS-TUNING.md`: Global Dynamics mood injection tuning guide (knobs, presets, per-agent vs global).
 - `docs/AUDIT-UNIFIED-CHAT.md`: Unified chat audit (session→room migration analysis).
 - `docs/PLAN-UNIFIED-CHAT.md`: Unified chat implementation plan.
 - `docs/DECISIONS-UNIFIED-CHAT.md`: Unified chat architectural decisions.

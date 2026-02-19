@@ -22,6 +22,7 @@ function InitializingPage({ userId, roomId }: InitializingPageProps) {
   const currentUser = useUserStore((state) => state.currentUser);
   const currentAgent = useUserStore((state) => state.currentAgent);
   const addMessage = useChatStore((state) => state.addMessage);
+  const clearMessages = useChatStore((state) => state.clearMessages);
   const setRoomId = useAppStore((state) => state.setRoomId);
   const { sendMessage } = useChat();
 
@@ -83,7 +84,8 @@ function InitializingPage({ userId, roomId }: InitializingPageProps) {
         setStatus('initializing');
         console.log('[InitializingPage] Room verified, sending greeting');
 
-        // Set roomId in store so useChat hook can use it
+        // Clear stale messages from previous room before setting new roomId
+        clearMessages();
         setRoomId(roomId);
 
         const greeting = `*${currentUser?.display_name} is bringing you to life...* hi there`;

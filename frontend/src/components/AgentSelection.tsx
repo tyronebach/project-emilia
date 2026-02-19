@@ -48,17 +48,17 @@ function AgentSelection({ userId }: AgentSelectionProps) {
     }
     setAgent(agent);
 
-    // Try to get existing rooms for this user
+    // Find existing DM rooms for this specific agent
     try {
-      const rooms = await getRooms();
-      if (rooms.length > 0) {
-        // Use most recent room
+      const rooms = await getRooms(agent.id);
+      const dmRoom = rooms.find(r => r.room_type === 'dm');
+      if (dmRoom) {
         navigate({
           to: '/user/$userId/chat/$roomId',
-          params: { userId, roomId: rooms[0].id }
+          params: { userId, roomId: dmRoom.id }
         });
       } else {
-        // No rooms - go to new chat page
+        // No DM room for this agent — go to new chat page
         navigate({
           to: '/user/$userId/chat/new',
           params: { userId }
@@ -66,7 +66,6 @@ function AgentSelection({ userId }: AgentSelectionProps) {
       }
     } catch (e) {
       console.error('Failed to fetch rooms:', e);
-      // On error, default to new chat page
       navigate({
         to: '/user/$userId/chat/new',
         params: { userId }

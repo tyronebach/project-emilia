@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { MessageCircle, Plus, Users } from 'lucide-react';
+import { MessageCircle, Plus, Trash2, Users } from 'lucide-react';
 import { Button } from '../ui/button';
 import AmbientBackground from '../AmbientBackground';
 import AppTopNav from '../AppTopNav';
 import CreateRoomModal from './CreateRoomModal';
 import { useUserStore } from '../../store/userStore';
-import { createRoom, getRooms, getUser, getUserAgents, type Room } from '../../utils/api';
+import { createRoom, deleteRoom, getRooms, getUser, getUserAgents, type Room } from '../../utils/api';
 
 interface RoomListPageProps {
   userId: string;
@@ -31,6 +31,7 @@ function RoomListPage({ userId }: RoomListPageProps) {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const userQuery = useQuery({
     queryKey: ['user', userId],
@@ -92,6 +93,21 @@ function RoomListPage({ userId }: RoomListPageProps) {
     }
   };
 
+  const handleDeleteRoom = async (e: React.MouseEvent, roomId: string) => {
+    e.stopPropagation();
+    if (deletingId) return;
+    if (!confirm('Delete this room and all its messages?')) return;
+    setDeletingId(roomId);
+    try {
+      await deleteRoom(roomId);
+      await queryClient.invalidateQueries({ queryKey: ['rooms', userId] });
+    } catch (error) {
+      console.error('Failed to delete room:', error);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const loading = userQuery.isLoading || roomsQuery.isLoading || agentsQuery.isLoading;
 
   return (
@@ -131,19 +147,32 @@ function RoomListPage({ userId }: RoomListPageProps) {
           ) : (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {rooms.map((room) => (
-                <button
+                <div
                   key={room.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => openRoom(room)}
-                  className="rounded-2xl border border-white/10 bg-bg-secondary/70 p-4 text-left transition-colors hover:border-accent/40 hover:bg-bg-secondary"
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openRoom(room); }}
+                  className="cursor-pointer rounded-2xl border border-white/10 bg-bg-secondary/70 p-4 text-left transition-colors hover:border-accent/40 hover:bg-bg-secondary"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <h3 className="font-display text-xl text-text-primary">{room.name}</h3>
                       <p className="mt-1 text-xs text-text-secondary">Last activity: {formatTimestamp(room.last_activity)}</p>
                     </div>
-                    <span className="rounded-full border border-white/10 bg-bg-tertiary/80 px-2 py-1 text-xs text-text-secondary">
-                      {room.room_type}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full border border-white/10 bg-bg-tertiary/80 px-2 py-1 text-xs text-text-secondary">
+                        {room.room_type}
+                      </span>
+                      <button
+                        onClick={(e) => handleDeleteRoom(e, room.id)}
+                        disabled={deletingId === room.id}
+                        className="rounded-full p-1.5 text-text-secondary/50 transition-colors hover:bg-red-500/20 hover:text-red-400 disabled:opacity-50"
+                        title="Delete room"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-4 flex items-center gap-4 text-xs text-text-secondary">
@@ -156,7 +185,7 @@ function RoomListPage({ userId }: RoomListPageProps) {
                       Room
                     </span>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}

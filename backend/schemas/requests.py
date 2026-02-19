@@ -62,6 +62,7 @@ class ChatRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     message: str = Field(..., min_length=1, max_length=10000, description="User message")
+    room_id: Optional[str] = Field(None, max_length=100, description="Target room ID (skips auto-resolve)")
     # Optional validated game context for prompt injection.
     game_context: GameContextRequest | None = None
     runtime_trigger: bool = Field(
@@ -275,6 +276,7 @@ class CreateRoomRequest(BaseModel):
     """Create room request."""
     name: str = Field(..., min_length=1, max_length=100)
     agent_ids: list[str] = Field(..., min_length=1, max_length=5)
+    room_type: Optional[Literal["dm", "group"]] = Field(None, description="Auto-detected from agent count if omitted")
     settings: Dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("name")

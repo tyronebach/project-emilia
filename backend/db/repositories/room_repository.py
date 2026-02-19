@@ -98,16 +98,27 @@ class RoomRepository:
             return RoomRepository._hydrate_room(row)
 
     @staticmethod
-    def get_for_user(user_id: str) -> list[dict]:
+    def get_for_user(user_id: str, agent_id: str | None = None) -> list[dict]:
         with get_db() as conn:
-            rows = conn.execute(
-                """SELECT r.*
-                   FROM rooms r
-                   JOIN room_participants rp ON rp.room_id = r.id
-                   WHERE rp.user_id = ?
-                   ORDER BY r.last_activity DESC""",
-                (user_id,),
-            ).fetchall()
+            if agent_id:
+                rows = conn.execute(
+                    """SELECT r.*
+                       FROM rooms r
+                       JOIN room_participants rp ON rp.room_id = r.id
+                       JOIN room_agents ra ON ra.room_id = r.id
+                       WHERE rp.user_id = ? AND ra.agent_id = ?
+                       ORDER BY r.last_activity DESC""",
+                    (user_id, agent_id),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT r.*
+                       FROM rooms r
+                       JOIN room_participants rp ON rp.room_id = r.id
+                       WHERE rp.user_id = ?
+                       ORDER BY r.last_activity DESC""",
+                    (user_id,),
+                ).fetchall()
             return [RoomRepository._hydrate_room(row) for row in rows]
 
     @staticmethod

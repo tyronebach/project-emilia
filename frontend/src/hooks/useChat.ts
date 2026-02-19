@@ -253,6 +253,7 @@ export function useChat() {
         },
         {
           signal: abortController.signal,
+          roomId: useAppStore.getState().roomId || undefined,
           gameContext: gameContext ?? undefined,
           runtimeTrigger: options?.runtimeTrigger ?? false,
           onCompaction: (c: CompactionInfo) => {
