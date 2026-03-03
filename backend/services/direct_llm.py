@@ -1,14 +1,18 @@
 """Direct OpenAI-compatible chat helpers and webapp system prompt builder."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone as tz
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 from zoneinfo import ZoneInfo
 
 import httpx
 
 from config import settings
+from db.connection import get_db
+from services.behavioral_rules import generate_behavioral_rules, get_fragility_profile
+from services.soul_parser import extract_canon_text
 
 MAX_SOUL_MD_CHARS = 50_000
 
@@ -137,10 +141,51 @@ def load_workspace_soul_md(workspace: str | None) -> str | None:
     return text
 
 
+def load_canon_soul_md(workspace: str | None) -> str | None:
+    """Best-effort Canon-only SOUL.md loading from an agent workspace."""
+    soul_md = load_workspace_soul_md(workspace)
+    if not soul_md:
+        return None
+    canon = extract_canon_text(soul_md)
+    return canon[:MAX_SOUL_MD_CHARS].rstrip() if canon else None
+
+
+def _load_lived_experience(agent_id: str | None, user_id: str | None) -> str:
+    if not agent_id or not user_id:
+        return ""
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT lived_experience
+               FROM character_lived_experience
+               WHERE agent_id = ? AND user_id = ?""",
+            (agent_id, user_id),
+        ).fetchone()
+    return str((row or {}).get("lived_experience") or "").strip()
+
+
+def _load_trust(agent_id: str | None, user_id: str | None) -> float:
+    if not agent_id or not user_id:
+        return 0.5
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT trust
+               FROM emotional_state
+               WHERE agent_id = ? AND user_id = ?""",
+            (agent_id, user_id),
+        ).fetchone()
+    try:
+        return float((row or {}).get("trust") or 0.5)
+    except (TypeError, ValueError):
+        return 0.5
+
+
 def prepend_webapp_system_prompt(
     messages: list[dict[str, str]],
     workspace: str | None,
     *,
+    agent: dict[str, Any] | None = None,
+    user_id: str | None = None,
+    agent_id: str | None = None,
     timezone: str | None = None,
     include_behavior_format: bool = True,
 ) -> list[dict[str, str]]:
@@ -151,16 +196,24 @@ def prepend_webapp_system_prompt(
 
     Game instructions are injected dynamically per-turn via inject_game_context().
     """
-    soul_md = load_workspace_soul_md(workspace)
+    resolved_agent_id = agent_id or (str(agent.get("id") or "") if isinstance(agent, dict) else "")
+    canon_md = load_canon_soul_md(workspace)
+    lived_experience = _load_lived_experience(resolved_agent_id, user_id)
+    trust = _load_trust(resolved_agent_id, user_id)
+    behavioral_rules = generate_behavioral_rules(trust, get_fragility_profile(agent))
     webapp_instructions = build_webapp_system_instructions(
         timezone=timezone,
         include_behavior_format=include_behavior_format,
     )
 
-    # Build system prompt: SOUL.md (persona) + webapp instructions (capabilities)
+    # Prompt assembly order: Canon -> Lived Experience -> Behavioral Rules -> Mood.
     parts = []
-    if soul_md:
-        parts.append(soul_md)
+    if canon_md:
+        parts.append("\n".join(["## Canon", canon_md]))
+    if lived_experience:
+        parts.append("\n".join(["## Lived Experience", lived_experience]))
+    if behavioral_rules:
+        parts.append(behavioral_rules)
     if webapp_instructions:
         parts.append(webapp_instructions)
 

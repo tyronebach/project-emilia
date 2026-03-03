@@ -178,5 +178,5 @@ async def test_drift_simulate_validates_archetype_from_db(test_client, auth_head
             "messages_per_session": 2,
         },
     )
-    assert response.status_code == 400
-    assert "Unknown archetype" in response.json()["detail"]
+    assert response.status_code == 410
+    assert response.json()["detail"] == "drift simulator deprecated — use /api/dreams"

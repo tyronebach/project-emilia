@@ -134,6 +134,10 @@ class EmotionalStateRepository:
             set_clauses.append(f"{key} = ?")
             params.append(value)
 
+        if "session_id" in changes:
+            set_clauses.append("session_id = ?")
+            params.append(changes["session_id"])
+
         # Handle trigger_calibration_json separately (not clamped)
         if "trigger_calibration_json" in changes:
             cal_json = changes["trigger_calibration_json"]

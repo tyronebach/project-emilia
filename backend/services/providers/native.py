@@ -77,12 +77,17 @@ class NativeProvider(Provider):
         messages: list[dict],
         *,
         workspace: str | None,
+        user_id: str | None,
+        agent_id: str | None,
         timezone: str | None,
         include_behavior_format: bool,
     ) -> list[dict[str, str]]:
         return prepend_webapp_system_prompt(
             normalize_messages_for_direct(messages),
             workspace,
+            agent=self.agent,
+            user_id=user_id,
+            agent_id=agent_id or str(self.agent.get("id") or ""),
             timezone=timezone or settings.default_timezone,
             include_behavior_format=include_behavior_format,
         )
@@ -106,6 +111,8 @@ class NativeProvider(Provider):
         prepared_messages = self._prepare_messages(
             messages,
             workspace=workspace,
+            user_id=user_id,
+            agent_id=agent_id,
             timezone=timezone,
             include_behavior_format=include_behavior_format,
         )
@@ -141,6 +148,8 @@ class NativeProvider(Provider):
         prepared_messages = self._prepare_messages(
             messages,
             workspace=workspace,
+            user_id=kwargs.get("user_id"),
+            agent_id=str(kwargs.get("agent_id") or self.agent.get("id") or ""),
             timezone=timezone,
             include_behavior_format=include_behavior_format,
         )

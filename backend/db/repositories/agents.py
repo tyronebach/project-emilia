@@ -211,5 +211,8 @@ class AgentRepository:
             conn.execute("DELETE FROM emotional_events_v2 WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM trigger_counts WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM game_stats WHERE agent_id = ?", (agent_id,))
+            conn.execute("DELETE FROM character_lived_experience WHERE agent_id = ?", (agent_id,))
+            conn.execute("DELETE FROM lived_experience WHERE agent_id = ?", (agent_id,))
+            conn.execute("DELETE FROM dream_log WHERE agent_id = ?", (agent_id,))
             cur = conn.execute("DELETE FROM agents WHERE id = ?", (agent_id,))
             return cur.rowcount

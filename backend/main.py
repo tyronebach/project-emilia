@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Emilia Web App - Backend API"""
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -17,13 +20,35 @@ from routers import (
     games_router,
     rooms_router,
     soul_window_router,
+    dreams_router,
 )
 from routers.emotional import router as emotional_router
 from routers.designer_v2 import router as designer_v2_router
+from services.dreams.scheduler import check_and_trigger_dreams
 
 VERSION = "5.6.3"
 
-app = FastAPI(title="Emilia API", version=VERSION)
+
+async def _dream_scheduler_loop() -> None:
+    while True:
+        await check_and_trigger_dreams()
+        await asyncio.sleep(3600)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_dream_scheduler_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="Emilia API", version=VERSION, lifespan=lifespan)
 get_embedder()
 
 app.add_middleware(
@@ -42,6 +67,7 @@ app.include_router(admin_router)
 app.include_router(games_router)
 app.include_router(rooms_router)
 app.include_router(soul_window_router)
+app.include_router(dreams_router)
 app.include_router(emotional_router)
 app.include_router(designer_v2_router)
 

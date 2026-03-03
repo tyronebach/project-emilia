@@ -164,7 +164,7 @@ async def stream_room_chat_sse(
                 user_id,
                 agent_id,
                 emotion_input_message,
-                None,
+                f"room:{room_id}",
             )
             emotion_snapshot = _safe_get_mood_snapshot(user_id, agent_id)
 

@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time as time_module
 
+from db.connection import get_db
 from db.repositories import AgentRepository, EmotionalStateRepository
 from services.emotion_engine import (
     AgentProfile,
@@ -21,6 +23,7 @@ logger = logging.getLogger(__name__)
 # Per-user-agent lock to serialize emotional state read-modify-write.
 _emotion_locks: dict[tuple[str, str], threading.Lock] = {}
 _emotion_locks_guard = threading.Lock()
+_SESSION_GAP_SECONDS = 2 * 60 * 60
 
 
 def get_emotion_lock(user_id: str, agent_id: str) -> threading.Lock:
@@ -31,6 +34,35 @@ def get_emotion_lock(user_id: str, agent_id: str) -> threading.Lock:
             if key not in _emotion_locks:
                 _emotion_locks[key] = threading.Lock()
     return _emotion_locks[key]
+
+
+def _is_new_session(session_id: str | None, state_row: dict | None) -> bool:
+    if not session_id or not isinstance(state_row, dict):
+        return False
+
+    if state_row.get("session_id") == session_id:
+        return False
+
+    if not session_id.startswith("room:"):
+        return True
+
+    room_id = session_id.split(":", 1)[1]
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT timestamp
+               FROM room_messages
+               WHERE room_id = ?
+               ORDER BY timestamp DESC
+               LIMIT 2""",
+            (room_id,),
+        ).fetchall()
+
+    if len(rows) <= 1:
+        return True
+
+    latest = float(rows[0].get("timestamp") or 0.0)
+    previous = float(rows[1].get("timestamp") or 0.0)
+    return latest - previous > _SESSION_GAP_SECONDS
 
 
 async def process_emotion_pre_llm(
@@ -50,8 +82,6 @@ async def process_emotion_pre_llm(
 
     Returns (context_block, detected_triggers).
     """
-    del session_id  # Reserved for compatibility/signature parity.
-
     try:
         lock = get_emotion_lock(user_id, agent_id)
         if not lock.acquire(timeout=5.0):
@@ -106,11 +136,31 @@ async def process_emotion_pre_llm(
                 mood_weights=mood_weights,
             )
 
+            if _is_new_session(session_id, state_row):
+                from services.emotion_engine import get_mood_list
+
+                state.valence = profile.baseline_valence
+                state.arousal = profile.baseline_arousal
+                state.dominance = profile.baseline_dominance
+                state.mood_weights = {
+                    mood: profile.mood_baseline.get(mood, 0)
+                    for mood in get_mood_list()
+                }
+                EmotionalStateRepository.update(
+                    user_id,
+                    agent_id,
+                    increment_interaction=False,
+                    mood_weights=state.mood_weights,
+                    valence=state.valence,
+                    arousal=state.arousal,
+                    dominance=state.dominance,
+                    session_id=session_id,
+                )
+                state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
+
             # Apply decay since last interaction
             last_updated = state_row.get("last_updated") or 0
             if last_updated:
-                import time as time_module
-
                 elapsed = time_module.time() - last_updated
                 state = engine.apply_decay(state, elapsed)
                 engine.apply_mood_decay(state, elapsed)
@@ -170,6 +220,7 @@ async def process_emotion_pre_llm(
                 intimacy=state.intimacy,
                 playfulness_safety=state.playfulness_safety,
                 conflict_tolerance=state.conflict_tolerance,
+                session_id=session_id or state_row.get("session_id"),
             )
 
             # Generate context block for prompt

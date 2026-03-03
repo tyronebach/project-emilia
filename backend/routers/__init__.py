@@ -7,6 +7,7 @@ from .admin import router as admin_router
 from .games import router as games_router
 from .rooms import router as rooms_router
 from .soul_window import router as soul_window_router
+from .dreams import router as dreams_router
 
 __all__ = [
     "users_router",
@@ -17,4 +18,5 @@ __all__ = [
     "games_router",
     "rooms_router",
     "soul_window_router",
+    "dreams_router",
 ]

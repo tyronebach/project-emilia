@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from config import settings
 from core.exceptions import not_found, bad_request, service_unavailable, timeout_error
 
@@ -1151,33 +1151,7 @@ async def delete_archetype(archetype_id: str) -> dict:
 
 @router.post("/drift-simulate")
 async def drift_simulate(body: dict[str, Any]) -> dict:
-    agent_id = body.get("agent_id")
-    user_id = body.get("user_id", "sim-user")
-    archetype = body.get("archetype")
-    replay_mode = str(body.get("replay_mode", "random"))
-
-    duration_days = int(body.get("duration_days", 7))
-    sessions_per_day = int(body.get("sessions_per_day", 2))
-    messages_per_session = int(body.get("messages_per_session", 20))
-    session_gap_hours = float(body.get("session_gap_hours", 8))
-    overnight_gap_hours = float(body.get("overnight_gap_hours", 12))
-    seed = body.get("seed")
-    seed = int(seed) if seed is not None and seed != "" else None
-
-    result = _run_drift_simulation(
-        agent_id=agent_id,
-        user_id=user_id,
-        archetype=archetype,
-        duration_days=duration_days,
-        sessions_per_day=sessions_per_day,
-        messages_per_session=messages_per_session,
-        session_gap_hours=session_gap_hours,
-        overnight_gap_hours=overnight_gap_hours,
-        seed=seed,
-        replay_mode=replay_mode,
-    )
-
-    return _build_drift_result_payload(result)
+    raise HTTPException(status_code=410, detail="drift simulator deprecated — use /api/dreams")
 
 
 @router.post("/drift-simulate-summary")
@@ -1185,70 +1159,9 @@ async def drift_simulate_summary(
     body: dict[str, Any],
     include_config: bool = Query(False, description="Include resolved simulation config in response."),
 ) -> dict:
-    """Run drift simulation and return compact summary for automation clients."""
-    agent_id = body.get("agent_id")
-    user_id = body.get("user_id", "sim-user")
-    archetype = body.get("archetype")
-    replay_mode = str(body.get("replay_mode", "random"))
-
-    duration_days = int(body.get("duration_days", 7))
-    sessions_per_day = int(body.get("sessions_per_day", 2))
-    messages_per_session = int(body.get("messages_per_session", 20))
-    session_gap_hours = float(body.get("session_gap_hours", 8))
-    overnight_gap_hours = float(body.get("overnight_gap_hours", 12))
-    seed = body.get("seed")
-    seed = int(seed) if seed is not None and seed != "" else None
-
-    result = _run_drift_simulation(
-        agent_id=agent_id,
-        user_id=user_id,
-        archetype=archetype,
-        duration_days=duration_days,
-        sessions_per_day=sessions_per_day,
-        messages_per_session=messages_per_session,
-        session_gap_hours=session_gap_hours,
-        overnight_gap_hours=overnight_gap_hours,
-        seed=seed,
-        replay_mode=replay_mode,
-    )
-
-    return _build_drift_summary(result, include_config=include_config)
+    raise HTTPException(status_code=410, detail="drift simulator deprecated — use /api/dreams")
 
 
 @router.post("/drift-compare")
 async def drift_compare(body: dict[str, Any]) -> dict:
-    agent_id = body.get("agent_id")
-    archetypes = body.get("archetypes") or []
-    replay_mode = str(body.get("replay_mode", "random"))
-
-    duration_days = int(body.get("duration_days", 7))
-    sessions_per_day = int(body.get("sessions_per_day", 2))
-    messages_per_session = int(body.get("messages_per_session", 20))
-    session_gap_hours = float(body.get("session_gap_hours", 8))
-    overnight_gap_hours = float(body.get("overnight_gap_hours", 12))
-    seed = body.get("seed")
-    seed = int(seed) if seed is not None and seed != "" else None
-
-    if not agent_id or not archetypes:
-        raise bad_request("agent_id and archetypes required")
-
-    comparisons = []
-    for archetype in archetypes:
-        result = _run_drift_simulation(
-            agent_id=agent_id,
-            user_id="sim-user",
-            archetype=archetype,
-            duration_days=duration_days,
-            sessions_per_day=sessions_per_day,
-            messages_per_session=messages_per_session,
-            session_gap_hours=session_gap_hours,
-            overnight_gap_hours=overnight_gap_hours,
-            seed=seed,
-            replay_mode=replay_mode,
-        )
-        comparisons.append({
-            "archetype": archetype,
-            "result": _build_drift_result_payload(result),
-        })
-
-    return {"comparisons": comparisons}
+    raise HTTPException(status_code=410, detail="drift simulator deprecated — use /api/dreams")
