@@ -67,7 +67,7 @@ class AgentRepository:
     def create(
         agent_id: str,
         display_name: str,
-        clawdbot_agent_id: str,
+        clawdbot_agent_id: str | None = None,
         vrm_model: str = "emilia.vrm",
         voice_id: str | None = None,
         workspace: str | None = None,
@@ -75,6 +75,8 @@ class AgentRepository:
         chat_mode: str | None = None,
         direct_model: str | None = None,
         direct_api_base: str | None = None,
+        provider: str = "native",
+        provider_config: dict | None = None,
     ) -> dict:
         if emotional_profile is None:
             emotional_profile = json.dumps(AgentRepository.DEFAULT_EMOTIONAL_PROFILE)
@@ -87,12 +89,22 @@ class AgentRepository:
         if isinstance(direct_api_base, str):
             direct_api_base = direct_api_base.strip() or None
 
+        normalized_provider = (provider or "native").strip().lower()
+        if normalized_provider not in {"native", "openclaw"}:
+            normalized_provider = "native"
+
+        config = dict(provider_config) if provider_config else {}
+        # Backward compat: store clawdbot_agent_id inside provider_config for openclaw agents.
+        if clawdbot_agent_id and normalized_provider == "openclaw":
+            config.setdefault("clawdbot_agent_id", clawdbot_agent_id)
+
         with get_db() as conn:
             conn.execute(
                 """INSERT INTO agents
                    (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
-                    emotional_profile, chat_mode, direct_model, direct_api_base)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    emotional_profile, chat_mode, direct_model, direct_api_base,
+                    provider, provider_config)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     agent_id,
                     display_name,
@@ -104,6 +116,8 @@ class AgentRepository:
                     normalized_chat_mode,
                     direct_model,
                     direct_api_base,
+                    normalized_provider,
+                    json.dumps(config),
                 )
             )
             return conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
@@ -122,6 +136,8 @@ class AgentRepository:
             "chat_mode",
             "direct_model",
             "direct_api_base",
+            "provider",
+            "provider_config",
         }
         set_clauses = []
         params = []
@@ -130,6 +146,11 @@ class AgentRepository:
                 if key == "chat_mode":
                     mode = str(value or "").strip().lower()
                     value = mode if mode in {"openclaw", "direct"} else "openclaw"
+                elif key == "provider":
+                    p = str(value or "").strip().lower()
+                    value = p if p in {"native", "openclaw"} else "native"
+                elif key == "provider_config":
+                    value = json.dumps(value) if isinstance(value, dict) else (value or "{}")
                 elif key in {"direct_model", "direct_api_base"} and isinstance(value, str):
                     value = value.strip() or None
                 set_clauses.append(f"{key} = ?")

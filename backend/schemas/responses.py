@@ -1,5 +1,6 @@
 """Pydantic response models for API endpoints."""
-from pydantic import BaseModel, ConfigDict
+import json
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class UserResponse(BaseModel):
@@ -15,17 +16,31 @@ class UserResponse(BaseModel):
 class AgentResponse(BaseModel):
     id: str
     display_name: str
-    clawdbot_agent_id: str
+    clawdbot_agent_id: str | None = None
     vrm_model: str | None = "emilia.vrm"
     voice_id: str | None = None
     workspace: str | None = None
     chat_mode: str = "openclaw"
     direct_model: str | None = None
     direct_api_base: str | None = None
+    provider: str = "native"
+    provider_config: dict = {}
     created_at: int
     owners: list[str] | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("provider_config", mode="before")
+    @classmethod
+    def parse_provider_config(cls, v) -> dict:
+        """Parse provider_config from JSON string if needed (DB stores TEXT)."""
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                return parsed if isinstance(parsed, dict) else {}
+            except (json.JSONDecodeError, TypeError):
+                return {}
+        return v if isinstance(v, dict) else {}
 
 
 class AvatarBehavior(BaseModel):

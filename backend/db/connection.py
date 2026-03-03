@@ -81,10 +81,14 @@ def init_db():
             CREATE TABLE IF NOT EXISTS agents (
                 id TEXT PRIMARY KEY,
                 display_name TEXT NOT NULL,
-                clawdbot_agent_id TEXT NOT NULL,
+                clawdbot_agent_id TEXT,
                 vrm_model TEXT DEFAULT 'emilia.vrm',
                 voice_id TEXT,
                 workspace TEXT,
+                provider TEXT DEFAULT 'native',
+                provider_config TEXT DEFAULT '{}',
+                persona_source TEXT DEFAULT 'db',
+                persona_text TEXT,
                 created_at INTEGER DEFAULT (strftime('%s', 'now'))
             )
         """)
@@ -343,6 +347,15 @@ def init_db():
                   OR LOWER(chat_mode) NOT IN ('openclaw', 'direct')"""
         )
 
+        # Normalize provider values to supported set.
+        cur.execute(
+            """UPDATE agents
+               SET provider = 'native'
+               WHERE provider IS NULL
+                  OR TRIM(provider) = ''
+                  OR LOWER(provider) NOT IN ('native', 'openclaw')"""
+        )
+
         # Mood definitions
         cur.execute("""
             CREATE TABLE IF NOT EXISTS moods (
@@ -370,6 +383,116 @@ def init_db():
                 created_at INTEGER DEFAULT (strftime('%s', 'now'))
             )
         """)
+
+        # Migration: agents.clawdbot_agent_id was NOT NULL in old schema.
+        # Recreate the table with it nullable and add new provider/persona columns.
+        agents_info = {row["name"]: row for row in cur.execute("PRAGMA table_info(agents)").fetchall()}
+        clawdbot_col = agents_info.get("clawdbot_agent_id")
+        if clawdbot_col and clawdbot_col["notnull"]:
+            cur.execute("ALTER TABLE agents RENAME TO agents_old")
+            cur.execute("""
+                CREATE TABLE agents (
+                    id TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL,
+                    clawdbot_agent_id TEXT,
+                    vrm_model TEXT DEFAULT 'emilia.vrm',
+                    voice_id TEXT,
+                    workspace TEXT,
+                    provider TEXT DEFAULT 'native',
+                    provider_config TEXT DEFAULT '{}',
+                    persona_source TEXT DEFAULT 'db',
+                    persona_text TEXT,
+                    baseline_valence REAL DEFAULT 0.2,
+                    baseline_arousal REAL DEFAULT 0.0,
+                    baseline_dominance REAL DEFAULT 0.0,
+                    emotional_volatility REAL DEFAULT 0.5,
+                    emotional_recovery REAL DEFAULT 0.1,
+                    emotional_profile TEXT,
+                    chat_mode TEXT DEFAULT 'openclaw',
+                    direct_model TEXT,
+                    direct_api_base TEXT,
+                    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+                )
+            """)
+            old_cols = set(agents_info.keys())
+            new_cols = {
+                "id", "display_name", "clawdbot_agent_id", "vrm_model", "voice_id",
+                "workspace", "baseline_valence", "baseline_arousal", "baseline_dominance",
+                "emotional_volatility", "emotional_recovery", "emotional_profile",
+                "chat_mode", "direct_model", "direct_api_base", "created_at",
+            }
+            copy_cols = ", ".join(old_cols & new_cols)
+            cur.execute(f"INSERT INTO agents ({copy_cols}) SELECT {copy_cols} FROM agents_old")
+            cur.execute("DROP TABLE agents_old")
+
+        # Add new provider/persona columns via migration guard (idempotent for existing DBs).
+        _add_column(cur, "agents", "provider", "TEXT DEFAULT 'native'")
+        _add_column(cur, "agents", "provider_config", "TEXT DEFAULT '{}'")
+        _add_column(cur, "agents", "persona_source", "TEXT DEFAULT 'db'")
+        _add_column(cur, "agents", "persona_text", "TEXT")
+
+        # Memory documents: agent-scoped document store for internal memory engine.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS memory_documents (
+                id TEXT PRIMARY KEY,
+                agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                path TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                created_at INTEGER DEFAULT (strftime('%s', 'now')),
+                updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+            )
+        """)
+
+        # Memory chunks: sub-document text segments for semantic retrieval.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS memory_chunks (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL REFERENCES memory_documents(id) ON DELETE CASCADE,
+                agent_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                start_char INTEGER NOT NULL,
+                end_char INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                created_at INTEGER DEFAULT (strftime('%s', 'now'))
+            )
+        """)
+
+        # Dream log: audit trail for dream reflection runs.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS dream_log (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                triggered_by TEXT,
+                prompt_used TEXT,
+                output_json TEXT,
+                trust_delta REAL,
+                attachment_delta REAL,
+                intimacy_delta REAL,
+                created_at INTEGER DEFAULT (strftime('%s', 'now'))
+            )
+        """)
+
+        # Lived experience: persistent narrative snapshot per user-agent pair.
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS lived_experience (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                updated_at INTEGER DEFAULT (strftime('%s', 'now')),
+                version INTEGER DEFAULT 1,
+                UNIQUE(user_id, agent_id)
+            )
+        """)
+
+        # Indexes for memory and dream tables.
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_memory_docs_agent_user ON memory_documents(agent_id, user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_memory_chunks_doc ON memory_chunks(document_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_memory_chunks_agent_user ON memory_chunks(agent_id, user_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_dream_log_user_agent ON dream_log(user_id, agent_id, created_at DESC)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_lived_experience_user_agent ON lived_experience(user_id, agent_id)")
 
         # Migration: game_stats had session_id FK to (removed) sessions table.
         # SQLite can't alter FKs, so drop and recreate if old schema detected.

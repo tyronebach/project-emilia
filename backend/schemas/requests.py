@@ -108,8 +108,11 @@ class AgentUpdate(BaseModel):
     )
     direct_model: Optional[str] = Field(None, max_length=200, description="Direct mode model override")
     direct_api_base: Optional[str] = Field(None, max_length=500, description="Direct mode API base URL")
+    clawdbot_agent_id: Optional[str] = Field(None, max_length=200, description="OpenClaw agent ID (optional)")
+    provider: Optional[Literal["native", "openclaw"]] = Field(None, description="LLM provider backend")
+    provider_config: Optional[Dict[str, Any]] = Field(None, description="Provider-specific configuration")
 
-    @field_validator('display_name', 'voice_id', 'vrm_model', 'workspace', 'direct_model', 'direct_api_base')
+    @field_validator('display_name', 'voice_id', 'vrm_model', 'workspace', 'direct_model', 'direct_api_base', 'clawdbot_agent_id')
     @classmethod
     def strip_strings(cls, v: Optional[str]) -> Optional[str]:
         """Strip whitespace from string fields."""
@@ -149,7 +152,7 @@ class AgentCreate(BaseModel):
     """Create agent."""
     id: str = Field(..., min_length=1, max_length=100, description="Agent ID")
     display_name: str = Field(..., min_length=1, max_length=200, description="Agent display name")
-    clawdbot_agent_id: str = Field(..., min_length=1, max_length=200, description="OpenClaw agent ID")
+    clawdbot_agent_id: Optional[str] = Field(None, max_length=200, description="OpenClaw agent ID (optional)")
     vrm_model: str = Field("emilia.vrm", max_length=200, description="VRM model filename")
     voice_id: Optional[str] = Field(None, max_length=100, description="Voice ID")
     workspace: Optional[str] = Field(None, max_length=500, description="Workspace path")
@@ -159,6 +162,8 @@ class AgentCreate(BaseModel):
     )
     direct_model: Optional[str] = Field(None, max_length=200, description="Direct mode model override")
     direct_api_base: Optional[str] = Field(None, max_length=500, description="Direct mode API base URL")
+    provider: Literal["native", "openclaw"] = Field("native", description="LLM provider backend")
+    provider_config: Dict[str, Any] = Field(default_factory=dict, description="Provider-specific configuration")
 
     @field_validator(
         "id",
