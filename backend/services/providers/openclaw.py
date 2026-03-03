@@ -1,23 +1,13 @@
-"""
-OpenClaw gateway adapter stub.
-
-Maps the Provider interface to the existing OpenClaw/Clawdbot backend so that
-agents with provider='openclaw' continue to work without infecting core
-abstractions.
-
-provider_config keys used:
-  - clawdbot_agent_id (str)
-  - endpoint          (str, optional)
-  - token             (str, optional — falls back to env CLAWDBOT_TOKEN)
-
-Phase A: stub only.  Full implementation in Phase F.
-"""
+"""Standalone-mode stub for the deprecated OpenClaw provider."""
 from typing import AsyncIterator
 from services.providers.base import Provider
 
 
+ERROR_MESSAGE = "OpenClaw provider not available in standalone mode"
+
+
 class OpenClawProvider(Provider):
-    """Adapter that forwards requests to the OpenClaw gateway."""
+    """Explicit stub so legacy configs fail clearly in standalone mode."""
 
     capabilities = {
         "streaming": True,
@@ -30,10 +20,8 @@ class OpenClawProvider(Provider):
         self.config = config
 
     async def generate(self, messages: list[dict], **kwargs) -> dict:
-        """Forward a generate request to OpenClaw."""
-        raise NotImplementedError("OpenClawProvider.generate — implemented in Phase F")
+        raise NotImplementedError(ERROR_MESSAGE)
 
     async def stream(self, messages: list[dict], **kwargs) -> AsyncIterator[str]:
-        """Forward a streaming request to OpenClaw."""
-        raise NotImplementedError("OpenClawProvider.stream — implemented in Phase F")
+        raise NotImplementedError(ERROR_MESSAGE)
         yield  # pragma: no cover

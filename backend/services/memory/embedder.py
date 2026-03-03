@@ -1,58 +1,86 @@
-"""
-Embedder abstraction for the internal memory engine.
+"""Embedder abstraction for the standalone memory engine."""
+from __future__ import annotations
 
-Provides a common embed() interface so the indexer and search modules
-stay decoupled from the underlying embedding backend.
-
-Available backends:
-  LocalEmbedder   — sentence-transformers (no external API, default)
-  GeminiEmbedder  — Google Gemini text-embedding-004 (optional)
-
-Phase A: stubs only.  Implementation in Phase C.
-"""
 from abc import ABC, abstractmethod
+
+import httpx
+
+from config import settings
+
+_GEMINI_EMBED_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/"
+    "models/gemini-embedding-001:embedContent"
+)
 
 
 class Embedder(ABC):
-    """Abstract base for text embedders."""
-
     @abstractmethod
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        """Embed a batch of texts.
-
-        Args:
-            texts: List of strings to embed.
-
-        Returns:
-            List of float vectors, one per input string.
-        """
+    async def embed(self, texts: list[str]) -> list[list[float]]:
         raise NotImplementedError
 
 
-class LocalEmbedder(Embedder):
-    """Sentence-transformers local embedder (no external API required)."""
+class OllamaEmbedder(Embedder):
+    def __init__(self, model: str, base_url: str) -> None:
+        self.model = model
+        self.base_url = base_url.rstrip("/")
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        """Embed *texts* using a local sentence-transformers model."""
-        raise NotImplementedError("LocalEmbedder.embed — Phase C")
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            for text in texts:
+                response = await client.post(
+                    f"{self.base_url}/api/embeddings",
+                    json={"model": self.model, "prompt": text},
+                )
+                response.raise_for_status()
+                data = response.json()
+                embedding = data.get("embedding")
+                if not isinstance(embedding, list) or not embedding:
+                    raise RuntimeError("Ollama embedding response missing embedding vector")
+                vectors.append([float(value) for value in embedding])
+        return vectors
 
 
 class GeminiEmbedder(Embedder):
-    """Google Gemini text-embedding-004 embedder (optional plugin)."""
-
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, model: str) -> None:
         self.api_key = api_key
+        self.model = model
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        """Embed *texts* via the Gemini Embeddings API."""
-        raise NotImplementedError("GeminiEmbedder.embed — Phase C")
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            for text in texts:
+                response = await client.post(
+                    _GEMINI_EMBED_URL,
+                    params={"key": self.api_key},
+                    json={
+                        "model": f"models/{self.model}",
+                        "content": {"parts": [{"text": text}]},
+                        "taskType": "RETRIEVAL_DOCUMENT",
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+                embedding = (data.get("embedding") or {}).get("values")
+                if not isinstance(embedding, list) or not embedding:
+                    raise RuntimeError("Gemini embedding response missing embedding vector")
+                vectors.append([float(value) for value in embedding])
+        return vectors
 
 
 def get_embedder() -> Embedder:
-    """Return the configured embedder instance.
-
-    Checks EMILIA_EMBEDDER env var:
-      'gemini'  → GeminiEmbedder (requires GEMINI_API_KEY)
-      anything else → LocalEmbedder (default)
-    """
-    raise NotImplementedError("embedder.get_embedder — Phase C")
+    """Return the configured embedder instance."""
+    provider = settings.emilia_embed_provider
+    if provider == "ollama":
+        return OllamaEmbedder(
+            model=settings.emilia_embed_model,
+            base_url=settings.emilia_embed_base_url,
+        )
+    if provider == "gemini":
+        if not settings.gemini_api_key:
+            raise RuntimeError("GEMINI_API_KEY is required when EMILIA_EMBED_PROVIDER=gemini")
+        return GeminiEmbedder(
+            api_key=settings.gemini_api_key,
+            model=settings.emilia_embed_model or "gemini-embedding-001",
+        )
+    raise RuntimeError(f"Unsupported embed provider: {provider}")

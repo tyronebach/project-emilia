@@ -21,7 +21,8 @@ async def call_llm_non_stream(agent: dict, messages: list[dict], room_id: str) -
         return await provider.generate(
             messages,
             workspace=(agent_config or {}).get("workspace"),
-            claw_agent_id=(agent_config or {}).get("clawdbot_agent_id") or "",
+            agent_id=(agent_config or {}).get("id") or agent_id,
+            user_id=agent.get("user_id"),
             user_tag=f"emilia:room:{room_id}",
             timeout_s=60.0,
             timezone=settings.default_timezone,

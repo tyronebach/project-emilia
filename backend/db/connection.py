@@ -452,12 +452,50 @@ def init_db():
                 document_id TEXT REFERENCES memory_documents(id) ON DELETE CASCADE,
                 agent_id TEXT,
                 user_id TEXT,
+                chunk_index INTEGER DEFAULT 0,
+                content TEXT,
+                embedding BLOB,
+                fts_tokens TEXT,
                 start_char INTEGER,
                 end_char INTEGER,
-                text TEXT NOT NULL,
+                text TEXT,
                 created_at REAL
             )
         """)
+        _add_column(cur, "memory_chunks", "chunk_index", "INTEGER DEFAULT 0")
+        _add_column(cur, "memory_chunks", "content", "TEXT")
+        _add_column(cur, "memory_chunks", "embedding", "BLOB")
+        _add_column(cur, "memory_chunks", "fts_tokens", "TEXT")
+        cur.execute("UPDATE memory_chunks SET content = COALESCE(content, text) WHERE content IS NULL")
+        cur.execute("UPDATE memory_chunks SET fts_tokens = COALESCE(fts_tokens, content, text) WHERE fts_tokens IS NULL")
+
+        cur.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS memory_chunks_fts
+            USING fts5(content, fts_tokens, content='memory_chunks', content_rowid='rowid')
+        """)
+        cur.execute("""
+            CREATE TRIGGER IF NOT EXISTS memory_chunks_ai AFTER INSERT ON memory_chunks BEGIN
+                INSERT INTO memory_chunks_fts(rowid, content, fts_tokens)
+                VALUES (new.rowid, COALESCE(new.content, ''), COALESCE(new.fts_tokens, new.content, ''));
+            END
+        """)
+        cur.execute("""
+            CREATE TRIGGER IF NOT EXISTS memory_chunks_ad AFTER DELETE ON memory_chunks BEGIN
+                INSERT INTO memory_chunks_fts(memory_chunks_fts, rowid, content, fts_tokens)
+                VALUES ('delete', old.rowid, COALESCE(old.content, ''), COALESCE(old.fts_tokens, old.content, ''));
+            END
+        """)
+        cur.execute("""
+            CREATE TRIGGER IF NOT EXISTS memory_chunks_au AFTER UPDATE ON memory_chunks BEGIN
+                INSERT INTO memory_chunks_fts(memory_chunks_fts, rowid, content, fts_tokens)
+                VALUES ('delete', old.rowid, COALESCE(old.content, ''), COALESCE(old.fts_tokens, old.content, ''));
+                INSERT INTO memory_chunks_fts(rowid, content, fts_tokens)
+                VALUES (new.rowid, COALESCE(new.content, ''), COALESCE(new.fts_tokens, new.content, ''));
+            END
+        """)
+        fts_count = cur.execute("SELECT COUNT(*) AS count FROM memory_chunks_fts").fetchone()["count"]
+        if int(fts_count or 0) == 0:
+            cur.execute("INSERT INTO memory_chunks_fts(memory_chunks_fts) VALUES ('rebuild')")
 
         # Dream log: audit trail for dream reflection runs.
         cur.execute("""
@@ -492,6 +530,7 @@ def init_db():
         cur.execute("CREATE INDEX IF NOT EXISTS idx_memory_docs_agent_user ON memory_documents(agent_id, user_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_memory_chunks_doc ON memory_chunks(document_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_memory_chunks_agent_user ON memory_chunks(agent_id, user_id)")
+        cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_docs_agent_user_path ON memory_documents(agent_id, user_id, path)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_dream_log_user_agent ON dream_log(user_id, agent_id, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_lived_experience_user_agent ON lived_experience(user_id, agent_id)")
 

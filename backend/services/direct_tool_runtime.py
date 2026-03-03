@@ -103,10 +103,13 @@ async def _execute_tool(
     name: str,
     arguments_json: str,
     workspace: str | None,
-    claw_agent_id: str,
+    agent_id: str | None = None,
+    user_id: str | None = None,
+    claw_agent_id: str | None = None,
 ) -> str:
     """Execute a single tool call and return the result string."""
-    from services import memory_bridge
+    from services.memory import reader, search, writer
+    resolved_agent_id = agent_id or claw_agent_id or ""
 
     try:
         args = json.loads(arguments_json) if arguments_json else {}
@@ -115,9 +118,11 @@ async def _execute_tool(
 
     try:
         if name == "memory_search":
-            results = await memory_bridge.search(
-                claw_agent_id=claw_agent_id,
+            results = await search.search(
                 query=args.get("query", ""),
+                agent_id=resolved_agent_id,
+                user_id=user_id,
+                workspace=workspace,
                 limit=int(args.get("maxResults", 5)),
                 min_score=float(args.get("minScore", 0.3)),
             )
@@ -126,7 +131,7 @@ async def _execute_tool(
             return json.dumps(results, indent=2)
 
         elif name == "memory_read":
-            return memory_bridge.read(
+            return reader.read(
                 workspace=workspace,
                 path=args.get("path", ""),
                 start_line=args.get("from"),
@@ -134,11 +139,13 @@ async def _execute_tool(
             )
 
         elif name == "memory_write":
-            return memory_bridge.write(
+            return await writer.write(
                 workspace=workspace,
                 path=args.get("path", ""),
                 content=args.get("content", ""),
                 mode=args.get("mode", "append"),
+                agent_id=resolved_agent_id,
+                user_id=user_id,
             )
 
         else:
@@ -155,7 +162,9 @@ async def run_tool_loop(
     model: str,
     messages: list[dict],
     workspace: str | None,
-    claw_agent_id: str,
+    agent_id: str | None = None,
+    user_id: str | None = None,
+    claw_agent_id: str | None = None,
     user_tag: str | None = None,
     timeout_s: float = 60.0,
     max_steps: int | None = None,
@@ -209,6 +218,8 @@ async def run_tool_loop(
                 name=tool_name,
                 arguments_json=tool_args,
                 workspace=workspace,
+                agent_id=agent_id,
+                user_id=user_id,
                 claw_agent_id=claw_agent_id,
             )
 

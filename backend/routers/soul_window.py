@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query
 
+from config import settings
 from core.exceptions import bad_request, forbidden, not_found
 from db.repositories import AgentRepository, UserRepository
 from dependencies import get_agent_id, get_user_id, verify_token
@@ -15,6 +16,13 @@ from services.soul_window_service import (
 from services.workspace_events import WorkspaceEventsService
 
 router = APIRouter(prefix="/api/soul-window", tags=["soul-window"])
+
+
+def _require_openclaw() -> None:
+    if not settings.is_openclaw_configured:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail="soul_window requires OpenClaw")
 
 
 def _resolve_agent_for_user(user_id: str, agent_id: str) -> dict:
@@ -40,6 +48,7 @@ async def get_soul_mood(
     user_id: str = Depends(get_user_id),
     agent_id: str = Depends(get_agent_id),
 ):
+    _require_openclaw()
     _resolve_agent_for_user(user_id, agent_id)
     return get_mood_snapshot(user_id, agent_id)
 
@@ -50,6 +59,7 @@ async def get_soul_bond(
     user_id: str = Depends(get_user_id),
     agent_id: str = Depends(get_agent_id),
 ):
+    _require_openclaw()
     agent = _resolve_agent_for_user(user_id, agent_id)
     workspace = Path(agent["workspace"]) if agent.get("workspace") else None
     return get_bond_snapshot(user_id, agent_id, workspace=workspace)
@@ -62,6 +72,7 @@ async def get_soul_about(
     user_id: str = Depends(get_user_id),
     agent_id: str = Depends(get_agent_id),
 ):
+    _require_openclaw()
     agent = _resolve_agent_for_user(user_id, agent_id)
     workspace = Path(agent["workspace"]) if agent.get("workspace") else None
     return get_about_payload(
@@ -78,6 +89,7 @@ async def get_soul_events(
     user_id: str = Depends(get_user_id),
     agent_id: str = Depends(get_agent_id),
 ):
+    _require_openclaw()
     agent = _resolve_agent_for_user(user_id, agent_id)
     workspace = _require_workspace(agent)
     return WorkspaceEventsService.get_events(workspace, user_id, agent_id)
@@ -90,6 +102,7 @@ async def mutate_soul_events(
     user_id: str = Depends(get_user_id),
     agent_id: str = Depends(get_agent_id),
 ):
+    _require_openclaw()
     agent = _resolve_agent_for_user(user_id, agent_id)
     workspace = _require_workspace(agent)
 

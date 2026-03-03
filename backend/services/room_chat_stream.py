@@ -187,7 +187,8 @@ async def stream_room_chat_sse(
                 async for chunk in provider.stream(
                     llm_messages,
                     workspace=agent_workspace,
-                    claw_agent_id=agent_config.get("clawdbot_agent_id") or "",
+                    agent_id=agent_config.get("id") or agent_id,
+                    user_id=user_id,
                     user_tag=f"emilia:room:{room_id}",
                     timeout_s=120.0,
                     timezone=settings.default_timezone,

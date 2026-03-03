@@ -83,7 +83,6 @@ class NativeProvider(Provider):
         return prepend_webapp_system_prompt(
             normalize_messages_for_direct(messages),
             workspace,
-            chat_mode="direct",
             timezone=timezone or settings.default_timezone,
             include_behavior_format=include_behavior_format,
         )
@@ -98,14 +97,11 @@ class NativeProvider(Provider):
         """Generate a complete response via the native endpoint."""
         workspace = kwargs.get("workspace")
         user_tag = kwargs.get("user_tag")
+        user_id = kwargs.get("user_id")
         timeout_s = float(kwargs.get("timeout_s", 60.0))
         timezone = kwargs.get("timezone")
         include_behavior_format = bool(kwargs.get("include_behavior_format", True))
-        claw_agent_id = str(
-            kwargs.get("claw_agent_id")
-            or self.agent.get("clawdbot_agent_id")
-            or ""
-        )
+        agent_id = str(kwargs.get("agent_id") or self.agent.get("id") or "")
         model = self._resolve_model(kwargs.get("model"))
         prepared_messages = self._prepare_messages(
             messages,
@@ -121,7 +117,8 @@ class NativeProvider(Provider):
                 model=model,
                 messages=prepared_messages,
                 workspace=workspace,
-                claw_agent_id=claw_agent_id,
+                agent_id=agent_id,
+                user_id=user_id,
                 user_tag=user_tag,
                 timeout_s=timeout_s,
             )
@@ -158,7 +155,8 @@ class NativeProvider(Provider):
                 include_behavior_format=include_behavior_format,
                 model=model,
                 use_tools=True,
-                claw_agent_id=kwargs.get("claw_agent_id"),
+                agent_id=kwargs.get("agent_id"),
+                user_id=kwargs.get("user_id"),
             )
             usage = result.get("usage")
             content = (((result.get("choices") or [{}])[0].get("message") or {}).get("content")) or ""
