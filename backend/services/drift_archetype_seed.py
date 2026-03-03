@@ -1,4 +1,7 @@
-"""Default global drift archetype seed data."""
+"""DEPRECATED — use dream system.
+
+Default global drift archetype seed data.
+"""
 from __future__ import annotations
 
 from typing import Any

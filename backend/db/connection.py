@@ -326,6 +326,7 @@ def init_db():
         _add_column(cur, "emotional_state", "playfulness_safety", "REAL DEFAULT 0.5")
         _add_column(cur, "emotional_state", "conflict_tolerance", "REAL DEFAULT 0.7")
         _add_column(cur, "emotional_state", "trigger_calibration_json", "TEXT DEFAULT '{}'")
+        _add_column(cur, "emotional_state", "session_id", "TEXT")
 
         # Agent emotional baseline columns (safe to re-run)
         _add_column(cur, "agents", "baseline_valence", "REAL DEFAULT 0.2")
@@ -337,6 +338,10 @@ def init_db():
         _add_column(cur, "agents", "chat_mode", "TEXT DEFAULT 'openclaw'")
         _add_column(cur, "agents", "direct_model", "TEXT")
         _add_column(cur, "agents", "direct_api_base", "TEXT")
+        _add_column(cur, "agents", "provider", "TEXT NOT NULL DEFAULT 'native'")
+        _add_column(cur, "agents", "provider_config", "TEXT DEFAULT '{}'")
+        _add_column(cur, "agents", "persona_source", "TEXT DEFAULT 'db'")
+        _add_column(cur, "agents", "persona_text", "TEXT")
 
         # Keep agent mode values in supported set.
         cur.execute(
@@ -426,12 +431,6 @@ def init_db():
             cur.execute(f"INSERT INTO agents ({copy_cols}) SELECT {copy_cols} FROM agents_old")
             cur.execute("DROP TABLE agents_old")
 
-        # Add new provider/persona columns via migration guard (idempotent for existing DBs).
-        _add_column(cur, "agents", "provider", "TEXT NOT NULL DEFAULT 'native'")
-        _add_column(cur, "agents", "provider_config", "TEXT DEFAULT '{}'")
-        _add_column(cur, "agents", "persona_source", "TEXT DEFAULT 'db'")
-        _add_column(cur, "agents", "persona_text", "TEXT")
-
         # Memory documents: agent-scoped document store for internal memory engine.
         cur.execute("""
             CREATE TABLE IF NOT EXISTS memory_documents (
@@ -512,6 +511,15 @@ def init_db():
                 created_at REAL NOT NULL
             )
         """)
+        _add_column(cur, "dream_log", "dreamed_at", "TEXT")
+        _add_column(cur, "dream_log", "conversation_summary", "TEXT")
+        _add_column(cur, "dream_log", "lived_experience_before", "TEXT")
+        _add_column(cur, "dream_log", "lived_experience_after", "TEXT")
+        _add_column(cur, "dream_log", "relationship_before", "TEXT")
+        _add_column(cur, "dream_log", "relationship_after", "TEXT")
+        _add_column(cur, "dream_log", "internal_monologue", "TEXT")
+        _add_column(cur, "dream_log", "model_used", "TEXT")
+        cur.execute("UPDATE dream_log SET dreamed_at = COALESCE(dreamed_at, datetime(created_at, 'unixepoch')) WHERE dreamed_at IS NULL")
 
         # Lived experience: persistent narrative snapshot per user-agent pair.
         cur.execute("""
@@ -526,6 +534,24 @@ def init_db():
             )
         """)
 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS character_lived_experience (
+                agent_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                lived_experience TEXT NOT NULL DEFAULT '',
+                last_dream_at TEXT,
+                dream_count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (agent_id, user_id)
+            )
+        """)
+        cur.execute("""
+            INSERT OR IGNORE INTO character_lived_experience (
+                agent_id, user_id, lived_experience, last_dream_at, dream_count
+            )
+            SELECT agent_id, user_id, COALESCE(content, ''), datetime(updated_at, 'unixepoch'), COALESCE(version, 0)
+            FROM lived_experience
+        """)
+
         # Indexes for memory and dream tables.
         cur.execute("CREATE INDEX IF NOT EXISTS idx_memory_docs_agent_user ON memory_documents(agent_id, user_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_memory_chunks_doc ON memory_chunks(document_id)")
@@ -533,6 +559,7 @@ def init_db():
         cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_docs_agent_user_path ON memory_documents(agent_id, user_id, path)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_dream_log_user_agent ON dream_log(user_id, agent_id, created_at DESC)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_lived_experience_user_agent ON lived_experience(user_id, agent_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_character_lived_experience_pair ON character_lived_experience(agent_id, user_id)")
 
         # Migration: game_stats had session_id FK to (removed) sessions table.
         # SQLite can't alter FKs, so drop and recreate if old schema detected.

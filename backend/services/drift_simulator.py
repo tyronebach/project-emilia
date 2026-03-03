@@ -1,4 +1,7 @@
-"""Drift Simulator — deterministic long-horizon simulation using EmotionEngine math."""
+"""DEPRECATED — use dream system.
+
+Drift Simulator — deterministic long-horizon simulation using EmotionEngine math.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

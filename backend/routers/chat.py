@@ -145,7 +145,7 @@ async def chat(
         )
 
         emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
-            user_id, agent_id, emotion_input_message, None,
+            user_id, agent_id, emotion_input_message, f"room:{room_id}",
         )
         emotion_snapshot = _safe_get_mood_snapshot(user_id, agent_id)
 

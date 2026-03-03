@@ -396,7 +396,7 @@ async def room_chat(
                 user_id,
                 agent_id,
                 emotion_input_message,
-                None,
+                f"room:{room_id}",
             )
 
             game_context = request.game_context if settings.is_games_v2_enabled_for_agent(agent_id) else None

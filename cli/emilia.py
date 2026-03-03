@@ -298,6 +298,35 @@ def cmd_memory_search(client: EmiliaClient, args) -> int:
     return 0
 
 
+def cmd_dream_trigger(client: EmiliaClient, args) -> int:
+    ids = require_ids(args)
+    payload = client.post(f"/api/dreams/{ids['agent_id']}/{ids['user_id']}/trigger")
+    console.print(json.dumps(payload, indent=2))
+    return 0
+
+
+def cmd_dream_status(client: EmiliaClient, args) -> int:
+    ids = require_ids(args)
+    payload = client.get(f"/api/dreams/{ids['agent_id']}/{ids['user_id']}")
+    console.print(json.dumps(payload, indent=2))
+    return 0
+
+
+def cmd_dream_log(client: EmiliaClient, args) -> int:
+    ids = require_ids(args)
+    payload = client.get(f"/api/dreams/{ids['agent_id']}/{ids['user_id']}/log")
+    console.print(json.dumps(payload, indent=2))
+    return 0
+
+
+def cmd_dream_reset(client: EmiliaClient, args) -> int:
+    ids = require_ids(args)
+    response = client.client.delete(f"/api/dreams/{ids['agent_id']}/{ids['user_id']}/reset")
+    response.raise_for_status()
+    console.print(json.dumps(response.json(), indent=2))
+    return 0
+
+
 def cmd_chat(client: EmiliaClient, args) -> int:
     ids = require_ids(args)
     total_messages = 0
@@ -398,6 +427,14 @@ def build_parser() -> argparse.ArgumentParser:
     memory_search.add_argument("--user")
     memory_search.add_argument("--agent")
 
+    dream = sub.add_parser("dream")
+    dream_sub = dream.add_subparsers(dest="dream_cmd", required=True)
+    for name in ("trigger", "status", "log", "reset"):
+        cmd = dream_sub.add_parser(name)
+        cmd.add_argument("--user")
+        cmd.add_argument("--agent")
+        cmd.set_defaults(room_required=False)
+
     return parser
 
 
@@ -430,6 +467,14 @@ def main() -> int:
             return cmd_memory_read(client, args)
         if args.command == "memory" and args.memory_cmd == "search":
             return cmd_memory_search(client, args)
+        if args.command == "dream" and args.dream_cmd == "trigger":
+            return cmd_dream_trigger(client, args)
+        if args.command == "dream" and args.dream_cmd == "status":
+            return cmd_dream_status(client, args)
+        if args.command == "dream" and args.dream_cmd == "log":
+            return cmd_dream_log(client, args)
+        if args.command == "dream" and args.dream_cmd == "reset":
+            return cmd_dream_reset(client, args)
     finally:
         client.close()
     return 1
