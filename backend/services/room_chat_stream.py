@@ -25,6 +25,7 @@ from services.emotion_runtime import (
     process_emotion_pre_llm as _process_emotion_pre_llm,
 )
 from services.llm_caller import MAX_RESPONSE_CHARS
+from services.providers.registry import get_provider
 from services.room_chat import (
     build_room_llm_messages,
     extract_behavior_dict,
@@ -32,16 +33,6 @@ from services.room_chat import (
     inject_game_context_if_present,
     room_message_row,
 )
-from services.direct_llm import (
-    DirectLLMClient,
-    build_webapp_system_instructions,
-    normalize_chat_mode,
-    normalize_messages_for_direct,
-    prepend_webapp_system_prompt,
-    resolve_direct_api_base,
-    resolve_direct_model,
-)
-from services.direct_tool_runtime import run_tool_loop
 
 logger = logging.getLogger(__name__)
 
@@ -147,10 +138,8 @@ async def stream_room_chat_sse(
 
     for agent in responding_agents:
         agent_id = agent["agent_id"]
-        clawdbot_agent_id = agent["clawdbot_agent_id"]
         agent_config = AgentRepository.get_by_id(agent_id) or {}
         agent_workspace = agent_config.get("workspace")
-        chat_mode = normalize_chat_mode(agent_config.get("chat_mode"))
         agent_name = agent.get("display_name") or agent_id
         started_at = time.time()
 
@@ -193,153 +182,93 @@ async def stream_room_chat_sse(
 
             usage = None
             full_content = ""
-            if chat_mode == "direct":
-                direct_client = DirectLLMClient(
-                    api_base=resolve_direct_api_base(agent_config),
-                )
-                direct_messages = prepend_webapp_system_prompt(
-                    normalize_messages_for_direct(llm_messages),
-                    agent_workspace,
+            provider = get_provider(agent_config or agent)
+            try:
+                async for chunk in provider.stream(
+                    llm_messages,
+                    workspace=agent_workspace,
+                    claw_agent_id=agent_config.get("clawdbot_agent_id") or "",
+                    user_tag=f"emilia:room:{room_id}",
+                    timeout_s=120.0,
                     timezone=settings.default_timezone,
-                )
-                claw_id = agent_config.get("clawdbot_agent_id") or ""
-                try:
-                    tool_result = await run_tool_loop(
-                        client=direct_client,
-                        model=resolve_direct_model(agent_config),
-                        messages=direct_messages,
-                        workspace=agent_workspace,
-                        claw_agent_id=claw_id,
-                        user_tag=f"emilia:room:{room_id}",
-                        timeout_s=120.0,
-                    )
-                    usage = tool_result.get("usage")
-                    choices = tool_result.get("choices", [])
-                    if choices:
-                        content = (choices[0].get("message") or {}).get("content", "")
-                        if content:
-                            if len(content) > MAX_RESPONSE_CHARS:
-                                logger.warning(
-                                    "[Room SSE] Response for %s exceeded %d chars, truncating",
-                                    agent_id,
-                                    MAX_RESPONSE_CHARS,
-                                )
-                                content = content[:MAX_RESPONSE_CHARS]
-                            full_content = content
-                            yield f"data: {json.dumps({'content': content, 'agent_id': agent_id})}\n\n"
-                except ValueError as exc:
-                    payload = {
-                        "agent_id": agent_id,
-                        "agent_name": agent_name,
-                        "error": str(exc),
-                    }
-                    yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
-                    continue
-                except httpx.HTTPStatusError as exc:
-                    status_code = exc.response.status_code if exc.response else 503
-                    logger.exception("Room direct stream HTTP error for %s", agent_id)
-                    detail = ""
-                    if exc.response is not None:
-                        try:
-                            detail = (exc.response.text or "").strip()
-                        except Exception:
-                            detail = ""
-                    if detail:
-                        detail = detail[:220]
-                    payload = {
-                        "agent_id": agent_id,
-                        "agent_name": agent_name,
-                        "error": (
-                            f"Chat service error ({status_code}): {detail}"
-                            if detail
-                            else f"Chat service error ({status_code})"
-                        ),
-                    }
-                    yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
-                    continue
-            else:
-                # OpenClaw mode
-                webapp_instructions = build_webapp_system_instructions(
-                    chat_mode="openclaw",
                     include_behavior_format=True,
-                )
-                openclaw_messages = [
-                    {"role": "system", "content": webapp_instructions},
-                    *llm_messages,
-                ]
-
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    async with client.stream(
-                        "POST",
-                        f"{settings.clawdbot_url}/v1/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {settings.clawdbot_token}",
-                            "Content-Type": "application/json",
-                        },
-                        json={
-                            "model": f"agent:{clawdbot_agent_id}",
-                            "messages": openclaw_messages,
-                            "stream": True,
-                            "stream_options": {"include_usage": True},
-                            "user": f"emilia:room:{room_id}",
-                        },
-                    ) as response:
-                        if response.status_code != 200:
-                            payload = {
-                                "agent_id": agent_id,
-                                "agent_name": agent_name,
-                                "error": f"Chat service error ({response.status_code})",
-                            }
-                            yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
+                ):
+                    if isinstance(chunk, str):
+                        chunk_content = chunk
+                    elif isinstance(chunk, dict):
+                        if chunk.get("type") == "usage":
+                            usage = chunk.get("usage")
                             continue
+                        if chunk.get("type") == "done":
+                            if chunk.get("model"):
+                                pass
+                            break
+                        chunk_content = str(chunk.get("content") or "") if chunk.get("type") == "content" else ""
+                    else:
+                        continue
 
-                        async for line in response.aiter_lines():
-                            if not line.startswith("data: "):
-                                continue
+                    if not chunk_content:
+                        continue
 
-                            data_str = line[6:].strip()
-                            if not data_str or data_str == "[DONE]":
-                                continue
+                    allowed = MAX_RESPONSE_CHARS - len(full_content)
+                    if allowed <= 0:
+                        logger.warning(
+                            "[Room SSE] Response for %s exceeded %d chars, truncating",
+                            agent_id,
+                            MAX_RESPONSE_CHARS,
+                        )
+                        break
 
-                            try:
-                                data = json.loads(data_str)
-                            except json.JSONDecodeError:
-                                continue
+                    chunk_to_send = chunk_content[:allowed]
+                    full_content += chunk_to_send
+                    if chunk_to_send:
+                        yield f"data: {json.dumps({'content': chunk_to_send, 'agent_id': agent_id})}\n\n"
 
-                            if "usage" in data:
-                                usage = data["usage"]
-
-                            choices = data.get("choices") or []
-                            if not choices:
-                                continue
-
-                            delta = choices[0].get("delta") or {}
-                            chunk = delta.get("content") or ""
-                            if chunk:
-                                allowed = MAX_RESPONSE_CHARS - len(full_content)
-                                if allowed <= 0:
-                                    logger.warning(
-                                        "[Room SSE] Response for %s exceeded %d chars, truncating",
-                                        agent_id,
-                                        MAX_RESPONSE_CHARS,
-                                    )
-                                    break
-
-                                chunk_to_send = chunk[:allowed]
-                                full_content += chunk_to_send
-                                if chunk_to_send:
-                                    yield f"data: {json.dumps({'content': chunk_to_send, 'agent_id': agent_id})}\n\n"
-
-                                if len(chunk) > len(chunk_to_send):
-                                    logger.warning(
-                                        "[Room SSE] Response for %s exceeded %d chars, truncating",
-                                        agent_id,
-                                        MAX_RESPONSE_CHARS,
-                                    )
-                                    break
-
-                            if choices[0].get("finish_reason"):
-                                break
+                    if len(chunk_content) > len(chunk_to_send):
+                        logger.warning(
+                            "[Room SSE] Response for %s exceeded %d chars, truncating",
+                            agent_id,
+                            MAX_RESPONSE_CHARS,
+                        )
+                        break
+            except NotImplementedError as exc:
+                payload = {
+                    "agent_id": agent_id,
+                    "agent_name": agent_name,
+                    "error": str(exc),
+                }
+                yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
+                continue
+            except ValueError as exc:
+                payload = {
+                    "agent_id": agent_id,
+                    "agent_name": agent_name,
+                    "error": str(exc),
+                }
+                yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
+                continue
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code if exc.response else 503
+                logger.exception("Room provider stream HTTP error for %s", agent_id)
+                detail = ""
+                if exc.response is not None:
+                    try:
+                        detail = (exc.response.text or "").strip()
+                    except Exception:
+                        detail = ""
+                if detail:
+                    detail = detail[:220]
+                payload = {
+                    "agent_id": agent_id,
+                    "agent_name": agent_name,
+                    "error": (
+                        f"Chat service error ({status_code}): {detail}"
+                        if detail
+                        else f"Chat service error ({status_code})"
+                    ),
+                }
+                yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
+                continue
 
             clean_content, behavior = extract_avatar_commands(full_content)
             clean_content = coalesce_response_text(clean_content, full_content)
