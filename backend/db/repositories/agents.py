@@ -72,7 +72,6 @@ class AgentRepository:
         voice_id: str | None = None,
         workspace: str | None = None,
         emotional_profile: str | None = None,
-        chat_mode: str | None = None,
         direct_model: str | None = None,
         direct_api_base: str | None = None,
         provider: str = "native",
@@ -81,9 +80,6 @@ class AgentRepository:
         if emotional_profile is None:
             emotional_profile = json.dumps(AgentRepository.DEFAULT_EMOTIONAL_PROFILE)
 
-        normalized_chat_mode = (chat_mode or "openclaw").strip().lower()
-        if normalized_chat_mode not in {"openclaw", "direct"}:
-            normalized_chat_mode = "openclaw"
         if isinstance(direct_model, str):
             direct_model = direct_model.strip() or None
         if isinstance(direct_api_base, str):
@@ -102,9 +98,9 @@ class AgentRepository:
             conn.execute(
                 """INSERT INTO agents
                    (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
-                    emotional_profile, chat_mode, direct_model, direct_api_base,
+                    emotional_profile, direct_model, direct_api_base,
                     provider, provider_config)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     agent_id,
                     display_name,
@@ -113,7 +109,6 @@ class AgentRepository:
                     voice_id,
                     workspace,
                     emotional_profile,
-                    normalized_chat_mode,
                     direct_model,
                     direct_api_base,
                     normalized_provider,
@@ -133,7 +128,6 @@ class AgentRepository:
             "vrm_model",
             "clawdbot_agent_id",
             "workspace",
-            "chat_mode",
             "direct_model",
             "direct_api_base",
             "provider",
@@ -170,10 +164,7 @@ class AgentRepository:
         params = []
         for key, value in normalized_updates.items():
             if key in allowed:
-                if key == "chat_mode":
-                    mode = str(value or "").strip().lower()
-                    value = mode if mode in {"openclaw", "direct"} else "openclaw"
-                elif key == "provider":
+                if key == "provider":
                     value = normalized_updates["provider"]
                 elif key == "provider_config":
                     value = json.dumps(value) if isinstance(value, dict) else (value or "{}")

@@ -19,12 +19,6 @@ def _resolve_provider_name(agent: dict) -> str:
     provider_name = str(agent.get("provider") or "").strip().lower()
     if provider_name in {"native", "openclaw"}:
         return provider_name
-
-    legacy_mode = str(agent.get("chat_mode") or "").strip().lower()
-    if legacy_mode == "direct":
-        return "native"
-    if legacy_mode == "openclaw":
-        return "openclaw"
     return "native"
 
 

@@ -12,9 +12,8 @@ from services.providers.registry import get_provider
 pytestmark = pytest.mark.anyio
 
 
-def test_provider_registry_falls_back_from_legacy_chat_mode() -> None:
+def test_provider_registry_defaults_to_native_provider() -> None:
     provider = get_provider({
-        "chat_mode": "direct",
         "provider": "",
         "provider_config": '{"model":"gpt-fallback"}',
     })

@@ -102,10 +102,6 @@ class AgentUpdate(BaseModel):
     voice_id: Optional[str] = Field(None, max_length=100, description="Voice ID")
     vrm_model: Optional[str] = Field(None, max_length=200, description="VRM model filename")
     workspace: Optional[str] = Field(None, max_length=500, description="Workspace path")
-    chat_mode: Optional[Literal["openclaw", "direct"]] = Field(
-        None,
-        description="Agent chat backend mode",
-    )
     direct_model: Optional[str] = Field(None, max_length=200, description="Direct mode model override")
     direct_api_base: Optional[str] = Field(None, max_length=500, description="Direct mode API base URL")
     clawdbot_agent_id: Optional[str] = Field(None, max_length=200, description="OpenClaw agent ID (optional)")
@@ -156,10 +152,6 @@ class AgentCreate(BaseModel):
     vrm_model: str = Field("emilia.vrm", max_length=200, description="VRM model filename")
     voice_id: Optional[str] = Field(None, max_length=100, description="Voice ID")
     workspace: Optional[str] = Field(None, max_length=500, description="Workspace path")
-    chat_mode: Optional[Literal["openclaw", "direct"]] = Field(
-        None,
-        description="Agent chat backend mode",
-    )
     direct_model: Optional[str] = Field(None, max_length=200, description="Direct mode model override")
     direct_api_base: Optional[str] = Field(None, max_length=500, description="Direct mode API base URL")
     provider: Literal["native", "openclaw"] = Field("native", description="LLM provider backend")
