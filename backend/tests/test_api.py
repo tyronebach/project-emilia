@@ -171,10 +171,10 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("services.llm_caller.DirectLLMClient")
+    @patch("services.llm_caller.get_provider")
     async def test_chat_non_stream_direct_mode_uses_direct_client(
         self,
-        mock_direct_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -214,8 +214,8 @@ class TestChatEndpoint:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_direct = MagicMock()
-        mock_direct.chat_completion = AsyncMock(
+        mock_provider = MagicMock()
+        mock_provider.generate = AsyncMock(
             return_value={
                 "model": "gpt-test-direct",
                 "choices": [
@@ -228,7 +228,7 @@ class TestChatEndpoint:
                 "usage": {"prompt_tokens": 11, "completion_tokens": 6},
             }
         )
-        mock_direct_client_class.return_value = mock_direct
+        mock_get_provider.return_value = mock_provider
 
         headers = {
             **auth_headers,
@@ -246,14 +246,14 @@ class TestChatEndpoint:
         assert data["response"] == "Direct hello!"
         assert data["model"] == "gpt-test-direct"
         assert data["usage"]["prompt_tokens"] == 11
-        mock_direct.chat_completion.assert_awaited_once()
+        mock_provider.generate.assert_awaited_once()
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("services.llm_caller.DirectLLMClient")
+    @patch("services.llm_caller.get_provider")
     async def test_chat_direct_mode_rolls_back_user_message_on_direct_client_error(
         self,
-        mock_direct_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -293,9 +293,9 @@ class TestChatEndpoint:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_direct = MagicMock()
-        mock_direct.chat_completion = AsyncMock(side_effect=ValueError("OPENAI_API_KEY is required for direct chat mode"))
-        mock_direct_client_class.return_value = mock_direct
+        mock_provider = MagicMock()
+        mock_provider.generate = AsyncMock(side_effect=ValueError("OPENAI_API_KEY is required for direct chat mode"))
+        mock_get_provider.return_value = mock_provider
 
         headers = {
             **auth_headers,
@@ -323,10 +323,10 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("services.room_chat_stream.DirectLLMClient")
+    @patch("services.room_chat_stream.get_provider")
     async def test_chat_stream_direct_mode_uses_tool_loop(
         self,
-        mock_direct_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -366,21 +366,14 @@ class TestChatEndpoint:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_direct = MagicMock()
-        mock_direct.chat_completion = AsyncMock(
-            return_value={
-                "model": "gpt-test-direct",
-                "choices": [
-                    {
-                        "message": {
-                            "content": "Hello direct stream",
-                        }
-                    }
-                ],
-                "usage": {"prompt_tokens": 9, "completion_tokens": 4},
-            }
-        )
-        mock_direct_client_class.return_value = mock_direct
+        async def _stream(*args, **kwargs):
+            yield {"type": "content", "content": "Hello direct stream"}
+            yield {"type": "usage", "usage": {"prompt_tokens": 9, "completion_tokens": 4}}
+            yield {"type": "done", "model": "gpt-test-direct", "finish_reason": "stop"}
+
+        mock_provider = MagicMock()
+        mock_provider.stream = _stream
+        mock_get_provider.return_value = mock_provider
 
         headers = {
             **auth_headers,
@@ -398,7 +391,6 @@ class TestChatEndpoint:
         assert '"content": "Hello direct stream"' in body
         assert '"response": "Hello direct stream"' in body
         assert '"done": true' in body
-        mock_direct.chat_completion.assert_awaited_once()
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
