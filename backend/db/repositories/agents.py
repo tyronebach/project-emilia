@@ -139,16 +139,42 @@ class AgentRepository:
             "provider",
             "provider_config",
         }
+        normalized_updates = dict(updates)
+
+        provider_value = normalized_updates.get("provider")
+        if isinstance(provider_value, str):
+            provider_value = provider_value.strip().lower()
+            if provider_value not in {"native", "openclaw"}:
+                provider_value = "native"
+            normalized_updates["provider"] = provider_value
+
+        config_value = normalized_updates.get("provider_config")
+        if isinstance(config_value, str):
+            try:
+                parsed_config = json.loads(config_value)
+                config_value = parsed_config if isinstance(parsed_config, dict) else {}
+            except (json.JSONDecodeError, TypeError):
+                config_value = {}
+        elif config_value is None:
+            config_value = {}
+        elif not isinstance(config_value, dict):
+            config_value = {}
+
+        clawdbot_agent_id = normalized_updates.get("clawdbot_agent_id")
+        if clawdbot_agent_id and normalized_updates.get("provider") == "openclaw":
+            config_value = dict(config_value)
+            config_value.setdefault("clawdbot_agent_id", clawdbot_agent_id)
+            normalized_updates["provider_config"] = config_value
+
         set_clauses = []
         params = []
-        for key, value in updates.items():
+        for key, value in normalized_updates.items():
             if key in allowed:
                 if key == "chat_mode":
                     mode = str(value or "").strip().lower()
                     value = mode if mode in {"openclaw", "direct"} else "openclaw"
                 elif key == "provider":
-                    p = str(value or "").strip().lower()
-                    value = p if p in {"native", "openclaw"} else "native"
+                    value = normalized_updates["provider"]
                 elif key == "provider_config":
                     value = json.dumps(value) if isinstance(value, dict) else (value or "{}")
                 elif key in {"direct_model", "direct_api_base"} and isinstance(value, str):
