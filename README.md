@@ -1,128 +1,244 @@
-# Emilia Web App
+# Emilia Backend
 
-Voice + text chat with animated VRM avatar, including 1:1 sessions and group rooms.
+Standalone LLM companion backend. Multi-agent, multi-room, with persistent memory, long-term character evolution via dreams, and a behavioral rules system that makes characters feel real.
 
-Current backend app version: `5.9.0`.
+No frontend required to run or test — the CLI covers the full lifecycle.
+
+---
 
 ## Stack
 
 | Layer | Tech |
 |-------|------|
-| Frontend | React 19 + Vite + TanStack Router + Zustand |
-| Backend | FastAPI (modular) + SQLite |
-| Avatar | Three.js + @pixiv/three-vrm |
-| TTS | ElevenLabs REST `/with-timestamps` |
-| STT | Faster Whisper (remote service) |
-| LLM | Mixed mode per agent: OpenClaw gateway (`openclaw`) or direct OpenAI-compatible (`direct`) |
+| Backend | FastAPI + SQLite |
+| LLM | Any OpenAI-compatible endpoint (OpenAI, Ollama, etc.) |
+| Embeddings | Ollama `mxbai-embed-large` (default) or Gemini `gemini-embedding-001` |
+| Memory | sqlite-vec + FTS5 hybrid search |
+| Frontend | React 19 + Vite *(separate, not required for backend dev)* |
 
-## Core Features
+---
 
-- Unified chat architecture — single `useChat` hook and `chatStore` handles both 1:1 DM and multi-agent rooms.
-- Inline participants drawer for adding/removing agents (right-side, mirrors left Drawer). Adding to a DM creates a new group room.
-- Multi-agent avatar stage with per-agent VRM renderer, independent orbit controls, and per-agent camera persistence.
-- Group chat TTS with sequential per-agent voice queue and per-agent lip-sync routing.
-- Per-agent chat backend toggle:
-  - `openclaw` -> `agent:{clawdbot_agent_id}` via gateway
-  - `direct` -> OpenAI-compatible `/chat/completions` with memory tool loop (`memory_search`, `memory_read`, `memory_write`)
-  - rooms support mixed mode per responding agent.
-  - In-chat mode toggle pill in header (amber "Direct" / blue "OC").
-- Emotion engine with per user-agent persistent state and calibration.
-- Designer SOUL simulator API for quick persona consistency checks (`POST /api/designer/v2/soul/simulate`).
-- Soul Window UX:
-  - Header mood indicator (live from SSE `emotion.snapshot`).
-  - Bond modal (`/api/soul-window/bond`).
-  - About modal from workspace `SOUL.md` (`/api/soul-window/about`).
-  - Events timeline (`/api/soul-window/events`).
+## Architecture
+
+Three timescales of emotional state:
+
+| Layer | What | Timescale | System |
+|-------|------|-----------|--------|
+| **Weather** | Per-turn mood | Seconds–minutes | Emotion engine |
+| **Climate** | Relationship evolution | Days–weeks | Dream system |
+| **Geography** | Core identity | Permanent | SOUL.md Canon |
+
+**Rooms** contain agents. **Users** are mapped to agents they can talk to. Each user-agent pair has its own Lived Experience that evolves independently via dreams.
+
+---
 
 ## Quick Start
 
 ```bash
-# Start everything
+# Start backend
 docker compose up -d --build
 
-# View logs
-docker compose logs -f backend
+# Or without Docker
+cd backend && pip install -r requirements.txt
+python main.py
 ```
 
-Open `https://localhost:3443`.
-
-Direct mode note:
-- `OPENAI_API_KEY` must be set for backend when using `chat_mode=direct`.
-- `GEMINI_API_KEY` must be set for memory search embeddings in direct mode.
-- For OpenAI direct calls, use provider model IDs (example: `gpt-4.1-mini`) rather than OpenClaw-style model prefixes.
-
-## Feature Flags
-
-- `GAMES_V2_AGENT_ALLOWLIST` (backend; optional comma-separated agent IDs for staged rollout)
-- `VITE_GAMES_V2_AGENT_ALLOWLIST` (frontend; optional comma-separated agent IDs mirroring backend allowlist)
-
-## Adding A New Game
-
-`/manage` (Games tab) handles backend catalog/config only. A game appears in the player UI only when both backend and frontend are wired.
-
-1. Build frontend game module under `frontend/src/games/modules/<game-id>/` (module + renderer + loader contract export).
-2. Add dynamic loader manifest entry in `frontend/src/games/loaders/manifest.ts` with the same `gameId`.
-3. Register game metadata in `/manage` (or `POST /api/manage/games`) using the same `id`/`module_key`.
-4. Enable the game for target agents in `/manage` (`agent_game_config` path).
-5. Ensure rollout allowlists include that agent when allowlist mode is enabled.
-
-If the backend catalog contains a game but no frontend loader exists, the selector intentionally filters it out.
-
-## URLs
-
-| Service | URL |
-|---------|-----|
-| Frontend | https://localhost:3443 |
-| Backend | http://localhost:8080 |
-| API Docs | http://localhost:8080/docs |
-| Agent Settings | https://localhost:3443/manage |
-| User Settings | In-app modal (Drawer → User Settings) |
-
-## Development
-
-```bash
-# Shortcuts
-./scripts/dev-backend.sh    # docker backend + health
-./scripts/dev-frontend.sh   # vite dev server
-./scripts/check-backend.sh  # backend tests (docker)
-./scripts/check-frontend.sh # frontend tests/lint/build
-./scripts/check-all.sh
-
-# Backend
-cd backend && source .venv/bin/activate
-.venv/bin/python main.py         # Dev server :8080
-.venv/bin/python -m pytest -q    # Backend tests
-./scripts/run-tests.sh # Backend tests (prefers docker)
-
-# Frontend
-cd frontend
-npm run dev -- --host # Dev server :3443
-npx vitest run        # Vitest
-npm run build         # Production build
-```
-
-## Documentation
-
-| File | Purpose |
-|------|---------|
-| `AGENTS.md` | Guide for coding agents |
-| `CHANGELOG.md` | Version history |
-| `DOCUMENTATION.md` | LLM-focused repo map |
-| `docs/AUDIT-CHAT-2026-02-18.md` | Chat system architectural audit |
-| `docs/PLAN-CHAT-IMPL-2026-02-18.md` | Unified chat implementation plan (6 phases, completed) |
-| `docs/SOUL-SIMULATOR-API.md` | SOUL simulator endpoint contract |
-| `docs/P006-soul-window-dev-guide.md` | Soul Window implementation and extension guide |
-| `docs/planning/P010-direct-mode-v2-checklist.md` | Direct mode V2 checklist (completed) |
-| `docs/planning/archive/P006-soul-window.md` | Soul Window canonical plan |
-| `docs/planning/archive/DRIFT-API.md` | Drift Simulator API contract |
-| `docs/animation/` | VRM/animation pipeline notes |
-
-## Avatar Assets
-
-- VRM files live in `frontend/public/vrm/`
-- Model list is defined in `frontend/public/vrm/vrm-manifest.json`
-- Voice list is defined in `frontend/public/vrm/voice-ids.json`
+Backend runs on `http://localhost:8080`. API docs at `http://localhost:8080/docs`.
 
 ---
 
-Built by Ram
+## CLI
+
+Install dependencies:
+```bash
+pip install httpx rich
+```
+
+Full agent lifecycle from terminal:
+
+```bash
+# 1. Check backend is up
+emilia health
+
+# 2. Init a workspace (creates SOUL.md, MEMORY.md)
+emilia workspace init ~/agents/emilia --name "Emilia" --archetype "gentle, curious"
+
+# 3. Create agent
+emilia agents create \
+  --id emilia \
+  --name "Emilia" \
+  --workspace ~/agents/emilia \
+  --provider native \
+  --model gpt-4o-mini
+
+# 4. Create user + map to agent
+emilia users create --name "Thai" --id thai
+emilia users map --user thai --agent emilia
+
+# 5. Create room + add agent
+emilia rooms create --name "emilia-thai"
+emilia rooms add-agent --room <room-id> --agent emilia
+
+# 6. Chat
+emilia chat --room <room-id> --user thai
+
+# 7. After chatting — check dream state
+emilia dream status --agent emilia --user thai
+
+# 8. Manually trigger a dream (character reflects on recent interactions)
+emilia dream trigger --agent emilia --user thai
+```
+
+### All Commands
+
+```
+emilia health
+
+emilia setup                          # bootstrap default user + agent + room
+
+emilia workspace init PATH --name NAME [--archetype TEXT]
+
+emilia agents list
+emilia agents create --id ID --name NAME --workspace PATH --provider native --model MODEL
+emilia agents show AGENT_ID
+emilia agents update AGENT_ID [--name NAME] [--workspace PATH] [--model MODEL]
+
+emilia users list
+emilia users create --name NAME [--id ID]
+emilia users show USER_ID
+emilia users map   --user USER_ID --agent AGENT_ID
+emilia users unmap --user USER_ID --agent AGENT_ID
+
+emilia rooms list
+emilia rooms create [--name NAME]
+emilia rooms show ROOM_ID
+emilia rooms add-agent    --room ROOM_ID --agent AGENT_ID
+emilia rooms remove-agent --room ROOM_ID --agent AGENT_ID
+
+emilia chat   [--room ROOM_ID] [--user USER_ID]   # interactive REPL
+emilia send   [--room ROOM_ID] [--user USER_ID] "message"
+emilia history [--room ROOM_ID] [--limit 20]
+
+emilia memory list   [--agent AGENT_ID]
+emilia memory read   PATH
+emilia memory search QUERY [--agent AGENT_ID]
+
+emilia dream trigger --agent AGENT_ID --user USER_ID
+emilia dream status  --agent AGENT_ID --user USER_ID
+emilia dream log     --agent AGENT_ID --user USER_ID
+emilia dream reset   --agent AGENT_ID --user USER_ID
+```
+
+All commands support `--json` for machine-readable output.
+
+---
+
+## Persona / SOUL.md
+
+Each agent has a `workspace` — a filesystem directory. The backend reads `{workspace}/SOUL.md` at chat time.
+
+**v3 format:**
+```markdown
+# SOUL.md — Emilia
+
+## Canon
+### Identity
+- **Name:** Emilia
+- **Archetype:** gentle, curious, sometimes stubborn
+- **Voice:** soft but direct, occasionally teasing
+
+### Emotional Baseline
+- **Default mood:** warm, slightly guarded
+- **Volatility:** low
+- **Recovery:** moderate
+
+### Fragility Profile
+- **Resilience to hostility:** medium
+- **Trust repair rate:** slow
+- **Breaking behaviors:**
+  - trust < 0.3: shorter responses, no questions
+  - trust < 0.15: minimal responses, no warmth, no disclosure
+
+### Boundaries
+- Will not pretend to be human
+
+## Lived Experience
+(Populated per-user by the dream system — do not edit manually)
+```
+
+**Canon** is immutable — only the designer changes it.
+**Lived Experience** is written by the dream system per user. The same character has different relationship states with different users.
+
+Memory files (`MEMORY.md`, `memory/YYYY-MM-DD.md`) live in the same workspace directory.
+
+---
+
+## Dream System
+
+After N sessions or 48h of inactivity, the character reflects on recent interactions and updates their relationship with that user:
+
+- Reads Canon + current Lived Experience + recent conversation history
+- LLM generates: updated Lived Experience prose + relationship adjustments (trust/attachment/intimacy deltas, bounded)
+- Writes back to DB + logs to `dream_log` audit table
+- Behavioral rules in the next session automatically reflect the new trust level
+
+This is what makes a character who's been treated poorly start giving shorter responses — and what makes a character who's been treated well start opening up.
+
+---
+
+## Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EMILIA_DB_PATH` | `.data/emilia.db` | SQLite database path |
+| `OPENAI_API_KEY` | — | Required for OpenAI provider |
+| `EMILIA_EMBED_PROVIDER` | `ollama` | Embedding provider (`ollama` or `gemini`) |
+| `EMILIA_EMBED_MODEL` | `mxbai-embed-large` | Embedding model |
+| `EMILIA_EMBED_BASE_URL` | `http://localhost:11434` | Ollama base URL |
+| `GEMINI_API_KEY` | — | Required if `EMILIA_EMBED_PROVIDER=gemini` |
+| `AUTH_ALLOW_DEV_TOKEN` | `0` | Set to `1` to skip auth in dev |
+| `CLAWDBOT_TOKEN` | — | API auth token |
+
+---
+
+## Testing
+
+```bash
+# Docker (preferred)
+bash backend/scripts/run-tests.sh
+
+# Direct
+cd backend && .venv/bin/python -m pytest -q
+```
+
+268 tests. CI-gated on every commit.
+
+---
+
+## Roadmap
+
+| Phase | Status | Summary |
+|-------|--------|---------|
+| A | ✅ | Standalone scaffold, new DB schema, provider/memory/dream stubs |
+| B | ✅ | Native provider runtime, streaming SSE, tool loop |
+| C | ✅ | Standalone memory engine (Ollama embeddings), OpenClaw decoupled, CLI |
+| D | ✅ | Dream system, behavioral rules framework, session-scoped emotion |
+| E | 🔄 | CLI completeness (agents create/update, users map, workspace init) |
+| Frontend redesign | — | Planned — major refactor |
+
+---
+
+## Key Docs
+
+| File | Purpose |
+|------|---------|
+| `docs/PHASE-C-SPEC.md` | Memory engine + CLI design |
+| `docs/PHASE-D-SPEC.md` | Dream system + behavioral rules design |
+| `docs/PHASE-E-CLI-SPEC.md` | CLI completeness spec |
+| `docs/planning/P013-emotional-architecture-v3.md` | Full emotional architecture design (Beatrice) |
+| `docs/SOUL-SIMULATOR-API.md` | SOUL simulator endpoint |
+| `backend/scripts/run-tests.sh` | Test runner |
+
+---
+
+*Backend: Ram. Architecture: Thai + Beatrice.*
