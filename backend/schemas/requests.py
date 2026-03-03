@@ -110,7 +110,7 @@ class AgentUpdate(BaseModel):
     direct_api_base: Optional[str] = Field(None, max_length=500, description="Direct mode API base URL")
     clawdbot_agent_id: Optional[str] = Field(None, max_length=200, description="OpenClaw agent ID (optional)")
     provider: Optional[Literal["native", "openclaw"]] = Field(None, description="LLM provider backend")
-    provider_config: Optional[Dict[str, Any]] = Field(None, description="Provider-specific configuration")
+    provider_config: Dict[str, Any] = Field(default_factory=dict, description="Provider-specific configuration")
 
     @field_validator('display_name', 'voice_id', 'vrm_model', 'workspace', 'direct_model', 'direct_api_base', 'clawdbot_agent_id')
     @classmethod

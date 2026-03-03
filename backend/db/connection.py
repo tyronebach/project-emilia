@@ -3,8 +3,8 @@ Database connection and initialization.
 """
 import os
 import json
-import time
 import sqlite3
+import time
 from pathlib import Path
 from contextlib import contextmanager
 
@@ -85,7 +85,7 @@ def init_db():
                 vrm_model TEXT DEFAULT 'emilia.vrm',
                 voice_id TEXT,
                 workspace TEXT,
-                provider TEXT DEFAULT 'native',
+                provider TEXT NOT NULL DEFAULT 'native',
                 provider_config TEXT DEFAULT '{}',
                 persona_source TEXT DEFAULT 'db',
                 persona_text TEXT,
@@ -385,7 +385,7 @@ def init_db():
         """)
 
         # Migration: agents.clawdbot_agent_id was NOT NULL in old schema.
-        # Recreate the table with it nullable and add new provider/persona columns.
+        # Recreate the table with it nullable and preserve newer provider/persona fields.
         agents_info = {row["name"]: row for row in cur.execute("PRAGMA table_info(agents)").fetchall()}
         clawdbot_col = agents_info.get("clawdbot_agent_id")
         if clawdbot_col and clawdbot_col["notnull"]:
@@ -398,7 +398,7 @@ def init_db():
                     vrm_model TEXT DEFAULT 'emilia.vrm',
                     voice_id TEXT,
                     workspace TEXT,
-                    provider TEXT DEFAULT 'native',
+                    provider TEXT NOT NULL DEFAULT 'native',
                     provider_config TEXT DEFAULT '{}',
                     persona_source TEXT DEFAULT 'db',
                     persona_text TEXT,
@@ -419,14 +419,15 @@ def init_db():
                 "id", "display_name", "clawdbot_agent_id", "vrm_model", "voice_id",
                 "workspace", "baseline_valence", "baseline_arousal", "baseline_dominance",
                 "emotional_volatility", "emotional_recovery", "emotional_profile",
-                "chat_mode", "direct_model", "direct_api_base", "created_at",
+                "chat_mode", "direct_model", "direct_api_base", "provider",
+                "provider_config", "persona_source", "persona_text", "created_at",
             }
             copy_cols = ", ".join(old_cols & new_cols)
             cur.execute(f"INSERT INTO agents ({copy_cols}) SELECT {copy_cols} FROM agents_old")
             cur.execute("DROP TABLE agents_old")
 
         # Add new provider/persona columns via migration guard (idempotent for existing DBs).
-        _add_column(cur, "agents", "provider", "TEXT DEFAULT 'native'")
+        _add_column(cur, "agents", "provider", "TEXT NOT NULL DEFAULT 'native'")
         _add_column(cur, "agents", "provider_config", "TEXT DEFAULT '{}'")
         _add_column(cur, "agents", "persona_source", "TEXT DEFAULT 'db'")
         _add_column(cur, "agents", "persona_text", "TEXT")
@@ -435,12 +436,12 @@ def init_db():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS memory_documents (
                 id TEXT PRIMARY KEY,
-                agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                path TEXT NOT NULL,
-                content_hash TEXT NOT NULL,
-                created_at INTEGER DEFAULT (strftime('%s', 'now')),
-                updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+                agent_id TEXT,
+                user_id TEXT,
+                path TEXT,
+                content_hash TEXT,
+                created_at REAL,
+                updated_at REAL
             )
         """)
 
@@ -448,13 +449,13 @@ def init_db():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS memory_chunks (
                 id TEXT PRIMARY KEY,
-                document_id TEXT NOT NULL REFERENCES memory_documents(id) ON DELETE CASCADE,
-                agent_id TEXT NOT NULL,
-                user_id TEXT NOT NULL,
-                start_char INTEGER NOT NULL,
-                end_char INTEGER NOT NULL,
+                document_id TEXT REFERENCES memory_documents(id) ON DELETE CASCADE,
+                agent_id TEXT,
+                user_id TEXT,
+                start_char INTEGER,
+                end_char INTEGER,
                 text TEXT NOT NULL,
-                created_at INTEGER DEFAULT (strftime('%s', 'now'))
+                created_at REAL
             )
         """)
 
@@ -462,15 +463,15 @@ def init_db():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS dream_log (
                 id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                user_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
                 triggered_by TEXT,
                 prompt_used TEXT,
                 output_json TEXT,
-                trust_delta REAL,
-                attachment_delta REAL,
-                intimacy_delta REAL,
-                created_at INTEGER DEFAULT (strftime('%s', 'now'))
+                trust_delta REAL DEFAULT 0,
+                attachment_delta REAL DEFAULT 0,
+                intimacy_delta REAL DEFAULT 0,
+                created_at REAL NOT NULL
             )
         """)
 
@@ -478,11 +479,11 @@ def init_db():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS lived_experience (
                 id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-                content TEXT NOT NULL,
-                updated_at INTEGER DEFAULT (strftime('%s', 'now')),
-                version INTEGER DEFAULT 1,
+                user_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                content TEXT,
+                updated_at REAL NOT NULL,
+                version INTEGER DEFAULT 0,
                 UNIQUE(user_id, agent_id)
             )
         """)
