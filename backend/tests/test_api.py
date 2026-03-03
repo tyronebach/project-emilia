@@ -939,7 +939,7 @@ class TestManageEndpoints:
         response = await test_client.get("/api/manage/agents")
         assert response.status_code == 401
 
-    async def test_manage_agent_update_persists_direct_mode_fields(self, test_client, auth_headers):
+    async def test_manage_agent_update_persists_provider_fields(self, test_client, auth_headers):
         agent_id = f"agent-{uuid.uuid4().hex[:8]}"
 
         with get_db() as conn:
@@ -953,8 +953,6 @@ class TestManageEndpoints:
         response = await test_client.put(
             f"/api/manage/agents/{agent_id}",
             json={
-                "direct_model": "gpt-test-direct",
-                "direct_api_base": "https://example.invalid/v1",
                 "provider": "native",
                 "provider_config": {
                     "model": "gpt-test-direct",
@@ -969,14 +967,13 @@ class TestManageEndpoints:
 
         with get_db() as conn:
             row = conn.execute(
-                "SELECT direct_model, direct_api_base, provider, provider_config FROM agents WHERE id = ?",
+                "SELECT provider, provider_config FROM agents WHERE id = ?",
                 (agent_id,),
             ).fetchone()
 
-        assert row["direct_model"] == "gpt-test-direct"
-        assert row["direct_api_base"] == "https://example.invalid/v1"
         assert row["provider"] == "native"
         assert json.loads(row["provider_config"])["model"] == "gpt-test-direct"
+        assert json.loads(row["provider_config"])["api_base"] == "https://example.invalid/v1"
 
     async def test_manage_games_and_agent_config_affect_catalog(self, test_client, auth_headers, monkeypatch):
         monkeypatch.setattr(settings, "games_v2_agent_allowlist", set())
