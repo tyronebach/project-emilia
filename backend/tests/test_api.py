@@ -1,4 +1,5 @@
 """Tests for Emilia Web App API endpoints."""
+import json
 import time
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -97,10 +98,10 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.chat.httpx.AsyncClient")
+    @patch("services.llm_caller.get_provider")
     async def test_chat_non_stream_success_returns_parsed_response(
         self,
-        mock_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -127,9 +128,8 @@ class TestChatEndpoint:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        mock_provider = MagicMock()
+        mock_provider.generate = AsyncMock(return_value={
             "model": "agent:test-claw-id",
             "choices": [
                 {
@@ -142,13 +142,8 @@ class TestChatEndpoint:
                 "prompt_tokens": 10,
                 "completion_tokens": 5,
             },
-        }
-
-        mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
+        })
+        mock_get_provider.return_value = mock_provider
 
         headers = {
             **auth_headers,
@@ -171,10 +166,10 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("services.llm_caller.DirectLLMClient")
+    @patch("services.llm_caller.get_provider")
     async def test_chat_non_stream_direct_mode_uses_direct_client(
         self,
-        mock_direct_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -191,8 +186,8 @@ class TestChatEndpoint:
             conn.execute(
                 """INSERT INTO agents
                    (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
-                    emotional_profile, chat_mode, direct_model, direct_api_base)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    emotional_profile, direct_model, direct_api_base, provider, provider_config)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     agent_id,
                     "Direct Agent",
@@ -201,9 +196,10 @@ class TestChatEndpoint:
                     None,
                     None,
                     "{}",
-                    "direct",
                     "gpt-test-direct",
                     "https://example.invalid/v1",
+                    "native",
+                    '{"model":"gpt-test-direct","api_base":"https://example.invalid/v1"}',
                 ),
             )
             conn.execute(
@@ -214,8 +210,8 @@ class TestChatEndpoint:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_direct = MagicMock()
-        mock_direct.chat_completion = AsyncMock(
+        mock_provider = MagicMock()
+        mock_provider.generate = AsyncMock(
             return_value={
                 "model": "gpt-test-direct",
                 "choices": [
@@ -228,7 +224,7 @@ class TestChatEndpoint:
                 "usage": {"prompt_tokens": 11, "completion_tokens": 6},
             }
         )
-        mock_direct_client_class.return_value = mock_direct
+        mock_get_provider.return_value = mock_provider
 
         headers = {
             **auth_headers,
@@ -246,14 +242,14 @@ class TestChatEndpoint:
         assert data["response"] == "Direct hello!"
         assert data["model"] == "gpt-test-direct"
         assert data["usage"]["prompt_tokens"] == 11
-        mock_direct.chat_completion.assert_awaited_once()
+        mock_provider.generate.assert_awaited_once()
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("services.llm_caller.DirectLLMClient")
+    @patch("services.llm_caller.get_provider")
     async def test_chat_direct_mode_rolls_back_user_message_on_direct_client_error(
         self,
-        mock_direct_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -270,8 +266,8 @@ class TestChatEndpoint:
             conn.execute(
                 """INSERT INTO agents
                    (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
-                    emotional_profile, chat_mode, direct_model, direct_api_base)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    emotional_profile, direct_model, direct_api_base, provider, provider_config)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     agent_id,
                     "Direct Agent",
@@ -280,9 +276,10 @@ class TestChatEndpoint:
                     None,
                     None,
                     "{}",
-                    "direct",
                     "gpt-test-direct",
                     "https://example.invalid/v1",
+                    "native",
+                    '{"model":"gpt-test-direct","api_base":"https://example.invalid/v1"}',
                 ),
             )
             conn.execute(
@@ -293,9 +290,9 @@ class TestChatEndpoint:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_direct = MagicMock()
-        mock_direct.chat_completion = AsyncMock(side_effect=ValueError("OPENAI_API_KEY is required for direct chat mode"))
-        mock_direct_client_class.return_value = mock_direct
+        mock_provider = MagicMock()
+        mock_provider.generate = AsyncMock(side_effect=ValueError("OPENAI_API_KEY is required for direct chat mode"))
+        mock_get_provider.return_value = mock_provider
 
         headers = {
             **auth_headers,
@@ -323,10 +320,12 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("services.room_chat_stream.DirectLLMClient")
+    @patch("services.room_chat_stream._spawn_background")
+    @patch("services.room_chat_stream.get_provider")
     async def test_chat_stream_direct_mode_uses_tool_loop(
         self,
-        mock_direct_client_class,
+        mock_get_provider,
+        mock_room_spawn_background,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -343,8 +342,8 @@ class TestChatEndpoint:
             conn.execute(
                 """INSERT INTO agents
                    (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
-                    emotional_profile, chat_mode, direct_model, direct_api_base)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    emotional_profile, direct_model, direct_api_base, provider, provider_config)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     agent_id,
                     "Direct Agent",
@@ -353,9 +352,10 @@ class TestChatEndpoint:
                     None,
                     None,
                     "{}",
-                    "direct",
                     "gpt-test-direct",
                     "https://example.invalid/v1",
+                    "native",
+                    '{"model":"gpt-test-direct","api_base":"https://example.invalid/v1"}',
                 ),
             )
             conn.execute(
@@ -365,22 +365,16 @@ class TestChatEndpoint:
 
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+        mock_room_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_direct = MagicMock()
-        mock_direct.chat_completion = AsyncMock(
-            return_value={
-                "model": "gpt-test-direct",
-                "choices": [
-                    {
-                        "message": {
-                            "content": "Hello direct stream",
-                        }
-                    }
-                ],
-                "usage": {"prompt_tokens": 9, "completion_tokens": 4},
-            }
-        )
-        mock_direct_client_class.return_value = mock_direct
+        async def _stream(*args, **kwargs):
+            yield {"type": "content", "content": "Hello direct stream"}
+            yield {"type": "usage", "usage": {"prompt_tokens": 9, "completion_tokens": 4}}
+            yield {"type": "done", "model": "gpt-test-direct", "finish_reason": "stop"}
+
+        mock_provider = MagicMock()
+        mock_provider.stream = _stream
+        mock_get_provider.return_value = mock_provider
 
         headers = {
             **auth_headers,
@@ -398,14 +392,13 @@ class TestChatEndpoint:
         assert '"content": "Hello direct stream"' in body
         assert '"response": "Hello direct stream"' in body
         assert '"done": true' in body
-        mock_direct.chat_completion.assert_awaited_once()
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.chat.httpx.AsyncClient")
+    @patch("services.llm_caller.get_provider")
     async def test_chat_runtime_trigger_marks_message_origin_and_hides_from_history(
         self,
-        mock_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -434,9 +427,8 @@ class TestChatEndpoint:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        mock_provider = MagicMock()
+        mock_provider.generate = AsyncMock(return_value={
             "model": "agent:test-claw-id",
             "choices": [
                 {
@@ -449,13 +441,8 @@ class TestChatEndpoint:
                 "prompt_tokens": 10,
                 "completion_tokens": 4,
             },
-        }
-
-        mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
+        })
+        mock_get_provider.return_value = mock_provider
 
         headers = {
             **auth_headers,
@@ -509,10 +496,10 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.chat.httpx.AsyncClient")
+    @patch("services.llm_caller.get_provider")
     async def test_chat_ignores_runtime_trigger_when_agent_not_in_games_v2_allowlist(
         self,
-        mock_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -541,19 +528,13 @@ class TestChatEndpoint:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        mock_provider = MagicMock()
+        mock_provider.generate = AsyncMock(return_value={
             "model": "agent:test-claw-id",
             "choices": [{"message": {"content": "Runtime trigger ignored for non-rollout agent."}}],
             "usage": {"prompt_tokens": 8, "completion_tokens": 4},
-        }
-
-        mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
+        })
+        mock_get_provider.return_value = mock_provider
 
         headers = {
             **auth_headers,
@@ -582,10 +563,10 @@ class TestChatEndpoint:
 
     @patch("routers.chat._spawn_background")
     @patch("routers.chat._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.chat.httpx.AsyncClient")
+    @patch("services.llm_caller.get_provider")
     async def test_chat_first_turn_includes_session_facts_block(
         self,
-        mock_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -612,25 +593,21 @@ class TestChatEndpoint:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        mock_response = {
             "model": "agent:test-claw-id",
             "choices": [{"message": {"content": "Hello from first turn."}}],
             "usage": {"prompt_tokens": 7, "completion_tokens": 4},
         }
 
-        captured_payload: dict = {}
+        captured_messages: list[dict] = []
 
-        async def _capture_post(*args, **kwargs):
-            captured_payload.update(kwargs.get("json") or {})
+        async def _capture_generate(messages, **kwargs):
+            captured_messages[:] = list(messages)
             return mock_response
 
-        mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(side_effect=_capture_post)
-        mock_client_class.return_value = mock_client
+        mock_provider = MagicMock()
+        mock_provider.generate = AsyncMock(side_effect=_capture_generate)
+        mock_get_provider.return_value = mock_provider
 
         headers = {
             **auth_headers,
@@ -644,8 +621,8 @@ class TestChatEndpoint:
         )
 
         assert response.status_code == 200
-        assert captured_payload.get("messages")
-        injected_message = captured_payload["messages"][-1]["content"]
+        assert captured_messages
+        injected_message = captured_messages[-1]["content"]
         expected_tz_label = settings.default_timezone or "UTC"
         assert f"Session facts ({expected_tz_label}):" in injected_message
         assert "time_of_day:" in injected_message
@@ -686,13 +663,8 @@ class TestSoulWindowEndpoints:
             "X-Agent-Id": agent_id,
         }
         response = await test_client.get("/api/soul-window/mood", headers=headers)
-        assert response.status_code == 200
-        data = response.json()
-        assert data["user_id"] == user_id
-        assert data["agent_id"] == agent_id
-        assert "dominant_mood" in data
-        assert "trust" in data
-        assert "intimacy" in data
+        assert response.status_code == 503
+        assert response.json()["detail"] == "soul_window requires OpenClaw"
 
     async def test_soul_window_events_round_trip(self, test_client, auth_headers, tmp_path):
         user_id = f"user-{uuid.uuid4().hex[:8]}"
@@ -722,8 +694,7 @@ class TestSoulWindowEndpoints:
         }
 
         initial_resp = await test_client.get("/api/soul-window/events", headers=headers)
-        assert initial_resp.status_code == 200
-        assert initial_resp.json()["upcoming_events"] == []
+        assert initial_resp.status_code == 503
 
         add_resp = await test_client.post(
             "/api/soul-window/events",
@@ -739,10 +710,7 @@ class TestSoulWindowEndpoints:
                 },
             },
         )
-        assert add_resp.status_code == 200
-        added = add_resp.json()
-        assert added["ok"] is True
-        assert any(item["id"] == "birthday-2026" for item in added["events"]["upcoming_events"])
+        assert add_resp.status_code == 503
 
         remove_resp = await test_client.post(
             "/api/soul-window/events",
@@ -752,9 +720,7 @@ class TestSoulWindowEndpoints:
                 "id": "birthday-2026",
             },
         )
-        assert remove_resp.status_code == 200
-        removed = remove_resp.json()
-        assert all(item["id"] != "birthday-2026" for item in removed["events"]["upcoming_events"])
+        assert remove_resp.status_code == 503
 
 
 # ========================================
@@ -973,7 +939,7 @@ class TestManageEndpoints:
         response = await test_client.get("/api/manage/agents")
         assert response.status_code == 401
 
-    async def test_manage_agent_update_persists_direct_mode_fields(self, test_client, auth_headers):
+    async def test_manage_agent_update_persists_provider_fields(self, test_client, auth_headers):
         agent_id = f"agent-{uuid.uuid4().hex[:8]}"
 
         with get_db() as conn:
@@ -987,9 +953,11 @@ class TestManageEndpoints:
         response = await test_client.put(
             f"/api/manage/agents/{agent_id}",
             json={
-                "chat_mode": "direct",
-                "direct_model": "gpt-test-direct",
-                "direct_api_base": "https://example.invalid/v1",
+                "provider": "native",
+                "provider_config": {
+                    "model": "gpt-test-direct",
+                    "api_base": "https://example.invalid/v1",
+                },
             },
             headers=auth_headers,
         )
@@ -999,13 +967,13 @@ class TestManageEndpoints:
 
         with get_db() as conn:
             row = conn.execute(
-                "SELECT chat_mode, direct_model, direct_api_base FROM agents WHERE id = ?",
+                "SELECT provider, provider_config FROM agents WHERE id = ?",
                 (agent_id,),
             ).fetchone()
 
-        assert row["chat_mode"] == "direct"
-        assert row["direct_model"] == "gpt-test-direct"
-        assert row["direct_api_base"] == "https://example.invalid/v1"
+        assert row["provider"] == "native"
+        assert json.loads(row["provider_config"])["model"] == "gpt-test-direct"
+        assert json.loads(row["provider_config"])["api_base"] == "https://example.invalid/v1"
 
     async def test_manage_games_and_agent_config_affect_catalog(self, test_client, auth_headers, monkeypatch):
         monkeypatch.setattr(settings, "games_v2_agent_allowlist", set())

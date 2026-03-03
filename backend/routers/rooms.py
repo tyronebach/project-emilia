@@ -411,7 +411,7 @@ async def room_chat(
             llm_messages = inject_first_turn_context_if_present(llm_messages, first_turn_context)
             llm_messages = inject_game_context_if_present(llm_messages, agent_id, game_context)
 
-            result = await call_llm_non_stream(agent, llm_messages, room_id)
+            result = await call_llm_non_stream({**agent, "user_id": user_id}, llm_messages, room_id)
             parsed = parse_chat_completion(result)
             processing_ms = int((time.time() - started_at) * 1000)
 

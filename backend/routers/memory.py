@@ -1,10 +1,12 @@
 """Memory file routes"""
 from pathlib import Path
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import PlainTextResponse
 from core.exceptions import not_found, forbidden
-from dependencies import verify_token, get_agent_workspace
+from dependencies import verify_token, get_agent_workspace, get_user_id
+from db.repositories import AgentRepository
 from schemas import MemoryFilesResponse, MemoryContentResponse
+from services.memory import reader, search
 
 router = APIRouter(prefix="/api/memory", tags=["memory"])
 
@@ -15,11 +17,9 @@ async def get_memory(
     workspace: Path = Depends(get_agent_workspace),
 ):
     """Get agent's MEMORY.md content"""
-    memory_path = workspace / "MEMORY.md"
-    if not memory_path.exists():
+    content = reader.read(workspace, "MEMORY.md", truncate=False)
+    if content.startswith("Error:"):
         raise not_found("Memory file")
-
-    content = memory_path.read_text(encoding="utf-8")
     return PlainTextResponse(content, media_type="text/markdown")
 
 
@@ -29,19 +29,29 @@ async def list_memory_files(
     workspace: Path = Depends(get_agent_workspace),
 ):
     """List available memory files (MEMORY.md + daily files)"""
-    files = []
+    return MemoryFilesResponse(workspace=str(workspace), files=reader.list_files(workspace))
 
-    memory_md = workspace / "MEMORY.md"
-    if memory_md.exists():
-        files.append("MEMORY.md")
 
-    memory_dir = workspace / "memory"
-    if memory_dir.exists() and memory_dir.is_dir():
-        for f in memory_dir.iterdir():
-            if f.is_file() and f.suffix == ".md":
-                files.append(f.name)
-
-    return MemoryFilesResponse(workspace=str(workspace), files=files)
+@router.get("/search")
+async def search_memory(
+    q: str = Query(..., min_length=1, description="Search query"),
+    agent_id: str = Query(..., description="Agent ID"),
+    limit: int = Query(5, ge=1, le=20),
+    token: str = Depends(verify_token),
+    user_id: str = Depends(get_user_id),
+    workspace: Path = Depends(get_agent_workspace),
+):
+    agent = AgentRepository.get_by_id(agent_id)
+    if not agent:
+        raise not_found("Agent")
+    results = await search.search(
+        query=q,
+        agent_id=agent_id,
+        user_id=user_id,
+        workspace=workspace,
+        limit=limit,
+    )
+    return {"results": results, "count": len(results)}
 
 
 @router.get("/{filename:path}", response_model=MemoryContentResponse)
@@ -51,24 +61,12 @@ async def get_memory_file(
     workspace: Path = Depends(get_agent_workspace),
 ):
     """Get specific memory file content"""
-    # Handle MEMORY.md specially
-    if filename == "MEMORY.md":
-        memory_path = workspace / "MEMORY.md"
-        if not memory_path.exists():
-            raise not_found("Memory file")
-        content = memory_path.read_text(encoding="utf-8")
-        return MemoryContentResponse(filename=filename, content=content)
-
-    # Daily files are in memory/ directory
-    base_dir = (workspace / "memory").resolve()
-    file_path = (workspace / "memory" / filename).resolve()
-
-    # Security check - prevent path traversal
-    if not file_path.is_relative_to(base_dir):
+    normalized = filename if filename == "MEMORY.md" else f"memory/{filename}"
+    if not reader.validate_memory_path(normalized):
         raise forbidden()
-
-    if not file_path.exists():
+    content = reader.read(workspace, normalized, truncate=False)
+    if content.startswith("Error: file not found"):
         raise not_found("Memory file")
-
-    content = file_path.read_text(encoding="utf-8")
+    if content.startswith("Error:"):
+        raise forbidden()
     return MemoryContentResponse(filename=filename, content=content)

@@ -11,6 +11,7 @@ class Settings:
         self.stt_service_url: str = os.getenv("STT_SERVICE_URL", "http://192.168.88.252:8765")
         self.clawdbot_url: str = os.getenv("CLAWDBOT_URL", "http://127.0.0.1:18789")
         self.clawdbot_token: str = os.getenv("CLAWDBOT_TOKEN", "")
+        self.openclaw_gateway_url: str = os.getenv("OPENCLAW_GATEWAY_URL", "").strip()
 
         # Auth
         self.auth_allow_dev_token: bool = os.getenv("AUTH_ALLOW_DEV_TOKEN", "0") == "1"
@@ -71,7 +72,14 @@ class Settings:
             "OPENAI_API_BASE", "https://api.openai.com/v1"
         )
 
-        # Direct mode V2: memory tools
+        # Standalone memory engine
+        self.emilia_embed_provider: str = os.getenv("EMILIA_EMBED_PROVIDER", "ollama").strip().lower()
+        self.emilia_embed_model: str = os.getenv("EMILIA_EMBED_MODEL", "mxbai-embed-large").strip()
+        self.emilia_embed_base_url: str = os.getenv(
+            "EMILIA_EMBED_BASE_URL", "http://localhost:11434"
+        ).strip().rstrip("/")
+
+        # Legacy OpenClaw memory bridge path (deprecated; retained for compatibility only)
         self.openclaw_memory_dir: Path = Path(
             os.getenv("OPENCLAW_MEMORY_DIR", str(Path.home() / ".openclaw" / "memory"))
         )
@@ -82,8 +90,16 @@ class Settings:
         self.default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "America/Vancouver")
 
         # Validation
-        if not self.clawdbot_token:
-            raise RuntimeError("Missing CLAWDBOT_TOKEN env var")
+        if self.emilia_embed_provider not in {"ollama", "gemini"}:
+            raise RuntimeError(
+                "EMILIA_EMBED_PROVIDER must be one of: ollama, gemini"
+            )
+        if not self.emilia_embed_model:
+            raise RuntimeError("EMILIA_EMBED_MODEL must be set")
+        if self.emilia_embed_provider == "ollama" and not self.emilia_embed_base_url:
+            raise RuntimeError("EMILIA_EMBED_BASE_URL must be set for Ollama embeddings")
+        if self.emilia_embed_provider == "gemini" and not self.gemini_api_key:
+            raise RuntimeError("GEMINI_API_KEY is required when EMILIA_EMBED_PROVIDER=gemini")
 
     def is_games_v2_enabled_for_agent(self, agent_id: str | None) -> bool:
         """Return whether Games V2 is enabled for a given agent cohort."""
@@ -92,6 +108,11 @@ class Settings:
         if not agent_id:
             return False
         return agent_id in self.games_v2_agent_allowlist
+
+    @property
+    def is_openclaw_configured(self) -> bool:
+        """Return whether OpenClaw-specific routes/features are configured."""
+        return bool(self.openclaw_gateway_url)
 
 
 # Global settings instance

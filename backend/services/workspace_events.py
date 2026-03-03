@@ -6,6 +6,8 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from config import settings
+
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -46,6 +48,10 @@ class WorkspaceEventsService:
     """
 
     SCHEMA_VERSION = 1
+
+    @staticmethod
+    def is_enabled() -> bool:
+        return settings.is_openclaw_configured
 
     @staticmethod
     def events_path(workspace: Path, user_id: str) -> Path:
@@ -98,6 +104,8 @@ class WorkspaceEventsService:
         *,
         create_if_missing: bool = False,
     ) -> dict[str, Any]:
+        if not WorkspaceEventsService.is_enabled():
+            return WorkspaceEventsService.default_events(user_id, agent_id)
         path = WorkspaceEventsService.events_path(workspace, user_id)
         if not path.exists():
             events = WorkspaceEventsService.default_events(user_id, agent_id)
@@ -120,6 +128,8 @@ class WorkspaceEventsService:
 
     @staticmethod
     def save_events(path: Path, payload: dict[str, Any]) -> None:
+        if not WorkspaceEventsService.is_enabled():
+            return
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = path.with_suffix(path.suffix + ".tmp")
         encoded = json.dumps(payload, indent=2, sort_keys=True)
@@ -128,7 +138,10 @@ class WorkspaceEventsService:
 
     @staticmethod
     def get_events(workspace: Path, user_id: str, agent_id: str) -> dict[str, Any]:
-        return WorkspaceEventsService.load_events(workspace, user_id, agent_id, create_if_missing=False)
+        try:
+            return WorkspaceEventsService.load_events(workspace, user_id, agent_id, create_if_missing=False)
+        except Exception:
+            return WorkspaceEventsService.default_events(user_id, agent_id)
 
     @staticmethod
     def get_upcoming(
@@ -139,6 +152,8 @@ class WorkspaceEventsService:
         days: int = 7,
         now_utc: datetime | None = None,
     ) -> list[dict[str, Any]]:
+        if not WorkspaceEventsService.is_enabled():
+            return []
         events = WorkspaceEventsService.load_events(workspace, user_id, agent_id, create_if_missing=False)
         today = (now_utc or _utc_now()).date()
         upper = today + timedelta(days=max(0, days))
@@ -174,6 +189,8 @@ class WorkspaceEventsService:
         agent_id: str,
         milestone: dict[str, Any],
     ) -> dict[str, Any]:
+        if not WorkspaceEventsService.is_enabled():
+            return WorkspaceEventsService.default_events(user_id, agent_id)
         events = WorkspaceEventsService.load_events(workspace, user_id, agent_id, create_if_missing=True)
 
         milestone_id = _normalize_id(milestone.get("id"))
@@ -205,6 +222,8 @@ class WorkspaceEventsService:
         agent_id: str,
         event: dict[str, Any],
     ) -> dict[str, Any]:
+        if not WorkspaceEventsService.is_enabled():
+            return WorkspaceEventsService.default_events(user_id, agent_id)
         events = WorkspaceEventsService.load_events(workspace, user_id, agent_id, create_if_missing=True)
 
         event_id = _normalize_id(event.get("id"))
@@ -228,6 +247,8 @@ class WorkspaceEventsService:
 
     @staticmethod
     def remove_item(workspace: Path, user_id: str, agent_id: str, item_id: str) -> dict[str, Any]:
+        if not WorkspaceEventsService.is_enabled():
+            return WorkspaceEventsService.default_events(user_id, agent_id)
         normalized_id = _normalize_id(item_id)
         if not normalized_id:
             raise ValueError("id is required")
@@ -261,6 +282,8 @@ class WorkspaceEventsService:
         runtime_trigger: bool,
         game_id: str | None = None,
     ) -> None:
+        if not WorkspaceEventsService.is_enabled():
+            return
         now = _utc_now()
         today_str = now.date().isoformat()
 

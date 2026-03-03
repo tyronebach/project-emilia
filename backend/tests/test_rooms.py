@@ -326,12 +326,10 @@ class TestRoomChat:
 
     @patch("routers.rooms._spawn_background")
     @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("services.llm_caller.DirectLLMClient")
-    @patch("routers.rooms.httpx.AsyncClient")
+    @patch("services.llm_caller.get_provider")
     async def test_room_chat_non_stream_supports_direct_mode_agents(
         self,
-        mock_client_class,
-        mock_direct_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -365,15 +363,15 @@ class TestRoomChat:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_direct = MagicMock()
-        mock_direct.chat_completion = AsyncMock(
+        mock_provider = MagicMock()
+        mock_provider.generate = AsyncMock(
             return_value={
                 "model": "gpt-room-direct",
                 "choices": [{"message": {"content": "[intent:reply] Direct room response"}}],
                 "usage": {"prompt_tokens": 6, "completion_tokens": 3},
             }
         )
-        mock_direct_client_class.return_value = mock_direct
+        mock_get_provider.return_value = mock_provider
 
         sent = await test_client.post(
             f"/api/rooms/{room_id}/chat?stream=0",
@@ -386,17 +384,14 @@ class TestRoomChat:
         assert payload["count"] == 1
         assert payload["responses"][0]["agent_id"] == beta
         assert payload["responses"][0]["message"]["content"] == "Direct room response"
-        mock_direct.chat_completion.assert_awaited_once()
-        mock_client_class.assert_not_called()
+        mock_provider.generate.assert_awaited_once()
 
     @patch("services.room_chat_stream._spawn_background")
     @patch("services.room_chat_stream._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("services.room_chat_stream.DirectLLMClient")
-    @patch("services.room_chat_stream.httpx.AsyncClient")
+    @patch("services.room_chat_stream.get_provider")
     async def test_room_chat_stream_supports_direct_mode_agents(
         self,
-        mock_client_class,
-        mock_direct_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -427,15 +422,14 @@ class TestRoomChat:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_direct = MagicMock()
-        mock_direct.chat_completion = AsyncMock(
-            return_value={
-                "model": "gpt-room-direct",
-                "choices": [{"message": {"content": "Room direct"}}],
-                "usage": {"prompt_tokens": 5, "completion_tokens": 2},
-            }
-        )
-        mock_direct_client_class.return_value = mock_direct
+        async def _stream(*args, **kwargs):
+            yield {"type": "content", "content": "Room direct"}
+            yield {"type": "usage", "usage": {"prompt_tokens": 5, "completion_tokens": 2}}
+            yield {"type": "done", "model": "gpt-room-direct", "finish_reason": "stop"}
+
+        mock_provider = MagicMock()
+        mock_provider.stream = _stream
+        mock_get_provider.return_value = mock_provider
 
         sent = await test_client.post(
             f"/api/rooms/{room_id}/chat?stream=1",
@@ -447,18 +441,14 @@ class TestRoomChat:
         body = sent.text
         assert "event: agent_done" in body
         assert '"content": "Room direct"' in body
-        mock_direct.chat_completion.assert_awaited_once()
-        mock_client_class.assert_not_called()
 
     @patch("services.room_chat_stream._spawn_background")
     @patch("services.room_chat_stream._safe_get_mood_snapshot")
     @patch("services.room_chat_stream._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("services.room_chat_stream.DirectLLMClient")
-    @patch("services.room_chat_stream.httpx.AsyncClient")
+    @patch("services.room_chat_stream.get_provider")
     async def test_room_chat_stream_emits_avatar_and_emotion_events(
         self,
-        mock_client_class,
-        mock_direct_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_snapshot,
         mock_spawn_background,
@@ -491,21 +481,17 @@ class TestRoomChat:
         mock_snapshot.return_value = {"dominant_mood": "happy"}
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_direct = MagicMock()
-        mock_direct.chat_completion = AsyncMock(
-            return_value={
-                "model": "gpt-room-direct",
-                "choices": [
-                    {
-                        "message": {
-                            "content": "[intent:greeting] [mood:happy:0.8] [energy:high] hi room",
-                        }
-                    }
-                ],
-                "usage": {"prompt_tokens": 7, "completion_tokens": 4},
+        async def _stream(*args, **kwargs):
+            yield {
+                "type": "content",
+                "content": "[intent:greeting] [mood:happy:0.8] [energy:high] hi room",
             }
-        )
-        mock_direct_client_class.return_value = mock_direct
+            yield {"type": "usage", "usage": {"prompt_tokens": 7, "completion_tokens": 4}}
+            yield {"type": "done", "model": "gpt-room-direct", "finish_reason": "stop"}
+
+        mock_provider = MagicMock()
+        mock_provider.stream = _stream
+        mock_get_provider.return_value = mock_provider
 
         sent = await test_client.post(
             f"/api/rooms/{room_id}/chat?stream=1",
@@ -520,8 +506,6 @@ class TestRoomChat:
         assert "event: emotion" in body
         assert '"intent": "greeting"' in body
         assert '"context_block": "Emotion context"' in body
-        mock_direct.chat_completion.assert_awaited_once()
-        mock_client_class.assert_not_called()
 
     async def test_room_chat_rejects_invalid_game_context_payload(self, test_client, auth_headers):
         user_id = f"user-{uuid.uuid4().hex[:8]}"
@@ -937,12 +921,10 @@ class TestRoomChat:
 
     @patch("services.room_chat_stream._spawn_background")
     @patch("services.room_chat_stream._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("services.room_chat_stream.DirectLLMClient")
-    @patch("services.room_chat_stream.httpx.AsyncClient")
+    @patch("services.room_chat_stream.get_provider")
     async def test_room_chat_stream_truncates_oversized_direct_response(
         self,
-        mock_client_class,
-        mock_direct_client_class,
+        mock_get_provider,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -974,15 +956,14 @@ class TestRoomChat:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_direct = MagicMock()
-        mock_direct.chat_completion = AsyncMock(
-            return_value={
-                "model": "gpt-room-direct",
-                "choices": [{"message": {"content": oversized_content}}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 10},
-            }
-        )
-        mock_direct_client_class.return_value = mock_direct
+        async def _stream(*args, **kwargs):
+            yield {"type": "content", "content": oversized_content}
+            yield {"type": "usage", "usage": {"prompt_tokens": 10, "completion_tokens": 10}}
+            yield {"type": "done", "model": "gpt-room-direct", "finish_reason": "stop"}
+
+        mock_provider = MagicMock()
+        mock_provider.stream = _stream
+        mock_get_provider.return_value = mock_provider
 
         sent = await test_client.post(
             f"/api/rooms/{room_id}/chat?stream=1",
@@ -991,7 +972,6 @@ class TestRoomChat:
         )
         assert sent.status_code == 200
         assert "event: agent_done" in sent.text
-        mock_client_class.assert_not_called()
 
         history = await test_client.get(
             f"/api/rooms/{room_id}/history?includeRuntime=true",
@@ -1002,6 +982,53 @@ class TestRoomChat:
         assert len(messages) == 2
         assert messages[1]["sender_type"] == "agent"
         assert len(messages[1]["content"]) == 50000
+
+    @patch("services.room_chat_stream._spawn_background")
+    @patch("services.room_chat_stream._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("services.room_chat_stream.get_provider")
+    async def test_room_chat_stream_returns_agent_error_for_stubbed_openclaw_provider(
+        self,
+        mock_get_provider,
+        mock_pre_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha")
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Stub Provider Room", "agent_ids": [alpha]},
+        )
+        room_id = created.json()["id"]
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+
+        async def _stubbed_stream(*args, **kwargs):
+            raise NotImplementedError("OpenClawProvider.stream — implemented in Phase F")
+            yield
+
+        mock_provider = MagicMock()
+        mock_provider.stream = _stubbed_stream
+        mock_get_provider.return_value = mock_provider
+
+        sent = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=1",
+            headers=headers,
+            json={"message": "stream should gracefully fail"},
+        )
+
+        assert sent.status_code == 200
+        assert "event: agent_error" in sent.text
+        assert "OpenClawProvider.stream" in sent.text
 
 
 class TestRoomCompaction:

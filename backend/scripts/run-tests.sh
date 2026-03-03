@@ -31,9 +31,17 @@ fi
 PYTHON_BIN="${EMILIA_PYTHON_BIN:-$BACKEND_DIR/.venv/bin/python}"
 if [[ -x "$PYTHON_BIN" ]]; then
   echo "Running backend tests with venv: $PYTHON_BIN"
-  "$PYTHON_BIN" -m pytest "${PYTEST_ARGS[@]}"
-  exit $?
+  if "$PYTHON_BIN" -c "import sys" >/dev/null 2>&1; then
+    "$PYTHON_BIN" -m pytest "${PYTEST_ARGS[@]}"
+    exit $?
+  fi
+  echo "Venv launcher is not executable in this environment, falling back to system python3 with venv site-packages"
 fi
 
 echo "Running backend tests with python3"
-python3 -m pytest "${PYTEST_ARGS[@]}"
+SITE_PACKAGES="$BACKEND_DIR/.venv/lib/python3.14/site-packages"
+if [[ -d "$SITE_PACKAGES" ]]; then
+  PYTHONPATH="$SITE_PACKAGES${PYTHONPATH:+:$PYTHONPATH}" python3 -m pytest "${PYTEST_ARGS[@]}"
+else
+  python3 -m pytest "${PYTEST_ARGS[@]}"
+fi

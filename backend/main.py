@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from config import settings
 from core.exceptions import ServiceException
 from schemas import HealthResponse
+from services.memory.embedder import get_embedder
 from routers import (
     users_router,
     agents_router,
@@ -23,6 +24,7 @@ from routers.designer_v2 import router as designer_v2_router
 VERSION = "5.6.3"
 
 app = FastAPI(title="Emilia API", version=VERSION)
+get_embedder()
 
 app.add_middleware(
     CORSMiddleware,
