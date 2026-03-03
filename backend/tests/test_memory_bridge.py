@@ -178,25 +178,17 @@ class TestHybridMerge:
 
 class TestSearch:
 
-    @patch("services.memory_bridge._open_memory_db")
-    async def test_search_returns_empty_for_missing_db(self, mock_open):
-        mock_open.return_value = None
+    @patch("services.memory_bridge.standalone_search", new_callable=AsyncMock)
+    async def test_search_returns_empty_for_missing_db(self, mock_search):
+        mock_search.return_value = []
         result = await search("nonexistent-agent", "test query")
         assert result == []
 
-    @patch("services.memory_bridge._embed_query", new_callable=AsyncMock)
-    @patch("services.memory_bridge._open_memory_db")
-    async def test_search_fts_only_fallback(self, mock_open, mock_embed):
-        mock_embed.return_value = None  # Vector unavailable
-
-        mock_conn = MagicMock()
-        mock_conn.execute.return_value.fetchall.return_value = [
-            {"id": "c1", "path": "MEMORY.md", "source": "memory", "start_line": 1,
-             "end_line": 5, "text": "test content", "rank": 0.5}
+    @patch("services.memory_bridge.standalone_search", new_callable=AsyncMock)
+    async def test_search_fts_only_fallback(self, mock_search):
+        mock_search.return_value = [
+            {"path": "MEMORY.md", "snippet": "test content", "score": 0.5, "source": "memory"}
         ]
-        mock_open.return_value = mock_conn
-
         result = await search("test-agent", "test query")
         assert len(result) == 1
         assert result[0]["path"] == "MEMORY.md"
-        mock_conn.close.assert_called_once()

@@ -98,6 +98,34 @@ async def delete_manage_user(
     return DeleteResponse(deleted=deleted)
 
 
+@router.put("/users/{user_id}/agents/{agent_id}", response_model=StatusResponse)
+async def grant_manage_user_agent(
+    user_id: str,
+    agent_id: str,
+    token: str = Depends(verify_token),
+):
+    if not UserRepository.get_by_id(user_id):
+        raise not_found("User")
+    if not AgentRepository.get_by_id(agent_id):
+        raise not_found("Agent")
+    UserRepository.add_agent_access(user_id, agent_id)
+    return StatusResponse(status="ok", agent_id=agent_id, message="access_granted")
+
+
+@router.delete("/users/{user_id}/agents/{agent_id}", response_model=DeleteResponse)
+async def revoke_manage_user_agent(
+    user_id: str,
+    agent_id: str,
+    token: str = Depends(verify_token),
+):
+    if not UserRepository.get_by_id(user_id):
+        raise not_found("User")
+    if not AgentRepository.get_by_id(agent_id):
+        raise not_found("Agent")
+    deleted = UserRepository.remove_agent_access(user_id, agent_id)
+    return DeleteResponse(deleted=deleted)
+
+
 @router.get("/agents", response_model=AgentsListResponse)
 async def get_manage_agents(token: str = Depends(verify_token)):
     agents = AgentRepository.get_all()
@@ -117,9 +145,10 @@ async def create_manage_agent(
             vrm_model=agent.vrm_model or "emilia.vrm",
             voice_id=agent.voice_id,
             workspace=agent.workspace,
-            chat_mode=agent.chat_mode,
             direct_model=agent.direct_model,
             direct_api_base=agent.direct_api_base,
+            provider=agent.provider,
+            provider_config=agent.provider_config,
         )
     except sqlite3.IntegrityError:
         raise bad_request("Agent already exists")

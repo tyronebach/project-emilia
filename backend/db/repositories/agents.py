@@ -67,32 +67,40 @@ class AgentRepository:
     def create(
         agent_id: str,
         display_name: str,
-        clawdbot_agent_id: str,
+        clawdbot_agent_id: str | None = None,
         vrm_model: str = "emilia.vrm",
         voice_id: str | None = None,
         workspace: str | None = None,
         emotional_profile: str | None = None,
-        chat_mode: str | None = None,
         direct_model: str | None = None,
         direct_api_base: str | None = None,
+        provider: str = "native",
+        provider_config: dict | None = None,
     ) -> dict:
         if emotional_profile is None:
             emotional_profile = json.dumps(AgentRepository.DEFAULT_EMOTIONAL_PROFILE)
 
-        normalized_chat_mode = (chat_mode or "openclaw").strip().lower()
-        if normalized_chat_mode not in {"openclaw", "direct"}:
-            normalized_chat_mode = "openclaw"
         if isinstance(direct_model, str):
             direct_model = direct_model.strip() or None
         if isinstance(direct_api_base, str):
             direct_api_base = direct_api_base.strip() or None
 
+        normalized_provider = (provider or "native").strip().lower()
+        if normalized_provider not in {"native", "openclaw"}:
+            normalized_provider = "native"
+
+        config = dict(provider_config) if provider_config else {}
+        # Backward compat: store clawdbot_agent_id inside provider_config for openclaw agents.
+        if clawdbot_agent_id and normalized_provider == "openclaw":
+            config.setdefault("clawdbot_agent_id", clawdbot_agent_id)
+
         with get_db() as conn:
             conn.execute(
                 """INSERT INTO agents
                    (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
-                    emotional_profile, chat_mode, direct_model, direct_api_base)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    emotional_profile, direct_model, direct_api_base,
+                    provider, provider_config)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     agent_id,
                     display_name,
@@ -101,9 +109,10 @@ class AgentRepository:
                     voice_id,
                     workspace,
                     emotional_profile,
-                    normalized_chat_mode,
                     direct_model,
                     direct_api_base,
+                    normalized_provider,
+                    json.dumps(config),
                 )
             )
             return conn.execute("SELECT * FROM agents WHERE id = ?", (agent_id,)).fetchone()
@@ -119,17 +128,46 @@ class AgentRepository:
             "vrm_model",
             "clawdbot_agent_id",
             "workspace",
-            "chat_mode",
             "direct_model",
             "direct_api_base",
+            "provider",
+            "provider_config",
         }
+        normalized_updates = dict(updates)
+
+        provider_value = normalized_updates.get("provider")
+        if isinstance(provider_value, str):
+            provider_value = provider_value.strip().lower()
+            if provider_value not in {"native", "openclaw"}:
+                provider_value = "native"
+            normalized_updates["provider"] = provider_value
+
+        config_value = normalized_updates.get("provider_config")
+        if isinstance(config_value, str):
+            try:
+                parsed_config = json.loads(config_value)
+                config_value = parsed_config if isinstance(parsed_config, dict) else {}
+            except (json.JSONDecodeError, TypeError):
+                config_value = {}
+        elif config_value is None:
+            config_value = {}
+        elif not isinstance(config_value, dict):
+            config_value = {}
+
+        clawdbot_agent_id = normalized_updates.get("clawdbot_agent_id")
+        if clawdbot_agent_id and normalized_updates.get("provider") == "openclaw":
+            config_value = dict(config_value)
+            config_value.setdefault("clawdbot_agent_id", clawdbot_agent_id)
+            normalized_updates["provider_config"] = config_value
+
         set_clauses = []
         params = []
-        for key, value in updates.items():
+        for key, value in normalized_updates.items():
             if key in allowed:
-                if key == "chat_mode":
-                    mode = str(value or "").strip().lower()
-                    value = mode if mode in {"openclaw", "direct"} else "openclaw"
+                if key == "provider":
+                    value = normalized_updates["provider"]
+                elif key == "provider_config":
+                    value = json.dumps(value) if isinstance(value, dict) else (value or "{}")
                 elif key in {"direct_model", "direct_api_base"} and isinstance(value, str):
                     value = value.strip() or None
                 set_clauses.append(f"{key} = ?")

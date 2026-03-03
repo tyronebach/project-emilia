@@ -60,7 +60,7 @@ class TestRunToolLoop:
             model="test-model",
             messages=[{"role": "user", "content": "Hi"}],
             workspace=None,
-            claw_agent_id="test-agent",
+            agent_id="test-agent",
         )
 
         assert result["choices"][0]["message"]["content"] == "Hello!"
@@ -83,7 +83,7 @@ class TestRunToolLoop:
             model="test-model",
             messages=[{"role": "user", "content": "Find my notes"}],
             workspace="/tmp/ws",
-            claw_agent_id="test-agent",
+            agent_id="test-agent",
         )
 
         assert result["choices"][0]["message"]["content"] == "Based on search: answer"
@@ -92,7 +92,9 @@ class TestRunToolLoop:
             name="memory_search",
             arguments_json=json.dumps({"query": "test"}),
             workspace="/tmp/ws",
-            claw_agent_id="test-agent",
+            agent_id="test-agent",
+            user_id=None,
+            claw_agent_id=None,
         )
 
     @patch("services.direct_tool_runtime._execute_tool", new_callable=AsyncMock)
@@ -116,7 +118,7 @@ class TestRunToolLoop:
             model="test-model",
             messages=[{"role": "user", "content": "Read my notes"}],
             workspace="/tmp/ws",
-            claw_agent_id="test-agent",
+            agent_id="test-agent",
         )
 
         assert result["choices"][0]["message"]["content"] == "Here's what I found"
@@ -149,7 +151,7 @@ class TestRunToolLoop:
             model="test-model",
             messages=[{"role": "user", "content": "Loop forever"}],
             workspace="/tmp/ws",
-            claw_agent_id="test-agent",
+            agent_id="test-agent",
             max_steps=2,
         )
 
@@ -193,7 +195,7 @@ class TestRunToolLoop:
             model="test-model",
             messages=[{"role": "user", "content": "test"}],
             workspace=None,
-            claw_agent_id="test-agent",
+            agent_id="test-agent",
         )
 
         assert result["choices"][0]["message"]["content"] == "Recovered from error"
@@ -209,7 +211,7 @@ class TestRunToolLoop:
             model="test-model",
             messages=[{"role": "user", "content": "Hi"}],
             workspace=None,
-            claw_agent_id="test-agent",
+            agent_id="test-agent",
         )
 
         call_kwargs = client.chat_completion.call_args
@@ -218,7 +220,7 @@ class TestRunToolLoop:
 
 class TestExecuteTool:
 
-    @patch("services.memory_bridge.search", new_callable=AsyncMock)
+    @patch("services.memory.search.search", new_callable=AsyncMock)
     async def test_execute_memory_search(self, mock_search):
         from services.direct_tool_runtime import _execute_tool
 
@@ -227,12 +229,12 @@ class TestExecuteTool:
             name="memory_search",
             arguments_json=json.dumps({"query": "test"}),
             workspace="/tmp",
-            claw_agent_id="agent-1",
+            agent_id="agent-1",
         )
         assert "MEMORY.md" in result
         mock_search.assert_awaited_once()
 
-    @patch("services.memory_bridge.read")
+    @patch("services.memory.reader.read")
     async def test_execute_memory_read(self, mock_read):
         from services.direct_tool_runtime import _execute_tool
 
@@ -241,11 +243,11 @@ class TestExecuteTool:
             name="memory_read",
             arguments_json=json.dumps({"path": "MEMORY.md"}),
             workspace="/tmp",
-            claw_agent_id="agent-1",
+            agent_id="agent-1",
         )
         assert result == "file content"
 
-    @patch("services.memory_bridge.write")
+    @patch("services.memory.writer.write", new_callable=AsyncMock)
     async def test_execute_memory_write(self, mock_write):
         from services.direct_tool_runtime import _execute_tool
 
@@ -254,7 +256,7 @@ class TestExecuteTool:
             name="memory_write",
             arguments_json=json.dumps({"path": "MEMORY.md", "content": "hello"}),
             workspace="/tmp",
-            claw_agent_id="agent-1",
+            agent_id="agent-1",
         )
         assert result.startswith("OK:")
 
@@ -265,7 +267,7 @@ class TestExecuteTool:
             name="unknown_tool",
             arguments_json="{}",
             workspace="/tmp",
-            claw_agent_id="agent-1",
+            agent_id="agent-1",
         )
         assert "unknown tool" in result
 
@@ -276,6 +278,6 @@ class TestExecuteTool:
             name="memory_search",
             arguments_json="{bad json",
             workspace="/tmp",
-            claw_agent_id="agent-1",
+            agent_id="agent-1",
         )
         assert "invalid JSON" in result

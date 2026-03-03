@@ -1,22 +1,19 @@
 """Direct OpenAI-compatible chat helpers and webapp system prompt builder."""
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone as tz
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import AsyncIterator
 from zoneinfo import ZoneInfo
 
 import httpx
 
 from config import settings
 
-SUPPORTED_CHAT_MODES = {"openclaw", "direct"}
 MAX_SOUL_MD_CHARS = 50_000
 
 # ── Webapp System Instructions ──────────────────────────────────────
-# These are injected for ALL webapp avatar interactions (direct + openclaw mode).
-# Mirrors OpenClaw patterns for time/memory, adds webapp-specific behavior format.
+# These are injected for all standalone avatar interactions.
 
 MEMORY_INSTRUCTIONS = """## Memory
 You have access to memory tools for continuity across sessions.
@@ -81,36 +78,23 @@ def _get_time_block(timezone: str | None = None) -> str:
 
 def build_webapp_system_instructions(
     *,
-    chat_mode: str = "direct",
     timezone: str | None = None,
     include_behavior_format: bool = True,
 ) -> str:
     """Build the webapp system instructions block.
 
-    For direct mode: includes time, memory, behavior format.
-    For openclaw mode: only behavior format (OpenClaw handles time/memory).
     Game instructions are injected dynamically per-turn via inject_game_context().
     """
-    parts = []
-
-    # Only inject time/memory for direct mode (OpenClaw has its own)
-    if chat_mode == "direct":
-        parts.append(_get_time_block(timezone))
-        parts.append(MEMORY_INSTRUCTIONS)
+    parts = [
+        _get_time_block(timezone),
+        MEMORY_INSTRUCTIONS,
+    ]
 
     # Always inject webapp-specific behavior format (for avatar animation)
     if include_behavior_format:
         parts.append(BEHAVIOR_FORMAT_INSTRUCTIONS)
 
     return "\n\n".join(parts)
-
-
-def normalize_chat_mode(raw_mode: Any) -> str:
-    """Normalize stored chat_mode values to a supported mode."""
-    mode = str(raw_mode or "").strip().lower()
-    if mode in SUPPORTED_CHAT_MODES:
-        return mode
-    return "openclaw"
 
 
 def resolve_direct_model(agent: dict[str, Any] | None) -> str:
@@ -157,7 +141,6 @@ def prepend_webapp_system_prompt(
     messages: list[dict[str, str]],
     workspace: str | None,
     *,
-    chat_mode: str = "direct",
     timezone: str | None = None,
     include_behavior_format: bool = True,
 ) -> list[dict[str, str]]:
@@ -166,13 +149,10 @@ def prepend_webapp_system_prompt(
     Used for webapp avatar interactions. SOUL.md provides persona/character,
     webapp instructions provide behavior format (for avatar animation).
 
-    For direct mode: also injects time + memory (OpenClaw doesn't handle these).
-    For openclaw mode: only injects behavior format (no duplication).
     Game instructions are injected dynamically per-turn via inject_game_context().
     """
     soul_md = load_workspace_soul_md(workspace)
     webapp_instructions = build_webapp_system_instructions(
-        chat_mode=chat_mode,
         timezone=timezone,
         include_behavior_format=include_behavior_format,
     )
