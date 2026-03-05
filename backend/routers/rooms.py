@@ -13,7 +13,6 @@ from core.exceptions import (
     forbidden,
     not_found,
     service_unavailable,
-    timeout_error,
 )
 from db.repositories import (
     AgentRepository,
@@ -75,29 +74,6 @@ from services.room_chat_stream import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
-
-
-async def _call_legacy_openclaw_non_stream(
-    *,
-    agent: dict,
-    llm_messages: list[dict],
-) -> dict:
-    headers = {
-        "Authorization": f"Bearer {settings.clawdbot_token}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "agent_id": agent.get("agent_id"),
-        "messages": llm_messages,
-        "stream": False,
-    }
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(f"{settings.clawdbot_url}/chat", headers=headers, json=payload)
-    response.raise_for_status()
-    data = response.json()
-    if not isinstance(data, dict):
-        raise ValueError("Invalid legacy OpenClaw response")
-    return data
 
 
 def _ensure_user_exists(user_id: str) -> None:
@@ -397,6 +373,7 @@ async def room_chat(
         )
 
     responses: list[RoomChatAgentResponse] = []
+    value_error_detail: str | None = None
 
     for agent in responding_agents:
         agent_id = agent["agent_id"]
@@ -456,15 +433,7 @@ async def room_chat(
                 injected_chars=len(top_of_mind_context or ""),
             )
 
-            try:
-                result = await call_llm_non_stream({**agent, "user_id": user_id}, llm_messages, room_id)
-            except ValueError as exc:
-                if "OPENAI_API_KEY is required" not in str(exc):
-                    raise
-                result = await _call_legacy_openclaw_non_stream(
-                    agent=agent,
-                    llm_messages=llm_messages,
-                )
+            result = await call_llm_non_stream({**agent, "user_id": user_id}, llm_messages, room_id)
             parsed = parse_chat_completion(result)
             processing_ms = int((time.time() - started_at) * 1000)
 
@@ -557,12 +526,18 @@ async def room_chat(
             )
         except httpx.TimeoutException:
             logger.exception("Room chat timeout for agent %s", agent_id)
+        except ValueError as exc:
+            logger.exception("Room chat failure for agent %s", agent_id)
+            if value_error_detail is None:
+                value_error_detail = str(exc)
         except Exception:
             logger.exception("Room chat failure for agent %s", agent_id)
 
     if not responses:
         if user_msg_id:
             RoomMessageRepository.delete_by_id(user_msg_id)
+        if value_error_detail:
+            raise service_unavailable(value_error_detail)
         raise service_unavailable("Room chat")
 
     _spawn_background(maybe_compact_room(room_id))

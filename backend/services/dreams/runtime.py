@@ -11,6 +11,7 @@ from typing import Any
 from config import settings
 from db.connection import get_db
 from db.repositories import AgentRepository, EmotionalStateRepository
+from services.llm_response import extract_content
 from services.memory.search import search as memory_search
 from services.observability import log_metric
 from services.providers.native import NativeProvider
@@ -196,15 +197,6 @@ def _negative_cooldown_active(user_id: str, agent_id: str) -> bool:
     return int((row or {}).get("cnt") or 0) > 0
 
 
-def _extract_content(result: dict[str, Any]) -> str:
-    choices = result.get("choices") or []
-    if not choices:
-        return ""
-    message = choices[0].get("message") or {}
-    content = message.get("content")
-    return content if isinstance(content, str) else ""
-
-
 def _parse_json_response(raw_content: str) -> dict[str, Any]:
     text = (raw_content or "").strip()
     if text.startswith("```"):
@@ -326,7 +318,7 @@ async def execute_dream(user_id: str, agent_id: str, triggered_by: str = "schedu
         user_id=user_id,
         messages=[{"role": "system", "content": prompt}],
     )
-    parsed = _parse_json_response(_extract_content(result))
+    parsed = _parse_json_response(extract_content(result))
     adjustments = parsed.get("relationship_adjustments")
     if not isinstance(adjustments, dict):
         adjustments = {}
