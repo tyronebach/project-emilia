@@ -1,6 +1,5 @@
 """Application configuration from environment variables."""
 import os
-from pathlib import Path
 
 
 class Settings:
@@ -9,6 +8,13 @@ class Settings:
     def __init__(self):
         def _env_bool(name: str, default: str) -> bool:
             return os.getenv(name, default).strip().lower() not in {"0", "false", "no", "off"}
+
+        def _env_float(name: str, default: str) -> float:
+            raw = os.getenv(name, default)
+            try:
+                return float(raw)
+            except (TypeError, ValueError):
+                return float(default)
 
         # Service URLs
         self.stt_service_url: str = os.getenv("STT_SERVICE_URL", "http://192.168.88.252:8765")
@@ -55,11 +61,24 @@ class Settings:
         self.memory_autocapture_min_confidence: float = float(os.getenv("MEMORY_AUTOCAPTURE_MIN_CONFIDENCE", "0.82"))
 
         # Emotion engine
-        self.trigger_classifier_llm_fallback: bool = os.getenv(
-            "LLM_TRIGGER_DETECTION", "0"
-        ) == "1"
-        # Backward-compatible alias used in existing router paths.
-        self.llm_trigger_detection: bool = self.trigger_classifier_llm_fallback
+        self.trigger_classifier_enabled: bool = _env_bool("TRIGGER_CLASSIFIER_ENABLED", "1")
+        self.trigger_classifier_confidence: float = max(
+            0.0,
+            min(1.0, _env_float("TRIGGER_CLASSIFIER_CONFIDENCE", "0.25")),
+        )
+        self.sarcasm_mitigation_enabled: bool = _env_bool("SARCASM_MITIGATION_ENABLED", "1")
+        self.sarcasm_positive_dampen_factor: float = max(
+            0.0,
+            min(1.0, _env_float("SARCASM_POSITIVE_DAMPEN_FACTOR", "0.35")),
+        )
+        self.sarcasm_recent_negative_dampen_factor: float = max(
+            0.0,
+            min(1.0, _env_float("SARCASM_RECENT_NEGATIVE_DAMPEN_FACTOR", "0.6")),
+        )
+        self.sarcasm_recent_positive_threshold: float = max(
+            0.0,
+            min(1.0, _env_float("SARCASM_RECENT_POSITIVE_THRESHOLD", "0.45")),
+        )
 
         # Games rollout cohort
         self.games_v2_agent_allowlist: set[str] = {
@@ -99,10 +118,6 @@ class Settings:
             "EMILIA_EMBED_BASE_URL", "http://localhost:11434"
         ).strip().rstrip("/")
 
-        # Legacy OpenClaw memory bridge path (deprecated; retained for compatibility only)
-        self.openclaw_memory_dir: Path = Path(
-            os.getenv("OPENCLAW_MEMORY_DIR", str(Path.home() / ".openclaw" / "memory"))
-        )
         self.direct_tool_max_steps: int = int(os.getenv("DIRECT_TOOL_MAX_STEPS", "6"))
         self.gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
 

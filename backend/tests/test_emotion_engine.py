@@ -167,6 +167,23 @@ class TestEmotionEngineTriggerDetection:
     @pytest.fixture
     def engine(self):
         return EmotionEngine(AgentProfile())
+
+    def test_engine_uses_settings_for_classifier_flags(self, monkeypatch):
+        monkeypatch.setattr(emotion_engine_module.settings, "trigger_classifier_enabled", False)
+        monkeypatch.setattr(emotion_engine_module.settings, "sarcasm_mitigation_enabled", False)
+        engine = EmotionEngine(AgentProfile())
+
+        assert engine._trigger_classifier_enabled is False
+        assert engine._trigger_classifier is None
+        assert engine._sarcasm_mitigation_enabled is False
+
+    def test_engine_uses_settings_for_classifier_confidence(self, monkeypatch):
+        monkeypatch.setattr(emotion_engine_module.settings, "trigger_classifier_enabled", True)
+        monkeypatch.setattr(emotion_engine_module.settings, "trigger_classifier_confidence", 0.73)
+        engine = EmotionEngine(AgentProfile())
+
+        assert engine._trigger_classifier is not None
+        assert engine._trigger_classifier.confidence_threshold == pytest.approx(0.73)
     
     def test_detect_admiration(self, engine):
         triggers = engine.detect_triggers("You're so amazing!")

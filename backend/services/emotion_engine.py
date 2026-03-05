@@ -10,10 +10,11 @@ from typing import ClassVar
 import json
 import logging
 import math
-import os
 import random
 import threading
 import time as _time
+
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -944,56 +945,18 @@ class EmotionEngine:
         },
     }
 
-    @staticmethod
-    def _env_float(name: str, default: float, low: float, high: float) -> float:
-        raw = os.getenv(name)
-        if raw is None:
-            return default
-        try:
-            parsed = float(raw)
-        except (TypeError, ValueError):
-            return default
-        return max(low, min(high, parsed))
-
-    @staticmethod
-    def _env_bool(name: str, default: bool) -> bool:
-        raw = os.getenv(name)
-        if raw is None:
-            return default
-        return raw.strip().lower() not in {"0", "false", "no", "off"}
-    
     def __init__(self, profile: AgentProfile):
         self.profile = profile
         self.mood_injection_settings = self._load_mood_injection_settings()
-        self._trigger_classifier_enabled = os.getenv(
-            "TRIGGER_CLASSIFIER_ENABLED", "1"
-        ) == "1"
-        self._sarcasm_mitigation_enabled = self._env_bool(
-            "SARCASM_MITIGATION_ENABLED",
-            True,
-        )
-        self._sarcasm_positive_dampen = self._env_float(
-            "SARCASM_POSITIVE_DAMPEN_FACTOR",
-            0.35,
-            0.0,
-            1.0,
-        )
-        self._sarcasm_recent_negative_dampen = self._env_float(
-            "SARCASM_RECENT_NEGATIVE_DAMPEN_FACTOR",
-            0.6,
-            0.0,
-            1.0,
-        )
-        self._sarcasm_recent_positive_threshold = self._env_float(
-            "SARCASM_RECENT_POSITIVE_THRESHOLD",
-            0.45,
-            0.0,
-            1.0,
-        )
+        self._trigger_classifier_enabled = settings.trigger_classifier_enabled
+        self._sarcasm_mitigation_enabled = settings.sarcasm_mitigation_enabled
+        self._sarcasm_positive_dampen = settings.sarcasm_positive_dampen_factor
+        self._sarcasm_recent_negative_dampen = settings.sarcasm_recent_negative_dampen_factor
+        self._sarcasm_recent_positive_threshold = settings.sarcasm_recent_positive_threshold
         self._trigger_classifier = None
         if self._trigger_classifier_enabled:
             self._trigger_classifier = get_trigger_classifier()
-            configured_threshold = float(os.getenv("TRIGGER_CLASSIFIER_CONFIDENCE", "0.25"))
+            configured_threshold = settings.trigger_classifier_confidence
             self._trigger_classifier.confidence_threshold = self._clamp(configured_threshold, 0.0, 1.0)
 
     def _load_mood_injection_settings(self) -> dict:
