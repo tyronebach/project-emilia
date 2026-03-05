@@ -1,7 +1,9 @@
 """Room chat SSE streaming — the async generator for multi-agent streaming responses."""
 import asyncio
+from dataclasses import dataclass
 import json
 import logging
+import random
 import time
 import httpx
 
@@ -37,6 +39,90 @@ from services.room_chat import (
 )
 
 logger = logging.getLogger(__name__)
+
+_STREAM_RETRY_MAX_RETRIES = 1
+_STREAM_RETRY_BASE_DELAY_S = 0.25
+_STREAM_RETRY_JITTER_S = 0.15
+
+
+@dataclass(frozen=True)
+class ProviderErrorPayload:
+    error: str
+    error_code: str
+    retryable: bool
+    status_code: int | None
+
+
+def _is_retryable_status_code(status_code: int | None) -> bool:
+    if status_code is None:
+        return False
+    return status_code == 429 or status_code >= 500
+
+
+def _retry_backoff_delay(attempt: int) -> float:
+    return (_STREAM_RETRY_BASE_DELAY_S * max(attempt, 1)) + random.uniform(0.0, _STREAM_RETRY_JITTER_S)
+
+
+def _normalize_provider_error(exc: Exception) -> ProviderErrorPayload:
+    if isinstance(exc, httpx.TimeoutException):
+        return ProviderErrorPayload(
+            error="Room chat timeout",
+            error_code="provider_timeout",
+            retryable=True,
+            status_code=None,
+        )
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        status_code = exc.response.status_code if exc.response is not None else 503
+        detail = ""
+        if exc.response is not None:
+            try:
+                detail = (exc.response.text or "").strip()
+            except Exception:
+                detail = ""
+        if detail:
+            detail = detail[:220]
+
+        if status_code == 429:
+            error_code = "provider_rate_limited"
+        elif status_code >= 500:
+            error_code = "provider_http_server_error"
+        else:
+            error_code = "provider_http_client_error"
+
+        error = f"Chat service error ({status_code})"
+        if detail:
+            error = f"{error}: {detail}"
+
+        return ProviderErrorPayload(
+            error=error,
+            error_code=error_code,
+            retryable=_is_retryable_status_code(status_code),
+            status_code=status_code,
+        )
+
+    if isinstance(exc, NotImplementedError):
+        return ProviderErrorPayload(
+            error=str(exc),
+            error_code="provider_not_implemented",
+            retryable=False,
+            status_code=None,
+        )
+
+    if isinstance(exc, ValueError):
+        return ProviderErrorPayload(
+            error=str(exc),
+            error_code="provider_invalid_request",
+            retryable=False,
+            status_code=None,
+        )
+
+    return ProviderErrorPayload(
+        error="Room chat failed",
+        error_code="provider_stream_failed",
+        retryable=False,
+        status_code=None,
+    )
 
 
 def serialize_room_message(message: dict):
@@ -192,95 +278,115 @@ async def stream_room_chat_sse(
             pre_llm_triggers = prepared.pre_llm_triggers
             emotion_snapshot = _safe_get_mood_snapshot(user_id, agent_id)
 
+            provider = get_provider(agent_config or agent)
             usage = None
             full_content = ""
-            provider = get_provider(agent_config or agent)
-            try:
-                async for chunk in provider.stream(
-                    prepared.llm_messages,
-                    workspace=prepared.workspace,
-                    agent_id=agent_config.get("id") or agent_id,
-                    user_id=user_id,
-                    user_tag=f"emilia:room:{room_id}",
-                    timeout_s=120.0,
-                    timezone=settings.default_timezone,
-                    include_behavior_format=True,
-                ):
-                    if isinstance(chunk, str):
-                        chunk_content = chunk
-                    elif isinstance(chunk, dict):
-                        if chunk.get("type") == "usage":
-                            usage = chunk.get("usage")
+            attempts = 0
+            provider_agent_id = agent_config.get("id") or agent_id
+            stream_failed = False
+
+            while True:
+                attempts += 1
+                try:
+                    async for chunk in provider.stream(
+                        prepared.llm_messages,
+                        workspace=prepared.workspace,
+                        agent_id=provider_agent_id,
+                        user_id=user_id,
+                        user_tag=f"emilia:room:{room_id}",
+                        timeout_s=120.0,
+                        timezone=settings.default_timezone,
+                        include_behavior_format=True,
+                    ):
+                        if isinstance(chunk, str):
+                            chunk_content = chunk
+                        elif isinstance(chunk, dict):
+                            chunk_type = str(chunk.get("type") or "")
+                            if chunk_type == "usage":
+                                usage = chunk.get("usage")
+                                continue
+                            if chunk_type == "done":
+                                break
+                            if chunk_type == "content":
+                                chunk_content = str(chunk.get("content") or "")
+                            else:
+                                logger.debug(
+                                    "Ignoring unknown provider stream chunk type for %s: %s",
+                                    agent_id,
+                                    chunk_type or type(chunk).__name__,
+                                )
+                                continue
+                        else:
+                            logger.debug(
+                                "Ignoring unknown provider stream chunk payload for %s: %s",
+                                agent_id,
+                                type(chunk).__name__,
+                            )
                             continue
-                        if chunk.get("type") == "done":
-                            if chunk.get("model"):
-                                pass
+
+                        if not chunk_content:
+                            continue
+
+                        allowed = MAX_RESPONSE_CHARS - len(full_content)
+                        if allowed <= 0:
+                            logger.warning(
+                                "[Room SSE] Response for %s exceeded %d chars, truncating",
+                                agent_id,
+                                MAX_RESPONSE_CHARS,
+                            )
                             break
-                        chunk_content = str(chunk.get("content") or "") if chunk.get("type") == "content" else ""
+
+                        chunk_to_send = chunk_content[:allowed]
+                        full_content += chunk_to_send
+                        if chunk_to_send:
+                            yield f"data: {json.dumps({'content': chunk_to_send, 'agent_id': agent_id})}\n\n"
+
+                        if len(chunk_content) > len(chunk_to_send):
+                            logger.warning(
+                                "[Room SSE] Response for %s exceeded %d chars, truncating",
+                                agent_id,
+                                MAX_RESPONSE_CHARS,
+                            )
+                            break
+                    break
+                except (httpx.TimeoutException, httpx.HTTPStatusError, NotImplementedError, ValueError) as exc:
+                    normalized = _normalize_provider_error(exc)
+                    should_retry = (
+                        attempts <= _STREAM_RETRY_MAX_RETRIES
+                        and normalized.retryable
+                        and not full_content
+                    )
+                    if should_retry:
+                        delay_s = _retry_backoff_delay(attempts)
+                        logger.warning(
+                            "[Room SSE] Transient stream failure for %s (%s). Retrying in %.2fs.",
+                            agent_id,
+                            normalized.error_code,
+                            delay_s,
+                        )
+                        await asyncio.sleep(delay_s)
+                        continue
+
+                    if isinstance(exc, httpx.HTTPStatusError):
+                        logger.exception("Room provider stream HTTP error for %s", agent_id)
+                    elif isinstance(exc, httpx.TimeoutException):
+                        logger.warning("Room provider stream timeout for %s", agent_id)
                     else:
-                        continue
+                        logger.exception("Room provider stream error for %s", agent_id)
 
-                    if not chunk_content:
-                        continue
+                    payload = {
+                        "agent_id": agent_id,
+                        "agent_name": agent_name,
+                        "error": normalized.error,
+                        "error_code": normalized.error_code,
+                        "retryable": normalized.retryable,
+                        "status_code": normalized.status_code,
+                    }
+                    yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
+                    stream_failed = True
+                    break
 
-                    allowed = MAX_RESPONSE_CHARS - len(full_content)
-                    if allowed <= 0:
-                        logger.warning(
-                            "[Room SSE] Response for %s exceeded %d chars, truncating",
-                            agent_id,
-                            MAX_RESPONSE_CHARS,
-                        )
-                        break
-
-                    chunk_to_send = chunk_content[:allowed]
-                    full_content += chunk_to_send
-                    if chunk_to_send:
-                        yield f"data: {json.dumps({'content': chunk_to_send, 'agent_id': agent_id})}\n\n"
-
-                    if len(chunk_content) > len(chunk_to_send):
-                        logger.warning(
-                            "[Room SSE] Response for %s exceeded %d chars, truncating",
-                            agent_id,
-                            MAX_RESPONSE_CHARS,
-                        )
-                        break
-            except NotImplementedError as exc:
-                payload = {
-                    "agent_id": agent_id,
-                    "agent_name": agent_name,
-                    "error": str(exc),
-                }
-                yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
-                continue
-            except ValueError as exc:
-                payload = {
-                    "agent_id": agent_id,
-                    "agent_name": agent_name,
-                    "error": str(exc),
-                }
-                yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
-                continue
-            except httpx.HTTPStatusError as exc:
-                status_code = exc.response.status_code if exc.response else 503
-                logger.exception("Room provider stream HTTP error for %s", agent_id)
-                detail = ""
-                if exc.response is not None:
-                    try:
-                        detail = (exc.response.text or "").strip()
-                    except Exception:
-                        detail = ""
-                if detail:
-                    detail = detail[:220]
-                payload = {
-                    "agent_id": agent_id,
-                    "agent_name": agent_name,
-                    "error": (
-                        f"Chat service error ({status_code}): {detail}"
-                        if detail
-                        else f"Chat service error ({status_code})"
-                    ),
-                }
-                yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
+            if stream_failed:
                 continue
 
             clean_content, behavior = extract_avatar_commands(full_content)
@@ -388,6 +494,9 @@ async def stream_room_chat_sse(
                 "agent_id": agent_id,
                 "agent_name": agent_name,
                 "error": "Room chat timeout",
+                "error_code": "provider_timeout",
+                "retryable": True,
+                "status_code": None,
             }
             yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
         except Exception:
@@ -396,6 +505,9 @@ async def stream_room_chat_sse(
                 "agent_id": agent_id,
                 "agent_name": agent_name,
                 "error": "Room chat failed",
+                "error_code": "room_chat_failed",
+                "retryable": False,
+                "status_code": None,
             }
             yield f"event: agent_error\ndata: {json.dumps(payload)}\n\n"
 
