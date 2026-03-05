@@ -177,10 +177,16 @@ Memory files (`MEMORY.md`, `memory/YYYY-MM-DD.md`) live in the same workspace di
 
 After N sessions or 48h of inactivity, the character reflects on recent interactions and updates their relationship with that user:
 
-- Reads Canon + current Lived Experience + recent conversation history
+- Reads Canon + current Lived Experience + blended context (recent interactions, room summaries, optional memory hits)
 - LLM generates: updated Lived Experience prose + relationship adjustments (trust/attachment/intimacy deltas, bounded)
 - Writes back to DB + logs to `dream_log` audit table
 - Behavioral rules in the next session automatically reflect the new trust level
+
+Recent realism upgrade (P021):
+- Persona-aware compaction with structured/factual fallback
+- Top-of-mind memory recollection injection (threshold/budget-gated)
+- Soft emotional re-anchor option at session boundaries
+- Optional backend memory auto-capture (disabled by default)
 
 This is what makes a character who's been treated poorly start giving shorter responses — and what makes a character who's been treated well start opening up.
 
@@ -198,6 +204,11 @@ This is what makes a character who's been treated poorly start giving shorter re
 | `GEMINI_API_KEY` | — | Required if `EMILIA_EMBED_PROVIDER=gemini` |
 | `AUTH_ALLOW_DEV_TOKEN` | `0` | Set to `1` to skip auth in dev |
 | `CLAWDBOT_TOKEN` | — | API auth token |
+| `MEMORY_AUTORECALL_ENABLED` | `0` | Enables backend proactive top-of-mind memory injection |
+| `COMPACTION_PERSONA_MODE` | `dm_only` | Persona compaction mode (`off`, `dm_only`, `all`) |
+| `DREAM_CONTEXT_MAX_MESSAGES` | `60` | Max recent messages used in dream context |
+| `EMOTION_SESSION_REANCHOR_MODE` | `soft` | Session boundary behavior (`hard`/`soft`) |
+| `MEMORY_AUTOCAPTURE_ENABLED` | `0` | Enables optional backend auto memory capture |
 
 ---
 
@@ -211,7 +222,7 @@ bash backend/scripts/run-tests.sh
 cd backend && .venv/bin/python -m pytest -q
 ```
 
-268 tests. CI-gated on every commit.
+372 tests. CI-gated on every commit.
 
 ---
 
@@ -223,6 +234,7 @@ cd backend && .venv/bin/python -m pytest -q
 | B | ✅ | Native provider runtime, streaming SSE, tool loop |
 | C | ✅ | Standalone memory engine (Ollama embeddings), OpenClaw decoupled, CLI |
 | D | ✅ | Dream system, behavioral rules framework, session-scoped emotion |
+| P021 | ✅ | Backend realism pass: top-of-mind recall, compaction v2, dream v2, soft re-anchor |
 | E | 🔄 | CLI completeness (agents create/update, users map, workspace init) |
 | Frontend redesign | — | Planned — major refactor |
 
@@ -236,6 +248,9 @@ cd backend && .venv/bin/python -m pytest -q
 | `docs/PHASE-D-SPEC.md` | Dream system + behavioral rules design |
 | `docs/PHASE-E-CLI-SPEC.md` | CLI completeness spec |
 | `docs/planning/P013-emotional-architecture-v3.md` | Full emotional architecture design (Beatrice) |
+| `docs/planning/P021-backend-realism-implementation-spec-2026-03-04.md` | Backend realism implementation spec |
+| `docs/planning/P021-implementation-ticket-list-2026-03-04.md` | P021 engineering ticket breakdown |
+| `docs/planning/P021-rollout-runbook-2026-03-04.md` | Canary/rollback rollout runbook |
 | `docs/SOUL-SIMULATOR-API.md` | SOUL simulator endpoint |
 | `backend/scripts/run-tests.sh` | Test runner |
 

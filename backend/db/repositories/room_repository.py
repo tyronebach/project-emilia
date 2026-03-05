@@ -354,15 +354,25 @@ class RoomRepository:
             return row["summary"] if row else None
 
     @staticmethod
-    def update_summary(room_id: str, summary: str) -> None:
+    def update_summary(
+        room_id: str,
+        summary: str,
+        *,
+        summary_style: str | None = None,
+        summary_version: int | None = None,
+    ) -> None:
+        style = summary_style if summary_style is not None else "neutral"
+        version = int(summary_version) if summary_version is not None else 1
         with get_db() as conn:
             conn.execute(
                 """UPDATE rooms
                    SET summary = ?,
                        summary_updated_at = ?,
+                       summary_style = ?,
+                       summary_version = ?,
                        compaction_count = COALESCE(compaction_count, 0) + 1
                    WHERE id = ?""",
-                (summary, int(time.time()), room_id),
+                (summary, int(time.time()), style, version, room_id),
             )
 
     @staticmethod

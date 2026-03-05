@@ -4,12 +4,15 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from config import settings
 from db.connection import get_db
 from db.repositories import AgentRepository, EmotionalStateRepository
+from services.memory.search import search as memory_search
+from services.observability import log_metric
 from services.providers.native import NativeProvider
 from services.providers.registry import get_provider
 from services.soul_parser import extract_canon_text
@@ -17,11 +20,10 @@ from services.soul_parser import extract_canon_text
 logger = logging.getLogger(__name__)
 
 MAX_SUMMARY_CHARS = 1800
-MAX_LIVED_EXPERIENCE_CHARS = 500
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _load_canon(agent: dict[str, Any]) -> str:
@@ -83,10 +85,10 @@ def _pair_rooms(user_id: str, agent_id: str) -> list[str]:
     return [str(row["room_id"]) for row in rows]
 
 
-def _build_conversation_summary(user_id: str, agent_id: str) -> str:
+def _build_conversation_summary(user_id: str, agent_id: str, *, limit_messages: int) -> tuple[str, int]:
     room_ids = _pair_rooms(user_id, agent_id)
     if not room_ids:
-        return ""
+        return "", 0
 
     placeholders = ", ".join("?" for _ in room_ids)
     params: list[Any] = [*room_ids, user_id, agent_id]
@@ -97,8 +99,8 @@ def _build_conversation_summary(user_id: str, agent_id: str) -> str:
                 WHERE room_id IN ({placeholders})
                   AND sender_id IN (?, ?)
                 ORDER BY timestamp DESC
-                LIMIT 20""",
-            params,
+                                LIMIT ?""",
+                        [*params, max(1, int(limit_messages))],
         ).fetchall()
 
     ordered = list(reversed(rows))
@@ -110,8 +112,88 @@ def _build_conversation_summary(user_id: str, agent_id: str) -> str:
             lines.append(f"{speaker}: {content}")
     summary = "\n".join(lines).strip()
     if len(summary) > MAX_SUMMARY_CHARS:
-        return summary[:MAX_SUMMARY_CHARS].rstrip()
-    return summary
+        summary = summary[:MAX_SUMMARY_CHARS].rstrip()
+    return summary, len(ordered)
+
+
+def _build_room_summary_context(user_id: str, agent_id: str) -> str:
+    if not settings.dream_include_room_summary:
+        return ""
+    room_ids = _pair_rooms(user_id, agent_id)
+    if not room_ids:
+        return ""
+    placeholders = ", ".join("?" for _ in room_ids)
+    with get_db() as conn:
+        rows = conn.execute(
+            f"""SELECT id, summary
+                FROM rooms
+                WHERE id IN ({placeholders})
+                  AND summary IS NOT NULL
+                  AND TRIM(summary) != ''
+                ORDER BY summary_updated_at DESC
+                LIMIT 3""",
+            room_ids,
+        ).fetchall()
+    blocks: list[str] = []
+    for row in rows:
+        text = str(row.get("summary") or "").strip()
+        if text:
+            blocks.append(f"- room {row.get('id')}: {text[:350]}")
+    return "\n".join(blocks)
+
+
+async def _build_memory_context(
+    *,
+    query: str,
+    agent_id: str,
+    user_id: str,
+    workspace: str | None,
+) -> tuple[str, int]:
+    if not settings.dream_include_memory_hits:
+        return "", 0
+    try:
+        hits = await memory_search(
+            query=query,
+            agent_id=agent_id,
+            user_id=user_id,
+            workspace=workspace,
+            top_k=max(1, settings.dream_memory_hits_max),
+            min_score=0.4,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Dream memory context search unavailable for %s/%s: %s",
+            user_id,
+            agent_id,
+            exc,
+        )
+        return "", 0
+    if not hits:
+        return "", 0
+    lines = []
+    for hit in hits[: settings.dream_memory_hits_max]:
+        snippet = " ".join(str(hit.get("snippet") or "").split())
+        if len(snippet) > 180:
+            snippet = snippet[:180].rstrip() + "..."
+        lines.append(f"- [{hit.get('path')}] {snippet}")
+    return "\n".join(lines), len(lines)
+
+
+def _negative_cooldown_active(user_id: str, agent_id: str) -> bool:
+    cooldown_hours = max(0, int(settings.dream_negative_event_cooldown_hours))
+    if cooldown_hours <= 0:
+        return False
+    cutoff_ts = datetime.now(timezone.utc).timestamp() - (cooldown_hours * 3600)
+    with get_db() as conn:
+        row = conn.execute(
+            """SELECT COUNT(*) AS cnt
+               FROM dream_log
+               WHERE user_id = ? AND agent_id = ?
+                 AND created_at >= ?
+                 AND (trust_delta < 0 OR attachment_delta < 0 OR intimacy_delta < 0)""",
+            (user_id, agent_id, cutoff_ts),
+        ).fetchone()
+    return int((row or {}).get("cnt") or 0) > 0
 
 
 def _extract_content(result: dict[str, Any]) -> str:
@@ -188,8 +270,26 @@ async def execute_dream(user_id: str, agent_id: str, triggered_by: str = "schedu
     lived_row = _load_lived_experience(user_id, agent_id)
     lived_before = str(lived_row.get("lived_experience") or "")
     relationship_before = _load_relationship_state(user_id, agent_id)
-    conversation_summary = _build_conversation_summary(user_id, agent_id)
+    conversation_summary, message_count = _build_conversation_summary(
+        user_id,
+        agent_id,
+        limit_messages=settings.dream_context_max_messages,
+    )
+    room_summary_context = _build_room_summary_context(user_id, agent_id)
+    workspace = str(agent.get("workspace") or "").strip() or None
+    memory_context, memory_hits_count = await _build_memory_context(
+        query=conversation_summary or lived_before or "relationship",
+        agent_id=agent_id,
+        user_id=user_id,
+        workspace=workspace,
+    )
     display_name = str(agent.get("display_name") or agent_id)
+
+    input_context_meta = {
+        "message_count": message_count,
+        "used_summary": bool(room_summary_context),
+        "memory_hits": memory_hits_count,
+    }
 
     prompt = "\n\n".join([
         f"You are {display_name}. Here is your identity:",
@@ -199,6 +299,10 @@ async def execute_dream(user_id: str, agent_id: str, triggered_by: str = "schedu
         lived_before or "(Empty.)",
         f"## Recent Interactions with {user_id}",
         conversation_summary or "(No recent interactions found.)",
+        "## Prior Room Summaries",
+        room_summary_context or "(No room summaries available.)",
+        "## Memory Recollections",
+        memory_context or "(No memory hits.)",
         "## Current Relationship State",
         (
             f"Trust: {relationship_before['trust']:.2f} | "
@@ -207,14 +311,14 @@ async def execute_dream(user_id: str, agent_id: str, triggered_by: str = "schedu
             f"Intimacy: {relationship_before['intimacy']:.2f}"
         ),
         (
-            "Reflect on your recent interactions. Consider how this person has treated you, "
-            "whether your feelings changed, what you learned about yourself, and any patterns."
+            "You are in deep reflection. Consider how this person has treated you over time, "
+            "what emotional patterns persist, and what should remain top-of-mind next time."
         ),
         (
             "Respond with JSON only: "
             '{"lived_experience_update": "...", '
             '"relationship_adjustments": {"trust_delta": 0.0, "attachment_delta": 0.0, "intimacy_delta": 0.0}, '
-            '"internal_monologue": "..."}'
+            '"internal_monologue": "...", "salient_threads": ["..."], "confidence": 0.0}'
         ),
     ])
     result = await _call_dream_llm(
@@ -230,7 +334,14 @@ async def execute_dream(user_id: str, agent_id: str, triggered_by: str = "schedu
     trust_delta = _bound_delta(adjustments.get("trust_delta"), -0.2, 0.2)
     attachment_delta = _bound_delta(adjustments.get("attachment_delta"), -0.1, 0.1)
     intimacy_delta = _bound_delta(adjustments.get("intimacy_delta"), -0.1, 0.1)
-    lived_after = str(parsed.get("lived_experience_update") or "").strip()[:MAX_LIVED_EXPERIENCE_CHARS]
+    safety_flags: dict[str, Any] = {}
+    if _negative_cooldown_active(user_id, agent_id):
+        trust_delta = max(trust_delta, -0.05)
+        attachment_delta = max(attachment_delta, -0.03)
+        intimacy_delta = max(intimacy_delta, -0.03)
+        safety_flags["negative_cooldown_applied"] = True
+
+    lived_after = str(parsed.get("lived_experience_update") or "").strip()[: settings.dream_lived_experience_max_chars]
     internal_monologue = str(parsed.get("internal_monologue") or "").strip()
 
     relationship_after = {
@@ -269,8 +380,9 @@ async def execute_dream(user_id: str, agent_id: str, triggered_by: str = "schedu
                    trust_delta, attachment_delta, intimacy_delta, created_at,
                    dreamed_at, conversation_summary,
                    lived_experience_before, lived_experience_after,
-                   relationship_before, relationship_after, internal_monologue, model_used
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'), ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   relationship_before, relationship_after, internal_monologue, model_used,
+                   input_context_meta, safety_flags
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 log_id,
                 user_id,
@@ -289,10 +401,24 @@ async def execute_dream(user_id: str, agent_id: str, triggered_by: str = "schedu
                 json.dumps(relationship_after),
                 internal_monologue,
                 model_used,
+                json.dumps(input_context_meta),
+                json.dumps(safety_flags),
             ),
         )
         row = conn.execute("SELECT * FROM dream_log WHERE id = ?", (log_id,)).fetchone()
 
     if not row:
         raise RuntimeError("Dream log row was not persisted")
+
+    log_metric(
+        logger,
+        "dream",
+        agent_id=agent_id,
+        user_id=user_id,
+        triggered_by=triggered_by,
+        message_count=message_count,
+        used_summary=bool(room_summary_context),
+        memory_hits=memory_hits_count,
+        lived_chars=len(lived_after),
+    )
     return row

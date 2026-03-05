@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from db.connection import get_db
 from services.dreams.runtime import execute_dream
@@ -20,13 +20,13 @@ def _parse_iso(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(UTC)
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
     except ValueError:
         return None
 
 
 def _get_active_pairs(*, user_id: str | None = None, agent_id: str | None = None) -> list[dict]:
-    cutoff = datetime.now(UTC) - timedelta(days=7)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
     params: list[object] = [cutoff.timestamp()]
     clauses = ["rm.timestamp >= ?"]
     if user_id:
@@ -117,7 +117,7 @@ def _last_session_trust_drop(user_id: str, agent_id: str) -> float:
 def find_due_dreamers(user_id: str | None = None, agent_id: str | None = None) -> list[dict]:
     """Return (user_id, agent_id) pairs that are due for a dream."""
     due: list[dict] = []
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     for pair in _get_active_pairs(user_id=user_id, agent_id=agent_id):
         pair_user_id = str(pair["user_id"])

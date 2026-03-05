@@ -7,6 +7,9 @@ class Settings:
     """Application settings from environment variables."""
 
     def __init__(self):
+        def _env_bool(name: str, default: str) -> bool:
+            return os.getenv(name, default).strip().lower() not in {"0", "false", "no", "off"}
+
         # Service URLs
         self.stt_service_url: str = os.getenv("STT_SERVICE_URL", "http://192.168.88.252:8765")
         self.clawdbot_url: str = os.getenv("CLAWDBOT_URL", "http://127.0.0.1:18789")
@@ -30,12 +33,26 @@ class Settings:
         self.elevenlabs_api_key: str | None = os.getenv("ELEVENLABS_API_KEY")
         self.elevenlabs_voice_id: str = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
         self.elevenlabs_model: str = os.getenv("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
-        self.tts_cache_enabled: bool = os.getenv("TTS_CACHE_ENABLED", "1").lower() not in {"0", "false", "no"}
+        self.tts_cache_enabled: bool = _env_bool("TTS_CACHE_ENABLED", "1")
         self.tts_cache_ttl_seconds: int = int(os.getenv("TTS_CACHE_TTL_SECONDS", "604800"))
         self.tts_cache_max_entries: int = int(os.getenv("TTS_CACHE_MAX_ENTRIES", "200"))
 
         # Chat
         self.chat_history_limit: int = int(os.getenv("CHAT_HISTORY_LIMIT", "20"))
+
+        # Memory proactive recall
+        self.memory_autorecall_enabled: bool = _env_bool("MEMORY_AUTORECALL_ENABLED", "0")
+        self.memory_autorecall_score_threshold: float = float(os.getenv("MEMORY_AUTORECALL_SCORE_THRESHOLD", "0.86"))
+        self.memory_autorecall_max_items: int = int(os.getenv("MEMORY_AUTORECALL_MAX_ITEMS", "2"))
+        self.memory_autorecall_max_chars: int = int(os.getenv("MEMORY_AUTORECALL_MAX_CHARS", "420"))
+        self.memory_autorecall_runtime_trigger_enabled: bool = _env_bool(
+            "MEMORY_AUTORECALL_RUNTIME_TRIGGER_ENABLED", "0"
+        )
+
+        # Memory auto-capture
+        self.memory_autocapture_enabled: bool = _env_bool("MEMORY_AUTOCAPTURE_ENABLED", "0")
+        self.memory_autocapture_max_items_per_day: int = int(os.getenv("MEMORY_AUTOCAPTURE_MAX_ITEMS_PER_DAY", "8"))
+        self.memory_autocapture_min_confidence: float = float(os.getenv("MEMORY_AUTOCAPTURE_MIN_CONFIDENCE", "0.82"))
 
         # Emotion engine
         self.trigger_classifier_llm_fallback: bool = os.getenv(
@@ -55,6 +72,9 @@ class Settings:
         self.compact_threshold: int = int(os.getenv("COMPACT_THRESHOLD", "25"))
         self.compact_keep_recent: int = int(os.getenv("COMPACT_KEEP_RECENT", "10"))
         self.compact_model: str = os.getenv("COMPACT_MODEL", "gpt-4o-mini")
+        self.compaction_persona_mode: str = os.getenv("COMPACTION_PERSONA_MODE", "dm_only").strip().lower()
+        self.compaction_texture_max_lines: int = int(os.getenv("COMPACTION_TEXTURE_MAX_LINES", "6"))
+        self.compaction_open_threads_max: int = int(os.getenv("COMPACTION_OPEN_THREADS_MAX", "5"))
         self.soul_sim_judge_model: str = os.getenv("SOUL_SIM_JUDGE_MODEL", "gpt-5-mini")
 
         # SOUL simulator
@@ -89,6 +109,20 @@ class Settings:
         # Webapp defaults
         self.default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "America/Vancouver")
 
+        # Dreams v2
+        self.dream_context_max_messages: int = int(os.getenv("DREAM_CONTEXT_MAX_MESSAGES", "60"))
+        self.dream_include_room_summary: bool = _env_bool("DREAM_INCLUDE_ROOM_SUMMARY", "1")
+        self.dream_include_memory_hits: bool = _env_bool("DREAM_INCLUDE_MEMORY_HITS", "1")
+        self.dream_memory_hits_max: int = int(os.getenv("DREAM_MEMORY_HITS_MAX", "3"))
+        self.dream_lived_experience_max_chars: int = int(os.getenv("DREAM_LIVED_EXPERIENCE_MAX_CHARS", "2400"))
+        self.dream_negative_event_cooldown_hours: int = int(os.getenv("DREAM_NEGATIVE_EVENT_COOLDOWN_HOURS", "12"))
+
+        # Emotion re-anchor
+        self.emotion_session_reanchor_mode: str = os.getenv("EMOTION_SESSION_REANCHOR_MODE", "soft").strip().lower()
+        self.emotion_reanchor_alpha_short_gap: float = float(os.getenv("EMOTION_REANCHOR_ALPHA_SHORT_GAP", "0.25"))
+        self.emotion_reanchor_alpha_long_gap: float = float(os.getenv("EMOTION_REANCHOR_ALPHA_LONG_GAP", "0.60"))
+        self.emotion_reanchor_long_gap_hours: int = int(os.getenv("EMOTION_REANCHOR_LONG_GAP_HOURS", "24"))
+
         # Validation
         if self.emilia_embed_provider not in {"ollama", "gemini"}:
             raise RuntimeError(
@@ -100,6 +134,10 @@ class Settings:
             raise RuntimeError("EMILIA_EMBED_BASE_URL must be set for Ollama embeddings")
         if self.emilia_embed_provider == "gemini" and not self.gemini_api_key:
             raise RuntimeError("GEMINI_API_KEY is required when EMILIA_EMBED_PROVIDER=gemini")
+        if self.compaction_persona_mode not in {"off", "dm_only", "all"}:
+            raise RuntimeError("COMPACTION_PERSONA_MODE must be one of: off, dm_only, all")
+        if self.emotion_session_reanchor_mode not in {"hard", "soft"}:
+            raise RuntimeError("EMOTION_SESSION_REANCHOR_MODE must be one of: hard, soft")
 
     def is_games_v2_enabled_for_agent(self, agent_id: str | None) -> bool:
         """Return whether Games V2 is enabled for a given agent cohort."""

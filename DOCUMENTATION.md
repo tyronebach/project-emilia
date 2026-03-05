@@ -28,6 +28,49 @@
 
 ---
 
+## Agent Workspace & Persona Setup
+
+Emilia agents are defined by their **Workspace**, which contains their personality (`SOUL.md`) and long-term memory (`MEMORY.md`).
+
+### 1. Directory Structure
+All agent workspaces should be kept in the root `agents/` directory of this project. This directory is mapped into the Docker container at `/app/agents`.
+
+Example structure:
+```text
+project-emilia/
+├── agents/
+│   ├── my-agent/
+│   │   ├── SOUL.md       # Identity, Archetype, Rules
+│   │   ├── MEMORY.md     # Long-term curated memory
+│   │   └── memory/       # Daily journal files
+```
+
+### 2. Workflow: Creating a New Agent
+To create a new agent from scratch:
+
+1. **Initialize the Workspace:**
+   Run the CLI to generate the template files on your host machine:
+   ```bash
+   python3 cli/emilia.py workspace init agents/my-buddy --name "Buddy"
+   ```
+
+2. **Register with the Backend:**
+   Tell the backend where to find these files *inside* the container:
+   ```bash
+   python3 cli/emilia.py agents create --id my-buddy --name "Buddy" --workspace /app/agents/my-buddy --provider native --model gpt-4o-mini
+   ```
+
+3. **Grant Access:**
+   Map the agent to your user:
+   ```bash
+   python3 cli/emilia.py users map cli-user my-buddy
+   ```
+
+### 3. Editing Personas
+You can edit `SOUL.md` or `MEMORY.md` at any time on your host machine. The backend will automatically pick up changes to `SOUL.md` on the next chat turn and will re-index `MEMORY.md` whenever the agent performs a memory search.
+
+---
+
 ## Backend (FastAPI)
 
 **Structure**
@@ -36,7 +79,7 @@
 - `backend/dependencies.py`: Auth + header dependencies.
 - `backend/routers/`: API endpoints.
 - `backend/schemas/`: Pydantic request/response models.
-- `backend/services/`: ElevenLabs client, emotion engine, shared emotion runtime hooks, shared chat-context runtime helpers, background task scheduler, drift simulator, room chat orchestration, compaction, Soul Window helpers, SOUL simulator helpers, direct LLM client, direct tool runtime, memory bridge, extracted LLM caller, extracted room chat stream SSE.
+- `backend/services/`: ElevenLabs client, emotion engine, shared emotion runtime hooks, shared chat-context runtime helpers, background task scheduler, drift simulator, room chat orchestration, compaction v2, Soul Window helpers, SOUL simulator helpers, direct LLM client, direct tool runtime, memory bridge, top-of-mind memory recall, optional memory auto-capture, extracted LLM caller, extracted room chat stream SSE, observability helpers.
 - `backend/db/`: SQLite connection + repositories.
 - `backend/core/exceptions.py`: Exception helpers.
 
@@ -213,10 +256,15 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `TTS_CACHE_ENABLED`, `TTS_CACHE_TTL_SECONDS`, `TTS_CACHE_MAX_ENTRIES`.
 - `CHAT_HISTORY_LIMIT`.
 - `COMPACT_THRESHOLD`, `COMPACT_KEEP_RECENT`, `COMPACT_MODEL`.
+- `COMPACTION_PERSONA_MODE`, `COMPACTION_TEXTURE_MAX_LINES`, `COMPACTION_OPEN_THREADS_MAX`.
 - `SOUL_SIM_PERSONA_MODEL`, `SOUL_SIM_MAX_TURNS`.
 - `OPENAI_API_KEY`, `OPENAI_API_BASE`, `DIRECT_DEFAULT_MODEL` (used when agent `chat_mode=direct`).
 - `OPENCLAW_MEMORY_DIR` (default `~/.openclaw/memory`), `DIRECT_TOOL_MAX_STEPS` (default 6), `GEMINI_API_KEY` (for memory search embeddings).
 - `GAMES_V2_AGENT_ALLOWLIST` (optional agent rollout cohort).
+- `MEMORY_AUTORECALL_ENABLED`, `MEMORY_AUTORECALL_SCORE_THRESHOLD`, `MEMORY_AUTORECALL_MAX_ITEMS`, `MEMORY_AUTORECALL_MAX_CHARS`, `MEMORY_AUTORECALL_RUNTIME_TRIGGER_ENABLED`.
+- `MEMORY_AUTOCAPTURE_ENABLED`, `MEMORY_AUTOCAPTURE_MAX_ITEMS_PER_DAY`, `MEMORY_AUTOCAPTURE_MIN_CONFIDENCE`.
+- `DREAM_CONTEXT_MAX_MESSAGES`, `DREAM_INCLUDE_ROOM_SUMMARY`, `DREAM_INCLUDE_MEMORY_HITS`, `DREAM_MEMORY_HITS_MAX`, `DREAM_LIVED_EXPERIENCE_MAX_CHARS`, `DREAM_NEGATIVE_EVENT_COOLDOWN_HOURS`.
+- `EMOTION_SESSION_REANCHOR_MODE`, `EMOTION_REANCHOR_ALPHA_SHORT_GAP`, `EMOTION_REANCHOR_ALPHA_LONG_GAP`, `EMOTION_REANCHOR_LONG_GAP_HOURS`.
 - `EMILIA_DB_PATH` / fallback for DB.
 - Emotion-engine classifier tuning env vars are read directly in `backend/services/emotion_engine.py`:
   - `TRIGGER_CLASSIFIER_ENABLED`
@@ -251,7 +299,13 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `background_tasks.py`: shared background task scheduler with retained task references.
 
 **Compaction** (`backend/services/compaction.py`)
-- Summarizes older room history via Clawdbot model; stored in `rooms.summary` and old messages pruned.
+- Summarizes older room history via direct OpenAI-compatible call (`COMPACT_MODEL`), stores in `rooms.summary`, and prunes old messages.
+- Supports persona-aware compaction (`off`, `dm_only`, `all`) with structured output validation and neutral fallback.
+
+**Dream Runtime** (`backend/services/dreams/runtime.py`)
+- Uses blended context (recent interactions + optional room summaries + optional memory hits + lived experience).
+- Applies bounded relationship deltas plus anti-rumination cooldown guard.
+- Persists context/safety metadata to `dream_log` for auditability.
 
 **SOUL Simulator** (`backend/services/soul_simulator.py`)
 - Runs a ping-pong exchange (archetype user vs SOUL persona) and returns judge-scored consistency hints.
@@ -271,6 +325,10 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `normalize_messages_for_direct()`: shared message normalization used by both `chat.py` and `rooms.py`.
 - `run_tool_loop()`: bounded tool loop (max steps configurable via `DIRECT_TOOL_MAX_STEPS`) that calls `chat_completion` with `MEMORY_TOOLS`, executes tool calls via memory bridge, and returns final content.
 
+**Memory Recall & Capture** (`backend/services/memory/top_of_mind.py`, `backend/services/memory/auto_capture.py`)
+- Top-of-mind recollection injection is threshold/budget-gated and inserted as a compact system block before latest user turn.
+- Optional backend auto-capture extracts candidate continuity facts (preferences/commitments/date-like notes) with dedupe and daily limits.
+
 **Memory Bridge** (`backend/services/memory_bridge.py`)
 - Reads OpenClaw's SQLite memory index directly (`~/.openclaw/memory/<claw_agent_id>.sqlite`).
 - Hybrid search: vector similarity via `sqlite-vec` (cosine distance) + FTS5 BM25, weighted merge (0.7/0.3). Falls back to FTS-only when vector search unavailable.
@@ -284,6 +342,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 ### Testing
 
 - `backend/tests/`: pytest suite (API, emotion engine, compaction, TTS cache, parsing).
+- Latest backend baseline: `372 passed` from `python3 -m pytest -q` in `backend/`.
 - `backend/scripts/run-tests.sh`: helper runner.
 
 ---
@@ -502,7 +561,12 @@ Assets
 - `docs/GLOBAL-DYNAMICS-TUNING.md`: Global Dynamics mood injection tuning guide (knobs, presets, per-agent vs global).
 - `docs/SOUL-SIMULATOR-API.md`: SOUL simulator endpoint contract.
 - `docs/P006-soul-window-dev-guide.md`: Soul Window implementation/extension guide.
-- `docs/planning/P010-direct-mode-v2-checklist.md`: Direct mode V2 implementation checklist (completed).
+- `docs/planning/P021-backend-realism-implementation-spec-2026-03-04.md`: Backend realism implementation spec.
+- `docs/planning/P021-implementation-ticket-list-2026-03-04.md`: P021 implementation ticket breakdown.
+- `docs/planning/P021-rollout-runbook-2026-03-04.md`: P021 canary and rollback runbook.
+- `docs/planning/archive/P010-direct-mode-v2-checklist.md`: Direct mode V2 implementation checklist (completed, archived).
+- `docs/planning/archive/P011-room-chat-parity-v2-checklist.md`: Room chat parity checklist (completed, archived).
+- `docs/planning/archive/P012-shared-runtime-and-room-multi-vrm.md`: Shared runtime extraction checklist (completed, archived).
 - `docs/planning/archive/P006-soul-window.md`: canonical Soul Window plan.
 - `docs/planning/archive/DRIFT-API.md`: drift simulator endpoint contract.
 - `docs/animation/*`: VRM/animation research and pipeline notes.

@@ -264,7 +264,7 @@ Result: 126 tests passed, build succeeded.
 
 V2 implementation checklist (all items completed):
 
-- `docs/planning/P010-direct-mode-v2-checklist.md`
+- `docs/planning/archive/P010-direct-mode-v2-checklist.md`
 
 Key V2 service files:
 - `backend/services/direct_tool_runtime.py` — Bounded tool loop (`run_tool_loop`) with `MEMORY_TOOLS` schema
