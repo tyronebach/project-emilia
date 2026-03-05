@@ -2,11 +2,11 @@
 # Phase 3.1 COMPLETE - 2026-02-08
 import logging
 from pathlib import Path
-from typing import Any
 
 from config import settings
 from services.direct_llm import load_canon_soul_md
 from services.direct_llm import DirectLLMClient
+from services.llm_response import extract_content
 from services.observability import log_metric
 
 logger = logging.getLogger(__name__)
@@ -76,29 +76,6 @@ def _resolve_compaction_mode(room_type: str | None) -> str:
     return "off"
 
 
-def _extract_content(payload: dict[str, Any]) -> str:
-    choices = payload.get("choices")
-    if not isinstance(choices, list) or not choices:
-        raise ValueError("Invalid LLM response payload: missing choices")
-
-    first = choices[0]
-    if not isinstance(first, dict):
-        raise ValueError("Invalid LLM response payload: malformed choice")
-
-    message = first.get("message")
-    if not isinstance(message, dict):
-        raise ValueError("Invalid LLM response payload: missing message")
-
-    content = message.get("content")
-    if not isinstance(content, str):
-        raise ValueError("Invalid LLM response payload: missing content")
-
-    text = content.strip()
-    if not text:
-        raise ValueError("LLM response content is empty")
-    return text
-
-
 class CompactionService:
 
     @staticmethod
@@ -142,9 +119,27 @@ class CompactionService:
             max_tokens=700,
             timeout_s=60.0,
         )
-        summary = _extract_content(result)
+        summary = extract_content(result)
+        persona_fallback = False
 
         if mode == "persona" and not _is_structured_summary_valid(summary):
+            persona_fallback = True
+            excerpt = " ".join(summary.strip().split())[:200]
+            logger.warning(
+                "Compaction persona summary failed validation; falling back to neutral summary "
+                "(room_type=%s mode=%s summary_chars=%d excerpt=%r)",
+                room_type,
+                mode,
+                len(summary),
+                excerpt,
+            )
+            log_metric(
+                logger,
+                "compaction_persona_fallback",
+                room_type=room_type,
+                mode=mode,
+                summary_chars=len(summary),
+            )
             fallback_result = await client.chat_completion(
                 model=settings.compact_model,
                 messages=[{"role": "system", "content": SUMMARIZE_SYSTEM_PROMPT}, *messages],
@@ -152,7 +147,7 @@ class CompactionService:
                 max_tokens=700,
                 timeout_s=60.0,
             )
-            summary = _extract_content(fallback_result)
+            summary = extract_content(fallback_result)
 
         logger.info("Compaction summary generated: %d chars", len(summary))
         log_metric(
@@ -163,5 +158,6 @@ class CompactionService:
             input_messages=len(messages),
             output_chars=len(summary),
             texture_lines=summary.count("\n- ") if mode == "persona" else 0,
+            persona_fallback=persona_fallback,
         )
         return summary

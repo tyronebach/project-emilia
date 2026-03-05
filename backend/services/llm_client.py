@@ -6,29 +6,7 @@ from typing import Any
 import httpx
 
 from config import settings
-
-
-def _extract_content(payload: dict[str, Any]) -> str:
-    choices = payload.get("choices")
-    if not isinstance(choices, list) or not choices:
-        raise ValueError("Invalid LLM response payload: missing choices")
-
-    first = choices[0]
-    if not isinstance(first, dict):
-        raise ValueError("Invalid LLM response payload: malformed choice")
-
-    message = first.get("message")
-    if not isinstance(message, dict):
-        raise ValueError("Invalid LLM response payload: missing message")
-
-    content = message.get("content")
-    if not isinstance(content, str):
-        raise ValueError("Invalid LLM response payload: missing content")
-
-    text = content.strip()
-    if not text:
-        raise ValueError("LLM response content is empty")
-    return text
+from services.llm_response import extract_content
 
 
 async def chat_completion(
@@ -83,4 +61,4 @@ async def chat_completion_text(
         timeout_s=timeout_s,
         max_tokens=max_tokens,
     )
-    return _extract_content(result)
+    return extract_content(result)

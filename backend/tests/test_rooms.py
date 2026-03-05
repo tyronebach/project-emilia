@@ -193,10 +193,10 @@ class TestRoomChat:
 
     @patch("routers.rooms._spawn_background")
     @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.httpx.AsyncClient")
+    @patch("routers.rooms.call_llm_non_stream", new_callable=AsyncMock)
     async def test_room_chat_mentions_route_to_target_agent(
         self,
-        mock_client_class,
+        mock_call_llm,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -224,19 +224,11 @@ class TestRoomChat:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        mock_call_llm.return_value = {
             "model": "agent:claw-beta",
             "choices": [{"message": {"content": "[intent:reply] Beta here"}}],
             "usage": {"prompt_tokens": 8, "completion_tokens": 4},
         }
-
-        mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
 
         sent = await test_client.post(
             f"/api/rooms/{room_id}/chat?stream=0",
@@ -263,10 +255,10 @@ class TestRoomChat:
 
     @patch("routers.rooms._spawn_background")
     @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.httpx.AsyncClient")
+    @patch("routers.rooms.call_llm_non_stream", new_callable=AsyncMock)
     async def test_room_chat_defaults_to_always_mode_agents(
         self,
-        mock_client_class,
+        mock_call_llm,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -300,19 +292,11 @@ class TestRoomChat:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        mock_call_llm.return_value = {
             "model": "agent:claw-alpha",
             "choices": [{"message": {"content": "Always responder"}}],
             "usage": {"prompt_tokens": 7, "completion_tokens": 3},
         }
-
-        mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
 
         sent = await test_client.post(
             f"/api/rooms/{room_id}/chat?stream=0",
@@ -541,10 +525,10 @@ class TestRoomChat:
 
     @patch("routers.rooms._spawn_background")
     @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.httpx.AsyncClient")
+    @patch("routers.rooms.call_llm_non_stream", new_callable=AsyncMock)
     async def test_room_chat_runtime_trigger_uses_game_runtime_origin_and_history_filtering(
         self,
-        mock_client_class,
+        mock_call_llm,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -571,19 +555,11 @@ class TestRoomChat:
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        mock_call_llm.return_value = {
             "model": "agent:claw-alpha",
             "choices": [{"message": {"content": "Runtime acknowledged"}}],
             "usage": {"prompt_tokens": 5, "completion_tokens": 2},
         }
-
-        mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
 
         sent = await test_client.post(
             f"/api/rooms/{room_id}/chat?stream=0",
@@ -618,10 +594,10 @@ class TestRoomChat:
     @patch("routers.rooms._spawn_background")
     @patch("routers.rooms._build_first_turn_context")
     @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.httpx.AsyncClient")
+    @patch("routers.rooms.call_llm_non_stream", new_callable=AsyncMock)
     async def test_room_chat_builds_first_turn_context_once_per_agent(
         self,
-        mock_client_class,
+        mock_call_llm,
         mock_pre_llm,
         mock_first_turn_context,
         mock_spawn_background,
@@ -647,19 +623,11 @@ class TestRoomChat:
         mock_first_turn_context.return_value = "Session facts (UTC): ..."
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        mock_call_llm.return_value = {
             "model": "agent:claw-alpha",
             "choices": [{"message": {"content": "Hello there"}}],
             "usage": {"prompt_tokens": 6, "completion_tokens": 3},
         }
-
-        mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
 
         first = await test_client.post(
             f"/api/rooms/{room_id}/chat?stream=0",
@@ -681,10 +649,10 @@ class TestRoomChat:
     @patch("routers.rooms.asyncio.to_thread")
     @patch("routers.rooms._ensure_workspace_milestones")
     @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.httpx.AsyncClient")
+    @patch("routers.rooms.call_llm_non_stream", new_callable=AsyncMock)
     async def test_room_chat_triggers_workspace_milestones_when_workspace_configured(
         self,
-        mock_client_class,
+        mock_call_llm,
         mock_pre_llm,
         mock_ensure_workspace_milestones,
         mock_to_thread,
@@ -716,19 +684,11 @@ class TestRoomChat:
         mock_to_thread.side_effect = lambda *_args, **_kwargs: _noop()
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        mock_call_llm.return_value = {
             "model": "agent:claw-alpha",
             "choices": [{"message": {"content": "Milestone updated"}}],
             "usage": {"prompt_tokens": 5, "completion_tokens": 2},
         }
-
-        mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
 
         sent = await test_client.post(
             f"/api/rooms/{room_id}/chat?stream=0",
@@ -747,10 +707,10 @@ class TestRoomChat:
     @patch("routers.rooms.asyncio.to_thread")
     @patch("routers.rooms._process_emotion_post_llm")
     @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
-    @patch("routers.rooms.httpx.AsyncClient")
+    @patch("routers.rooms.call_llm_non_stream", new_callable=AsyncMock)
     async def test_room_chat_post_llm_uses_namespaced_room_session_id(
         self,
-        mock_client_class,
+        mock_call_llm,
         mock_pre_llm,
         mock_post_llm,
         mock_to_thread,
@@ -781,19 +741,11 @@ class TestRoomChat:
         mock_to_thread.side_effect = lambda *_args, **_kwargs: _noop()
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
+        mock_call_llm.return_value = {
             "model": "agent:claw-alpha",
             "choices": [{"message": {"content": "Emotion stored"}}],
             "usage": {"prompt_tokens": 5, "completion_tokens": 2},
         }
-
-        mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
 
         sent = await test_client.post(
             f"/api/rooms/{room_id}/chat?stream=0",
@@ -810,11 +762,59 @@ class TestRoomChat:
         assert post_calls[0].args[4] == f"room:{room_id}"
 
     @patch("routers.rooms._spawn_background")
+    @patch("routers.rooms.call_llm_non_stream", new_callable=AsyncMock)
     @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
     @patch("routers.rooms.httpx.AsyncClient")
-    async def test_room_chat_non_stream_deletes_user_message_when_all_agents_fail(
+    async def test_room_chat_non_stream_valueerror_returns_actionable_503_without_legacy_fallback(
         self,
         mock_client_class,
+        mock_pre_llm,
+        mock_call_llm,
+        mock_spawn_background,
+        test_client,
+        auth_headers,
+    ):
+        user_id = f"user-{uuid.uuid4().hex[:8]}"
+        alpha = f"agent-{uuid.uuid4().hex[:8]}"
+
+        _seed_user(user_id, "Owner")
+        _seed_agent(alpha, "Alpha", "claw-alpha")
+        _grant_access(user_id, alpha)
+
+        headers = {**auth_headers, "X-User-Id": user_id}
+        created = await test_client.post(
+            "/api/rooms",
+            headers=headers,
+            json={"name": "Actionable Failure Room", "agent_ids": [alpha]},
+        )
+        room_id = created.json()["id"]
+
+        mock_pre_llm.return_value = (None, [])
+        mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
+        mock_call_llm.side_effect = ValueError("OPENAI_API_KEY is required for direct chat mode")
+
+        sent = await test_client.post(
+            f"/api/rooms/{room_id}/chat?stream=0",
+            headers=headers,
+            json={"message": "this should fail cleanly"},
+        )
+        assert sent.status_code == 503
+        assert "OPENAI_API_KEY is required" in sent.json()["detail"]
+        mock_client_class.assert_not_called()
+
+        history = await test_client.get(
+            f"/api/rooms/{room_id}/history?includeRuntime=true",
+            headers=headers,
+        )
+        assert history.status_code == 200
+        assert history.json()["count"] == 0
+
+    @patch("routers.rooms._spawn_background")
+    @patch("routers.rooms._process_emotion_pre_llm", new_callable=AsyncMock)
+    @patch("routers.rooms.call_llm_non_stream", new_callable=AsyncMock)
+    async def test_room_chat_non_stream_deletes_user_message_when_all_agents_fail(
+        self,
+        mock_call_llm,
         mock_pre_llm,
         mock_spawn_background,
         test_client,
@@ -837,16 +837,7 @@ class TestRoomChat:
 
         mock_pre_llm.return_value = (None, [])
         mock_spawn_background.side_effect = lambda coro: (coro.close(), None)[1]
-
-        mock_response = MagicMock()
-        mock_response.status_code = 503
-        mock_response.text = "Service unavailable"
-
-        mock_client = MagicMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(return_value=mock_response)
-        mock_client_class.return_value = mock_client
+        mock_call_llm.side_effect = RuntimeError("Service unavailable")
 
         sent = await test_client.post(
             f"/api/rooms/{room_id}/chat?stream=0",

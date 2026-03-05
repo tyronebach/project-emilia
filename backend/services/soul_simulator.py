@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from services.direct_llm import DirectLLMClient
+from services.llm_response import extract_content
 
 MAX_SOUL_MD_CHARS = 30_000
 MAX_TURN_MESSAGE_CHARS = 3_000
@@ -296,18 +297,6 @@ def _parse_analysis(raw_text: str) -> dict[str, Any]:
     }
 
 
-def _extract_content(response: dict[str, Any]) -> str:
-    """Extract text content from OpenAI-compatible response."""
-    choices = response.get("choices")
-    if not isinstance(choices, list) or not choices:
-        raise ValueError("Invalid LLM response: missing choices")
-    message = choices[0].get("message", {})
-    content = message.get("content", "")
-    if not isinstance(content, str):
-        raise ValueError("Invalid LLM response: missing content")
-    return content.strip()
-
-
 async def run_exchange(
     soul_md: str,
     archetype_id: str,
@@ -359,7 +348,7 @@ async def run_exchange(
             temperature=0.9,
             timeout_s=timeout_per_call,
         )
-        user_msg = _extract_content(archetype_resp)
+        user_msg = extract_content(archetype_resp)
         exchange.append({"role": "user", "content": _sanitize_turn_message(user_msg)})
 
         persona_resp = await client.chat_completion(
@@ -372,7 +361,7 @@ async def run_exchange(
             temperature=0.7,
             timeout_s=timeout_per_call,
         )
-        persona_msg = _extract_content(persona_resp)
+        persona_msg = extract_content(persona_resp)
         exchange.append({"role": "assistant", "content": _sanitize_turn_message(persona_msg)})
 
     return exchange
@@ -430,5 +419,5 @@ async def analyze_exchange(
         temperature=0.2,
         timeout_s=timeout_per_call,
     )
-    raw = _extract_content(response)
+    raw = extract_content(response)
     return _parse_analysis(raw)
