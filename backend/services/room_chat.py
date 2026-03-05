@@ -200,6 +200,68 @@ class PreparedAgentTurn:
     llm_messages: list[dict]
 
 
+class PromptBuilder:
+    """Deterministic prompt composer for room chat turns."""
+
+    def __init__(self, base_messages: list[dict]):
+        self._base_messages = [dict(item) for item in base_messages]
+        self._top_of_mind_context: str | None = None
+        self._first_turn_context: str | None = None
+        self._game_context: object | None = None
+        self._game_agent_id: str = ""
+
+    def with_top_of_mind(self, top_of_mind_context: str | None) -> "PromptBuilder":
+        self._top_of_mind_context = top_of_mind_context
+        return self
+
+    def with_first_turn_context(self, first_turn_context: str | None) -> "PromptBuilder":
+        self._first_turn_context = first_turn_context
+        return self
+
+    def with_game_context(self, agent_id: str, game_context: object | None) -> "PromptBuilder":
+        self._game_agent_id = agent_id
+        self._game_context = game_context
+        return self
+
+    @staticmethod
+    def _last_user_index(messages: list[dict]) -> int | None:
+        for idx in range(len(messages) - 1, -1, -1):
+            if messages[idx].get("role") == "user":
+                return idx
+        return None
+
+    def build(self) -> list[dict]:
+        messages = [dict(item) for item in self._base_messages]
+        last_user_idx = self._last_user_index(messages)
+
+        if self._top_of_mind_context:
+            if last_user_idx is None:
+                messages.append({"role": "system", "content": self._top_of_mind_context})
+            else:
+                messages.insert(last_user_idx, {"role": "system", "content": self._top_of_mind_context})
+                last_user_idx += 1
+
+        if self._first_turn_context and last_user_idx is not None:
+            existing_content = str(messages[last_user_idx].get("content") or "")
+            messages[last_user_idx] = {
+                **messages[last_user_idx],
+                "content": self._first_turn_context + "\n\n" + existing_content,
+            }
+
+        if self._game_context and last_user_idx is not None:
+            trusted_prompt = resolve_trusted_prompt_instructions(self._game_agent_id, self._game_context)
+            messages[last_user_idx] = {
+                **messages[last_user_idx],
+                "content": inject_game_context(
+                    messages[last_user_idx].get("content") or "",
+                    self._game_context,
+                    prompt_instructions=trusted_prompt,
+                ),
+            }
+
+        return messages
+
+
 async def prepare_agent_turn_context(
     *,
     room_id: str,
@@ -263,9 +325,13 @@ async def prepare_agent_turn_context(
         workspace=workspace,
         runtime_trigger=runtime_trigger,
     )
-    llm_messages = inject_top_of_mind_if_present(llm_messages, top_of_mind_context)
-    llm_messages = inject_first_turn_context_if_present(llm_messages, first_turn_context)
-    llm_messages = inject_game_context_if_present(llm_messages, agent_id, effective_game_context)
+    llm_messages = (
+        PromptBuilder(llm_messages)
+        .with_top_of_mind(top_of_mind_context)
+        .with_first_turn_context(first_turn_context)
+        .with_game_context(agent_id, effective_game_context)
+        .build()
+    )
 
     log_metric_fn(
         logger_obj,
