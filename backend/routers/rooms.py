@@ -57,14 +57,11 @@ from services.memory.auto_capture import maybe_autocapture_memory
 from services.memory.top_of_mind import build_top_of_mind_context
 from services.observability import log_metric
 from services.room_chat import (
-    build_room_llm_messages,
     determine_responding_agents,
     extract_behavior_dict,
-    has_workspace,
-    inject_first_turn_context_if_present,
-    inject_game_context_if_present,
-    inject_top_of_mind_if_present,
+    prepare_agent_turn_context,
     room_message_row,
+    schedule_post_llm_tasks,
 )
 from services.room_chat_stream import (
     maybe_compact_room,
@@ -338,8 +335,6 @@ async def room_chat(
             "for selected agents in room %s",
             room_id,
         )
-    emotion_input_message = "" if runtime_trigger else request.message
-
     user_msg = RoomMessageRepository.add(
         room_id=room_id,
         sender_type="user",
@@ -376,62 +371,28 @@ async def room_chat(
         agent_id = agent["agent_id"]
         agent_config = AgentRepository.get_by_id(agent_id) or {}
         agent_workspace = agent_config.get("workspace")
-        workspace = agent_workspace if has_workspace(agent_workspace) else None
         started_at = time.time()
 
         try:
-            is_first_turn = (
-                not runtime_trigger
-                and RoomMessageRepository.get_agent_reply_count(room_id, agent_id) == 0
-            )
-            first_turn_context = (
-                _build_first_turn_context(
-                    user_id,
-                    agent_id,
-                    agent_workspace=workspace,
-                )
-                if is_first_turn
-                else None
-            )
-
-            emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
-                user_id,
-                agent_id,
-                emotion_input_message,
-                f"room:{room_id}",
-            )
-
-            game_context = request.game_context if settings.is_games_v2_enabled_for_agent(agent_id) else None
-            llm_messages = build_room_llm_messages(
+            prepared = await prepare_agent_turn_context(
                 room_id=room_id,
+                user_id=user_id,
                 agent=agent,
-                all_room_agents=room_agents,
-                history_limit=settings.chat_history_limit,
-                emotional_context=emotional_context,
-                include_game_runtime=bool(game_context),
-            )
-            top_of_mind_context = await build_top_of_mind_context(
-                query=request.message,
-                agent_id=agent_id,
-                user_id=user_id,
-                workspace=workspace,
+                room_agents=room_agents,
+                user_message=request.message,
                 runtime_trigger=runtime_trigger,
-            )
-            llm_messages = inject_top_of_mind_if_present(llm_messages, top_of_mind_context)
-            llm_messages = inject_first_turn_context_if_present(llm_messages, first_turn_context)
-            llm_messages = inject_game_context_if_present(llm_messages, agent_id, game_context)
-
-            log_metric(
-                logger,
-                "autorecall",
-                room_id=room_id,
-                agent_id=agent_id,
-                user_id=user_id,
-                hit_count=0 if not top_of_mind_context else top_of_mind_context.count("\n- [score"),
-                injected_chars=len(top_of_mind_context or ""),
+                game_context=request.game_context,
+                chat_history_limit=settings.chat_history_limit,
+                agent_workspace_value=agent_workspace,
+                build_first_turn_context_fn=_build_first_turn_context,
+                process_emotion_pre_llm_fn=_process_emotion_pre_llm,
+                build_top_of_mind_context_fn=build_top_of_mind_context,
+                is_games_v2_enabled_for_agent_fn=settings.is_games_v2_enabled_for_agent,
+                log_metric_fn=log_metric,
+                logger_obj=logger,
             )
 
-            result = await call_llm_non_stream({**agent, "user_id": user_id}, llm_messages, room_id)
+            result = await call_llm_non_stream({**agent, "user_id": user_id}, prepared.llm_messages, room_id)
             parsed = parse_chat_completion(result)
             processing_ms = int((time.time() - started_at) * 1000)
 
@@ -456,43 +417,25 @@ async def room_chat(
                 behavior_game_action=behavior.get("game_action"),
             )
 
-            _spawn_background(asyncio.to_thread(
-                _process_emotion_post_llm,
-                user_id,
-                agent_id,
-                behavior,
-                f"room:{room_id}",
-                pre_llm_triggers,
-                None if runtime_trigger else request.message,
-            ))
-
-            if workspace:
-                _spawn_background(maybe_autocapture_memory(
-                    workspace=workspace,
-                    agent_id=agent_id,
-                    user_id=user_id,
-                    user_message=request.message,
-                    agent_response=parsed["response_text"],
-                ))
-
-            if workspace:
-                state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
-                interaction_count = int(state_row.get("interaction_count") or 0)
-                game_id_value = _ctx_value(game_context, "game_id", "gameId")
-                game_id = (
-                    game_id_value.strip()
-                    if isinstance(game_id_value, str) and game_id_value.strip()
-                    else None
-                )
-                _spawn_background(asyncio.to_thread(
-                    _ensure_workspace_milestones,
-                    agent_workspace=workspace,
-                    user_id=user_id,
-                    agent_id=agent_id,
-                    interaction_count=interaction_count,
-                    runtime_trigger=runtime_trigger,
-                    game_id=game_id,
-                ))
+            schedule_post_llm_tasks(
+                room_id=room_id,
+                user_id=user_id,
+                agent_id=agent_id,
+                behavior=behavior,
+                pre_llm_triggers=prepared.pre_llm_triggers,
+                runtime_trigger=runtime_trigger,
+                workspace=prepared.workspace,
+                effective_game_context=prepared.effective_game_context,
+                autocapture_user_message=request.message,
+                agent_response=parsed["response_text"],
+                process_emotion_post_llm_fn=_process_emotion_post_llm,
+                maybe_autocapture_memory_fn=maybe_autocapture_memory,
+                ensure_workspace_milestones_fn=_ensure_workspace_milestones,
+                emotional_state_get_or_create_fn=EmotionalStateRepository.get_or_create,
+                ctx_value_fn=_ctx_value,
+                spawn_background_fn=_spawn_background,
+                to_thread_fn=asyncio.to_thread,
+            )
 
             msg_for_response = {
                 **room_message_row(

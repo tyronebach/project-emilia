@@ -30,13 +30,10 @@ from services.memory.top_of_mind import build_top_of_mind_context
 from services.observability import log_metric
 from services.providers.registry import get_provider
 from services.room_chat import (
-    build_room_llm_messages,
     extract_behavior_dict,
-    has_workspace,
-    inject_first_turn_context_if_present,
-    inject_game_context_if_present,
-    inject_top_of_mind_if_present,
+    prepare_agent_turn_context,
     room_message_row,
+    schedule_post_llm_tasks,
 )
 
 logger = logging.getLogger(__name__)
@@ -161,80 +158,47 @@ async def stream_room_chat_sse(
     user_msg_id: str | None = None,
 ):
     """Async generator yielding SSE event lines for multi-agent room chat."""
-    emotion_input_message = "" if runtime_trigger else message
     post_llm_user_message = None if runtime_trigger else message
     successful_replies = 0
 
     for agent in responding_agents:
         agent_id = agent["agent_id"]
         agent_config = AgentRepository.get_by_id(agent_id) or {}
-        agent_workspace = agent_config.get("workspace")
-        workspace = agent_workspace if has_workspace(agent_workspace) else None
         agent_name = agent.get("display_name") or agent_id
         started_at = time.time()
 
         yield f"event: agent_start\ndata: {json.dumps({'agent_id': agent_id, 'agent_name': agent_name})}\n\n"
 
         try:
-            is_first_turn = (
-                not runtime_trigger
-                and RoomMessageRepository.get_agent_reply_count(room_id, agent_id) == 0
-            )
-            first_turn_context = (
-                _build_first_turn_context(
-                    user_id,
-                    agent_id,
-                    agent_workspace=workspace,
-                )
-                if is_first_turn
-                else None
-            )
-
-            emotional_context, pre_llm_triggers = await _process_emotion_pre_llm(
-                user_id,
-                agent_id,
-                emotion_input_message,
-                f"room:{room_id}",
-            )
-            emotion_snapshot = _safe_get_mood_snapshot(user_id, agent_id)
-
-            effective_game_context = game_context if settings.is_games_v2_enabled_for_agent(agent_id) else None
-            llm_messages = build_room_llm_messages(
+            prepared = await prepare_agent_turn_context(
                 room_id=room_id,
+                user_id=user_id,
                 agent=agent,
-                all_room_agents=room_agents,
-                history_limit=settings.chat_history_limit,
-                emotional_context=emotional_context,
-                include_game_runtime=bool(effective_game_context),
-            )
-            top_of_mind_context = await build_top_of_mind_context(
-                query=message,
-                agent_id=agent_id,
-                user_id=user_id,
-                workspace=workspace,
+                room_agents=room_agents,
+                user_message=message,
                 runtime_trigger=runtime_trigger,
+                game_context=game_context,
+                chat_history_limit=settings.chat_history_limit,
+                agent_workspace_value=agent_config.get("workspace"),
+                build_first_turn_context_fn=_build_first_turn_context,
+                process_emotion_pre_llm_fn=_process_emotion_pre_llm,
+                build_top_of_mind_context_fn=build_top_of_mind_context,
+                is_games_v2_enabled_for_agent_fn=settings.is_games_v2_enabled_for_agent,
+                log_metric_fn=log_metric,
+                logger_obj=logger,
             )
-            llm_messages = inject_top_of_mind_if_present(llm_messages, top_of_mind_context)
-            llm_messages = inject_first_turn_context_if_present(llm_messages, first_turn_context)
-            llm_messages = inject_game_context_if_present(llm_messages, agent_id, effective_game_context)
 
-            log_metric(
-                logger,
-                "autorecall",
-                room_id=room_id,
-                agent_id=agent_id,
-                user_id=user_id,
-                hit_count=0 if not top_of_mind_context else top_of_mind_context.count("\n- [score"),
-                injected_chars=len(top_of_mind_context or ""),
-            )
+            emotional_context = prepared.emotional_context
+            pre_llm_triggers = prepared.pre_llm_triggers
+            emotion_snapshot = _safe_get_mood_snapshot(user_id, agent_id)
 
             usage = None
             full_content = ""
             provider = get_provider(agent_config or agent)
             try:
                 async for chunk in provider.stream(
-                    llm_messages,
-                    workspace=workspace,
+                    prepared.llm_messages,
+                    workspace=prepared.workspace,
                     agent_id=agent_config.get("id") or agent_id,
                     user_id=user_id,
                     user_tag=f"emilia:room:{room_id}",
@@ -342,43 +306,25 @@ async def stream_room_chat_sse(
                 behavior_game_action=behavior.get("game_action"),
             )
 
-            _spawn_background(asyncio.to_thread(
-                _process_emotion_post_llm,
-                user_id,
-                agent_id,
-                behavior,
-                f"room:{room_id}",
-                pre_llm_triggers,
-                post_llm_user_message,
-            ))
-
-            if workspace and post_llm_user_message:
-                _spawn_background(maybe_autocapture_memory(
-                    workspace=workspace,
-                    agent_id=agent_id,
-                    user_id=user_id,
-                    user_message=post_llm_user_message,
-                    agent_response=clean_content,
-                ))
-
-            if workspace:
-                state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
-                interaction_count = int(state_row.get("interaction_count") or 0)
-                game_id_value = _ctx_value(effective_game_context, "game_id", "gameId")
-                game_id = (
-                    game_id_value.strip()
-                    if isinstance(game_id_value, str) and game_id_value.strip()
-                    else None
-                )
-                _spawn_background(asyncio.to_thread(
-                    _ensure_workspace_milestones,
-                    agent_workspace=workspace,
-                    user_id=user_id,
-                    agent_id=agent_id,
-                    interaction_count=interaction_count,
-                    runtime_trigger=runtime_trigger,
-                    game_id=game_id,
-                ))
+            schedule_post_llm_tasks(
+                room_id=room_id,
+                user_id=user_id,
+                agent_id=agent_id,
+                behavior=behavior,
+                pre_llm_triggers=pre_llm_triggers,
+                runtime_trigger=runtime_trigger,
+                workspace=prepared.workspace,
+                effective_game_context=prepared.effective_game_context,
+                autocapture_user_message=post_llm_user_message,
+                agent_response=clean_content,
+                process_emotion_post_llm_fn=_process_emotion_post_llm,
+                maybe_autocapture_memory_fn=maybe_autocapture_memory,
+                ensure_workspace_milestones_fn=_ensure_workspace_milestones,
+                emotional_state_get_or_create_fn=EmotionalStateRepository.get_or_create,
+                ctx_value_fn=_ctx_value,
+                spawn_background_fn=_spawn_background,
+                to_thread_fn=asyncio.to_thread,
+            )
 
             done_message = {
                 **room_message_row(
