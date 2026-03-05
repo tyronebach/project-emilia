@@ -447,23 +447,14 @@ async def apply_personality(
     updated = await update_personality(agent_id, config)
 
     if simulate_archetype:
-        sim_result = _run_drift_simulation(
-            agent_id=updated["id"],
-            user_id=simulate_user_id,
-            archetype=simulate_archetype,
-            duration_days=simulate_duration_days,
-            sessions_per_day=simulate_sessions_per_day,
-            messages_per_session=simulate_messages_per_session,
-            session_gap_hours=simulate_session_gap_hours,
-            overnight_gap_hours=simulate_overnight_gap_hours,
-            seed=simulate_seed,
-            replay_mode=simulate_replay_mode,
-        )
         response = {
             "ok": True,
             "agent_id": updated["id"],
             "name": updated["name"],
-            "simulation_summary": _build_drift_summary(sim_result, include_config=simulate_include_config),
+            "simulation_summary": {
+                "deprecated": True,
+                "detail": "drift simulator deprecated by P013 — use /api/dreams for climate evolution",
+            },
         }
         if full:
             response["personality"] = updated
