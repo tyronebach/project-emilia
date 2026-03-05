@@ -30,6 +30,7 @@ from services.chat_context_runtime import (
     ensure_workspace_milestones as _ensure_workspace_milestones,
     safe_get_mood_snapshot as _safe_get_mood_snapshot,
 )
+from services.chat_runtime.pipeline import process_message
 from services.emotion_runtime import (
     process_emotion_post_llm as _process_emotion_post_llm,
     process_emotion_pre_llm as _process_emotion_pre_llm,
@@ -311,51 +312,51 @@ async def room_chat(
     user_id: str = Depends(get_user_id),
 ):
     _ensure_room_access(user_id, room_id)
-    room_agents = RoomRepository.get_agents(room_id)
-    if not room_agents:
-        raise bad_request("Room has no agents")
-
-    responding_agents = determine_responding_agents(
-        user_message=request.message,
-        mention_agents=request.mention_agents,
-        room_agents=room_agents,
-    )
-    if not responding_agents:
-        raise bad_request("No agents selected to respond")
-
-    selected_games_v2_agents = [
-        agent for agent in responding_agents
-        if settings.is_games_v2_enabled_for_agent(agent.get("agent_id"))
-    ]
-    games_v2_enabled_for_request = bool(selected_games_v2_agents)
-    runtime_trigger = bool(request.runtime_trigger) if games_v2_enabled_for_request else False
-    if not games_v2_enabled_for_request and (request.runtime_trigger or request.game_context):
-        logger.info(
-            "[RoomChat] Ignoring game payload because Games V2 rollout is disabled "
-            "for selected agents in room %s",
-            room_id,
+    try:
+        result = await process_message(
+            user_id=user_id,
+            agent_id=None,
+            room_id=room_id,
+            message=request.message,
+            stream=bool(stream),
+            mention_agents=request.mention_agents,
+            game_context=request.game_context,
+            runtime_trigger=bool(request.runtime_trigger),
+            determine_responding_agents_fn=determine_responding_agents,
+            is_games_v2_enabled_for_agent_fn=settings.is_games_v2_enabled_for_agent,
+            prepare_agent_turn_context_fn=prepare_agent_turn_context,
+            call_llm_non_stream_fn=call_llm_non_stream,
+            parse_chat_completion_fn=parse_chat_completion,
+            room_message_row_fn=room_message_row,
+            schedule_post_llm_tasks_fn=schedule_post_llm_tasks,
+            serialize_room_message_fn=serialize_room_message,
+            stream_room_chat_sse_fn=stream_room_chat_sse,
+            maybe_compact_room_fn=maybe_compact_room,
+            process_emotion_pre_llm_fn=_process_emotion_pre_llm,
+            process_emotion_post_llm_fn=_process_emotion_post_llm,
+            build_first_turn_context_fn=_build_first_turn_context,
+            build_top_of_mind_context_fn=build_top_of_mind_context,
+            maybe_autocapture_memory_fn=maybe_autocapture_memory,
+            ensure_workspace_milestones_fn=_ensure_workspace_milestones,
+            emotional_state_get_or_create_fn=EmotionalStateRepository.get_or_create,
+            ctx_value_fn=_ctx_value,
+            spawn_background_fn=_spawn_background,
+            to_thread_fn=asyncio.to_thread,
+            log_metric_fn=log_metric,
+            safe_get_mood_snapshot_fn=_safe_get_mood_snapshot,
+            logger_obj=logger,
         )
-    user_msg = RoomMessageRepository.add(
-        room_id=room_id,
-        sender_type="user",
-        sender_id=user_id,
-        content=request.message,
-        origin="game_runtime" if runtime_trigger else "chat",
-    )
-    user_msg_id = user_msg.get("id")
+    except ValueError as exc:
+        detail = str(exc)
+        if detail in {"Room has no agents", "No agents selected to respond"}:
+            raise bad_request(detail)
+        raise service_unavailable(detail)
+    except RuntimeError:
+        raise service_unavailable("Room chat")
 
     if stream == 1:
         return StreamingResponse(
-            stream_room_chat_sse(
-                room_id=room_id,
-                user_id=user_id,
-                message=request.message,
-                game_context=request.game_context,
-                runtime_trigger=runtime_trigger,
-                room_agents=room_agents,
-                responding_agents=responding_agents,
-                user_msg_id=user_msg_id,
-            ),
+            result,
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -364,123 +365,4 @@ async def room_chat(
             },
         )
 
-    responses: list[RoomChatAgentResponse] = []
-    value_error_detail: str | None = None
-
-    for agent in responding_agents:
-        agent_id = agent["agent_id"]
-        agent_config = AgentRepository.get_by_id(agent_id) or {}
-        agent_workspace = agent_config.get("workspace")
-        started_at = time.time()
-
-        try:
-            prepared = await prepare_agent_turn_context(
-                room_id=room_id,
-                user_id=user_id,
-                agent=agent,
-                room_agents=room_agents,
-                user_message=request.message,
-                runtime_trigger=runtime_trigger,
-                game_context=request.game_context,
-                chat_history_limit=settings.chat_history_limit,
-                agent_workspace_value=agent_workspace,
-                build_first_turn_context_fn=_build_first_turn_context,
-                process_emotion_pre_llm_fn=_process_emotion_pre_llm,
-                build_top_of_mind_context_fn=build_top_of_mind_context,
-                is_games_v2_enabled_for_agent_fn=settings.is_games_v2_enabled_for_agent,
-                log_metric_fn=log_metric,
-                logger_obj=logger,
-            )
-
-            result = await call_llm_non_stream({**agent, "user_id": user_id}, prepared.llm_messages, room_id)
-            parsed = parse_chat_completion(result)
-            processing_ms = int((time.time() - started_at) * 1000)
-
-            behavior = parsed.get("behavior", {})
-            usage = result.get("usage") or {}
-
-            stored = RoomMessageRepository.add(
-                room_id=room_id,
-                sender_type="agent",
-                sender_id=agent_id,
-                content=parsed["response_text"],
-                origin="chat",
-                model=result.get("model"),
-                processing_ms=processing_ms,
-                usage_prompt_tokens=usage.get("prompt_tokens"),
-                usage_completion_tokens=usage.get("completion_tokens"),
-                behavior_intent=behavior.get("intent"),
-                behavior_mood=behavior.get("mood"),
-                behavior_mood_intensity=behavior.get("mood_intensity"),
-                behavior_energy=behavior.get("energy"),
-                behavior_move=behavior.get("move"),
-                behavior_game_action=behavior.get("game_action"),
-            )
-
-            schedule_post_llm_tasks(
-                room_id=room_id,
-                user_id=user_id,
-                agent_id=agent_id,
-                behavior=behavior,
-                pre_llm_triggers=prepared.pre_llm_triggers,
-                runtime_trigger=runtime_trigger,
-                workspace=prepared.workspace,
-                effective_game_context=prepared.effective_game_context,
-                autocapture_user_message=request.message,
-                agent_response=parsed["response_text"],
-                process_emotion_post_llm_fn=_process_emotion_post_llm,
-                maybe_autocapture_memory_fn=maybe_autocapture_memory,
-                ensure_workspace_milestones_fn=_ensure_workspace_milestones,
-                emotional_state_get_or_create_fn=EmotionalStateRepository.get_or_create,
-                ctx_value_fn=_ctx_value,
-                spawn_background_fn=_spawn_background,
-                to_thread_fn=asyncio.to_thread,
-            )
-
-            msg_for_response = {
-                **room_message_row(
-                    room_id=room_id,
-                    sender_type="agent",
-                    sender_id=agent_id,
-                    sender_name=agent.get("display_name") or agent_id,
-                    content=parsed["response_text"],
-                    origin="chat",
-                    timestamp=stored["timestamp"],
-                    model=result.get("model"),
-                    processing_ms=processing_ms,
-                    usage_prompt_tokens=usage.get("prompt_tokens"),
-                    usage_completion_tokens=usage.get("completion_tokens"),
-                    behavior=behavior,
-                ),
-                "id": stored["id"],
-            }
-
-            responses.append(
-                RoomChatAgentResponse(
-                    agent_id=agent_id,
-                    agent_name=agent.get("display_name") or agent_id,
-                    message=_serialize_room_message(msg_for_response),
-                    processing_ms=processing_ms,
-                    model=result.get("model"),
-                    usage=usage,
-                )
-            )
-        except httpx.TimeoutException:
-            logger.exception("Room chat timeout for agent %s", agent_id)
-        except ValueError as exc:
-            logger.exception("Room chat failure for agent %s", agent_id)
-            if value_error_detail is None:
-                value_error_detail = str(exc)
-        except Exception:
-            logger.exception("Room chat failure for agent %s", agent_id)
-
-    if not responses:
-        if user_msg_id:
-            RoomMessageRepository.delete_by_id(user_msg_id)
-        if value_error_detail:
-            raise service_unavailable(value_error_detail)
-        raise service_unavailable("Room chat")
-
-    _spawn_background(maybe_compact_room(room_id))
-
-    return RoomChatResponse(room_id=room_id, responses=responses, count=len(responses))
+    return RoomChatResponse(**result)
