@@ -9,6 +9,9 @@ import pytest
 
 from config import settings
 from db.connection import get_db
+from db.repositories import CharacterLivedExperienceRepository
+from services.agent_context import load_canon_soul_md
+from services.direct_llm import prepend_webapp_system_prompt
 from services.dreams.runtime import execute_dream
 
 pytestmark = pytest.mark.anyio
@@ -139,3 +142,55 @@ async def test_dream_api_endpoints_round_trip(mock_execute_dream, test_client, a
     log = await test_client.get(f"/api/dreams/{agent_id}/{user_id}/log", headers=auth_headers)
     assert log.status_code == 200
     assert log.json()["count"] >= 0
+
+
+@patch("services.dreams.runtime._call_dream_llm", new_callable=AsyncMock)
+async def test_direct_and_dream_use_same_canon_and_lived_experience(
+    mock_call,
+    tmp_path: Path,
+) -> None:
+    user_id, agent_id, _room_id = _seed_pair(tmp_path)
+    with get_db() as conn:
+        workspace = str(
+            (conn.execute("SELECT workspace FROM agents WHERE id = ?", (agent_id,)).fetchone() or {}).get("workspace")
+            or ""
+        )
+
+    expected_canon = load_canon_soul_md(workspace) or ""
+    expected_lived = CharacterLivedExperienceRepository.get_text(agent_id, user_id)
+    prompt_messages = prepend_webapp_system_prompt(
+        [{"role": "user", "content": "hi"}],
+        workspace,
+        agent_id=agent_id,
+        user_id=user_id,
+        timezone="UTC",
+    )
+    system_prompt = prompt_messages[0]["content"]
+    assert expected_canon in system_prompt
+    assert expected_lived in system_prompt
+
+    captured: dict[str, str] = {}
+
+    async def _fake_call(*, agent, user_id, messages):
+        captured["prompt"] = str(messages[0]["content"])
+        return {
+            "model": "gpt-test",
+            "choices": [{
+                "message": {
+                    "content": json.dumps({
+                        "lived_experience_update": "updated",
+                        "relationship_adjustments": {
+                            "trust_delta": 0.0,
+                            "attachment_delta": 0.0,
+                            "intimacy_delta": 0.0,
+                        },
+                        "internal_monologue": "ok",
+                    })
+                }
+            }],
+        }
+
+    mock_call.side_effect = _fake_call
+    await execute_dream(user_id, agent_id, triggered_by="manual")
+    assert expected_canon in captured["prompt"]
+    assert expected_lived in captured["prompt"]
