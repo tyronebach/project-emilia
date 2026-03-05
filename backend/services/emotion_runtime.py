@@ -262,8 +262,14 @@ async def process_emotion_pre_llm(
         finally:
             lock.release()
 
-    except Exception:
-        logger.exception("Emotion engine error (pre-LLM), continuing without emotional context")
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        logger.error(
+            "Emotion pre-LLM degraded due to data error (error_type=%s user_id=%s agent_id=%s)",
+            exc.__class__.__name__,
+            user_id,
+            agent_id,
+            exc_info=True,
+        )
         return None, []
 
 
@@ -395,5 +401,11 @@ def process_emotion_post_llm(
         finally:
             lock.release()
 
-    except Exception:
-        logger.exception("Emotion engine error (post-LLM), ignoring")
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        logger.error(
+            "Emotion post-LLM degraded due to data error (error_type=%s user_id=%s agent_id=%s)",
+            exc.__class__.__name__,
+            user_id,
+            agent_id,
+            exc_info=True,
+        )
