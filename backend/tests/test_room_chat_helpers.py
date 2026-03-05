@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from services.room_chat import (
+    PromptBuilder,
     has_workspace,
     prepare_agent_turn_context,
     schedule_post_llm_tasks,
@@ -168,3 +169,34 @@ def test_schedule_post_llm_tasks_without_workspace_only_schedules_emotion() -> N
 
     assert len(spawned) == 1
     maybe_autocapture_memory_fn.assert_not_called()
+
+
+def test_prompt_builder_preserves_existing_context_injection_order() -> None:
+    base = [
+        {"role": "system", "content": "base"},
+        {"role": "user", "content": "hello"},
+    ]
+
+    built = (
+        PromptBuilder(base)
+        .with_top_of_mind("memory")
+        .with_first_turn_context("first")
+        .with_game_context("agent-1", {"gameId": "g-1", "state": "active"})
+        .build()
+    )
+
+    assert built[0] == {"role": "system", "content": "base"}
+    assert built[1] == {"role": "system", "content": "memory"}
+    assert built[2]["role"] == "user"
+    assert built[2]["content"].startswith("first\n\nhello")
+    assert "[game: g-1]" in built[2]["content"]
+
+
+def test_prompt_builder_appends_top_of_mind_when_no_user_message() -> None:
+    base = [{"role": "system", "content": "base"}]
+    built = PromptBuilder(base).with_top_of_mind("memory").build()
+
+    assert built == [
+        {"role": "system", "content": "base"},
+        {"role": "system", "content": "memory"},
+    ]
