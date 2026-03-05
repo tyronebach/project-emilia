@@ -69,6 +69,21 @@ New focused tests in `backend/tests/test_room_chat_stream_errors.py`:
 - `HTTP 400` stream failure does not retry and emits `agent_error` with structured fields.
 - Timeout failure retries once and succeeds.
 
+## Phase 3: Runtime Consolidation (implemented)
+
+### What changed
+
+- Replaced `services/chat_runtime/*` stubs with active implementations:
+  - `chat_runtime.context.build_context()` now resolves room agents, responding agents, and Games V2 runtime payload gating.
+  - `chat_runtime.pipeline.process_message()` now executes the shared room-turn pipeline for stream and non-stream flows.
+- Updated `routers/rooms.py` to delegate room chat execution to `chat_runtime.pipeline.process_message()`.
+- Kept router-level dependency injection so existing route tests and monkeypatches remain stable.
+
+### Why this is Phase 3
+
+- Removes the previous split-brain state where `chat_runtime` existed only as placeholders while `routers/rooms.py` carried full orchestration.
+- Establishes a single room execution service path that routers call into.
+
 ## Phase 5 Target (approved)
 
 Memory auto-capture moves from regex heuristics to a neutral structured extractor.
