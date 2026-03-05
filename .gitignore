@@ -12,3 +12,5 @@ frontend/public/animations/test/*.glb
 scripts/emotion-lab-runs/
 data/emilia.db
 data/emilia-*.db
+.emilia-cli.json
+agents/
