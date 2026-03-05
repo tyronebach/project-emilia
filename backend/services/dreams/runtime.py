@@ -5,18 +5,21 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
 from config import settings
 from db.connection import get_db
-from db.repositories import AgentRepository, EmotionalStateRepository
+from db.repositories import (
+    AgentRepository,
+    CharacterLivedExperienceRepository,
+    EmotionalStateRepository,
+)
+from services.agent_context import load_canon_soul_md
 from services.llm_response import extract_content
 from services.memory.search import search as memory_search
 from services.observability import log_metric
 from services.providers.native import NativeProvider
 from services.providers.registry import get_provider
-from services.soul_parser import extract_canon_text
 
 logger = logging.getLogger(__name__)
 
@@ -25,43 +28,6 @@ MAX_SUMMARY_CHARS = 1800
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _load_canon(agent: dict[str, Any]) -> str:
-    workspace = str(agent.get("workspace") or "").strip()
-    if not workspace:
-        return ""
-    soul_path = Path(workspace) / "SOUL.md"
-    if not soul_path.exists() or not soul_path.is_file():
-        return ""
-    try:
-        soul_md = soul_path.read_text(encoding="utf-8")
-    except OSError:
-        return ""
-    return extract_canon_text(soul_md)
-
-
-def _load_lived_experience(user_id: str, agent_id: str) -> dict[str, Any]:
-    with get_db() as conn:
-        row = conn.execute(
-            """SELECT agent_id, user_id, lived_experience, last_dream_at, dream_count
-               FROM character_lived_experience
-               WHERE agent_id = ? AND user_id = ?""",
-            (agent_id, user_id),
-        ).fetchone()
-        if row:
-            return row
-        conn.execute(
-            """INSERT INTO character_lived_experience (agent_id, user_id, lived_experience)
-               VALUES (?, ?, '')""",
-            (agent_id, user_id),
-        )
-        return conn.execute(
-            """SELECT agent_id, user_id, lived_experience, last_dream_at, dream_count
-               FROM character_lived_experience
-               WHERE agent_id = ? AND user_id = ?""",
-            (agent_id, user_id),
-        ).fetchone()
 
 
 def _load_relationship_state(user_id: str, agent_id: str) -> dict[str, float]:
@@ -258,8 +224,9 @@ async def execute_dream(user_id: str, agent_id: str, triggered_by: str = "schedu
     if not agent:
         raise ValueError(f"Unknown agent: {agent_id}")
 
-    canon = _load_canon(agent)
-    lived_row = _load_lived_experience(user_id, agent_id)
+    workspace = str(agent.get("workspace") or "").strip() or None
+    canon = load_canon_soul_md(workspace) or ""
+    lived_row = CharacterLivedExperienceRepository.get_or_create(agent_id, user_id)
     lived_before = str(lived_row.get("lived_experience") or "")
     relationship_before = _load_relationship_state(user_id, agent_id)
     conversation_summary, message_count = _build_conversation_summary(
@@ -268,7 +235,6 @@ async def execute_dream(user_id: str, agent_id: str, triggered_by: str = "schedu
         limit_messages=settings.dream_context_max_messages,
     )
     room_summary_context = _build_room_summary_context(user_id, agent_id)
-    workspace = str(agent.get("workspace") or "").strip() or None
     memory_context, memory_hits_count = await _build_memory_context(
         query=conversation_summary or lived_before or "relationship",
         agent_id=agent_id,

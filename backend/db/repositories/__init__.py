@@ -10,6 +10,7 @@ from .relationship_types import RelationshipTypeRepository
 from .app_settings import AppSettingsRepository
 from .games import GameRepository
 from .archetype_repository import ArchetypeRepository
+from .character_lived_experience import CharacterLivedExperienceRepository
 
 __all__ = [
     "UserRepository",
@@ -24,4 +25,5 @@ __all__ = [
     "AppSettingsRepository",
     "GameRepository",
     "ArchetypeRepository",
+    "CharacterLivedExperienceRepository",
 ]

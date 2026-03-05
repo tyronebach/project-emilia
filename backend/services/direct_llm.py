@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone as tz
-from pathlib import Path
 from typing import Any, AsyncIterator
 from zoneinfo import ZoneInfo
 
@@ -11,10 +10,10 @@ import httpx
 
 from config import settings
 from db.connection import get_db
+from db.repositories import CharacterLivedExperienceRepository
+from services.agent_context import load_canon_soul_md
 from services.behavioral_rules import generate_behavioral_rules, get_fragility_profile
-from services.soul_parser import extract_canon_text
-
-MAX_SOUL_MD_CHARS = 50_000
+from services.chat_context_runtime import time_of_day_bucket
 
 # ── Webapp System Instructions ──────────────────────────────────────
 # These are injected for all standalone avatar interactions.
@@ -64,15 +63,7 @@ def _get_time_block(timezone: str | None = None) -> str:
         now = datetime.now(tz.utc)
         tz_label = "UTC"
 
-    hour = now.hour
-    if 5 <= hour < 12:
-        time_of_day = "morning"
-    elif 12 <= hour < 17:
-        time_of_day = "afternoon"
-    elif 17 <= hour < 22:
-        time_of_day = "evening"
-    else:
-        time_of_day = "night"
+    time_of_day = time_of_day_bucket(now)
 
     return f"""## Current Time
 - Timezone: {tz_label}
@@ -118,49 +109,8 @@ def resolve_direct_api_base(agent: dict[str, Any] | None) -> str:
             return base.rstrip("/")
     return settings.openai_api_base.rstrip("/")
 
-
-def load_workspace_soul_md(workspace: str | None) -> str | None:
-    """Best-effort SOUL.md loading from an agent workspace."""
-    if not workspace:
-        return None
-
-    soul_path = Path(workspace) / "SOUL.md"
-    if not soul_path.exists() or not soul_path.is_file():
-        return None
-
-    try:
-        text = soul_path.read_text(encoding="utf-8").strip()
-    except Exception:
-        return None
-
-    if not text:
-        return None
-
-    if len(text) > MAX_SOUL_MD_CHARS:
-        return text[:MAX_SOUL_MD_CHARS].rstrip()
-    return text
-
-
-def load_canon_soul_md(workspace: str | None) -> str | None:
-    """Best-effort Canon-only SOUL.md loading from an agent workspace."""
-    soul_md = load_workspace_soul_md(workspace)
-    if not soul_md:
-        return None
-    canon = extract_canon_text(soul_md)
-    return canon[:MAX_SOUL_MD_CHARS].rstrip() if canon else None
-
-
 def _load_lived_experience(agent_id: str | None, user_id: str | None) -> str:
-    if not agent_id or not user_id:
-        return ""
-    with get_db() as conn:
-        row = conn.execute(
-            """SELECT lived_experience
-               FROM character_lived_experience
-               WHERE agent_id = ? AND user_id = ?""",
-            (agent_id, user_id),
-        ).fetchone()
-    return str((row or {}).get("lived_experience") or "").strip()
+    return CharacterLivedExperienceRepository.get_text(agent_id, user_id)
 
 
 def _load_trust(agent_id: str | None, user_id: str | None) -> float:

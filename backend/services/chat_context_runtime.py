@@ -97,7 +97,7 @@ def inject_game_context(
     return message + context_block
 
 
-def _time_of_day_bucket(dt: datetime) -> str:
+def time_of_day_bucket(dt: datetime) -> str:
     hour = dt.hour
     if 5 <= hour < 12:
         return "morning"
@@ -106,6 +106,11 @@ def _time_of_day_bucket(dt: datetime) -> str:
     if 17 <= hour < 22:
         return "evening"
     return "night"
+
+
+def _time_of_day_bucket(dt: datetime) -> str:
+    """Backward-compatible alias."""
+    return time_of_day_bucket(dt)
 
 
 def build_first_turn_context(
@@ -128,7 +133,7 @@ def build_first_turn_context(
         f"Session facts ({tz_label}):",
         f"- now: {now_local.strftime('%Y-%m-%d %H:%M')}",
         f"- day: {now_local.strftime('%A')}",
-        f"- time_of_day: {_time_of_day_bucket(now_local)}",
+        f"- time_of_day: {time_of_day_bucket(now_local)}",
     ]
 
     try:
