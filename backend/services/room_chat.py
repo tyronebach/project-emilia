@@ -183,6 +183,10 @@ def extract_behavior_dict(
     }
 
 
+def has_workspace(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
 def room_message_row(
     room_id: str,
     sender_type: str,

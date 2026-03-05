@@ -32,6 +32,7 @@ from services.providers.registry import get_provider
 from services.room_chat import (
     build_room_llm_messages,
     extract_behavior_dict,
+    has_workspace,
     inject_first_turn_context_if_present,
     inject_game_context_if_present,
     inject_top_of_mind_if_present,
@@ -41,23 +42,19 @@ from services.room_chat import (
 logger = logging.getLogger(__name__)
 
 
-def _message_behavior(message: dict) -> dict:
-    return extract_behavior_dict(
-        intent=message.get("behavior_intent"),
-        mood=message.get("behavior_mood"),
-        mood_intensity=message.get("behavior_mood_intensity"),
-        energy=message.get("behavior_energy"),
-        move=message.get("behavior_move"),
-        game_action=message.get("behavior_game_action"),
-    )
-
-
 def serialize_room_message(message: dict):
     """Serialize a DB message row to a RoomMessageResponse."""
     from schemas import RoomMessageResponse
 
     payload = dict(message)
-    payload["behavior"] = _message_behavior(payload)
+    payload["behavior"] = extract_behavior_dict(
+        intent=payload.get("behavior_intent"),
+        mood=payload.get("behavior_mood"),
+        mood_intensity=payload.get("behavior_mood_intensity"),
+        energy=payload.get("behavior_energy"),
+        move=payload.get("behavior_move"),
+        game_action=payload.get("behavior_game_action"),
+    )
     return RoomMessageResponse(**payload)
 
 
@@ -172,6 +169,7 @@ async def stream_room_chat_sse(
         agent_id = agent["agent_id"]
         agent_config = AgentRepository.get_by_id(agent_id) or {}
         agent_workspace = agent_config.get("workspace")
+        workspace = agent_workspace if has_workspace(agent_workspace) else None
         agent_name = agent.get("display_name") or agent_id
         started_at = time.time()
 
@@ -186,7 +184,7 @@ async def stream_room_chat_sse(
                 _build_first_turn_context(
                     user_id,
                     agent_id,
-                    agent_workspace=agent_workspace if isinstance(agent_workspace, str) else None,
+                    agent_workspace=workspace,
                 )
                 if is_first_turn
                 else None
@@ -213,7 +211,7 @@ async def stream_room_chat_sse(
                 query=message,
                 agent_id=agent_id,
                 user_id=user_id,
-                workspace=agent_workspace if isinstance(agent_workspace, str) else None,
+                workspace=workspace,
                 runtime_trigger=runtime_trigger,
             )
             llm_messages = inject_top_of_mind_if_present(llm_messages, top_of_mind_context)
@@ -236,7 +234,7 @@ async def stream_room_chat_sse(
             try:
                 async for chunk in provider.stream(
                     llm_messages,
-                    workspace=agent_workspace,
+                    workspace=workspace,
                     agent_id=agent_config.get("id") or agent_id,
                     user_id=user_id,
                     user_tag=f"emilia:room:{room_id}",
@@ -354,16 +352,16 @@ async def stream_room_chat_sse(
                 post_llm_user_message,
             ))
 
-            if isinstance(agent_workspace, str) and agent_workspace.strip() and post_llm_user_message:
+            if workspace and post_llm_user_message:
                 _spawn_background(maybe_autocapture_memory(
-                    workspace=agent_workspace,
+                    workspace=workspace,
                     agent_id=agent_id,
                     user_id=user_id,
                     user_message=post_llm_user_message,
                     agent_response=clean_content,
                 ))
 
-            if isinstance(agent_workspace, str) and agent_workspace.strip():
+            if workspace:
                 state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
                 interaction_count = int(state_row.get("interaction_count") or 0)
                 game_id_value = _ctx_value(effective_game_context, "game_id", "gameId")
@@ -374,7 +372,7 @@ async def stream_room_chat_sse(
                 )
                 _spawn_background(asyncio.to_thread(
                     _ensure_workspace_milestones,
-                    agent_workspace=agent_workspace,
+                    agent_workspace=workspace,
                     user_id=user_id,
                     agent_id=agent_id,
                     interaction_count=interaction_count,
