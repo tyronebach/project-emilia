@@ -84,6 +84,24 @@ New focused tests in `backend/tests/test_room_chat_stream_errors.py`:
 - Removes the previous split-brain state where `chat_runtime` existed only as placeholders while `routers/rooms.py` carried full orchestration.
 - Establishes a single room execution service path that routers call into.
 
+## Phase 4: Emotion Engine Decomposition (implemented)
+
+### What changed
+
+- Introduced a dedicated emotion subsystem package:
+  - `services/emotion/taxonomy.py` (trigger taxonomy, mood grouping, normalization, injection settings)
+  - `services/emotion/calibration.py` (trigger calibration models + contextual calibration + recovery)
+  - `services/emotion/inference.py` (multi-signal outcome inference)
+  - `services/emotion/__init__.py` (stable re-exports)
+- `services/emotion_engine.py` now focuses on orchestration/state updates while importing modular components.
+- Backward compatibility preserved:
+  - Existing imports from `services.emotion_engine` still resolve (`TriggerCalibration`, `ContextBucket`, `ContextualTriggerCalibration`, `infer_outcome_multisignal`, etc.).
+
+### Why this is Phase 4
+
+- Reduces single-file cognitive load and isolates concerns (taxonomy vs calibration vs inference).
+- Keeps current behavior while enabling future extraction of state math and trigger-delta data into dedicated modules/files.
+
 ## Phase 5 Target (approved)
 
 Memory auto-capture moves from regex heuristics to a neutral structured extractor.
