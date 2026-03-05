@@ -209,6 +209,8 @@ This is what makes a character who's been treated poorly start giving shorter re
 | `DREAM_CONTEXT_MAX_MESSAGES` | `60` | Max recent messages used in dream context |
 | `EMOTION_SESSION_REANCHOR_MODE` | `soft` | Session boundary behavior (`hard`/`soft`) |
 | `MEMORY_AUTOCAPTURE_ENABLED` | `0` | Enables optional backend auto memory capture |
+| `MEMORY_AUTOCAPTURE_MODEL` | `DIRECT_DEFAULT_MODEL` | Neutral extractor model used for structured memory candidates |
+| `MEMORY_AUTOCAPTURE_TIMEOUT_S` | `8.0` | Timeout (seconds) for memory extraction call |
 
 ---
 

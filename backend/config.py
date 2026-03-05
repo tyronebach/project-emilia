@@ -118,6 +118,20 @@ class Settings:
             "EMILIA_EMBED_BASE_URL", "http://localhost:11434"
         ).strip().rstrip("/")
 
+        # Memory auto-capture extractor (Phase 5 target)
+        self.memory_autocapture_model: str = os.getenv(
+            "MEMORY_AUTOCAPTURE_MODEL",
+            self.direct_default_model,
+        ).strip()
+        self.memory_autocapture_timeout_s: float = max(
+            1.0,
+            _env_float("MEMORY_AUTOCAPTURE_TIMEOUT_S", "8.0"),
+        )
+        self.memory_autocapture_max_candidates: int = max(
+            1,
+            int(os.getenv("MEMORY_AUTOCAPTURE_MAX_CANDIDATES", "4")),
+        )
+
         self.direct_tool_max_steps: int = int(os.getenv("DIRECT_TOOL_MAX_STEPS", "6"))
         self.gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
 
