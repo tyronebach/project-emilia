@@ -16,7 +16,10 @@ Instructions for Claude / Codex coding agents working on this project.
 
 1. `CHANGELOG.md` — Recent changes, current state
 2. `DOCUMENTATION.md` — LLM-focused repo map
-3. `docs/animation/` — VRM/animation pipeline notes
+3. `docs/planning/P021-backend-realism-implementation-spec-2026-03-04.md` — Backend realism implementation spec
+4. `docs/planning/P021-implementation-ticket-list-2026-03-04.md` — Execution ticket breakdown
+5. `docs/planning/P021-rollout-runbook-2026-03-04.md` — Canary/rollback operations
+6. `docs/animation/` — VRM/animation pipeline notes
 
 ## Project Structure
 
@@ -80,9 +83,11 @@ docker compose logs -f backend
 
 # Backend only
 cd backend
+python3 -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
 python main.py                # Dev server :8080
-pytest -q                     # Run tests
+.venv/bin/python -m pytest -q # Run tests (preferred local)
 ./scripts/run-tests.sh        # Backend tests (prefers docker)
 
 # Frontend only
@@ -163,13 +168,14 @@ user_agents (user_id, agent_id)
 
 -- Rooms (canonical chat container — DM or group)
 rooms (id, name, room_type, created_by, created_at, last_activity,
-       message_count, settings, summary, summary_updated_at, compaction_count)
+        message_count, settings, summary, summary_updated_at, compaction_count,
+        summary_style, summary_version)
 
 -- Room participants (many-to-many users)
 room_participants (room_id, user_id)
 
 -- Room agents (many-to-many agents + response mode)
-room_agents (room_id, agent_id, response_mode, joined_at)
+room_agents (room_id, agent_id, response_mode, added_at)
 
 -- Room messages (chat history with sender attribution)
 room_messages (id, room_id, sender_type, sender_id, content, timestamp,
@@ -204,6 +210,16 @@ emotional_events_v2 (id, user_id, agent_id, session_id, timestamp,
                      agent_mood_tag, agent_intent_tag, inferred_outcome,
                      trust_delta, intimacy_delta, calibration_updates_json)
 
+-- Character lived experience (per user-agent dream state)
+character_lived_experience (agent_id, user_id, lived_experience, last_dream_at, dream_count)
+
+-- Dream audit trail
+dream_log (id, user_id, agent_id, triggered_by, prompt_used, output_json,
+           trust_delta, attachment_delta, intimacy_delta, dreamed_at,
+           conversation_summary, lived_experience_before, lived_experience_after,
+           relationship_before, relationship_after, internal_monologue, model_used,
+           input_context_meta, safety_flags)
+
 -- Trigger counts (per user-agent-trigger)
 trigger_counts (user_id, agent_id, trigger_type, window, count, last_seen)
 
@@ -225,3 +241,12 @@ relationship_types (id, description,
 | Ad blocker blocks routes | Don't use "admin" in URLs, use "manage" |
 | CORS errors | Check `ALLOWED_ORIGINS` in `docker-compose.yml` |
 | Missing CLAWDBOT token | Set `CLAWDBOT_TOKEN` (required) |
+
+## Test Execution Policy (Agents)
+
+- Do **not** run host/global `pytest` or system Python for backend tests.
+- Always use one of these:
+        - `cd backend && .venv/bin/python -m pytest -q`
+        - `cd backend && ./scripts/run-tests.sh` (Docker-preferred flow)
+- If `.venv` is missing, create it and install requirements before testing:
+        - `cd backend && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt`

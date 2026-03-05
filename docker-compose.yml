@@ -24,6 +24,7 @@ services:
 
     volumes:
       - ${CLAWD_AGENTS_HOST_DIR:-/home/tbach/clawd-agents}:/home/tbach/clawd-agents:rw
+      - ./agents:/app/agents:rw
       - ./data:/data:rw
 
     healthcheck:

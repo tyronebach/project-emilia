@@ -272,3 +272,20 @@ def inject_first_turn_context_if_present(
         break
 
     return messages
+
+
+def inject_top_of_mind_if_present(
+    messages: list[dict],
+    top_of_mind_context: str | None,
+) -> list[dict]:
+    if not top_of_mind_context:
+        return messages
+
+    for idx in range(len(messages) - 1, -1, -1):
+        if messages[idx].get("role") != "user":
+            continue
+        messages.insert(idx, {"role": "system", "content": top_of_mind_context})
+        return messages
+
+    messages.append({"role": "system", "content": top_of_mind_context})
+    return messages

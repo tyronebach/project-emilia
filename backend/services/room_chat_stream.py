@@ -25,12 +25,16 @@ from services.emotion_runtime import (
     process_emotion_pre_llm as _process_emotion_pre_llm,
 )
 from services.llm_caller import MAX_RESPONSE_CHARS
+from services.memory.auto_capture import maybe_autocapture_memory
+from services.memory.top_of_mind import build_top_of_mind_context
+from services.observability import log_metric
 from services.providers.registry import get_provider
 from services.room_chat import (
     build_room_llm_messages,
     extract_behavior_dict,
     inject_first_turn_context_if_present,
     inject_game_context_if_present,
+    inject_top_of_mind_if_present,
     room_message_row,
 )
 
@@ -97,9 +101,37 @@ async def maybe_compact_room(room_id: str) -> dict | None:
             content = str(msg.get("content") or "")
             to_summarize.append({"role": "user", "content": f"[{sender_name}]: {content}"})
 
-        summary = await CompactionService.summarize_messages(to_summarize)
+        room_type = str(room.get("room_type") or "group")
+        agent_name = None
+        agent_workspace = None
+        if room_type == "dm":
+            dm_agents = RoomRepository.get_agents(room_id)
+            if dm_agents:
+                dm_agent_id = str(dm_agents[0].get("agent_id") or "")
+                agent_name = str(dm_agents[0].get("display_name") or dm_agent_id)
+                dm_agent_config = AgentRepository.get_by_id(dm_agent_id) or {}
+                workspace_value = dm_agent_config.get("workspace")
+                agent_workspace = workspace_value if isinstance(workspace_value, str) else None
 
-        RoomRepository.update_summary(room_id, summary)
+        summary = await CompactionService.summarize_messages(
+            to_summarize,
+            room_type=room_type,
+            agent_name=agent_name,
+            agent_workspace=agent_workspace,
+        )
+
+        summary_style = "neutral"
+        if settings.compaction_persona_mode == "all":
+            summary_style = "persona_dm" if room_type == "dm" else "persona"
+        elif settings.compaction_persona_mode == "dm_only" and room_type == "dm":
+            summary_style = "persona_dm"
+
+        RoomRepository.update_summary(
+            room_id,
+            summary,
+            summary_style=summary_style,
+            summary_version=2,
+        )
         deleted = RoomMessageRepository.delete_oldest(room_id, settings.compact_keep_recent)
 
         logger.info(
@@ -177,8 +209,26 @@ async def stream_room_chat_sse(
                 emotional_context=emotional_context,
                 include_game_runtime=bool(effective_game_context),
             )
+            top_of_mind_context = await build_top_of_mind_context(
+                query=message,
+                agent_id=agent_id,
+                user_id=user_id,
+                workspace=agent_workspace if isinstance(agent_workspace, str) else None,
+                runtime_trigger=runtime_trigger,
+            )
+            llm_messages = inject_top_of_mind_if_present(llm_messages, top_of_mind_context)
             llm_messages = inject_first_turn_context_if_present(llm_messages, first_turn_context)
             llm_messages = inject_game_context_if_present(llm_messages, agent_id, effective_game_context)
+
+            log_metric(
+                logger,
+                "autorecall",
+                room_id=room_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                hit_count=0 if not top_of_mind_context else top_of_mind_context.count("\n- [score"),
+                injected_chars=len(top_of_mind_context or ""),
+            )
 
             usage = None
             full_content = ""
@@ -303,6 +353,15 @@ async def stream_room_chat_sse(
                 pre_llm_triggers,
                 post_llm_user_message,
             ))
+
+            if isinstance(agent_workspace, str) and agent_workspace.strip() and post_llm_user_message:
+                _spawn_background(maybe_autocapture_memory(
+                    workspace=agent_workspace,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    user_message=post_llm_user_message,
+                    agent_response=clean_content,
+                ))
 
             if isinstance(agent_workspace, str) and agent_workspace.strip():
                 state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)

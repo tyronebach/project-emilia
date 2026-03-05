@@ -7,6 +7,7 @@ import logging
 import threading
 import time as time_module
 
+from config import settings
 from db.connection import get_db
 from db.repositories import AgentRepository, EmotionalStateRepository
 from services.emotion_engine import (
@@ -24,6 +25,19 @@ logger = logging.getLogger(__name__)
 _emotion_locks: dict[tuple[str, str], threading.Lock] = {}
 _emotion_locks_guard = threading.Lock()
 _SESSION_GAP_SECONDS = 2 * 60 * 60
+
+
+def _lerp(current: float, target: float, alpha: float) -> float:
+    return current + (target - current) * alpha
+
+
+def _resolve_reanchor_alpha(elapsed_seconds: float | None) -> float:
+    if elapsed_seconds is None:
+        return settings.emotion_reanchor_alpha_short_gap
+    long_gap_s = max(1, int(settings.emotion_reanchor_long_gap_hours)) * 3600
+    if elapsed_seconds >= long_gap_s:
+        return settings.emotion_reanchor_alpha_long_gap
+    return settings.emotion_reanchor_alpha_short_gap
 
 
 def get_emotion_lock(user_id: str, agent_id: str) -> threading.Lock:
@@ -139,13 +153,31 @@ async def process_emotion_pre_llm(
             if _is_new_session(session_id, state_row):
                 from services.emotion_engine import get_mood_list
 
-                state.valence = profile.baseline_valence
-                state.arousal = profile.baseline_arousal
-                state.dominance = profile.baseline_dominance
-                state.mood_weights = {
-                    mood: profile.mood_baseline.get(mood, 0)
-                    for mood in get_mood_list()
-                }
+                if settings.emotion_session_reanchor_mode == "hard":
+                    state.valence = profile.baseline_valence
+                    state.arousal = profile.baseline_arousal
+                    state.dominance = profile.baseline_dominance
+                    state.mood_weights = {
+                        mood: profile.mood_baseline.get(mood, 0)
+                        for mood in get_mood_list()
+                    }
+                else:
+                    last_interaction = state_row.get("last_interaction")
+                    elapsed_seconds = None
+                    if isinstance(last_interaction, (int, float)):
+                        elapsed_seconds = max(0.0, time_module.time() - float(last_interaction))
+                    alpha = max(0.0, min(1.0, _resolve_reanchor_alpha(elapsed_seconds)))
+                    state.valence = _lerp(state.valence, profile.baseline_valence, alpha)
+                    state.arousal = _lerp(state.arousal, profile.baseline_arousal, alpha)
+                    state.dominance = _lerp(state.dominance, profile.baseline_dominance, alpha)
+                    state.mood_weights = {
+                        mood: _lerp(
+                            float(state.mood_weights.get(mood, 0.0) or 0.0),
+                            float(profile.mood_baseline.get(mood, 0.0) or 0.0),
+                            alpha,
+                        )
+                        for mood in get_mood_list()
+                    }
                 EmotionalStateRepository.update(
                     user_id,
                     agent_id,

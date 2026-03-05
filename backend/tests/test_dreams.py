@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from config import settings
 from db.connection import get_db
 from services.dreams.runtime import execute_dream
 
@@ -107,7 +108,7 @@ async def test_execute_dream_updates_lived_experience_and_clamps_deltas(mock_cal
             (agent_id, user_id),
         ).fetchone()
 
-    assert len(lived["lived_experience"]) == 500
+    assert len(lived["lived_experience"]) == min(800, settings.dream_lived_experience_max_chars)
     assert lived["dream_count"] == 1
     assert state["trust"] == 0.0
     assert state["attachment"] == pytest.approx(0.3)

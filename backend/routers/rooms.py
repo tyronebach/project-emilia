@@ -54,12 +54,16 @@ from schemas import (
     UpdateRoomRequest,
 )
 from services.llm_caller import call_llm_non_stream
+from services.memory.auto_capture import maybe_autocapture_memory
+from services.memory.top_of_mind import build_top_of_mind_context
+from services.observability import log_metric
 from services.room_chat import (
     build_room_llm_messages,
     determine_responding_agents,
     extract_behavior_dict,
     inject_first_turn_context_if_present,
     inject_game_context_if_present,
+    inject_top_of_mind_if_present,
     room_message_row,
 )
 from services.room_chat_stream import (
@@ -71,6 +75,29 @@ from services.room_chat_stream import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
+
+
+async def _call_legacy_openclaw_non_stream(
+    *,
+    agent: dict,
+    llm_messages: list[dict],
+) -> dict:
+    headers = {
+        "Authorization": f"Bearer {settings.clawdbot_token}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "agent_id": agent.get("agent_id"),
+        "messages": llm_messages,
+        "stream": False,
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(f"{settings.clawdbot_url}/chat", headers=headers, json=payload)
+    response.raise_for_status()
+    data = response.json()
+    if not isinstance(data, dict):
+        raise ValueError("Invalid legacy OpenClaw response")
+    return data
 
 
 def _ensure_user_exists(user_id: str) -> None:
@@ -408,10 +435,36 @@ async def room_chat(
                 emotional_context=emotional_context,
                 include_game_runtime=bool(game_context),
             )
+            top_of_mind_context = await build_top_of_mind_context(
+                query=request.message,
+                agent_id=agent_id,
+                user_id=user_id,
+                workspace=agent_workspace if isinstance(agent_workspace, str) else None,
+                runtime_trigger=runtime_trigger,
+            )
+            llm_messages = inject_top_of_mind_if_present(llm_messages, top_of_mind_context)
             llm_messages = inject_first_turn_context_if_present(llm_messages, first_turn_context)
             llm_messages = inject_game_context_if_present(llm_messages, agent_id, game_context)
 
-            result = await call_llm_non_stream({**agent, "user_id": user_id}, llm_messages, room_id)
+            log_metric(
+                logger,
+                "autorecall",
+                room_id=room_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                hit_count=0 if not top_of_mind_context else top_of_mind_context.count("\n- [score"),
+                injected_chars=len(top_of_mind_context or ""),
+            )
+
+            try:
+                result = await call_llm_non_stream({**agent, "user_id": user_id}, llm_messages, room_id)
+            except ValueError as exc:
+                if "OPENAI_API_KEY is required" not in str(exc):
+                    raise
+                result = await _call_legacy_openclaw_non_stream(
+                    agent=agent,
+                    llm_messages=llm_messages,
+                )
             parsed = parse_chat_completion(result)
             processing_ms = int((time.time() - started_at) * 1000)
 
@@ -445,6 +498,15 @@ async def room_chat(
                 pre_llm_triggers,
                 None if runtime_trigger else request.message,
             ))
+
+            if isinstance(agent_workspace, str) and agent_workspace.strip():
+                _spawn_background(maybe_autocapture_memory(
+                    workspace=agent_workspace,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    user_message=request.message,
+                    agent_response=parsed["response_text"],
+                ))
 
             if isinstance(agent_workspace, str) and agent_workspace.strip():
                 state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)

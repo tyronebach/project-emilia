@@ -312,6 +312,9 @@ def init_db():
             )
         """)
 
+        _add_column(cur, "rooms", "summary_style", "TEXT")
+        _add_column(cur, "rooms", "summary_version", "INTEGER NOT NULL DEFAULT 1")
+
         # Mood weights (JSON dict of mood->weight)
         _add_column(cur, "emotional_state", "mood_weights_json", "TEXT DEFAULT '{}'")
         # Backfill NULL mood_weights_json to empty dict
@@ -519,6 +522,8 @@ def init_db():
         _add_column(cur, "dream_log", "relationship_after", "TEXT")
         _add_column(cur, "dream_log", "internal_monologue", "TEXT")
         _add_column(cur, "dream_log", "model_used", "TEXT")
+        _add_column(cur, "dream_log", "input_context_meta", "TEXT")
+        _add_column(cur, "dream_log", "safety_flags", "TEXT")
         cur.execute("UPDATE dream_log SET dreamed_at = COALESCE(dreamed_at, datetime(created_at, 'unixepoch')) WHERE dreamed_at IS NULL")
 
         # Lived experience: persistent narrative snapshot per user-agent pair.

@@ -34,11 +34,15 @@ from services.chat_context_runtime import (
     safe_get_mood_snapshot as _safe_get_mood_snapshot,
 )
 from services.llm_caller import call_llm_non_stream
+from services.memory.auto_capture import maybe_autocapture_memory
+from services.memory.top_of_mind import build_top_of_mind_context
+from services.observability import log_metric
 from services.room_chat import (
     build_room_llm_messages,
     determine_responding_agents,
     inject_first_turn_context_if_present,
     inject_game_context_if_present,
+    inject_top_of_mind_if_present,
 )
 from services.room_chat_stream import maybe_compact_room, stream_room_chat_sse
 
@@ -157,8 +161,26 @@ async def chat(
             emotional_context=emotional_context,
             include_game_runtime=bool(game_context),
         )
+        top_of_mind_context = await build_top_of_mind_context(
+            query=request.message,
+            agent_id=agent_id,
+            user_id=user_id,
+            workspace=agent_workspace if isinstance(agent_workspace, str) else None,
+            runtime_trigger=runtime_trigger,
+        )
+        llm_messages = inject_top_of_mind_if_present(llm_messages, top_of_mind_context)
         llm_messages = inject_first_turn_context_if_present(llm_messages, first_turn_context)
         llm_messages = inject_game_context_if_present(llm_messages, agent_id, game_context)
+
+        log_metric(
+            logger,
+            "autorecall",
+            room_id=room_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            hit_count=0 if not top_of_mind_context else top_of_mind_context.count("\n- [score"),
+            injected_chars=len(top_of_mind_context or ""),
+        )
 
         result = await call_llm_non_stream({**agent_data, "user_id": user_id}, llm_messages, room_id)
         parsed = parse_chat_completion(result)
@@ -190,6 +212,15 @@ async def chat(
             user_id, agent_id, behavior, f"room:{room_id}",
             pre_llm_triggers, None if runtime_trigger else request.message,
         ))
+
+        if isinstance(agent_workspace, str) and agent_workspace.strip():
+            _spawn_background(maybe_autocapture_memory(
+                workspace=agent_workspace,
+                agent_id=agent_id,
+                user_id=user_id,
+                user_message=request.message,
+                agent_response=parsed["response_text"],
+            ))
 
         if isinstance(agent_workspace, str) and agent_workspace.strip():
             state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)

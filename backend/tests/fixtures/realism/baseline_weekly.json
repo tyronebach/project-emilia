@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "agent_id": "fixture-agent",
+  "user_id": "fixture-user",
+  "timeline": [
+    {
+      "day": "2026-01-03",
+      "user": "I prefer direct feedback over reassurance.",
+      "agent": "Understood. I'll keep responses direct and concise."
+    },
+    {
+      "day": "2026-01-07",
+      "user": "You were quiet yesterday and it bothered me.",
+      "agent": "Thanks for saying that. I know responsiveness matters to you."
+    }
+  ],
+  "checks": {
+    "continuity": [
+      "direct feedback preference persists",
+      "missed responsiveness remains emotionally salient"
+    ],
+    "factual": [
+      "no fabricated user facts"
+    ]
+  }
+}
