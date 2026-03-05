@@ -545,16 +545,8 @@ class EmotionEngine:
             -1.0, 1.0
         )
 
-        # Trust/attachment decay very slowly (toward baseline 0.5/0.3)
-        state.trust = self._clamp(
-            decay_axis(state.trust, 0.5, rates.get('trust', 0.02)),
-            0.0, 1.0
-        )
-        state.attachment = self._clamp(
-            decay_axis(state.attachment, 0.3, rates.get('attachment', 0.01)),
-            0.0, self.profile.attachment_ceiling
-        )
-
+        # Relationship dimensions (trust/attachment/etc) are persistent and updated
+        # by interaction outcomes/dreams, not passive weather decay.
         return state
     
     def detect_triggers(

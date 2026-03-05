@@ -102,6 +102,27 @@ New focused tests in `backend/tests/test_room_chat_stream_errors.py`:
 - Reduces single-file cognitive load and isolates concerns (taxonomy vs calibration vs inference).
 - Keeps current behavior while enabling future extraction of state math and trigger-delta data into dedicated modules/files.
 
+## P013 Simplification Pass (follow-up)
+
+### Implemented now
+
+- Removed persisted mood-weight behavior from active emotion runtime path:
+  - `process_emotion_pre_llm` now initializes with empty transient mood weights and clears stored `mood_weights_json` via updates.
+  - mood weights are no longer used as durable state between turns/sessions.
+- Session boundary handling simplified to strict weather reset:
+  - on new session, reset `valence/arousal/dominance` to profile baseline.
+  - removed soft re-anchor interpolation logic from runtime path.
+- `EmotionEngine.apply_decay()` now decays weather axes only (`valence/arousal/dominance`).
+  - relationship dimensions (`trust/attachment/...`) are no longer passively decayed by time.
+- Disabled active drift-simulator hook from personality apply:
+  - `simulate_archetype` now returns a deprecation summary pointing to `/api/dreams`.
+
+### Why this aligns with P013
+
+- Weather remains per-turn/session emotional dynamics.
+- Climate evolution moves to dreams (not numerical drift simulators).
+- Geography remains SOUL/canon identity.
+
 ## Phase 5 Target (approved)
 
 Memory auto-capture moves from regex heuristics to a neutral structured extractor.
