@@ -237,7 +237,7 @@ cd backend && .venv/bin/python -m pytest -q
 | B | ✅ | Native provider runtime, streaming SSE, tool loop |
 | C | ✅ | Standalone memory engine (Ollama embeddings), OpenClaw decoupled, CLI |
 | D | ✅ | Dream system, behavioral rules framework, session-scoped emotion |
-| P021 | ✅ | Backend realism pass: top-of-mind recall, compaction v2, dream v2, soft re-anchor |
+| P021/P013 follow-up | ✅ | Backend realism + emotional architecture alignment: top-of-mind recall, compaction v2, dream v2 climate path, session-scoped weather reset, calibration feature flag |
 | E | 🔄 | CLI completeness (agents create/update, users map, workspace init) |
 | Frontend redesign | — | Planned — major refactor |
 

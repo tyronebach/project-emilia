@@ -4,6 +4,38 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [6.0.0] - 2026-03-05
+
+### Changed - Backend Remediation + P013 Simplification
+
+Major backend hardening and architecture cleanup focused on reliability, determinism, and clearer emotional model boundaries.
+
+#### Runtime Reliability & Prompting
+- **Room SSE reliability hardening** — explicit retry policy for retryable provider failures (5xx/429/timeouts), normalized `agent_error` payload fields, deterministic stream completion behavior.
+- **Deterministic prompt pipeline** — introduced `PromptBuilder` and removed mutation-heavy prompt assembly paths.
+- **Unified room runtime path** — room chat now routes through `services/chat_runtime` pipeline/context modules.
+
+#### Emotion Architecture (P013 Alignment)
+- **Session-scoped weather reset** — weather (`valence/arousal/dominance`) resets at session boundary.
+- **No active persisted mood drift path** — mood weights are no longer used as durable runtime state.
+- **Relationship dimensions preserved** — trust/intimacy/attachment remain relationship memory, not passive weather decay.
+- **Calibration feature flag** — `EMOTION_TRIGGER_CALIBRATION_ENABLED` controls per-user trigger calibration learn/apply behavior.
+- **Drift simulation removed from active apply path** — designer `personalities/apply` no longer runs in-route drift simulation.
+
+#### Memory & Dreams
+- **Auto-capture moved to structured extraction** — replaced regex-first capture with neutral LLM JSON extraction + backend validation gates.
+- **Dream operations docs added** — `backend/docs/DREAMS-RUNBOOK.md` for `/api/dreams` status/trigger/log/reset workflows.
+
+#### Docs & Config
+- **Refreshed `.env.example`** with current runtime knobs.
+- **Updated README + DOCUMENTATION.md** to reflect P013 model, calibration flag, and drift deprecation status.
+
+### Tests
+- Added focused regression coverage for stream errors, prompt builder behavior, memory auto-capture, emotion runtime resets, and calibration flag behavior.
+- Relevant backend suites passing in Docker test runs.
+
+---
+
 ## [5.9.0] - 2026-02-19
 
 ### Changed - Participants Drawer & Group Chat Polish

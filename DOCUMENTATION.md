@@ -79,7 +79,7 @@ You can edit `SOUL.md` or `MEMORY.md` at any time on your host machine. The back
 - `backend/dependencies.py`: Auth + header dependencies.
 - `backend/routers/`: API endpoints.
 - `backend/schemas/`: Pydantic request/response models.
-- `backend/services/`: ElevenLabs client, emotion engine, shared emotion runtime hooks, shared chat-context runtime helpers, background task scheduler, drift simulator, room chat orchestration, compaction v2, Soul Window helpers, SOUL simulator helpers, direct LLM client, direct tool runtime, memory bridge, top-of-mind memory recall, optional memory auto-capture, extracted LLM caller, extracted room chat stream SSE, observability helpers.
+- `backend/services/`: ElevenLabs client, emotion engine, shared emotion runtime hooks, shared chat-context runtime helpers, background task scheduler, room chat orchestration/runtime pipeline, compaction v2, Soul Window helpers, SOUL simulator helpers, direct LLM client, direct tool runtime, memory bridge, top-of-mind memory recall, optional memory auto-capture, dream runtime/scheduler, extracted LLM caller, extracted room chat stream SSE, observability helpers. (Legacy drift simulator remains as deprecated diagnostic code path only.)
 - `backend/db/`: SQLite connection + repositories.
 - `backend/core/exceptions.py`: Exception helpers.
 
@@ -163,7 +163,7 @@ You can edit `SOUL.md` or `MEMORY.md` at any time on your host machine. The back
 - `GET /api/designer/v2/personalities`: List agent personality configs.
 - `GET /api/designer/v2/personalities/{agent_id}`: Personality detail.
 - `PUT /api/designer/v2/personalities/{agent_id}`: Update agent personality (columns + profile JSON).
-- `POST /api/designer/v2/personalities/apply`: One-shot apply using `agent_id`/`id` in JSON body (compact response by default, `?full=true` for full object). Optional one-step eval: add `simulate_archetype` query to return `simulation_summary` in same response (supports `simulate_*` knobs including `simulate_replay_mode`).
+- `POST /api/designer/v2/personalities/apply`: One-shot apply using `agent_id`/`id` in JSON body (compact response by default, `?full=true` for full object).
 - `GET /api/designer/v2/trigger-defaults`: Default trigger delta map.
 - `GET /api/designer/v2/mood-groups`: Mood groups + valence/arousal mapping.
 - `GET /api/designer/v2/mood-injection-settings`: Read global mood injection settings.
@@ -184,9 +184,9 @@ You can edit `SOUL.md` or `MEMORY.md` at any time on your host machine. The back
 - `POST /api/designer/v2/archetypes/generate`: Generate archetype from uploaded UTF-8 text file.
 - `PUT /api/designer/v2/archetypes/{archetype_id}`: Update archetype metadata/replay data.
 - `DELETE /api/designer/v2/archetypes/{archetype_id}`: Delete archetype.
-- `POST /api/designer/v2/drift-simulate`: Run a single long-horizon drift simulation (`replay_mode: sequential|random`).
-- `POST /api/designer/v2/drift-simulate-summary`: Run same simulation with compact scorecard output (`?include_config=true` includes resolved config).
-- `POST /api/designer/v2/drift-compare`: Run side-by-side drift simulations across archetypes (`replay_mode: sequential|random`).
+- `POST /api/designer/v2/drift-simulate`: **Deprecated** (`410 Gone`) — use `/api/dreams` for climate evolution.
+- `POST /api/designer/v2/drift-simulate-summary`: **Deprecated** (`410 Gone`) — use `/api/dreams` for climate evolution.
+- `POST /api/designer/v2/drift-compare`: **Deprecated** (`410 Gone`) — use `/api/dreams` for climate evolution.
 
 ### Drift API (Used By `/designer-v2` Drift Tab)
 
@@ -259,14 +259,15 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `COMPACTION_PERSONA_MODE`, `COMPACTION_TEXTURE_MAX_LINES`, `COMPACTION_OPEN_THREADS_MAX`.
 - `SOUL_SIM_PERSONA_MODEL`, `SOUL_SIM_MAX_TURNS`.
 - `OPENAI_API_KEY`, `OPENAI_API_BASE`, `DIRECT_DEFAULT_MODEL` (used when agent `chat_mode=direct`).
-- `OPENCLAW_MEMORY_DIR` (default `~/.openclaw/memory`), `DIRECT_TOOL_MAX_STEPS` (default 6), `GEMINI_API_KEY` (for memory search embeddings).
+- `OPENCLAW_GATEWAY_URL`, `DIRECT_TOOL_MAX_STEPS`, `GEMINI_API_KEY`.
 - `GAMES_V2_AGENT_ALLOWLIST` (optional agent rollout cohort).
 - `MEMORY_AUTORECALL_ENABLED`, `MEMORY_AUTORECALL_SCORE_THRESHOLD`, `MEMORY_AUTORECALL_MAX_ITEMS`, `MEMORY_AUTORECALL_MAX_CHARS`, `MEMORY_AUTORECALL_RUNTIME_TRIGGER_ENABLED`.
-- `MEMORY_AUTOCAPTURE_ENABLED`, `MEMORY_AUTOCAPTURE_MAX_ITEMS_PER_DAY`, `MEMORY_AUTOCAPTURE_MIN_CONFIDENCE`.
+- `MEMORY_AUTOCAPTURE_ENABLED`, `MEMORY_AUTOCAPTURE_MODEL`, `MEMORY_AUTOCAPTURE_TIMEOUT_S`, `MEMORY_AUTOCAPTURE_MAX_CANDIDATES`, `MEMORY_AUTOCAPTURE_MAX_ITEMS_PER_DAY`, `MEMORY_AUTOCAPTURE_MIN_CONFIDENCE`.
 - `DREAM_CONTEXT_MAX_MESSAGES`, `DREAM_INCLUDE_ROOM_SUMMARY`, `DREAM_INCLUDE_MEMORY_HITS`, `DREAM_MEMORY_HITS_MAX`, `DREAM_LIVED_EXPERIENCE_MAX_CHARS`, `DREAM_NEGATIVE_EVENT_COOLDOWN_HOURS`.
-- `EMOTION_SESSION_REANCHOR_MODE`, `EMOTION_REANCHOR_ALPHA_SHORT_GAP`, `EMOTION_REANCHOR_ALPHA_LONG_GAP`, `EMOTION_REANCHOR_LONG_GAP_HOURS`.
+- `EMOTION_TRIGGER_CALIBRATION_ENABLED` (per-user calibration on/off).
+- `EMOTION_SESSION_REANCHOR_MODE`, `EMOTION_REANCHOR_ALPHA_SHORT_GAP`, `EMOTION_REANCHOR_ALPHA_LONG_GAP`, `EMOTION_REANCHOR_LONG_GAP_HOURS` are retained for compatibility but deprecated in the active runtime path after P013 weather reset.
 - `EMILIA_DB_PATH` / fallback for DB.
-- Emotion-engine classifier tuning env vars are read directly in `backend/services/emotion_engine.py`:
+- Emotion-engine classifier tuning env vars are surfaced via `backend/config.py` and consumed by runtime/services:
   - `TRIGGER_CLASSIFIER_ENABLED`
   - `TRIGGER_CLASSIFIER_CONFIDENCE`
   - `SARCASM_MITIGATION_ENABLED`
@@ -568,7 +569,9 @@ Assets
 - `docs/planning/archive/P011-room-chat-parity-v2-checklist.md`: Room chat parity checklist (completed, archived).
 - `docs/planning/archive/P012-shared-runtime-and-room-multi-vrm.md`: Shared runtime extraction checklist (completed, archived).
 - `docs/planning/archive/P006-soul-window.md`: canonical Soul Window plan.
-- `docs/planning/archive/DRIFT-API.md`: drift simulator endpoint contract.
+- `docs/planning/archive/DRIFT-API.md`: archived drift simulator contract (historical; production path deprecated).
+- `backend/docs/DREAMS-RUNBOOK.md`: operational guide for `/api/dreams` status/trigger/log/reset flows.
+- `backend/docs/ROOM-CHAT-REMEDIATION-PHASES-1-2-2026-03-05.md`: implementation notes for backend remediation and P013 follow-up.
 - `docs/animation/*`: VRM/animation research and pipeline notes.
 - `docs/archive/*`: older plans/specs and previous API docs (including archived AUDIT-UNIFIED-CHAT, PLAN-UNIFIED-CHAT, DECISIONS-UNIFIED-CHAT, IMPL-DIRECT-MODE, CODE-REVIEW-GROUP-CHAT).
 
@@ -580,14 +583,17 @@ Assets
 - `backend/routers/`: API surface.
 - `backend/services/emotion_engine.py`: core emotion engine.
 - `backend/services/llm_caller.py`: extracted LLM calling (streaming) for both direct and openclaw modes.
-- `backend/services/room_chat_stream.py`: extracted room SSE generator + helpers (shared by rooms.py and chat.py).
+- `backend/services/room_chat_stream.py`: room SSE generator + retry/error policy helpers.
+- `backend/services/chat_runtime/pipeline.py`: unified room chat execution pipeline used by routers.
+- `backend/services/chat_runtime/context.py`: room routing + Games V2 runtime payload gating.
 - `backend/services/direct_llm.py`: direct LLM client + shared message normalization.
 - `backend/services/direct_tool_runtime.py`: bounded tool loop with memory tools.
 - `backend/services/memory_bridge.py`: memory search/read/write via OpenClaw SQLite index.
 - `backend/services/soul_window_service.py`: Soul Window read-model helpers.
 - `backend/services/workspace_events.py`: workspace events timeline service.
 - `backend/services/chat_context_runtime.py`: shared chat/room context + workspace helper functions.
-- `backend/services/emotion_runtime.py`: shared chat/room emotion pre/post hooks.
+- `backend/services/emotion_runtime.py`: shared chat/room emotion pre/post hooks (session-scoped weather reset behavior).
+- `backend/services/emotion/`: modular emotion taxonomy, inference, and calibration components.
 - `backend/services/background_tasks.py`: shared background task scheduling helper.
 - `backend/services/soul_parser.py`: SOUL markdown parser.
 - `backend/db/connection.py`: schema + migrations.
