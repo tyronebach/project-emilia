@@ -114,8 +114,11 @@ New focused tests in `backend/tests/test_room_chat_stream_errors.py`:
   - removed soft re-anchor interpolation logic from runtime path.
 - `EmotionEngine.apply_decay()` now decays weather axes only (`valence/arousal/dominance`).
   - relationship dimensions (`trust/attachment/...`) are no longer passively decayed by time.
+- Added calibration runtime feature flag:
+  - `EMOTION_TRIGGER_CALIBRATION_ENABLED=1` (default on)
+  - when off, calibration multipliers/learning are bypassed while keeping trigger detection + relationship updates.
 - Disabled active drift-simulator hook from personality apply:
-  - `simulate_archetype` now returns a deprecation summary pointing to `/api/dreams`.
+  - removed in-route drift simulation params/path; climate operations route through `/api/dreams`.
 
 ### Why this aligns with P013
 
