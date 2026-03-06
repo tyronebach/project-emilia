@@ -736,8 +736,8 @@ class EmotionEngine:
             intimacy = getattr(state, 'intimacy', 0.2)
             bond_mod *= 0.8 + (intimacy * 0.4)
 
-        # Layer 3: User calibration (context-aware)
-        if calibration:
+        # Layer 3: User calibration (context-aware; optional via feature flag)
+        if settings.emotion_trigger_calibration_enabled and calibration:
             context = ContextBucket.from_state(state)
             user_multiplier = calibration.get_multiplier(context)
         else:
@@ -773,6 +773,9 @@ class EmotionEngine:
         Returns updated calibrations for persistence.
         """
         updated: dict[str, ContextualTriggerCalibration] = {}
+
+        if not settings.emotion_trigger_calibration_enabled:
+            return updated
 
         if confidence < CONFIDENCE_THRESHOLD:
             logger.debug("[Learn] Skipping update, confidence %.2f < %.2f",

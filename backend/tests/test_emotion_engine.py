@@ -779,6 +779,18 @@ class TestComputeEffectiveDelta:
         result_no_cal = engine.compute_effective_delta("admiration", 1.0, state, None)
         assert result_cal > result_no_cal
 
+    def test_calibration_flag_disabled_ignores_multiplier(self, monkeypatch):
+        monkeypatch.setattr(emotion_engine_module.settings, "emotion_trigger_calibration_enabled", False)
+
+        engine = EmotionEngine(AgentProfile())
+        state = EmotionalState(trust=0.5)
+        cal = ContextualTriggerCalibration(trigger_type="admiration")
+        cal.global_cal.learned_multiplier = 1.5
+
+        result_cal = engine.compute_effective_delta("admiration", 1.0, state, cal)
+        result_no_cal = engine.compute_effective_delta("admiration", 1.0, state, None)
+        assert result_cal == pytest.approx(result_no_cal)
+
 
 # ============================================================
 # V2: learn_from_outcome
@@ -807,6 +819,15 @@ class TestLearnFromOutcome:
         triggers = [("totally_unknown_xyz", 0.8)]
         updated = engine.learn_from_outcome(state, triggers, "positive", 0.8)
         assert len(updated) == 0
+
+    def test_calibration_flag_disabled_skips_learning(self, monkeypatch):
+        monkeypatch.setattr(emotion_engine_module.settings, "emotion_trigger_calibration_enabled", False)
+
+        engine = EmotionEngine(AgentProfile())
+        state = EmotionalState(trust=0.5)
+        triggers = [("admiration", 0.8)]
+        updated = engine.learn_from_outcome(state, triggers, "positive", 0.9)
+        assert updated == {}
 
 
 # ============================================================

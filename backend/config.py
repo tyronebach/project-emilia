@@ -62,6 +62,9 @@ class Settings:
 
         # Emotion engine
         self.trigger_classifier_enabled: bool = _env_bool("TRIGGER_CLASSIFIER_ENABLED", "1")
+        self.emotion_trigger_calibration_enabled: bool = _env_bool(
+            "EMOTION_TRIGGER_CALIBRATION_ENABLED", "1"
+        )
         self.trigger_classifier_confidence: float = max(
             0.0,
             min(1.0, _env_float("TRIGGER_CLASSIFIER_CONFIDENCE", "0.25")),
