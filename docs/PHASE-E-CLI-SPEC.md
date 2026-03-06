@@ -8,6 +8,17 @@ No frontend needed to create, configure, and test a character end-to-end.
 
 ## New / Extended Commands
 
+### Auth + Context (Phase A)
+```
+emilia auth check
+
+emilia context show
+emilia context set [--user USER_ID] [--agent AGENT_ID] [--room ROOM_ID]
+emilia context auto [--user USER_ID] [--agent AGENT_ID]
+```
+
+`context auto` selects the most recent room for a user and updates `.emilia-cli.json` defaults.
+
 ### Agents
 ```
 emilia agents create \
@@ -112,8 +123,9 @@ emilia users map --user thai --agent emilia
 emilia rooms create --name "emilia-thai"
 emilia rooms add-agent --room <room-id> --agent emilia
 
-# 6. Chat
-emilia chat --room <room-id> --user thai
+# 6. Save context + chat
+emilia context auto --user thai
+emilia chat
 
 # 7. Check dream state after chatting
 emilia dream status --agent emilia --user thai

@@ -76,11 +76,11 @@ emilia users create --name "Thai" --id thai
 emilia users map --user thai --agent emilia
 
 # 5. Create room + add agent
-emilia rooms create --name "emilia-thai"
-emilia rooms add-agent --room <room-id> --agent emilia
+emilia rooms create --name "emilia-thai" --user thai --agent emilia
+emilia context auto --user thai
 
-# 6. Chat
-emilia chat --room <room-id> --user thai
+# 6. Chat (uses saved context by default)
+emilia chat
 
 # 7. After chatting — check dream state
 emilia dream status --agent emilia --user thai
@@ -93,8 +93,13 @@ emilia dream trigger --agent emilia --user thai
 
 ```
 emilia health
+emilia auth check
 
-emilia setup                          # bootstrap default user + agent + room
+emilia context show
+emilia context set [--user USER_ID] [--agent AGENT_ID] [--room ROOM_ID]
+emilia context auto [--user USER_ID] [--agent AGENT_ID]
+
+emilia setup [--user-id USER_ID] [--agent-id AGENT_ID] [--room-name NAME]
 
 emilia workspace init PATH --name NAME [--archetype TEXT]
 
@@ -115,8 +120,8 @@ emilia rooms show ROOM_ID
 emilia rooms add-agent    --room ROOM_ID --agent AGENT_ID
 emilia rooms remove-agent --room ROOM_ID --agent AGENT_ID
 
-emilia chat   [--room ROOM_ID] [--user USER_ID]   # interactive REPL
-emilia send   [--room ROOM_ID] [--user USER_ID] "message"
+emilia chat   [--room ROOM_ID] [--user USER_ID] [--agent AGENT_ID]   # interactive REPL
+emilia send   [--room ROOM_ID] [--user USER_ID] [--agent AGENT_ID] "message"
 emilia history [--room ROOM_ID] [--limit 20]
 
 emilia memory list   [--agent AGENT_ID]

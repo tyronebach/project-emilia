@@ -42,16 +42,20 @@ def auth_token() -> str:
         return token
     if os.getenv("AUTH_ALLOW_DEV_TOKEN", "").strip() == "1":
         return "emilia-dev-token-2026"
-    return "emilia-dev-token-2026"
+    return ""
 
 
 class EmiliaClient:
     def __init__(self, base_url: str = BASE_URL) -> None:
         self.base_url = base_url.rstrip("/")
+        token = auth_token()
+        headers: dict[str, str] = {}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         self.client = httpx.Client(
             base_url=self.base_url,
             timeout=60.0,
-            headers={"Authorization": f"Bearer {auth_token()}"},
+            headers=headers,
         )
 
     def close(self) -> None:
@@ -95,40 +99,76 @@ class EmiliaClient:
             return response.json()
         return None
 
-    def ensure_user(self) -> dict:
+    def ensure_user(self, user_id: str, display_name: str | None = None) -> dict:
         users = self.get("/api/manage/users")["users"]
         for user in users:
-            if user["id"] == DEFAULT_USER_ID:
+            if user["id"] == user_id:
                 return user
-        return self.post("/api/manage/users", json={"id": DEFAULT_USER_ID, "display_name": DEFAULT_USER_ID})
-
-    def ensure_agent(self) -> dict:
-        agents = self.get("/api/manage/agents")["agents"]
-        for agent in agents:
-            if agent["id"] == DEFAULT_AGENT_ID:
-                return agent
         return self.post(
-            "/api/manage/agents",
-            json={
-                "id": DEFAULT_AGENT_ID,
-                "display_name": DEFAULT_AGENT_ID,
-                "provider": "native",
-                "provider_config": {"model": os.getenv("EMILIA_DEFAULT_MODEL", "gpt-4o-mini")},
-            },
+            "/api/manage/users",
+            json={"id": user_id, "display_name": display_name or user_id},
         )
 
-    def grant_access(self, user_id: str, agent_id: str) -> None:
-        self.put(f"/api/manage/users/{user_id}/agents/{agent_id}")
+    def ensure_agent(
+        self,
+        agent_id: str,
+        display_name: str | None = None,
+        provider: str = "native",
+        model: str | None = None,
+        workspace: str | None = None,
+    ) -> dict:
+        agents = self.get("/api/manage/agents")["agents"]
+        for agent in agents:
+            if agent["id"] == agent_id:
+                updates: dict[str, Any] = {}
+                if workspace and not agent.get("workspace"):
+                    updates["workspace"] = workspace
+                if model and not agent.get("direct_model"):
+                    updates["direct_model"] = model
+                if updates:
+                    self.put(f"/api/manage/agents/{agent_id}", json=updates)
+                    refreshed = self.get("/api/manage/agents")["agents"]
+                    for row in refreshed:
+                        if row["id"] == agent_id:
+                            return row
+                return agent
 
-    def ensure_room(self, user_id: str, agent_id: str) -> dict:
-        rooms = self.get("/api/rooms", headers=self._headers(user_id=user_id), params={"agent_id": agent_id})["rooms"]
+        payload: dict[str, Any] = {
+            "id": agent_id,
+            "display_name": display_name or agent_id,
+            "clawdbot_agent_id": agent_id,
+            "provider": provider,
+            "provider_config": {"model": model or os.getenv("EMILIA_DEFAULT_MODEL", "gpt-4o-mini")},
+        }
+        if workspace:
+            payload["workspace"] = workspace
+        if model:
+            payload["direct_model"] = model
+        return self.post("/api/manage/agents", json=payload)
+
+    def grant_access(self, user_id: str, agent_id: str) -> None:
+        path = f"/api/manage/users/{user_id}/agents/{agent_id}"
+        try:
+            self.put(path)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 405:
+                # Backward compatibility with deployments still using POST.
+                self.post(path)
+                return
+            raise
+
+    def ensure_room(self, user_id: str, room_name: str, agent_ids: list[str]) -> dict:
+        rooms = self.get("/api/rooms", headers=self._headers(user_id=user_id))["rooms"]
         for room in rooms:
-            if room["name"] == DEFAULT_ROOM_NAME:
-                return room
+            if room["name"] == room_name:
+                existing_ids = sorted([a.get("agent_id") for a in room.get("agents", []) if a.get("agent_id")])
+                if sorted(agent_ids) == existing_ids:
+                    return room
+
         return self.post(
             "/api/rooms",
             headers=self._headers(user_id=user_id),
-            json={"name": DEFAULT_ROOM_NAME, "agent_ids": [agent_id]},
+            json={"name": room_name, "agent_ids": agent_ids},
         )
 
 
@@ -382,13 +422,148 @@ def cmd_health(client: EmiliaClient, args) -> int:
 
 
 def cmd_setup(client: EmiliaClient, args) -> int:
-    user = client.ensure_user()
-    agent = client.ensure_agent()
+    user_id = args.user_id or DEFAULT_USER_ID
+    user_name = args.user_name or user_id
+    agent_id = args.agent_id or DEFAULT_AGENT_ID
+    agent_name = args.agent_name or agent_id
+    room_name = args.room_name or DEFAULT_ROOM_NAME
+
+    if args.workspace:
+        workspace_path = Path(args.workspace).expanduser()
+    else:
+        default_root = Path(os.getenv("EMILIA_WORKSPACE_ROOT", str(Path.home() / ".emilia" / "agents"))).expanduser()
+        workspace_path = default_root / agent_id
+    soul_path = workspace_path / "SOUL.md"
+    memory_path = workspace_path / "MEMORY.md"
+    if not soul_path.exists() and not memory_path.exists():
+        write_workspace_template(workspace_path, agent_name, getattr(args, "archetype", "gentle"))
+
+    user = client.ensure_user(user_id=user_id, display_name=user_name)
+    agent = client.ensure_agent(
+        agent_id=agent_id,
+        display_name=agent_name,
+        provider=args.provider,
+        model=args.model,
+        workspace=str(workspace_path),
+    )
     client.grant_access(user["id"], agent["id"])
-    room = client.ensure_room(user["id"], agent["id"])
-    payload = {"user_id": user["id"], "agent_id": agent["id"], "room_id": room["id"]}
+    room = client.ensure_room(user["id"], room_name=room_name, agent_ids=[agent["id"]])
+
+    payload = {
+        "user_id": user["id"],
+        "agent_id": agent["id"],
+        "room_id": room["id"],
+        "room_name": room_name,
+        "workspace": str(workspace_path),
+    }
     save_config(payload)
     emit_json_or_text(args, payload)
+    return 0
+
+
+def cmd_auth_check(client: EmiliaClient, args) -> int:
+    payload: dict[str, Any] = {
+        "base_url": client.base_url,
+        "auth_header_present": "Authorization" in client.client.headers,
+    }
+
+    health = client.get("/api/health")
+    payload["health"] = health
+
+    try:
+        users = client.get("/api/manage/users")
+        payload["auth_ok"] = True
+        payload["user_count"] = users.get("count")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in {401, 403}:
+            payload["auth_ok"] = False
+            payload["detail"] = "Unauthorized. Set AUTH_TOKEN or AUTH_ALLOW_DEV_TOKEN=1 for local dev."
+            emit_json_or_text(args, payload)
+            return 1
+        raise
+
+    emit_json_or_text(args, payload)
+    return 0
+
+
+def cmd_context_show(client: EmiliaClient, args) -> int:
+    del client
+    config = load_config()
+    payload = {
+        "config_path": str(CONFIG_PATH),
+        "context": {
+            "user_id": config.get("user_id"),
+            "agent_id": config.get("agent_id"),
+            "room_id": config.get("room_id"),
+        },
+    }
+    text = (
+        f"config: {payload['config_path']}\n"
+        f"user: {payload['context']['user_id'] or '-'}\n"
+        f"agent: {payload['context']['agent_id'] or '-'}\n"
+        f"room: {payload['context']['room_id'] or '-'}"
+    )
+    emit_json_or_text(args, payload, text)
+    return 0
+
+
+def cmd_context_set(client: EmiliaClient, args) -> int:
+    del client
+    updates = {
+        "user_id": args.user,
+        "agent_id": args.agent,
+        "room_id": args.room,
+    }
+    if not any(value is not None for value in updates.values()):
+        raise SystemExit("No updates provided. Pass at least one of --user/--agent/--room.")
+
+    config = load_config()
+    for key, value in updates.items():
+        if value is not None:
+            config[key] = value
+    save_config(config)
+    emit_json_or_text(args, config)
+    return 0
+
+
+def cmd_context_auto(client: EmiliaClient, args) -> int:
+    config = load_config()
+    user_id = args.user or config.get("user_id") or DEFAULT_USER_ID
+
+    payload = client.get("/api/rooms", headers=client._headers(user_id=user_id))
+    rooms = payload.get("rooms", [])
+    if not rooms:
+        raise SystemExit(f"No rooms found for user '{user_id}'.")
+
+    def _room_sort_key(room: dict[str, Any]) -> tuple[float, float]:
+        last_activity = room.get("last_activity") or 0
+        created_at = room.get("created_at") or 0
+        return (float(last_activity), float(created_at))
+
+    selected = sorted(rooms, key=_room_sort_key, reverse=True)[0]
+    selected_agent_ids = [
+        str(agent.get("agent_id"))
+        for agent in selected.get("agents", [])
+        if agent.get("agent_id")
+    ]
+
+    agent_id = args.agent or config.get("agent_id")
+    if selected_agent_ids and (not agent_id or agent_id not in selected_agent_ids):
+        agent_id = selected_agent_ids[0]
+
+    config["user_id"] = user_id
+    config["room_id"] = selected["id"]
+    if agent_id:
+        config["agent_id"] = agent_id
+    save_config(config)
+
+    response = {
+        "user_id": user_id,
+        "room_id": selected["id"],
+        "room_name": selected.get("name"),
+        "agent_id": config.get("agent_id"),
+    }
+    emit_json_or_text(args, response)
     return 0
 
 
@@ -442,7 +617,11 @@ def cmd_agents_list(client: EmiliaClient, args) -> int:
 
 def cmd_agents_create(client: EmiliaClient, args) -> int:
     payload = build_agent_payload(args)
-    payload.update({"id": args.id, "display_name": args.name})
+    payload.update({
+        "id": args.id,
+        "display_name": args.name,
+        "clawdbot_agent_id": args.id,
+    })
     created = client.post("/api/manage/agents", json=payload)
     emit_created(args, created, created["id"])
     return 0
@@ -568,8 +747,8 @@ def cmd_send(client: EmiliaClient, args) -> int:
     if args.json:
         print_json(payload)
         return 0
-    response = payload["responses"][0]
-    console.print(f'{response["agent_name"]}: {response["message"]["content"]}')
+    for response in payload.get("responses", []):
+        console.print(f'{response["agent_name"]}: {response["message"]["content"]}')
     return 0
 
 
@@ -598,7 +777,13 @@ def cmd_memory_list(client: EmiliaClient, args) -> int:
     if args.json:
         print_json(payload)
         return 0
-    console.print("\n".join(payload["files"]))
+
+    files = payload.get("files") or []
+    if not files:
+        console.print("(no memory files)")
+        return 0
+
+    console.print("\n".join(files))
     return 0
 
 
@@ -725,10 +910,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="Emilia CLI: Management and interaction tool for the Emilia AI ecosystem.",
         epilog=(
             "Examples:\n"
-            "  emilia setup               # Initial configuration\n"
-            "  emilia chat                # Start interactive chat\n"
-            "  emilia agents list         # List available agents\n"
-            "  emilia memory search 'AI'  # Search agent memory\n"
+            "  emilia setup --user-id thai --agent-id emilia\n"
+            "  emilia context show\n"
+            "  emilia context auto --user thai\n"
+            "  emilia auth check\n"
+            "  emilia chat\n"
             "\n"
             "Use 'emilia <command> --help' for more information on a specific command."
         ),
@@ -738,7 +924,36 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True, title="commands", metavar="COMMAND")
 
     sub.add_parser("health", parents=[common], help="Check backend API health and connectivity")
-    sub.add_parser("setup", parents=[common], help="Perform initial configuration (creates default user, agent, and room)")
+
+    auth = sub.add_parser("auth", parents=[common], help="Auth diagnostics")
+    auth_sub = auth.add_subparsers(dest="auth_cmd", required=True, title="auth commands", metavar="AUTH_CMD")
+    auth_sub.add_parser("check", parents=[common], help="Validate auth/token setup against backend")
+
+    context = sub.add_parser("context", parents=[common], help="View or update default CLI context")
+    context_sub = context.add_subparsers(dest="context_cmd", required=True, title="context commands", metavar="CONTEXT_CMD")
+    context_show = context_sub.add_parser("show", parents=[common], help="Show saved user/agent/room context")
+    context_show.set_defaults(room_required=False)
+    context_set = context_sub.add_parser("set", parents=[common], help="Set saved user/agent/room context")
+    context_set.add_argument("--user", help="Default user ID")
+    context_set.add_argument("--agent", help="Default agent ID")
+    context_set.add_argument("--room", help="Default room ID")
+    context_set.set_defaults(room_required=False)
+    context_auto = context_sub.add_parser("auto", parents=[common], help="Auto-select most recent room context for a user")
+    context_auto.add_argument("--user", help="User ID (defaults to saved context or cli-user)")
+    context_auto.add_argument("--agent", help="Preferred agent ID if present in selected room")
+    context_auto.set_defaults(room_required=False)
+
+    setup = sub.add_parser("setup", parents=[common], help="Perform initial configuration (create/ensure user, agent, room)")
+    setup.add_argument("--user-id", help=f"User ID (default: {DEFAULT_USER_ID})")
+    setup.add_argument("--user-name", help="User display name (default: user-id)")
+    setup.add_argument("--agent-id", help=f"Agent ID (default: {DEFAULT_AGENT_ID})")
+    setup.add_argument("--agent-name", help="Agent display name (default: agent-id)")
+    setup.add_argument("--room-name", help=f"Room name (default: {DEFAULT_ROOM_NAME})")
+    setup.add_argument("--workspace", help="Workspace path for agent (optional; defaults to $EMILIA_WORKSPACE_ROOT/<agent-id> or ~/.emilia/agents/<agent-id>)")
+    setup.add_argument("--archetype", default="gentle", help="Workspace SOUL template archetype when auto-initializing")
+    setup.add_argument("--provider", choices=["native", "openclaw"], default="native", help="Agent provider")
+    setup.add_argument("--model", default=os.getenv("EMILIA_DEFAULT_MODEL", "gpt-4o-mini"), help="Agent model")
+    setup.set_defaults(room_required=False)
 
     users_parser = sub.add_parser("users", parents=[common], help="Manage users and agent access mappings")
     users = users_parser.add_subparsers(dest="users_cmd", required=True, title="user commands", metavar="USER_CMD")
@@ -873,6 +1088,10 @@ def main() -> int:
     client = EmiliaClient()
     handlers: dict[tuple[str, str | None], Callable[[EmiliaClient, Any], int]] = {
         ("health", None): cmd_health,
+        ("auth", "check"): cmd_auth_check,
+        ("context", "show"): cmd_context_show,
+        ("context", "set"): cmd_context_set,
+        ("context", "auto"): cmd_context_auto,
         ("setup", None): cmd_setup,
         ("users", "list"): cmd_users_list,
         ("users", "create"): cmd_users_create,
@@ -902,7 +1121,9 @@ def main() -> int:
     }
     try:
         subcommand = (
-            getattr(args, "users_cmd", None)
+            getattr(args, "auth_cmd", None)
+            or getattr(args, "context_cmd", None)
+            or getattr(args, "users_cmd", None)
             or getattr(args, "agents_cmd", None)
             or getattr(args, "rooms_cmd", None)
             or getattr(args, "memory_cmd", None)
