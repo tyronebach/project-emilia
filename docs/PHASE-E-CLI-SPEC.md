@@ -36,6 +36,7 @@ emilia agents update AGENT_ID \
   [--workspace PATH] \
   [--model MODEL] \
   [--api-base URL]
+emilia agents delete AGENT_ID --yes
 
 # Already exists: emilia agents list
 ```
@@ -44,6 +45,8 @@ emilia agents update AGENT_ID \
 ```
 emilia users create --name "Thai" [--id custom-id]
 emilia users show USER_ID               # detail: name, id, mapped agents
+emilia users update USER_ID --name "Thai B"
+emilia users delete USER_ID --yes
 
 emilia users map   --user USER_ID --agent AGENT_ID   # grant access
 emilia users unmap --user USER_ID --agent AGENT_ID   # revoke access
@@ -54,6 +57,8 @@ emilia users unmap --user USER_ID --agent AGENT_ID   # revoke access
 ### Rooms
 ```
 emilia rooms show ROOM_ID              # detail: name, agents, message count
+emilia rooms update ROOM_ID --name "new-name"
+emilia rooms delete ROOM_ID --yes
 emilia rooms add-agent    --room ROOM_ID --agent AGENT_ID
 emilia rooms remove-agent --room ROOM_ID --agent AGENT_ID
 

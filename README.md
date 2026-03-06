@@ -107,16 +107,21 @@ emilia agents list
 emilia agents create --id ID --name NAME --workspace PATH --provider native --model MODEL
 emilia agents show AGENT_ID
 emilia agents update AGENT_ID [--name NAME] [--workspace PATH] [--model MODEL]
+emilia agents delete AGENT_ID --yes
 
 emilia users list
 emilia users create --name NAME [--id ID]
 emilia users show USER_ID
+emilia users update USER_ID --name NAME
+emilia users delete USER_ID --yes
 emilia users map   --user USER_ID --agent AGENT_ID
 emilia users unmap --user USER_ID --agent AGENT_ID
 
 emilia rooms list
-emilia rooms create [--name NAME]
+emilia rooms create [--name NAME] [--user USER_ID] [--agent AGENT_ID]
 emilia rooms show ROOM_ID
+emilia rooms update ROOM_ID --name NAME
+emilia rooms delete ROOM_ID --yes
 emilia rooms add-agent    --room ROOM_ID --agent AGENT_ID
 emilia rooms remove-agent --room ROOM_ID --agent AGENT_ID
 

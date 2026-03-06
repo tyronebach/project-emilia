@@ -210,6 +210,12 @@ def resolve_id(positional: str | None, flagged: str | None, field_name: str) -> 
     raise SystemExit(f"Missing {field_name}. Pass it positionally or with --{field_name}.")
 
 
+def require_confirm(args, entity: str, entity_id: str) -> None:
+    if getattr(args, "yes", False):
+        return
+    raise SystemExit(f"Refusing to delete {entity} '{entity_id}' without --yes")
+
+
 def require_ids(args) -> dict[str, str]:
     config = load_config()
     resolved = {
@@ -590,6 +596,27 @@ def cmd_users_show(client: EmiliaClient, args) -> int:
     return 0
 
 
+def cmd_users_update(client: EmiliaClient, args) -> int:
+    user_id = resolve_id(getattr(args, "user_id", None), args.user, "user")
+    payload: dict[str, Any] = {}
+    if args.name is not None:
+        payload["display_name"] = args.name
+    if not payload:
+        raise SystemExit("No updates provided.")
+
+    response = client.put(f"/api/manage/users/{user_id}", json=payload)
+    emit_json_or_text(args, response, f"updated {user_id}")
+    return 0
+
+
+def cmd_users_delete(client: EmiliaClient, args) -> int:
+    user_id = resolve_id(getattr(args, "user_id", None), args.user, "user")
+    require_confirm(args, "user", user_id)
+    response = client.delete(f"/api/manage/users/{user_id}")
+    emit_json_or_text(args, response, f"deleted {user_id}")
+    return 0
+
+
 def cmd_users_map(client: EmiliaClient, args) -> int:
     user_id = resolve_id(getattr(args, "user_id", None), args.user, "user")
     agent_id = resolve_id(getattr(args, "agent_id", None), args.agent, "agent")
@@ -645,6 +672,14 @@ def cmd_agents_update(client: EmiliaClient, args) -> int:
     return 0
 
 
+def cmd_agents_delete(client: EmiliaClient, args) -> int:
+    agent_id = resolve_id(getattr(args, "agent_id", None), args.agent, "agent")
+    require_confirm(args, "agent", agent_id)
+    response = client.delete(f"/api/manage/agents/{agent_id}")
+    emit_json_or_text(args, response, f"deleted {agent_id}")
+    return 0
+
+
 def cmd_rooms_list(client: EmiliaClient, args) -> int:
     ids = require_ids(args)
     payload = client.get("/api/rooms", headers=client._headers(user_id=ids["user_id"]))
@@ -674,6 +709,44 @@ def cmd_rooms_show(client: EmiliaClient, args) -> int:
     room_id = resolve_id(getattr(args, "room_id", None), args.room or ids["room_id"], "room")
     detail = client.get(f"/api/rooms/{room_id}", headers=client._headers(user_id=ids["user_id"]))
     emit_json_or_text(args, detail, render_room_detail(detail))
+    return 0
+
+
+def cmd_rooms_update(client: EmiliaClient, args) -> int:
+    ids = require_ids(args)
+    room_id = resolve_id(getattr(args, "room_id", None), args.room or ids["room_id"], "room")
+
+    payload: dict[str, Any] = {}
+    if args.name is not None:
+        payload["name"] = args.name
+    if not payload:
+        raise SystemExit("No updates provided.")
+
+    response = client.patch(
+        f"/api/rooms/{room_id}",
+        headers=client._headers(user_id=ids["user_id"]),
+        json=payload,
+    )
+    emit_json_or_text(args, response, f"updated {room_id}")
+    return 0
+
+
+def cmd_rooms_delete(client: EmiliaClient, args) -> int:
+    ids = require_ids(args)
+    room_id = resolve_id(getattr(args, "room_id", None), args.room or ids["room_id"], "room")
+    require_confirm(args, "room", room_id)
+
+    response = client.delete(
+        f"/api/rooms/{room_id}",
+        headers=client._headers(user_id=ids["user_id"]),
+    )
+
+    config = load_config()
+    if config.get("room_id") == room_id:
+        config.pop("room_id", None)
+        save_config(config)
+
+    emit_json_or_text(args, response, f"deleted {room_id}")
     return 0
 
 
@@ -964,6 +1037,14 @@ def build_parser() -> argparse.ArgumentParser:
     users_show = users.add_parser("show", parents=[common], help="Show detailed user information")
     users_show.add_argument("user_id", nargs="?", help="ID of the user to show")
     users_show.add_argument("--user", help="Alias for user_id")
+    users_update = users.add_parser("update", parents=[common], help="Update a user's fields")
+    users_update.add_argument("user_id", nargs="?", help="ID of the user to update")
+    users_update.add_argument("--user", help="Alias for user_id")
+    users_update.add_argument("--name", required=True, help="New display name")
+    users_delete = users.add_parser("delete", parents=[common], help="Delete a user")
+    users_delete.add_argument("user_id", nargs="?", help="ID of the user to delete")
+    users_delete.add_argument("--user", help="Alias for user_id")
+    users_delete.add_argument("--yes", action="store_true", help="Confirm deletion")
     users_map = users.add_parser("map", parents=[common], help="Map an agent to a user (grant access)")
     users_map.add_argument("user_id", nargs="?", help="ID of the user")
     users_map.add_argument("agent_id", nargs="?", help="ID of the agent to map")
@@ -998,6 +1079,10 @@ def build_parser() -> argparse.ArgumentParser:
     agents_update.add_argument("--api-base", dest="api_base", help="New API base URL")
     agents_update.add_argument("--provider", help="New provider type")
     agents_update.add_argument("--provider-config", help="Updated provider configuration (JSON)")
+    agents_delete = agents.add_parser("delete", parents=[common], help="Delete an agent")
+    agents_delete.add_argument("agent_id", nargs="?", help="ID of the agent to delete")
+    agents_delete.add_argument("--agent", help="Alias for agent_id")
+    agents_delete.add_argument("--yes", action="store_true", help="Confirm deletion")
 
     rooms = sub.add_parser("rooms", parents=[common], help="Manage chat rooms and participants")
     rooms_sub = rooms.add_subparsers(dest="rooms_cmd", required=True, title="room commands", metavar="ROOM_CMD")
@@ -1013,6 +1098,16 @@ def build_parser() -> argparse.ArgumentParser:
     rooms_show.add_argument("room_id", nargs="?", help="ID of the room to show")
     rooms_show.add_argument("--room", help="Alias for room_id")
     rooms_show.add_argument("--user", help="User ID context for the room")
+    rooms_update = rooms_sub.add_parser("update", parents=[common], help="Update room metadata")
+    rooms_update.add_argument("room_id", nargs="?", help="ID of the room to update")
+    rooms_update.add_argument("--room", help="Alias for room_id")
+    rooms_update.add_argument("--user", help="User ID context")
+    rooms_update.add_argument("--name", required=True, help="New room name")
+    rooms_delete = rooms_sub.add_parser("delete", parents=[common], help="Delete a room")
+    rooms_delete.add_argument("room_id", nargs="?", help="ID of the room to delete")
+    rooms_delete.add_argument("--room", help="Alias for room_id")
+    rooms_delete.add_argument("--user", help="User ID context")
+    rooms_delete.add_argument("--yes", action="store_true", help="Confirm deletion")
     rooms_add = rooms_sub.add_parser("add-agent", parents=[common], help="Add an agent to a room")
     rooms_add.add_argument("room_id", nargs="?", help="ID of the room")
     rooms_add.add_argument("agent_id", nargs="?", help="ID of the agent to add")
@@ -1096,15 +1191,20 @@ def main() -> int:
         ("users", "list"): cmd_users_list,
         ("users", "create"): cmd_users_create,
         ("users", "show"): cmd_users_show,
+        ("users", "update"): cmd_users_update,
+        ("users", "delete"): cmd_users_delete,
         ("users", "map"): cmd_users_map,
         ("users", "unmap"): cmd_users_unmap,
         ("agents", "list"): cmd_agents_list,
         ("agents", "create"): cmd_agents_create,
         ("agents", "show"): cmd_agents_show,
         ("agents", "update"): cmd_agents_update,
+        ("agents", "delete"): cmd_agents_delete,
         ("rooms", "list"): cmd_rooms_list,
         ("rooms", "create"): cmd_rooms_create,
         ("rooms", "show"): cmd_rooms_show,
+        ("rooms", "update"): cmd_rooms_update,
+        ("rooms", "delete"): cmd_rooms_delete,
         ("rooms", "add-agent"): cmd_rooms_add_agent,
         ("rooms", "remove-agent"): cmd_rooms_remove_agent,
         ("workspace", "init"): cmd_workspace_init,
