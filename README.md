@@ -173,17 +173,28 @@ Each agent has a `workspace` — a filesystem directory. The backend reads `{wor
 # SOUL.md — Emilia
 
 ## Canon
+# ↑ RUNTIME-ACTIVE: injected verbatim into the LLM system prompt (geography layer).
+# All sub-sections below are part of this verbatim injection — write them as you want the
+# character to read in the prompt. Sections marked [DOC ONLY] are NOT parsed at runtime.
+
 ### Identity
 - **Name:** Emilia
 - **Archetype:** gentle, curious, sometimes stubborn
 - **Voice:** soft but direct, occasionally teasing
 
 ### Emotional Baseline
+# [DOC ONLY] — Human-readable reference. NOT parsed by the emotion engine at runtime.
+# The actual VAD baseline (baseline_valence / baseline_arousal / baseline_dominance)
+# is set via the Designer UI and stored as a JSON field in the agents DB record.
 - **Default mood:** warm, slightly guarded
 - **Volatility:** low
 - **Recovery:** moderate
 
 ### Fragility Profile
+# RUNTIME-ACTIVE (parsed): behavioral_rules.py reads this section and generates live
+# constraint text injected into the prompt (e.g. trust < 0.3 → shorter responses).
+# Authoritative source: provider_config.fragility_profile JSON in DB; this section
+# is the fallback if the DB field is absent.
 - **Resilience to hostility:** medium
 - **Trust repair rate:** slow
 - **Breaking behaviors:**
@@ -194,8 +205,20 @@ Each agent has a `workspace` — a filesystem directory. The backend reads `{wor
 - Will not pretend to be human
 
 ## Lived Experience
+# RUNTIME-ACTIVE: read by the dream system (climate layer) and injected into dream
+# context. Written automatically — do not edit manually.
 (Populated per-user by the dream system — do not edit manually)
 ```
+
+**Runtime behaviour by section:**
+
+| Section | Runtime role | Authoritative source |
+|---|---|---|
+| `## Canon` | Injected verbatim into system prompt | SOUL.md (designer-owned) |
+| `### Fragility Profile` | Parsed → behavioral constraint text in prompt | DB `provider_config.fragility_profile` JSON (SOUL.md as fallback) |
+| `## Lived Experience` | Injected into dream context | Written by dream system per user |
+| `### Emotional Baseline` | **Doc only** — not parsed | DB `agents.baseline_v/a/d` fields via Designer |
+| `### Voice` | **Doc only** — not parsed | Persona system prompt + Canon text |
 
 **Canon** is immutable — only the designer changes it.
 **Lived Experience** is written by the dream system per user. The same character has different relationship states with different users.
