@@ -1,4 +1,9 @@
-# Phase E — CLI Completeness
+# Phase E — CLI Contract
+
+Status as of 2026-03-06:
+- Implemented in `cli/emilia.py`.
+- Verified flows: `auth check`, `profile set/use/show`, `context auto/show`, and `cli/test_cli.sh` against an isolated backend runtime.
+- Historical drift simulation docs remain archived under `docs/planning/archive/DRIFT-API.md`; they are not part of the active CLI/runtime contract.
 
 ## Goal
 Full agent/user/room lifecycle manageable from the terminal.
@@ -6,7 +11,7 @@ No frontend needed to create, configure, and test a character end-to-end.
 
 ---
 
-## New / Extended Commands
+## Current Command Surface
 
 ### Auth + Profiles + Context (Phase A)
 ```
@@ -61,6 +66,8 @@ emilia users unmap --user USER_ID --agent AGENT_ID   # revoke access
 
 ### Rooms
 ```
+emilia rooms list [--user USER_ID]
+emilia rooms create [--name NAME] [--user USER_ID] [--agent AGENT_ID]... [--agents A1,A2]
 emilia rooms show ROOM_ID              # detail: name, agents, message count
 emilia rooms update ROOM_ID --name "new-name"
 emilia rooms delete ROOM_ID --yes
@@ -68,8 +75,6 @@ emilia rooms add-agent    --room ROOM_ID --agent AGENT_ID
 emilia rooms remove-agent --room ROOM_ID --agent AGENT_ID
 
 `rooms create` supports one or many initial agents via repeated `--agent` or `--agents a,b,c`.
-
-# Already exists: emilia rooms list, rooms create
 ```
 
 ### Workspace Init (new helper)
@@ -111,7 +116,27 @@ Starter SOUL.md template:
 
 ---
 
-## Full E2E Flow (what should work after this phase)
+### Setup / Chat / Memory / Dreams
+```
+emilia setup [--user-id USER_ID] [--agent-id AGENT_ID] [--room-name NAME]
+
+emilia chat   [--room ROOM_ID] [--user USER_ID] [--agent AGENT_ID]
+emilia send   [--room ROOM_ID] [--user USER_ID] [--agent AGENT_ID] "message"
+emilia history [--room ROOM_ID] [--limit 20]
+
+emilia memory list   [--agent AGENT_ID]
+emilia memory read   PATH
+emilia memory search QUERY [--agent AGENT_ID]
+
+emilia dream trigger --agent AGENT_ID --user USER_ID
+emilia dream status  --agent AGENT_ID --user USER_ID
+emilia dream log     --agent AGENT_ID --user USER_ID
+emilia dream reset   --agent AGENT_ID --user USER_ID
+```
+
+---
+
+## Full E2E Flow
 
 ```bash
 # 1. Init workspace
@@ -131,9 +156,8 @@ emilia users create --name "Thai" --id thai
 # 4. Map user → agent
 emilia users map --user thai --agent emilia
 
-# 5. Create room + add agent
-emilia rooms create --name "emilia-thai"
-emilia rooms add-agent --room <room-id> --agent emilia
+# 5. Create room + persist context
+emilia rooms create --name "emilia-thai" --user thai --agent emilia
 
 # 6. Save context + chat
 emilia context auto --user thai
@@ -158,6 +182,7 @@ emilia dream trigger --agent emilia --user thai
 
 ---
 
-## Files Changed
-- `cli/emilia.py` — add all new commands
-- No backend changes needed (all routes exist)
+## Verification Notes
+- Use `CLI_BASE_URL=http://127.0.0.1:18080 ./cli/test_cli.sh` to smoke the lifecycle against an isolated backend.
+- `auth check` validates both `/api/health` reachability and authenticated `/api/manage/users` access.
+- `context auto` selects the most recent room for the chosen user and persists it into the active profile.

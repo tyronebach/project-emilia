@@ -1,6 +1,6 @@
 # Emilia Backend
 
-Standalone LLM companion backend. Multi-agent, multi-room, with persistent memory, long-term character evolution via dreams, and a behavioral rules system that makes characters feel real.
+Standalone LLM companion backend. Multi-agent, multi-room, with persistent memory, long-term character evolution via dreams, and a provider-based runtime (`native` or `openclaw`) for agent responses.
 
 No frontend required to run or test — the CLI covers the full lifecycle.
 
@@ -29,6 +29,12 @@ Three timescales of emotional state:
 | **Geography** | Core identity | Permanent | SOUL.md Canon |
 
 **Rooms** contain agents. **Users** are mapped to agents they can talk to. Each user-agent pair has its own Lived Experience that evolves independently via dreams.
+
+Provider/runtime notes:
+- `agents.provider` is the active runtime selector: `native` for OpenAI-compatible backends, `openclaw` for gateway-backed agents.
+- `provider_config` is the canonical per-agent runtime config payload.
+- `direct_model` and `direct_api_base` are still persisted as compatibility mirrors for existing tooling.
+- Designer drift endpoints remain as deprecated `410 Gone` diagnostics. Relationship evolution now runs through `/api/dreams`.
 
 ---
 
@@ -75,7 +81,7 @@ emilia agents create \
 emilia users create --name "Thai" --id thai
 emilia users map --user thai --agent emilia
 
-# 5. Create room + add agent
+# 5. Create room + save context
 emilia rooms create --name "emilia-thai" --user thai --agent emilia
 emilia context auto --user thai
 
@@ -222,13 +228,17 @@ This is what makes a character who's been treated poorly start giving shorter re
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `EMILIA_DB_PATH` | `.data/emilia.db` | SQLite database path |
-| `OPENAI_API_KEY` | — | Required for OpenAI provider |
+| `OPENAI_API_KEY` | — | Required for `native` provider unless the agent's `provider_config` supplies an API key |
+| `OPENAI_API_BASE` | `https://api.openai.com/v1` | Default base URL for `native` provider |
+| `DIRECT_DEFAULT_MODEL` | `openai-codex/gpt-5.1-codex-mini` | Default model for `native` provider when the agent has no override |
+| `OPENCLAW_GATEWAY_URL` | — | Optional explicit gateway URL for `openclaw` provider |
 | `EMILIA_EMBED_PROVIDER` | `ollama` | Embedding provider (`ollama` or `gemini`) |
 | `EMILIA_EMBED_MODEL` | `mxbai-embed-large` | Embedding model |
 | `EMILIA_EMBED_BASE_URL` | `http://localhost:11434` | Ollama base URL |
 | `GEMINI_API_KEY` | — | Required if `EMILIA_EMBED_PROVIDER=gemini` |
 | `AUTH_ALLOW_DEV_TOKEN` | `0` | Set to `1` to skip auth in dev |
 | `CLAWDBOT_TOKEN` | — | API auth token |
+| `CLAWDBOT_URL` | `http://127.0.0.1:18789` | Legacy/default OpenClaw service URL |
 | `MEMORY_AUTORECALL_ENABLED` | `0` | Enables backend proactive top-of-mind memory injection |
 | `COMPACTION_PERSONA_MODE` | `dm_only` | Persona compaction mode (`off`, `dm_only`, `all`) |
 | `DREAM_CONTEXT_MAX_MESSAGES` | `60` | Max recent messages used in dream context |
@@ -248,9 +258,12 @@ bash backend/scripts/run-tests.sh
 
 # Direct
 cd backend && .venv/bin/python -m pytest -q
+
+# CLI smoke (point at an isolated backend when possible)
+CLI_BASE_URL=http://127.0.0.1:18080 ./cli/test_cli.sh
 ```
 
-372 tests. CI-gated on every commit.
+Primary backend coverage lives under `backend/tests/`. The smoke CLI path is `cli/test_cli.sh`.
 
 ---
 

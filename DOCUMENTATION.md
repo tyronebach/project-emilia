@@ -1,6 +1,6 @@
 # Emilia Web App — LLM Agent Documentation
 
-**Purpose**: Trusted household LLM avatar chat app with VRM rendering, games, emotion engine, and extensive debug tools. Backend supports mixed LLM routing per agent (`openclaw` gateway mode or direct OpenAI-compatible mode).
+**Purpose**: Trusted household LLM avatar chat app with VRM rendering, games, emotion engine, and extensive debug tools. Backend routes each agent through a provider-based runtime (`native` OpenAI-compatible or `openclaw` gateway-backed), with compatibility fields retained for older tooling.
 
 **Primary Systems**
 - VRM viewer + animation system (Three.js + VRM + animation graph, lip sync, post-processing).
@@ -114,9 +114,9 @@ You can edit `SOUL.md` or `MEMORY.md` at any time on your host machine. The back
     - `message`
     - optional `game_context` (validated `GameContextRequest`)
     - optional `runtime_trigger` / `runtimeTrigger` (marks runtime-origin turns)
-  - Per responding agent, routing uses persisted `agents.chat_mode`:
-    - `openclaw`: `agent:{clawdbot_agent_id}` via gateway
-    - `direct`: OpenAI-compatible `/chat/completions` (with optional per-agent model/base overrides)
+  - Per responding agent, routing uses persisted `agents.provider`:
+    - `native`: OpenAI-compatible `/chat/completions` using `provider_config` plus optional compatibility mirrors (`direct_model`, `direct_api_base`)
+    - `openclaw`: gateway-backed provider using `clawdbot_agent_id` / provider config
   - Stream response emits additive room events: `agent_start`, `agent_done`, `agent_error`, `avatar`, `emotion`.
 
 **Chat / Media** (`backend/routers/chat.py`)
@@ -133,7 +133,12 @@ You can edit `SOUL.md` or `MEMORY.md` at any time on your host machine. The back
 **Memory** (`backend/routers/memory.py`)
 - `GET /api/memory?agent_id=`: Returns `MEMORY.md` from agent workspace as `text/markdown`.
 - `GET /api/memory/list?agent_id=`: Lists memory files. Response `MemoryFilesResponse`.
+- `GET /api/memory/search?q=&agent_id=&limit=`: Hybrid memory search over the agent workspace/index.
 - `GET /api/memory/{filename}?agent_id=`: Returns specific memory file. Response `MemoryContentResponse`.
+
+**Games** (`backend/routers/games.py`)
+- `GET /api/games/catalog`: Effective public game catalog for the current `X-Agent-Id`.
+- `GET /api/games/catalog/{game_id}`: Effective game detail for the current `X-Agent-Id`.
 
 **Soul Window** (`backend/routers/soul_window.py`)
 - `GET /api/soul-window/mood`: User-scoped mood snapshot (dominant mood, secondaries, trust/intimacy, valence/arousal).
@@ -143,11 +148,27 @@ You can edit `SOUL.md` or `MEMORY.md` at any time on your host machine. The back
 - `POST /api/soul-window/events`: Idempotent timeline mutations (`add_milestone`, `add_event`, `remove_event`).
 
 **Admin / Manage** (`backend/routers/admin.py`)
+- `GET /api/manage/rooms`: Lists all rooms.
 - `DELETE /api/manage/rooms/all`: Deletes all rooms.
+- `GET /api/manage/users`: Lists all users.
+- `POST /api/manage/users`: Creates user. Body `UserCreate`.
+- `PUT /api/manage/users/{user_id}`: Updates user. Body `UserUpdate`.
+- `DELETE /api/manage/users/{user_id}`: Deletes user.
+- `GET /api/manage/users/{user_id}/agents`: Lists mapped agents for a user.
+- `PUT /api/manage/users/{user_id}/agents/{agent_id}`: Grants user access to an agent (compat endpoint).
+- `POST /api/manage/users/{user_id}/agents/{agent_id}`: Grants user access to an agent (CLI path).
+- `DELETE /api/manage/users/{user_id}/agents/{agent_id}`: Revokes user access to an agent.
 - `GET /api/manage/agents`: Lists all agents.
 - `POST /api/manage/agents`: Creates agent. Body `AgentCreate`.
 - `PUT /api/manage/agents/{agent_id}`: Updates agent. Body `AgentUpdate`.
 - `DELETE /api/manage/agents/{agent_id}`: Deletes agent + related rooms, messages, emotional data.
+- `GET /api/manage/games`: Lists global game registry entries.
+- `POST /api/manage/games`: Creates registry entry. Body `GameRegistryCreate`.
+- `PUT /api/manage/games/{game_id}`: Updates registry entry. Body `GameRegistryUpdate`.
+- `DELETE /api/manage/games/{game_id}`: Deactivates registry entry.
+- `GET /api/manage/agents/{agent_id}/games`: Lists per-agent game config.
+- `PUT /api/manage/agents/{agent_id}/games/{game_id}`: Upserts per-agent game config. Body `AgentGameConfigUpdate`.
+- `DELETE /api/manage/agents/{agent_id}/games/{game_id}`: Deletes per-agent game config.
 - `GET /api/manage/debug/compaction/{room_id}`: Compaction diagnostics for a room.
 - `POST /api/manage/debug/compaction/{room_id}/trigger`: Manual compaction for a room.
 
@@ -158,6 +179,12 @@ You can edit `SOUL.md` or `MEMORY.md` at any time on your host machine. The back
 - `GET /api/debug/emotional-timeline/{user_id}/{agent_id}?limit=`: Recent V2 events.
 - `POST /api/debug/emotional-decay/{user_id}/{agent_id}?seconds=`: Apply decay.
 - `GET /api/debug/calibration/{user_id}/{agent_id}`: Calibration profile for user-agent.
+
+**Dreams** (`backend/routers/dreams.py`)
+- `GET /api/dreams/{agent_id}/{user_id}`: Dream/lived-experience status.
+- `GET /api/dreams/{agent_id}/{user_id}/log`: Dream audit trail for the pair.
+- `POST /api/dreams/{agent_id}/{user_id}/trigger`: Manually trigger a dream cycle.
+- `DELETE /api/dreams/{agent_id}/{user_id}/reset`: Reset lived experience for the pair.
 
 **Designer V2** (`backend/routers/designer_v2.py`)
 - `GET /api/designer/v2/personalities`: List agent personality configs.
@@ -182,24 +209,19 @@ You can edit `SOUL.md` or `MEMORY.md` at any time on your host machine. The back
 - `GET /api/designer/v2/archetypes/{archetype_id}`: Fetch one archetype (full replay payload).
 - `POST /api/designer/v2/archetypes`: Create archetype from explicit `message_triggers`.
 - `POST /api/designer/v2/archetypes/generate`: Generate archetype from uploaded UTF-8 text file.
+- `POST /api/designer/v2/archetypes/{archetype_id}/regenerate`: Rebuild an archetype from uploaded UTF-8 text.
 - `PUT /api/designer/v2/archetypes/{archetype_id}`: Update archetype metadata/replay data.
 - `DELETE /api/designer/v2/archetypes/{archetype_id}`: Delete archetype.
 - `POST /api/designer/v2/drift-simulate`: **Deprecated** (`410 Gone`) — use `/api/dreams` for climate evolution.
 - `POST /api/designer/v2/drift-simulate-summary`: **Deprecated** (`410 Gone`) — use `/api/dreams` for climate evolution.
 - `POST /api/designer/v2/drift-compare`: **Deprecated** (`410 Gone`) — use `/api/dreams` for climate evolution.
 
-### Drift API (Used By `/designer-v2` Drift Tab)
+### Archived Drift Diagnostics (Deprecated)
 
-Detailed drift endpoint contract is documented in:
+Legacy drift endpoint contracts are archived here:
 - `docs/planning/archive/DRIFT-API.md`
 
-This includes:
-- Frontend request flow for the Drift tab
-- Exact request bodies for `drift-simulate`, `drift-simulate-summary`, and `drift-compare`
-- Archetype CRUD + generate contract (`/archetypes*`)
-- Replay mode behavior (`sequential` vs `random`) and one-step apply simulation knobs
-- Backend defaults, validation behavior, and typical errors
-- Full and compact response shapes and field notes
+Use that archive only for legacy Designer drift-tab maintenance. It does not describe the active relationship-evolution runtime, which now lives under `/api/dreams`.
 
 ### Data Models
 
@@ -208,10 +230,11 @@ This includes:
 - `CreateRoomRequest` (with optional `room_type`), `UpdateRoomRequest`, `AddRoomAgentRequest`, `UpdateRoomAgentRequest`, `RoomChatRequest`
   - `RoomChatRequest`: `{message, mention_agents?, game_context?, runtime_trigger?}`
 - `SpeakRequest`: `{text, voice_id?}`
-- `AgentCreate`: `{id, display_name, clawdbot_agent_id, vrm_model?, voice_id?, workspace?, chat_mode?, direct_model?, direct_api_base?}`
-- `AgentUpdate`: `{display_name?, voice_id?, vrm_model?, workspace?, chat_mode?, direct_model?, direct_api_base?}`
+- `AgentCreate`: `{id, display_name, clawdbot_agent_id?, vrm_model?, voice_id?, workspace?, direct_model?, direct_api_base?, provider, provider_config}`
+- `AgentUpdate`: `{display_name?, voice_id?, vrm_model?, workspace?, clawdbot_agent_id?, direct_model?, direct_api_base?, provider?, provider_config?}`
 - `UserPreferencesUpdate`: `{preferences: {...}}`
 - `SoulWindowEventsRequest`: `{action, id?, item?}`
+- `GameRegistryCreate`, `GameRegistryUpdate`, `AgentGameConfigUpdate`
 
 **Pydantic responses** (`backend/schemas/responses.py`)
 - `UserResponse`, `AgentResponse`
@@ -226,7 +249,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 
 **Core tables**
 - `users`: `id`, `display_name`, `preferences`, `created_at`
-- `agents`: `id`, `display_name`, `clawdbot_agent_id`, `vrm_model`, `voice_id`, `workspace`, `chat_mode`, `direct_model`, `direct_api_base`, emotional baselines + profile JSON
+- `agents`: `id`, `display_name`, `clawdbot_agent_id`, `vrm_model`, `voice_id`, `workspace`, `provider`, `provider_config`, compatibility mirrors (`direct_model`, `direct_api_base`, legacy `chat_mode`), emotional baselines + profile JSON
 - `user_agents`: many-to-many access
 - `rooms`: canonical chat container (`room_type` = `dm` or `group`, `created_by`, settings, activity counters, optional compaction summary)
 - `room_participants`: many-to-many user membership in rooms
@@ -234,7 +257,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `room_messages`: chat message log with sender attribution (`sender_type`: `user`|`agent`, `sender_id`) and behavior tags. Frontend `ChatMessage` also supports `sender_type: 'system'` for local error messages.
 - `tts_cache`: TTS caching data
 - `game_stats`: per-room game results (`room_id` FK to rooms)
-- `drift_archetypes`: global drift replay datasets used by Designer V2 simulation
+- `drift_archetypes`: legacy drift replay datasets kept for archived Designer diagnostics
 
 **Emotion engine tables**
 - `emotional_state`: persistent state per user-agent, relationship dimensions, calibration JSON
@@ -258,8 +281,8 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - `COMPACT_THRESHOLD`, `COMPACT_KEEP_RECENT`, `COMPACT_MODEL`.
 - `COMPACTION_PERSONA_MODE`, `COMPACTION_TEXTURE_MAX_LINES`, `COMPACTION_OPEN_THREADS_MAX`.
 - `SOUL_SIM_PERSONA_MODEL`, `SOUL_SIM_MAX_TURNS`.
-- `OPENAI_API_KEY`, `OPENAI_API_BASE`, `DIRECT_DEFAULT_MODEL` (used when agent `chat_mode=direct`).
-- `OPENCLAW_GATEWAY_URL`, `DIRECT_TOOL_MAX_STEPS`, `GEMINI_API_KEY`.
+- `OPENAI_API_KEY`, `OPENAI_API_BASE`, `DIRECT_DEFAULT_MODEL` (used when agent `provider=native` and not overridden in `provider_config`).
+- `OPENCLAW_GATEWAY_URL`, `CLAWDBOT_URL`, `DIRECT_TOOL_MAX_STEPS`, `GEMINI_API_KEY`.
 - `GAMES_V2_AGENT_ALLOWLIST` (optional agent rollout cohort).
 - `MEMORY_AUTORECALL_ENABLED`, `MEMORY_AUTORECALL_SCORE_THRESHOLD`, `MEMORY_AUTORECALL_MAX_ITEMS`, `MEMORY_AUTORECALL_MAX_CHARS`, `MEMORY_AUTORECALL_RUNTIME_TRIGGER_ENABLED`.
 - `MEMORY_AUTOCAPTURE_ENABLED`, `MEMORY_AUTOCAPTURE_MODEL`, `MEMORY_AUTOCAPTURE_TIMEOUT_S`, `MEMORY_AUTOCAPTURE_MAX_CANDIDATES`, `MEMORY_AUTOCAPTURE_MAX_ITEMS_PER_DAY`, `MEMORY_AUTOCAPTURE_MIN_CONFIDENCE`.
@@ -290,7 +313,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - Detects triggers with a local GoEmotions classifier (`SamLowe/roberta-base-go_emotions`).
 - Normalizes legacy trigger aliases to canonical GoEmotions labels for backward compatibility.
 - Applies sarcasm-aware co-occurrence dampening when positive signals conflict with negative/recent-negative context.
-- Maintains emotional state (V/A/D + relationship dimensions + mood weights).
+- Maintains emotional state (V/A/D + relationship dimensions). Persisted mood-weight drift is no longer part of the active runtime path.
 - Supports per-trigger calibration and outcome-driven learning.
 - Produces prompt context blocks for injection.
 
@@ -313,7 +336,7 @@ Defined in `backend/db/connection.py` (auto-init + migrations on import).
 - Used by `POST /api/designer/v2/soul/simulate`.
 
 **LLM Caller** (`backend/services/llm_caller.py`)
-- Extracted from `rooms.py`. Provides `call_llm_streaming()` async generator for both `direct` and `openclaw` modes.
+- Extracted from `rooms.py`. Provides `call_llm_streaming()` async generator via the provider registry for both `native` and `openclaw`.
 - Yields `{"content": str}` chunks or `{"done": True, "usage": dict}` terminal event.
 - Used by both streaming and non-streaming room chat paths.
 
