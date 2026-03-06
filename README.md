@@ -118,7 +118,7 @@ emilia users map   --user USER_ID --agent AGENT_ID
 emilia users unmap --user USER_ID --agent AGENT_ID
 
 emilia rooms list
-emilia rooms create [--name NAME] [--user USER_ID] [--agent AGENT_ID]
+emilia rooms create [--name NAME] [--user USER_ID] [--agent AGENT_ID]... [--agents A1,A2]
 emilia rooms show ROOM_ID
 emilia rooms update ROOM_ID --name NAME
 emilia rooms delete ROOM_ID --yes

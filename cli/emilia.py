@@ -247,6 +247,26 @@ def slugify(value: str, fallback: str) -> str:
     return slug or fallback
 
 
+def parse_agent_ids(single_values: list[str] | None = None, csv_values: str | None = None) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+
+    for value in single_values or []:
+        normalized = (value or "").strip()
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            output.append(normalized)
+
+    if csv_values:
+        for raw in csv_values.split(","):
+            normalized = raw.strip()
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                output.append(normalized)
+
+    return output
+
+
 def derive_user_id(client: EmiliaClient, display_name: str) -> str:
     existing = {user["id"] for user in client.get("/api/manage/users")["users"]}
     base = slugify(display_name, "user")
@@ -691,15 +711,29 @@ def cmd_rooms_list(client: EmiliaClient, args) -> int:
 
 
 def cmd_rooms_create(client: EmiliaClient, args) -> int:
-    ids = require_ids(args)
+    config = load_config()
+    user_id = args.user or config.get("user_id") or DEFAULT_USER_ID
+
+    requested_agents = parse_agent_ids(
+        single_values=args.agent,
+        csv_values=args.agents,
+    )
+    if not requested_agents:
+        fallback_agent = config.get("agent_id") or DEFAULT_AGENT_ID
+        requested_agents = [fallback_agent]
+
     room = client.post(
         "/api/rooms",
-        headers=client._headers(user_id=ids["user_id"]),
-        json={"name": args.name or "cli-room", "agent_ids": [ids["agent_id"]]},
+        headers=client._headers(user_id=user_id),
+        json={"name": args.name or DEFAULT_ROOM_NAME, "agent_ids": requested_agents},
     )
-    config = load_config()
+
+    config["user_id"] = user_id
     config["room_id"] = room["id"]
+    if requested_agents:
+        config["agent_id"] = requested_agents[0]
     save_config(config)
+
     emit_created(args, room, room["id"])
     return 0
 
@@ -1092,7 +1126,8 @@ def build_parser() -> argparse.ArgumentParser:
     rooms_create = rooms_sub.add_parser("create", parents=[common], help="Create a new chat room")
     rooms_create.add_argument("--name", help="Display name for the room")
     rooms_create.add_argument("--user", help="User ID who owns the room")
-    rooms_create.add_argument("--agent", help="Initial agent ID to add to the room")
+    rooms_create.add_argument("--agent", action="append", help="Agent ID to add to the room (repeatable)")
+    rooms_create.add_argument("--agents", help="Comma-separated agent IDs to add to the room")
     rooms_create.set_defaults(room_required=False)
     rooms_show = rooms_sub.add_parser("show", parents=[common], help="Show detailed room information")
     rooms_show.add_argument("room_id", nargs="?", help="ID of the room to show")

@@ -62,6 +62,8 @@ emilia rooms delete ROOM_ID --yes
 emilia rooms add-agent    --room ROOM_ID --agent AGENT_ID
 emilia rooms remove-agent --room ROOM_ID --agent AGENT_ID
 
+`rooms create` supports one or many initial agents via repeated `--agent` or `--agents a,b,c`.
+
 # Already exists: emilia rooms list, rooms create
 ```
 
