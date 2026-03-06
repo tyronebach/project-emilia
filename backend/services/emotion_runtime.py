@@ -7,7 +7,6 @@ import logging
 import threading
 import time as time_module
 
-from config import settings
 from db.connection import get_db
 from db.repositories import AgentRepository, EmotionalStateRepository
 from services.emotion_engine import (
@@ -25,19 +24,6 @@ logger = logging.getLogger(__name__)
 _emotion_locks: dict[tuple[str, str], threading.Lock] = {}
 _emotion_locks_guard = threading.Lock()
 _SESSION_GAP_SECONDS = 2 * 60 * 60
-
-
-def _lerp(current: float, target: float, alpha: float) -> float:
-    return current + (target - current) * alpha
-
-
-def _resolve_reanchor_alpha(elapsed_seconds: float | None) -> float:
-    if elapsed_seconds is None:
-        return settings.emotion_reanchor_alpha_short_gap
-    long_gap_s = max(1, int(settings.emotion_reanchor_long_gap_hours)) * 3600
-    if elapsed_seconds >= long_gap_s:
-        return settings.emotion_reanchor_alpha_long_gap
-    return settings.emotion_reanchor_alpha_short_gap
 
 
 def get_emotion_lock(user_id: str, agent_id: str) -> threading.Lock:
@@ -116,21 +102,6 @@ async def process_emotion_pre_llm(
 
             engine = EmotionEngine(profile)
 
-            # Convert DB row to EmotionalState
-            # Load persisted mood_weights from DB, or initialize from agent's mood_baseline
-            mood_weights = EmotionalStateRepository.parse_mood_weights(state_row)
-
-            # FIX: Initialize mood_weights from mood_baseline if empty (Bug #1)
-            if not mood_weights:
-                from services.emotion_engine import get_mood_list
-
-                mood_weights = {mood: profile.mood_baseline.get(mood, 0) for mood in get_mood_list()}
-                logger.info(
-                    "[Emotion] Initialized mood_weights from mood_baseline for %s/%s",
-                    user_id,
-                    agent_id,
-                )
-
             # Load V2 trigger calibration
             cal_json = {}
             raw_cal = state_row.get("trigger_calibration_json")
@@ -147,42 +118,20 @@ async def process_emotion_pre_llm(
             state = EmotionalState.from_db_row(
                 state_row,
                 calibrations=calibrations,
-                mood_weights=mood_weights,
+                mood_weights={},
             )
 
+            # P013 weather model: reset per-session weather at session boundary.
             if _is_new_session(session_id, state_row):
-                from services.emotion_engine import get_mood_list
+                state.valence = profile.baseline_valence
+                state.arousal = profile.baseline_arousal
+                state.dominance = profile.baseline_dominance
 
-                if settings.emotion_session_reanchor_mode == "hard":
-                    state.valence = profile.baseline_valence
-                    state.arousal = profile.baseline_arousal
-                    state.dominance = profile.baseline_dominance
-                    state.mood_weights = {
-                        mood: profile.mood_baseline.get(mood, 0)
-                        for mood in get_mood_list()
-                    }
-                else:
-                    last_interaction = state_row.get("last_interaction")
-                    elapsed_seconds = None
-                    if isinstance(last_interaction, (int, float)):
-                        elapsed_seconds = max(0.0, time_module.time() - float(last_interaction))
-                    alpha = max(0.0, min(1.0, _resolve_reanchor_alpha(elapsed_seconds)))
-                    state.valence = _lerp(state.valence, profile.baseline_valence, alpha)
-                    state.arousal = _lerp(state.arousal, profile.baseline_arousal, alpha)
-                    state.dominance = _lerp(state.dominance, profile.baseline_dominance, alpha)
-                    state.mood_weights = {
-                        mood: _lerp(
-                            float(state.mood_weights.get(mood, 0.0) or 0.0),
-                            float(profile.mood_baseline.get(mood, 0.0) or 0.0),
-                            alpha,
-                        )
-                        for mood in get_mood_list()
-                    }
                 EmotionalStateRepository.update(
                     user_id,
                     agent_id,
                     increment_interaction=False,
-                    mood_weights=state.mood_weights,
+                    mood_weights={},
                     valence=state.valence,
                     arousal=state.arousal,
                     dominance=state.dominance,
@@ -190,12 +139,11 @@ async def process_emotion_pre_llm(
                 )
                 state_row = EmotionalStateRepository.get_or_create(user_id, agent_id)
 
-            # Apply decay since last interaction
+            # Apply decay since last interaction (weather only).
             last_updated = state_row.get("last_updated") or 0
             if last_updated:
                 elapsed = time_module.time() - last_updated
                 state = engine.apply_decay(state, elapsed)
-                engine.apply_mood_decay(state, elapsed)
 
             # Classifier-based trigger detection
             normalized_user_message = (user_message or "").strip()
@@ -221,28 +169,16 @@ async def process_emotion_pre_llm(
                     trigger_map[canonical] = intensity
             triggers = list(trigger_map.items())
 
-            # Accumulate V/A deltas during trigger loop, then project onto moods
-            total_va_delta = {"valence": 0.0, "arousal": 0.0}
+            # Apply trigger deltas to current weather.
             for trigger, intensity in triggers:
                 cal = state.trigger_calibration.get(trigger)
-                deltas = engine.apply_trigger_calibrated(state, trigger, intensity, cal)
-                for axis in ("valence", "arousal"):
-                    total_va_delta[axis] += deltas.get(axis, 0.0)
+                engine.apply_trigger_calibrated(state, trigger, intensity, cal)
 
-            if triggers:
-                mood_deltas = engine.calculate_mood_deltas_from_va(total_va_delta)
-                if mood_deltas:
-                    engine.apply_mood_deltas(state, mood_deltas)
-                    logger.debug(
-                        "[Emotion] Mood deltas (V/A projected): %s",
-                        {k: round(v, 3) for k, v in mood_deltas.items() if abs(v) > 0.001},
-                    )
-
-            # Save updated state (including mood_weights + V2 dimensions)
+            # Save updated state (weather + relationship dimensions; no persisted mood weights)
             EmotionalStateRepository.update(
                 user_id,
                 agent_id,
-                mood_weights=state.mood_weights,
+                mood_weights={},
                 valence=state.valence,
                 arousal=state.arousal,
                 dominance=state.dominance,

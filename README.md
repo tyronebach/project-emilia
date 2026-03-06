@@ -182,10 +182,10 @@ After N sessions or 48h of inactivity, the character reflects on recent interact
 - Writes back to DB + logs to `dream_log` audit table
 - Behavioral rules in the next session automatically reflect the new trust level
 
-Recent realism upgrade (P021):
+Recent realism upgrade (P021/P013 alignment):
 - Persona-aware compaction with structured/factual fallback
 - Top-of-mind memory recollection injection (threshold/budget-gated)
-- Soft emotional re-anchor option at session boundaries
+- Session-scoped weather reset (V/A/D) with relationship dimensions preserved
 - Optional backend memory auto-capture (disabled by default)
 
 This is what makes a character who's been treated poorly start giving shorter responses — and what makes a character who's been treated well start opening up.
@@ -207,8 +207,11 @@ This is what makes a character who's been treated poorly start giving shorter re
 | `MEMORY_AUTORECALL_ENABLED` | `0` | Enables backend proactive top-of-mind memory injection |
 | `COMPACTION_PERSONA_MODE` | `dm_only` | Persona compaction mode (`off`, `dm_only`, `all`) |
 | `DREAM_CONTEXT_MAX_MESSAGES` | `60` | Max recent messages used in dream context |
-| `EMOTION_SESSION_REANCHOR_MODE` | `soft` | Session boundary behavior (`hard`/`soft`) |
+| `EMOTION_TRIGGER_CALIBRATION_ENABLED` | `1` | Enables per-user trigger calibration multipliers |
+| `EMOTION_SESSION_REANCHOR_MODE` | `soft` | Deprecated in active runtime path after P013 weather reset |
 | `MEMORY_AUTOCAPTURE_ENABLED` | `0` | Enables optional backend auto memory capture |
+| `MEMORY_AUTOCAPTURE_MODEL` | `DIRECT_DEFAULT_MODEL` | Neutral extractor model used for structured memory candidates |
+| `MEMORY_AUTOCAPTURE_TIMEOUT_S` | `8.0` | Timeout (seconds) for memory extraction call |
 
 ---
 

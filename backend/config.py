@@ -62,6 +62,9 @@ class Settings:
 
         # Emotion engine
         self.trigger_classifier_enabled: bool = _env_bool("TRIGGER_CLASSIFIER_ENABLED", "1")
+        self.emotion_trigger_calibration_enabled: bool = _env_bool(
+            "EMOTION_TRIGGER_CALIBRATION_ENABLED", "1"
+        )
         self.trigger_classifier_confidence: float = max(
             0.0,
             min(1.0, _env_float("TRIGGER_CLASSIFIER_CONFIDENCE", "0.25")),
@@ -117,6 +120,20 @@ class Settings:
         self.emilia_embed_base_url: str = os.getenv(
             "EMILIA_EMBED_BASE_URL", "http://localhost:11434"
         ).strip().rstrip("/")
+
+        # Memory auto-capture extractor (Phase 5 target)
+        self.memory_autocapture_model: str = os.getenv(
+            "MEMORY_AUTOCAPTURE_MODEL",
+            self.direct_default_model,
+        ).strip()
+        self.memory_autocapture_timeout_s: float = max(
+            1.0,
+            _env_float("MEMORY_AUTOCAPTURE_TIMEOUT_S", "8.0"),
+        )
+        self.memory_autocapture_max_candidates: int = max(
+            1,
+            int(os.getenv("MEMORY_AUTOCAPTURE_MAX_CANDIDATES", "4")),
+        )
 
         self.direct_tool_max_steps: int = int(os.getenv("DIRECT_TOOL_MAX_STEPS", "6"))
         self.gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
