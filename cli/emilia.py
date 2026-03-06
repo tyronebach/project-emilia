@@ -22,7 +22,11 @@ except ImportError:  # pragma: no cover
 
 
 BASE_URL = os.getenv("CLI_BASE_URL", "http://localhost:8080").rstrip("/")
-CONFIG_PATH = Path.cwd() / ".emilia-cli.json"
+CONFIG_DIR = Path(os.getenv("EMILIA_CLI_CONFIG_DIR", str(Path.home() / ".config" / "emilia"))).expanduser()
+CONFIG_PATH = Path(os.getenv("EMILIA_CLI_CONFIG_PATH", str(CONFIG_DIR / "config.json"))).expanduser()
+LEGACY_CONFIG_PATH = Path.cwd() / ".emilia-cli.json"
+DEFAULT_PROFILE = "default"
+RUNTIME_PROFILE: str | None = None
 DEFAULT_USER_ID = "cli-user"
 DEFAULT_AGENT_ID = "cli-agent"
 DEFAULT_ROOM_NAME = "cli-room"
@@ -34,6 +38,143 @@ class _PlainConsole:
 
 
 console = Console() if Console else _PlainConsole()
+
+
+class CLIConfigStore:
+    """Persistent CLI config with profile support and legacy migration."""
+
+    def __init__(self, path: Path = CONFIG_PATH, legacy_path: Path = LEGACY_CONFIG_PATH) -> None:
+        self.path = path
+        self.legacy_path = legacy_path
+
+    @staticmethod
+    def _default_document() -> dict[str, Any]:
+        return {
+            "active_profile": DEFAULT_PROFILE,
+            "profiles": {DEFAULT_PROFILE: {}},
+        }
+
+    def _normalize_document(self, raw: Any) -> dict[str, Any]:
+        if not isinstance(raw, dict):
+            return self._default_document()
+
+        # Legacy flat shape: {user_id, agent_id, room_id, ...}
+        if "profiles" not in raw:
+            profile = {k: v for k, v in raw.items() if v is not None}
+            return {
+                "active_profile": DEFAULT_PROFILE,
+                "profiles": {DEFAULT_PROFILE: profile},
+            }
+
+        profiles_raw = raw.get("profiles")
+        normalized_profiles: dict[str, dict[str, Any]] = {}
+        if isinstance(profiles_raw, dict):
+            for name, cfg in profiles_raw.items():
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                cfg_dict = cfg if isinstance(cfg, dict) else {}
+                normalized_profiles[name.strip()] = {
+                    str(k): v for k, v in cfg_dict.items() if isinstance(k, str)
+                }
+
+        if not normalized_profiles:
+            normalized_profiles = {DEFAULT_PROFILE: {}}
+
+        active = str(raw.get("active_profile") or "").strip() or DEFAULT_PROFILE
+        if active not in normalized_profiles:
+            normalized_profiles.setdefault(active, {})
+
+        return {
+            "active_profile": active,
+            "profiles": normalized_profiles,
+        }
+
+    def load_document(self) -> dict[str, Any]:
+        if self.path.exists():
+            try:
+                return self._normalize_document(json.loads(self.path.read_text(encoding="utf-8")))
+            except (json.JSONDecodeError, OSError):
+                return self._default_document()
+
+        if self.legacy_path.exists():
+            try:
+                legacy = json.loads(self.legacy_path.read_text(encoding="utf-8"))
+                document = self._normalize_document(legacy)
+                self.save_document(document)
+                return document
+            except (json.JSONDecodeError, OSError):
+                return self._default_document()
+
+        return self._default_document()
+
+    def save_document(self, document: dict[str, Any]) -> None:
+        normalized = self._normalize_document(document)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(normalized, indent=2) + "\n", encoding="utf-8")
+
+    def get_active_profile_name(self) -> str:
+        document = self.load_document()
+        return str(document.get("active_profile") or DEFAULT_PROFILE)
+
+    def set_active_profile_name(self, profile: str) -> None:
+        normalized = profile.strip()
+        if not normalized:
+            raise SystemExit("Profile name cannot be empty")
+
+        document = self.load_document()
+        profiles = document.setdefault("profiles", {})
+        profiles.setdefault(normalized, {})
+        document["active_profile"] = normalized
+        self.save_document(document)
+
+    def list_profiles(self) -> dict[str, dict[str, Any]]:
+        document = self.load_document()
+        return dict(document.get("profiles") or {})
+
+    def get_profile(self, profile: str | None = None) -> dict[str, Any]:
+        document = self.load_document()
+        name = (profile or document.get("active_profile") or DEFAULT_PROFILE).strip()
+        profiles = document.setdefault("profiles", {})
+        if name not in profiles:
+            profiles[name] = {}
+            self.save_document(document)
+        return dict(profiles.get(name) or {})
+
+    def save_profile(self, profile_data: dict[str, Any], profile: str | None = None) -> None:
+        document = self.load_document()
+        name = (profile or document.get("active_profile") or DEFAULT_PROFILE).strip()
+        profiles = document.setdefault("profiles", {})
+        profiles[name] = {str(k): v for k, v in profile_data.items() if isinstance(k, str)}
+        document["active_profile"] = name
+        self.save_document(document)
+
+
+CONFIG_STORE = CLIConfigStore()
+
+
+def _resolve_profile_name(explicit: str | None = None) -> str:
+    if explicit and explicit.strip():
+        return explicit.strip()
+    if RUNTIME_PROFILE and RUNTIME_PROFILE.strip():
+        return RUNTIME_PROFILE.strip()
+    flag = _extract_cli_flag_value("--profile")
+    if flag:
+        return flag.strip()
+    env_profile = os.getenv("EMILIA_PROFILE", "").strip()
+    if env_profile:
+        return env_profile
+    return CONFIG_STORE.get_active_profile_name()
+
+
+def _extract_cli_flag_value(flag: str) -> str | None:
+    argv = sys.argv[1:]
+    for index, token in enumerate(argv):
+        if token == flag and index + 1 < len(argv):
+            return argv[index + 1]
+        prefix = f"{flag}="
+        if token.startswith(prefix):
+            return token[len(prefix):]
+    return None
 
 
 def auth_token() -> str:
@@ -172,14 +313,12 @@ class EmiliaClient:
         )
 
 
-def load_config() -> dict[str, str]:
-    if not CONFIG_PATH.exists():
-        return {}
-    return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+def load_config(profile: str | None = None) -> dict[str, Any]:
+    return CONFIG_STORE.get_profile(_resolve_profile_name(profile))
 
 
-def save_config(data: dict[str, str]) -> None:
-    CONFIG_PATH.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+def save_config(data: dict[str, Any], profile: str | None = None) -> None:
+    CONFIG_STORE.save_profile(data, _resolve_profile_name(profile))
 
 
 def print_json(payload: Any) -> None:
@@ -226,6 +365,14 @@ def require_ids(args) -> dict[str, str]:
     if not resolved["room_id"] and getattr(args, "room_required", True):
         raise SystemExit("No room configured. Run `emilia setup` first.")
     return resolved
+
+
+def resolve_base_url(args) -> str:
+    if getattr(args, "base_url", None):
+        return str(args.base_url).rstrip("/")
+    config = load_config()
+    configured = str(config.get("base_url") or "").strip().rstrip("/")
+    return configured or BASE_URL
 
 
 def print_table(title: str, rows: list[dict], columns: list[str]) -> None:
@@ -475,7 +622,9 @@ def cmd_setup(client: EmiliaClient, args) -> int:
     client.grant_access(user["id"], agent["id"])
     room = client.ensure_room(user["id"], room_name=room_name, agent_ids=[agent["id"]])
 
+    existing_cfg = load_config()
     payload = {
+        **existing_cfg,
         "user_id": user["id"],
         "agent_id": agent["id"],
         "room_id": room["id"],
@@ -489,6 +638,7 @@ def cmd_setup(client: EmiliaClient, args) -> int:
 
 def cmd_auth_check(client: EmiliaClient, args) -> int:
     payload: dict[str, Any] = {
+        "profile": _resolve_profile_name(),
         "base_url": client.base_url,
         "auth_header_present": "Authorization" in client.client.headers,
     }
@@ -514,10 +664,14 @@ def cmd_auth_check(client: EmiliaClient, args) -> int:
 
 def cmd_context_show(client: EmiliaClient, args) -> int:
     del client
-    config = load_config()
+    profile = _resolve_profile_name()
+    config = load_config(profile)
     payload = {
         "config_path": str(CONFIG_PATH),
+        "profile": profile,
+        "active_profile": CONFIG_STORE.get_active_profile_name(),
         "context": {
+            "base_url": config.get("base_url") or BASE_URL,
             "user_id": config.get("user_id"),
             "agent_id": config.get("agent_id"),
             "room_id": config.get("room_id"),
@@ -525,6 +679,9 @@ def cmd_context_show(client: EmiliaClient, args) -> int:
     }
     text = (
         f"config: {payload['config_path']}\n"
+        f"profile: {payload['profile']}"
+        f"{' (active)' if payload['profile'] == payload['active_profile'] else ''}\n"
+        f"base_url: {payload['context']['base_url']}\n"
         f"user: {payload['context']['user_id'] or '-'}\n"
         f"agent: {payload['context']['agent_id'] or '-'}\n"
         f"room: {payload['context']['room_id'] or '-'}"
@@ -536,24 +693,27 @@ def cmd_context_show(client: EmiliaClient, args) -> int:
 def cmd_context_set(client: EmiliaClient, args) -> int:
     del client
     updates = {
+        "base_url": getattr(args, "set_base_url", None),
         "user_id": args.user,
         "agent_id": args.agent,
         "room_id": args.room,
     }
     if not any(value is not None for value in updates.values()):
-        raise SystemExit("No updates provided. Pass at least one of --user/--agent/--room.")
+        raise SystemExit("No updates provided. Pass at least one setting.")
 
-    config = load_config()
+    profile = _resolve_profile_name()
+    config = load_config(profile)
     for key, value in updates.items():
         if value is not None:
             config[key] = value
-    save_config(config)
-    emit_json_or_text(args, config)
+    save_config(config, profile)
+    emit_json_or_text(args, {"profile": profile, **config})
     return 0
 
 
 def cmd_context_auto(client: EmiliaClient, args) -> int:
-    config = load_config()
+    profile = _resolve_profile_name()
+    config = load_config(profile)
     user_id = args.user or config.get("user_id") or DEFAULT_USER_ID
 
     payload = client.get("/api/rooms", headers=client._headers(user_id=user_id))
@@ -581,15 +741,122 @@ def cmd_context_auto(client: EmiliaClient, args) -> int:
     config["room_id"] = selected["id"]
     if agent_id:
         config["agent_id"] = agent_id
-    save_config(config)
+    save_config(config, profile)
 
     response = {
+        "profile": profile,
         "user_id": user_id,
         "room_id": selected["id"],
         "room_name": selected.get("name"),
         "agent_id": config.get("agent_id"),
+        "base_url": config.get("base_url") or BASE_URL,
     }
     emit_json_or_text(args, response)
+    return 0
+
+
+def cmd_profile_list(client: EmiliaClient, args) -> int:
+    del client
+    profiles = CONFIG_STORE.list_profiles()
+    active = CONFIG_STORE.get_active_profile_name()
+
+    rows = []
+    for name in sorted(profiles.keys()):
+        cfg = profiles.get(name) or {}
+        rows.append(
+            {
+                "profile": name,
+                "active": "*" if name == active else "",
+                "base_url": cfg.get("base_url") or BASE_URL,
+                "user_id": cfg.get("user_id") or "-",
+                "agent_id": cfg.get("agent_id") or "-",
+                "room_id": cfg.get("room_id") or "-",
+            }
+        )
+
+    payload = {"active_profile": active, "profiles": rows}
+    if args.json:
+        print_json(payload)
+        return 0
+    print_table("Profiles", rows, ["active", "profile", "base_url", "user_id", "agent_id", "room_id"])
+    return 0
+
+
+def cmd_profile_show(client: EmiliaClient, args) -> int:
+    del client
+    name = args.name or _resolve_profile_name()
+    cfg = load_config(name)
+    payload = {
+        "profile": name,
+        "active_profile": CONFIG_STORE.get_active_profile_name(),
+        "config_path": str(CONFIG_PATH),
+        "context": {
+            "base_url": cfg.get("base_url") or BASE_URL,
+            "user_id": cfg.get("user_id"),
+            "agent_id": cfg.get("agent_id"),
+            "room_id": cfg.get("room_id"),
+        },
+    }
+    text = (
+        f"profile: {payload['profile']}"
+        f"{' (active)' if payload['profile'] == payload['active_profile'] else ''}\n"
+        f"base_url: {payload['context']['base_url']}\n"
+        f"user: {payload['context']['user_id'] or '-'}\n"
+        f"agent: {payload['context']['agent_id'] or '-'}\n"
+        f"room: {payload['context']['room_id'] or '-'}"
+    )
+    emit_json_or_text(args, payload, text)
+    return 0
+
+
+def cmd_profile_use(client: EmiliaClient, args) -> int:
+    del client
+    name = args.name.strip()
+    if not name:
+        raise SystemExit("Profile name cannot be empty")
+    CONFIG_STORE.set_active_profile_name(name)
+    payload = {"active_profile": name}
+    emit_json_or_text(args, payload, f"active profile: {name}")
+    return 0
+
+
+def cmd_profile_set(client: EmiliaClient, args) -> int:
+    del client
+    name = args.name or _resolve_profile_name()
+    cfg = load_config(name)
+
+    updates = {
+        "base_url": getattr(args, "set_base_url", None),
+        "user_id": args.user,
+        "agent_id": args.agent,
+        "room_id": args.room,
+    }
+    if not any(v is not None for v in updates.values()):
+        raise SystemExit("No updates provided. Pass at least one setting.")
+
+    for key, value in updates.items():
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            cfg.pop(key, None)
+        else:
+            cfg[key] = value
+
+    save_config(cfg, name)
+    if args.activate:
+        CONFIG_STORE.set_active_profile_name(name)
+
+    payload = {
+        "profile": name,
+        "active_profile": CONFIG_STORE.get_active_profile_name(),
+        "context": {
+            "base_url": cfg.get("base_url") or BASE_URL,
+            "user_id": cfg.get("user_id"),
+            "agent_id": cfg.get("agent_id"),
+            "room_id": cfg.get("room_id"),
+        },
+    }
+    emit_json_or_text(args, payload)
     return 0
 
 
@@ -1011,6 +1278,8 @@ def cmd_chat(client: EmiliaClient, args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--json", action="store_true", help="Output raw JSON response instead of formatted text")
+    common.add_argument("--profile", help="CLI profile name (default: active profile)")
+    common.add_argument("--base-url", help="Override backend base URL for this command")
 
     parser = argparse.ArgumentParser(
         prog="emilia",
@@ -1036,11 +1305,27 @@ def build_parser() -> argparse.ArgumentParser:
     auth_sub = auth.add_subparsers(dest="auth_cmd", required=True, title="auth commands", metavar="AUTH_CMD")
     auth_sub.add_parser("check", parents=[common], help="Validate auth/token setup against backend")
 
+    profile = sub.add_parser("profile", parents=[common], help="Manage CLI profiles")
+    profile_sub = profile.add_subparsers(dest="profile_cmd", required=True, title="profile commands", metavar="PROFILE_CMD")
+    profile_sub.add_parser("list", parents=[common], help="List configured profiles")
+    profile_show = profile_sub.add_parser("show", parents=[common], help="Show one profile context")
+    profile_show.add_argument("name", nargs="?", help="Profile name (defaults to active)")
+    profile_use = profile_sub.add_parser("use", parents=[common], help="Set active profile")
+    profile_use.add_argument("name", help="Profile name to activate")
+    profile_set = profile_sub.add_parser("set", parents=[common], help="Update profile context values")
+    profile_set.add_argument("name", nargs="?", help="Profile name (defaults to active)")
+    profile_set.add_argument("--activate", action="store_true", help="Activate the profile after update")
+    profile_set.add_argument("--set-base-url", dest="set_base_url", help="Persist default base URL for profile")
+    profile_set.add_argument("--user", help="Default user ID")
+    profile_set.add_argument("--agent", help="Default agent ID")
+    profile_set.add_argument("--room", help="Default room ID")
+
     context = sub.add_parser("context", parents=[common], help="View or update default CLI context")
     context_sub = context.add_subparsers(dest="context_cmd", required=True, title="context commands", metavar="CONTEXT_CMD")
     context_show = context_sub.add_parser("show", parents=[common], help="Show saved user/agent/room context")
     context_show.set_defaults(room_required=False)
     context_set = context_sub.add_parser("set", parents=[common], help="Set saved user/agent/room context")
+    context_set.add_argument("--set-base-url", dest="set_base_url", help="Persist default backend base URL for current profile")
     context_set.add_argument("--user", help="Default user ID")
     context_set.add_argument("--agent", help="Default agent ID")
     context_set.add_argument("--room", help="Default room ID")
@@ -1215,10 +1500,23 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    client = EmiliaClient()
+
+    cli_profile = _extract_cli_flag_value("--profile") or getattr(args, "profile", None)
+    cli_base_url = _extract_cli_flag_value("--base-url") or getattr(args, "base_url", None)
+    if cli_base_url:
+        args.base_url = cli_base_url
+
+    global RUNTIME_PROFILE
+    RUNTIME_PROFILE = cli_profile.strip() if cli_profile else None
+
+    client = EmiliaClient(base_url=resolve_base_url(args))
     handlers: dict[tuple[str, str | None], Callable[[EmiliaClient, Any], int]] = {
         ("health", None): cmd_health,
         ("auth", "check"): cmd_auth_check,
+        ("profile", "list"): cmd_profile_list,
+        ("profile", "show"): cmd_profile_show,
+        ("profile", "use"): cmd_profile_use,
+        ("profile", "set"): cmd_profile_set,
         ("context", "show"): cmd_context_show,
         ("context", "set"): cmd_context_set,
         ("context", "auto"): cmd_context_auto,
@@ -1257,6 +1555,7 @@ def main() -> int:
     try:
         subcommand = (
             getattr(args, "auth_cmd", None)
+            or getattr(args, "profile_cmd", None)
             or getattr(args, "context_cmd", None)
             or getattr(args, "users_cmd", None)
             or getattr(args, "agents_cmd", None)

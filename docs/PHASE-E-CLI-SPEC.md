@@ -8,16 +8,21 @@ No frontend needed to create, configure, and test a character end-to-end.
 
 ## New / Extended Commands
 
-### Auth + Context (Phase A)
+### Auth + Profiles + Context (Phase A)
 ```
 emilia auth check
 
+emilia profile list
+emilia profile show [name]
+emilia profile use NAME
+emilia profile set [name] [--activate] [--set-base-url URL] [--user USER_ID] [--agent AGENT_ID] [--room ROOM_ID]
+
 emilia context show
-emilia context set [--user USER_ID] [--agent AGENT_ID] [--room ROOM_ID]
+emilia context set [--set-base-url URL] [--user USER_ID] [--agent AGENT_ID] [--room ROOM_ID]
 emilia context auto [--user USER_ID] [--agent AGENT_ID]
 ```
 
-`context auto` selects the most recent room for a user and updates `.emilia-cli.json` defaults.
+`context auto` selects the most recent room for a user and updates the active profile defaults in `~/.config/emilia/config.json`.
 
 ### Agents
 ```
@@ -148,7 +153,8 @@ emilia dream trigger --agent emilia --user thai
 - Commands that create something print the ID on stdout (scriptable)
 - `--json` flag on any command outputs raw JSON (for piping/scripting)
 - Errors exit non-zero with a clear message
-- `.emilia-cli.json` is updated by `setup` and `rooms create` — not by individual create commands (those print IDs, user pipes them)
+- `~/.config/emilia/config.json` (or `EMILIA_CLI_CONFIG_PATH`) stores profile contexts.
+- `setup`, `rooms create`, and context/profile commands update profile defaults.
 
 ---
 

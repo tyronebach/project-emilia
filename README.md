@@ -139,7 +139,22 @@ emilia dream log     --agent AGENT_ID --user USER_ID
 emilia dream reset   --agent AGENT_ID --user USER_ID
 ```
 
-All commands support `--json` for machine-readable output.
+Global flags:
+- `--json` machine-readable output
+- `--profile <name>` select CLI profile
+- `--base-url <url>` override backend URL for one command
+
+Profile/context helpers:
+```
+emilia profile list
+emilia profile show [name]
+emilia profile use NAME
+emilia profile set [name] [--activate] [--set-base-url URL] [--user USER_ID] [--agent AGENT_ID] [--room ROOM_ID]
+
+emilia context show
+emilia context set [--set-base-url URL] [--user USER_ID] [--agent AGENT_ID] [--room ROOM_ID]
+emilia context auto [--user USER_ID] [--agent AGENT_ID]
+```
 
 ---
 
