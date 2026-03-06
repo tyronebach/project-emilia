@@ -250,26 +250,35 @@ This is what makes a character who's been treated poorly start giving shorter re
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `EMILIA_DB_PATH` | `.data/emilia.db` | SQLite database path |
+| `EMILIA_DB_PATH` | `/data/emilia.db` | SQLite database path (use `./emilia.db` for local dev outside Docker) |
 | `OPENAI_API_KEY` | — | Required for `native` provider unless the agent's `provider_config` supplies an API key |
 | `OPENAI_API_BASE` | `https://api.openai.com/v1` | Default base URL for `native` provider |
 | `DIRECT_DEFAULT_MODEL` | `openai-codex/gpt-5.1-codex-mini` | Default model for `native` provider when the agent has no override |
 | `OPENCLAW_GATEWAY_URL` | — | Optional explicit gateway URL for `openclaw` provider |
+| `CLAWDBOT_TOKEN` | — | Bearer token for the OpenClaw gateway (required if using `openclaw` provider) |
+| `CLAWDBOT_URL` | `http://127.0.0.1:18789` | OpenClaw gateway URL |
+| `AUTH_TOKEN` | — | Backend API auth token (required in production) |
+| `AUTH_ALLOW_DEV_TOKEN` | `0` | Set to `1` to skip auth enforcement in local dev |
 | `EMILIA_EMBED_PROVIDER` | `ollama` | Embedding provider (`ollama` or `gemini`) |
 | `EMILIA_EMBED_MODEL` | `mxbai-embed-large` | Embedding model |
 | `EMILIA_EMBED_BASE_URL` | `http://localhost:11434` | Ollama base URL |
 | `GEMINI_API_KEY` | — | Required if `EMILIA_EMBED_PROVIDER=gemini` |
-| `AUTH_ALLOW_DEV_TOKEN` | `0` | Set to `1` to skip auth in dev |
-| `CLAWDBOT_TOKEN` | — | API auth token |
-| `CLAWDBOT_URL` | `http://127.0.0.1:18789` | Legacy/default OpenClaw service URL |
+| `ELEVENLABS_API_KEY` | — | Required for TTS voice synthesis |
+| `ELEVENLABS_VOICE_ID` | `21m00Tcm4TlvDq8ikWAM` | ElevenLabs voice ID |
+| `STT_SERVICE_URL` | `http://localhost:8765` | Speech-to-text service endpoint |
+| `TTS_CACHE_ENABLED` | `1` | Cache TTS audio to avoid redundant synthesis calls |
+| `TTS_CACHE_TTL_SECONDS` | `604800` | TTS cache TTL (7 days) |
+| `TTS_CACHE_MAX_ENTRIES` | `200` | Max cached TTS entries |
 | `MEMORY_AUTORECALL_ENABLED` | `0` | Enables backend proactive top-of-mind memory injection |
-| `COMPACTION_PERSONA_MODE` | `dm_only` | Persona compaction mode (`off`, `dm_only`, `all`) |
-| `DREAM_CONTEXT_MAX_MESSAGES` | `60` | Max recent messages used in dream context |
-| `EMOTION_TRIGGER_CALIBRATION_ENABLED` | `1` | Enables per-user trigger calibration multipliers |
-| `EMOTION_SESSION_REANCHOR_MODE` | `soft` | Deprecated in active runtime path after P013 weather reset |
 | `MEMORY_AUTOCAPTURE_ENABLED` | `0` | Enables optional backend auto memory capture |
 | `MEMORY_AUTOCAPTURE_MODEL` | `DIRECT_DEFAULT_MODEL` | Neutral extractor model used for structured memory candidates |
 | `MEMORY_AUTOCAPTURE_TIMEOUT_S` | `8.0` | Timeout (seconds) for memory extraction call |
+| `TRIGGER_CLASSIFIER_ENABLED` | `1` | Enables GoEmotions-based user emotion detection |
+| `SARCASM_MITIGATION_ENABLED` | `1` | Corrects ML misreads on known sarcastic phrases in user input |
+| `EMOTION_TRIGGER_CALIBRATION_ENABLED` | `1` | Enables per-user trigger calibration multipliers |
+| `COMPACTION_PERSONA_MODE` | `dm_only` | Persona compaction mode (`off`, `dm_only`, `all`) |
+| `DREAM_CONTEXT_MAX_MESSAGES` | `60` | Max recent messages used in dream context |
+| `CHAT_HISTORY_LIMIT` | `20` | Message history limit per chat request |
 
 ---
 
@@ -299,7 +308,7 @@ Primary backend coverage lives under `backend/tests/`. The smoke CLI path is `cl
 | C | ✅ | Standalone memory engine (Ollama embeddings), OpenClaw decoupled, CLI |
 | D | ✅ | Dream system, behavioral rules framework, session-scoped emotion |
 | P021/P013 follow-up | ✅ | Backend realism + emotional architecture alignment: top-of-mind recall, compaction v2, dream v2 climate path, session-scoped weather reset, calibration feature flag |
-| E | 🔄 | CLI completeness (agents create/update, users map, workspace init) |
+| E | ✅ | CLI completeness (agents create/update, users map, workspace init) |
 | Frontend redesign | — | Planned — major refactor |
 
 ---
