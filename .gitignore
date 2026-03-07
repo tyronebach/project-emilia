@@ -15,3 +15,8 @@ data/emilia.db
 data/emilia-*.db
 .emilia-cli.json
 agents/
+# TLS certs — never commit
+certs/
+*.key
+*.pem
+*.crt
