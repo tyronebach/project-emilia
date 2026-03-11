@@ -6,7 +6,7 @@
 
 ### Validation Update (2026-02-11)
 
-This plan is now implemented with a pragmatic V1 scope that preserves backwards compatibility:
+This plan is now implemented with a pragmatic V1 scope and an explicit cutover path:
 
 - `rooms` are a separate entity from `sessions` (no migration risk to 1:1 chat).
 - Room chat and history are stored in dedicated `room_messages` with sender attribution (`sender_type`, `sender_id`).
