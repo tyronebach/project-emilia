@@ -337,7 +337,7 @@ DEFAULT_TRIGGER_DELTAS: dict[str, dict[str, float]] = {
 
 ## Migration: Old Triggers → GoEmotions
 
-For backward compatibility during transition:
+For transition cleanup during rollout:
 
 ```python
 LEGACY_TRIGGER_ALIASES = {
@@ -930,7 +930,7 @@ docs/planning/P004-distilbert-trigger-classifier.md
    
    f) Remove _compile_patterns() method
    
-   g) Add LEGACY_TRIGGER_ALIASES for backward compatibility (see plan)
+   g) Add LEGACY_TRIGGER_ALIASES only as an explicit transition shim (see plan)
    
    h) Update normalize_trigger() to handle legacy → GoEmotions mapping
    
@@ -964,7 +964,7 @@ docs/planning/P004-distilbert-trigger-classifier.md
 
 ## Key Constraints
 - Use model: SamLowe/roberta-base-go_emotions (NOT the 6-emotion distilbert)
-- Keep backward compatibility via LEGACY_TRIGGER_ALIASES
+- Use LEGACY_TRIGGER_ALIASES only as an explicit transition shim
 - LLM fallback must be DISABLED by default
 - Use lazy loading for the model
 - All 28 GoEmotions labels must have entries in DEFAULT_TRIGGER_DELTAS
