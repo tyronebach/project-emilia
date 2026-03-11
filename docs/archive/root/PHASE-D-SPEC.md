@@ -180,7 +180,7 @@ Per P013 §1.1:
 Parser should:
 - Extract Canon section text
 - Extract Fragility Profile block → parse into `FragilityProfile` dataclass
-- If old format (no Canon/Lived Experience headers) → treat entire file as Canon (backwards compat)
+- If old format is encountered (no Canon/Lived Experience headers) → fail validation and require the v3 Canon/Lived Experience structure.
 
 ---
 
