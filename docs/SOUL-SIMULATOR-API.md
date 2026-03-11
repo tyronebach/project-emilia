@@ -1,26 +1,39 @@
 # SOUL Simulator API
 
-Backend endpoint for quick SOUL.md persona consistency checks.
+Backend contract for `POST /api/designer/v2/soul/simulate`.
 
-## Endpoint
+## Auth
 
-- `POST /api/designer/v2/soul/simulate`
-- Auth: `Authorization: Bearer <token>`
+- `Authorization: Bearer <token>`
 
 ## Request
 
-Provide exactly one input mode:
+Provide exactly one of:
+- `soul_md`
+- `agent_id`
 
-1. Inline draft SOUL:
+Required:
+- `archetype`
+
+Optional:
+- `turns`
+- `persona_model`
+- `archetype_model`
+- `judge_model`
+- `timeout_per_call`
+
+Example with inline SOUL:
+
 ```json
 {
-  "soul_md": "# SOUL.md\n## Essence\n- ...",
+  "soul_md": "# SOUL.md\n## Canon\n...",
   "archetype": "venting-sad",
   "turns": 4
 }
 ```
 
-2. Agent workspace SOUL:
+Example with agent workspace:
+
 ```json
 {
   "agent_id": "rem",
@@ -29,17 +42,17 @@ Provide exactly one input mode:
 }
 ```
 
-Optional parameters:
-- `persona_model`: model override for persona responses
-- `archetype_model`: model override for archetype user messages
-- `judge_model`: model override for analysis judge
-- `timeout_per_call`: per-LLM-call timeout in seconds (10-300, default 90)
-
 Defaults:
-- `persona_model`: `SOUL_SIM_PERSONA_MODEL` (default `gpt-5-mini`)
-- `archetype_model`: `COMPACT_MODEL` (default `gpt-4o-mini`)
-- `judge_model`: `COMPACT_MODEL` (default `gpt-4o-mini`)
-- `turns`: `SOUL_SIM_MAX_TURNS` (default `8`)
+- `turns`: `SOUL_SIM_MAX_TURNS`
+- `persona_model`: `SOUL_SIM_PERSONA_MODEL`
+- `archetype_model`: `SOUL_SIM_JUDGE_MODEL`
+- `judge_model`: `SOUL_SIM_JUDGE_MODEL`
+- `timeout_per_call`: `90.0`
+
+Validation:
+- `turns` must be within `1..SOUL_SIM_MAX_TURNS`
+- `timeout_per_call` must be between `10` and `300`
+- `agent_id` mode requires an agent row, a workspace, and a readable `SOUL.md`
 
 ## Response
 
@@ -72,14 +85,13 @@ Defaults:
 
 ## Errors
 
-- `400`: invalid input (bad turns, missing fields, unknown archetype)
-- `404`: `agent_id` mode with missing agent/workspace/`SOUL.md`
-- `503`: upstream LLM failure
-- `504`: upstream timeout
+- `400`: bad input or unknown archetype
+- `404`: missing agent, workspace, or `SOUL.md` in `agent_id` mode
+- `503`: upstream model failure
+- `504`: timeout
 
-## Archetypes
+## Canonical Archetypes
 
-Canonical IDs:
 - `aggressive-realistic`
 - `confused-lost`
 - `excited-scattered`
@@ -90,18 +102,4 @@ Canonical IDs:
 - `skeptical-pushback`
 - `venting-sad`
 
-Alias forms like `venting_sad` are accepted.
-
-Note: this endpoint uses archetypes as prompt personas for roleplay/judging. It does **not** run drift replay `message_triggers` math.
-
-## Expected Latency
-
-Each turn requires 2 LLM calls, plus 1 judge call at the end.
-
-| Turns | LLM Calls | Typical Time | Recommended Client Timeout |
-|-------|-----------|--------------|---------------------------|
-| 2     | 5         | 30-60s       | 120s                      |
-| 4     | 9         | 60-120s      | 180s                      |
-| 8     | 17        | 120-240s     | 300s                      |
-
-Set your HTTP client timeout higher than the expected time.
+Snake-case aliases are accepted and normalized.
