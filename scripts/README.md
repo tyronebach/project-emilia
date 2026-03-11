@@ -1,62 +1,37 @@
 # Development Scripts
 
-## Quick Start
+Backend-relevant helpers in this repo root.
 
-Run each in a separate terminal:
+## Common Commands
 
 ```bash
-# Terminal 1: Backend API (port 8080)
 ./scripts/dev-backend-local.sh
-
-# Terminal 2: Frontend (port 3443)
-./scripts/dev-frontend.sh
+./scripts/dev-backend.sh
+./scripts/check-backend.sh
+./scripts/check-all.sh
 ```
 
-## Scripts
+## Script Map
 
-| Script | Description | Port |
-|--------|-------------|------|
-| `dev.sh` | Print dev shortcuts | - |
-| `dev-backend-local.sh` | Run backend locally (Python) | 8080 |
-| `dev-backend.sh` | Run backend via Docker | 8080 |
-| `dev-frontend.sh` | Run Vite frontend (HTTPS) | 3443 |
-| `check-backend.sh` | Backend tests (docker) | - |
-| `check-frontend.sh` | Frontend tests/lint/build | - |
-| `check-all.sh` | Run backend + frontend checks | - |
-| `test-scenarios.sh` | Run emotion scenario suite | - |
-| `test-dialogues.py` | Run dialogue fixtures | - |
-| `test-emotion-scenarios.py` | Run emotion scenario fixtures | - |
-| `emotion-lab.py` | Interactive emotion tuning lab | - |
-| `compare-trigger-detection.py` | Legacy trigger-detection comparison utility (may require adaptation) | - |
+| Script | What it does |
+|--------|---------------|
+| `scripts/dev-backend-local.sh` | loads repo `.env`, requires `backend/.venv`, runs `uvicorn main:app --reload` on `:8080` |
+| `scripts/dev-backend.sh` | starts Docker Compose backend only and waits for `/api/health` |
+| `scripts/check-backend.sh` | delegates to `backend/scripts/run-tests.sh` |
+| `scripts/check-all.sh` | backend + frontend checks; frontend half is not maintained in this backend docs pass |
+| `scripts/dev.sh` | prints shortcut help |
+| `scripts/test-scenarios.sh` | emotion scenario helper |
+| `scripts/test-dialogues.py` | dialogue fixture runner |
+| `scripts/test-emotion-scenarios.py` | emotion scenario fixture runner |
+| `scripts/emotion-lab.py` | interactive emotion tuning helper |
 
-## URLs
+## Backend URLs
 
-- Frontend: https://localhost:3443
-- API Health: http://localhost:8080/api/health
-- API Docs: http://localhost:8080/docs
+- Health: `http://localhost:8080/api/health`
+- OpenAPI: `http://localhost:8080/docs`
 
-## Environment
+## Notes
 
-Use repo root `.env` (copy from `.env.example`):
-
-```bash
-cp .env.example .env
-# Edit .env and set at least:
-# - CLAWDBOT_TOKEN
-# - ELEVENLABS_API_KEY (if using TTS)
-```
-
-Both backend launchers (`dev-backend-local.sh` and `dev-backend.sh`) read `.env`.
-
-## Testing Emotion Engine
-
-```bash
-# Run unit tests
-cd backend && .venv/bin/python -m pytest tests/test_emotion_engine.py -v
-
-# Run dialogue scenarios
-./scripts/test-scenarios.sh
-
-# Interactive tuning lab
-cd backend && .venv/bin/python ../scripts/emotion-lab.py
-```
+- `scripts/dev-backend-local.sh` sets `EMILIA_DB_PATH` to `data/emilia.db` unless already set.
+- Both backend launchers expect `CLAWDBOT_TOKEN` to be available.
+- For backend tests, prefer `cd backend && .venv/bin/python -m pytest -q` or `cd backend && ./scripts/run-tests.sh`.
