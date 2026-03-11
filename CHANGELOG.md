@@ -4,6 +4,14 @@ All notable changes to Emilia Web App will be documented in this file.
 
 ---
 
+## [Unreleased] - 2026-03-11
+
+### Docs
+
+- Rewrote the active root/backend docs around the current FastAPI + SQLite backend.
+- Archived completed backend plans, dated reviews, and frontend-heavy markdown into `docs/archive/`.
+- Trimmed active docs to the backend paths, commands, and runtime contracts that still exist.
+
 ## [6.0.0] - 2026-03-05
 
 ### Changed - Backend Remediation + P013 Simplification
@@ -187,7 +195,7 @@ Merged the two parallel chat stacks (session-based and room-based) into a single
 
 - **Database cleanup** — Removed `sessions`, `session_participants`, and `messages` tables. Rooms are the sole chat container. Migrated `game_stats.session_id` → `room_id` (drop + recreate for correct FK).
 - **DM room auto-resolution** — `RoomRepository.get_or_create_dm_room(user_id, agent_id)` finds or creates a DM room for 1:1 chats.
-- **`/api/chat` as thin facade** — Resolves DM room, delegates to room chat pipeline. `_dm_stream_wrapper()` reshapes room SSE events to legacy DM format for backward compatibility.
+- **`/api/chat` as thin facade** — Resolves DM room, delegates to room chat pipeline. `_dm_stream_wrapper()` reshapes room SSE events to the DM facade contract.
 - **Agent delete cleanup** — `AgentRepository.delete()` now removes room data (room_messages, room_participants, room_agents, rooms) instead of removed session tables.
 - **ValueError handling** — DirectLLMClient config errors (e.g., missing API key) now return 503 instead of 500.
 - **Removed** — `backend/routers/sessions.py`, `backend/db/repositories/sessions.py`, `backend/db/repositories/messages.py`, `SessionRepository`, `MessageRepository` exports.
@@ -646,8 +654,8 @@ Merged the two parallel chat stacks (session-based and room-based) into a single
   - `db/seed.py` (44 lines) - Test data seeding
 - **Exception Handling**:
   - `core/exceptions.py` (88 lines) - Custom exceptions and HTTP error factories
-- **Backward Compatibility**:
-  - `database.py` (173 lines) - Compatibility wrapper for existing code
+- **Transition wrapper**:
+  - `database.py` (173 lines) - Temporary wrapper retained during the modularization cutover
 
 #### Docker Updates
 - **Updated Dockerfile** - Now copies complete modular structure:
@@ -665,7 +673,7 @@ Merged the two parallel chat stacks (session-based and room-based) into a single
 - All 27 API routes maintained and functional
 - Test suite: 15/15 passing ✅
 - Zero breaking changes to API contracts
-- Complete backward compatibility maintained
+- No API contract break introduced during that refactor
 
 ---
 
