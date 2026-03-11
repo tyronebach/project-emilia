@@ -24,7 +24,7 @@ This document captures the implemented remediation from the backend review for:
 - Replaced scattered provider-exception branches with a single normalized error path.
 - Added debug logging for ignored/unknown stream chunk types to avoid silent drop behavior.
 
-### Backward compatibility
+### Contract stability notes
 
 - SSE event names are unchanged: `agent_start`, `agent_done`, `agent_error`, `avatar`, `emotion`, final `done` data event.
 - Existing `error` text remains present in `agent_error` payloads.
@@ -94,8 +94,7 @@ New focused tests in `backend/tests/test_room_chat_stream_errors.py`:
   - `services/emotion/inference.py` (multi-signal outcome inference)
   - `services/emotion/__init__.py` (stable re-exports)
 - `services/emotion_engine.py` now focuses on orchestration/state updates while importing modular components.
-- Backward compatibility preserved:
-  - Existing imports from `services.emotion_engine` still resolve (`TriggerCalibration`, `ContextBucket`, `ContextualTriggerCalibration`, `infer_outcome_multisignal`, etc.).
+- Existing imports from `services.emotion_engine` still resolve during the current module split (`TriggerCalibration`, `ContextBucket`, `ContextualTriggerCalibration`, `infer_outcome_multisignal`, etc.).
 
 ### Why this is Phase 4
 
