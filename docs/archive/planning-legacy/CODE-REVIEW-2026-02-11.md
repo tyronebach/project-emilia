@@ -37,7 +37,7 @@ The codebase is well-structured with clean separations: modular routers, Zustand
 | Unused import `File` | `backend/routers/chat.py:3` | Imported but only `UploadFile` is used |
 | Unused import `bad_request` | `backend/routers/chat.py:13` | Imported but errors use `HTTPException` directly |
 
-**Action**: Delete all of the above. No backward compatibility needed.
+**Action**: Delete all of the above. No legacy support needed.
 
 ### 1.2 Frontend Dead Code
 
