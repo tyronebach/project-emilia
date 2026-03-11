@@ -410,7 +410,7 @@ Based on [AUDIT-CHAT-2026-02-18.md](./AUDIT-CHAT-2026-02-18.md). All 16 recommen
      avatarRegistry.applyCommand(event.agent_id, command);  // ALL agents, not just focused
    }
    ```
-4. Keep `useAppStore.avatarRenderer` for DM backwards compatibility (single-agent shortcut). In DM mode, `avatarRegistry` has one entry.
+4. Keep `useAppStore.avatarRenderer` as the DM single-agent shortcut. In DM mode, `avatarRegistry` has one entry.
 5. Dispose all renderers on room change (`clearRoomState`)
 
 **Files:**
