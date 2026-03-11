@@ -38,7 +38,7 @@ Only conversation container differs (`session_id` vs `room_id`), not agent ident
 2. **Room emotion correlation uses existing `session_id` column with a room namespace.**
    - Pass `session_id=f"room:{room_id}"` to post-LLM logging path.
    - Avoid DB migration in this phase.
-3. **Room SSE contract stays backward-compatible.**
+3. **Room SSE contract stays stable for current consumers.**
    - Keep `agent_start`, `agent_done`, `agent_error`.
    - Add optional `avatar` and `emotion` events (do not remove existing payloads).
 4. **Compaction tuning reuses existing settings:**
