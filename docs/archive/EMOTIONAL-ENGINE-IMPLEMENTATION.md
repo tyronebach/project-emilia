@@ -93,7 +93,7 @@ MOODS = [
 ]
 ```
 
-Each mood maps to (valence, arousal) for backwards compatibility:
+Each mood maps to (valence, arousal) in the transition model:
 
 ```python
 MOOD_VALENCE_AROUSAL = {

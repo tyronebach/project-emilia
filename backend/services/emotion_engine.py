@@ -265,9 +265,8 @@ class AgentProfile:
             if key and key not in lookup_order:
                 lookup_order.append(key)
 
-        # Also check any legacy aliases that map to the canonical trigger.
-        # This keeps older agent profiles working even when classifier output
-        # is now canonical GoEmotions labels.
+        # Also check any historical aliases that map to the canonical trigger.
+        # This normalizes stored profile data against canonical GoEmotions labels.
         if canonical:
             for legacy, mapped in LEGACY_TRIGGER_ALIASES.items():
                 if mapped == canonical and legacy not in lookup_order:

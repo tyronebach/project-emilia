@@ -63,7 +63,6 @@ def inject_game_context(
 
     game_id = ctx_value(game_context, "game_id", "gameId") or "unknown"
     if prompt_instructions is None:
-        # Backward-compatible fallback for callsites/tests that don't inject trusted prompts.
         prompt_instructions = ctx_value(game_context, "prompt_instructions", "promptInstructions") or ""
     state = ctx_value(game_context, "state_text", "state") or ""
     last_move = ctx_value(game_context, "last_user_move", "lastUserMove") or ""
@@ -106,11 +105,6 @@ def time_of_day_bucket(dt: datetime) -> str:
     if 17 <= hour < 22:
         return "evening"
     return "night"
-
-
-def _time_of_day_bucket(dt: datetime) -> str:
-    """Backward-compatible alias."""
-    return time_of_day_bucket(dt)
 
 
 def build_first_turn_context(

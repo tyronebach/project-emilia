@@ -22,7 +22,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
     return agents.find(a => a.agent_id === sender_id);
   }, [isUser, sender_id, agents]);
 
-  // Agent initial for avatar (fallback to 'E' for backwards compat)
+  // Agent initial for avatar when display name is missing
   const agentInitial = agentInfo?.display_name?.charAt(0).toUpperCase() ?? 'E';
   const isMultiAgent = agents.length > 1;
 

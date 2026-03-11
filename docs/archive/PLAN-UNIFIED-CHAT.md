@@ -34,7 +34,7 @@ Use a staged migration with compatibility adapters:
 
 ## Phase 0: Database
 
-Goal: make rooms canonical while preserving backwards compatibility.
+Goal: make rooms canonical and remove the old split model cleanly.
 
 ### Work Items
 
@@ -210,7 +210,7 @@ Goal: remove dead code and finalize docs/tests after full cutover.
 
 ### Test Plan
 
-1. Full backend suite + targeted migration/backward compatibility tests.
+1. Full backend suite + targeted migration and contract tests.
 2. Full frontend unit/integration suite + production build.
 3. Manual smoke checklist:
 - DM room

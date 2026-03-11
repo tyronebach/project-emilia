@@ -90,7 +90,7 @@ class AgentRepository:
             normalized_provider = "native"
 
         config = dict(provider_config) if provider_config else {}
-        # Backward compat: store clawdbot_agent_id inside provider_config for openclaw agents.
+        # Keep clawdbot_agent_id mirrored inside provider_config for openclaw agents during the current config shape.
         if clawdbot_agent_id and normalized_provider == "openclaw":
             config.setdefault("clawdbot_agent_id", clawdbot_agent_id)
 

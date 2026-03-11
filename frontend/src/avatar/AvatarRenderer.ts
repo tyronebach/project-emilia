@@ -105,7 +105,7 @@ export class AvatarRenderer {
   }
 
   /**
-   * Backward-compatible accessors for animation systems
+   * Public accessors used by avatar UI and debug surfaces
    */
   get lipSyncEngine(): LipSyncEngine | null {
     return this.animationController?.lipSync ?? null;

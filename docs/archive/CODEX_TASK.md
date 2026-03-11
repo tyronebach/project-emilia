@@ -30,7 +30,7 @@ Replace the legacy individual animation systems in `AvatarRenderer` with the con
    - Replace individual system instantiation with single `AnimationController`
    - Update public accessors to go through AnimationController
    - Update `update()` loop to call `animationController.update()`
-   - Keep backward compatibility for external access (lipSyncEngine, expressionController, lookAtSystem)
+   - Keep external access stable for current callers (lipSyncEngine, expressionController, lookAtSystem)
 
 2. **`frontend/src/avatar/AnimationController.ts`**
    - Fix any issues with the existing implementation
@@ -64,7 +64,7 @@ public lookAtSystem: LookAtSystem | null = null;
 // NEW
 private animationController: AnimationController | null = null;
 
-// Backward-compatible getters
+// Public getters
 get lipSyncEngine() { return this.animationController?.lipSync ?? null; }
 get expressionController() { return this.animationController?.expressions ?? null; }
 get lookAtSystem() { return this.animationController?.lookAt ?? null; }

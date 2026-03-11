@@ -289,14 +289,7 @@ class EmiliaClient:
 
     def grant_access(self, user_id: str, agent_id: str) -> None:
         path = f"/api/manage/users/{user_id}/agents/{agent_id}"
-        try:
-            self.put(path)
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code == 405:
-                # Backward compatibility with deployments still using POST.
-                self.post(path)
-                return
-            raise
+        self.put(path)
 
     def ensure_room(self, user_id: str, room_name: str, agent_ids: list[str]) -> dict:
         rooms = self.get("/api/rooms", headers=self._headers(user_id=user_id))["rooms"]

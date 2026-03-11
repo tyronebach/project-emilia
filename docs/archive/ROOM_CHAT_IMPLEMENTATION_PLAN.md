@@ -15,7 +15,7 @@ We're building a unified chat system where every conversation is a "room" that s
 - ✅ Unified route — no dual interfaces
 - ✅ Extend `sessions` table (NOT separate `chatrooms` table)
 - ✅ Use `session_agents` junction table for multi-agent
-- ✅ No backwards compatibility concerns — not in prod
+- ✅ No legacy-support constraints — not in prod
 - ✅ UI follows Zoom Mobile / Google Meet conventions
 - ✅ Games support variable player count
 
@@ -30,7 +30,7 @@ We extend the existing `sessions` table rather than creating a separate `chatroo
 ```
 sessions (existing, extended)
 ├── id (UUID)
-├── agent_id (primary agent, for backwards compat)
+├── agent_id (primary agent, temporary legacy field during cutover)
 ├── name
 ├── created_at
 ├── last_used
@@ -583,7 +583,7 @@ backend/
 | Add/Remove Agents? | ✅ Yes, WhatsApp-style sidebar |
 | Voice Priority? | ✅ Phase 3, after core UI |
 | Games in Rooms? | ✅ Yes, gray out incompatible |
-| Migration Path? | ✅ Hard migration, no backwards compat |
+| Migration Path? | ✅ Hard migration, no legacy support retained |
 | Avatar Layout? | ✅ Zoom/Meet style (split + thumbnails) |
 | Chat History? | ✅ Slide-out panel (Meet mobile style) |
 

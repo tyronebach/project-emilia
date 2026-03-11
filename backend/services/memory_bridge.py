@@ -1,4 +1,4 @@
-"""Compatibility wrapper around the standalone memory engine."""
+"""Shared adapter around the standalone memory engine."""
 from __future__ import annotations
 
 from services.memory.reader import SNIPPET_MAX_CHARS, read, validate_memory_path as _validate_memory_path

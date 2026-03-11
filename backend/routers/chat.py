@@ -1,7 +1,7 @@
 """Chat facade + media routes (chat, transcribe, speak).
 
-The /api/chat endpoint is a thin compatibility facade that resolves a DM room
-for the (user, agent) pair and delegates to the room chat pipeline.
+The /api/chat endpoint resolves a DM room for the (user, agent) pair and
+delegates to the room chat pipeline.
 """
 import asyncio
 import json

@@ -373,7 +373,7 @@ All phases complete as of 2026-02-08.
 
 ## Mood → Valence/Arousal Mapping
 
-For backwards compatibility, derive valence/arousal from moods:
+During transition cleanup, derive valence/arousal from moods:
 
 ```python
 MOOD_VALENCE_AROUSAL = {
