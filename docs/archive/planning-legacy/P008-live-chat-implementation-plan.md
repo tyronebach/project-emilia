@@ -64,7 +64,7 @@ Implication:
 
 - [ ] Add a small sarcasm config block (env-driven) in `backend/services/trigger_classifier.py`.
 - [ ] Add reusable trigger post-processing helper in `backend/services/trigger_classifier.py` (no behavior change yet when disabled).
-- [ ] Extend `EmotionEngine.detect_triggers()` signature to accept optional recent-context signal (default keeps backward compatibility).
+- [ ] Extend `EmotionEngine.detect_triggers()` signature to accept optional recent-context signal without introducing alternate legacy paths.
 - [ ] Add repository helper for recent negative trigger presence (e.g., last 5 events) in `backend/db/repositories/emotional_state.py`.
 - [ ] Pass recent-context signal from `_process_emotion_pre_llm()` in `backend/routers/chat.py` into `engine.detect_triggers(...)`.
 
