@@ -1,252 +1,112 @@
-# AGENTS.md - Emilia Webapp
+# AGENTS.md - Emilia Backend
 
-Instructions for Claude / Codex coding agents working on this project.
+Instructions for coding agents working in this repo. This pass is backend-only; frontend docs are being reduced or archived until that refactor settles.
 
 ## Quick Reference
 
 | Item | Value |
 |------|-------|
 | Location | `/home/tbach/Projects/emilia-project/emilia-webapp` |
-| Version | See CHANGELOG.md (latest: 5.7.1) |
-| Frontend | React 19 + Vite + TanStack Router + Zustand |
-| Backend | FastAPI (modular routers) + SQLite |
-| Tests | `backend/tests/`, `frontend/src/**/*.test.ts(x)` |
+| Backend entry | `backend/main.py` |
+| Backend stack | FastAPI + SQLite |
+| CLI | `cli/emilia.py` |
+| Backend tests | `backend/tests/` |
 
 ## Read First
 
-1. `CHANGELOG.md` — Recent changes, current state
-2. `DOCUMENTATION.md` — LLM-focused repo map
-3. `docs/planning/P021-backend-realism-implementation-spec-2026-03-04.md` — Backend realism implementation spec
-4. `docs/planning/P021-implementation-ticket-list-2026-03-04.md` — Execution ticket breakdown
-5. `docs/planning/P021-rollout-runbook-2026-03-04.md` — Canary/rollback operations
-6. `docs/animation/` — VRM/animation pipeline notes
+1. `README.md`
+2. `DOCUMENTATION.md`
+3. `CHANGELOG.md`
+4. `backend/docs/DREAMS-RUNBOOK.md`
+5. `docs/PROMPT_ASSEMBLY.md`
+6. `docs/planning/P023-session-recall-lossless-compaction.md` if working on compaction recall work
 
-## Project Structure
+## Backend Structure
 
-```
-emilia-webapp/
-├── backend/
-│   ├── main.py              # App setup + health
-│   ├── config.py            # Centralized settings
-│   ├── dependencies.py      # Auth + header dependencies
-│   ├── routers/             # API routes (8 modules)
-│   │   ├── users.py         # User management
-│   │   ├── agents.py        # Agent details
-│   │   ├── rooms.py         # Room CRUD, history, multi-agent chat
-│   │   ├── chat.py          # DM chat facade, transcribe, speak
-│   │   ├── memory.py        # Memory file access
-│   │   ├── admin.py         # Admin/manage operations
-│   │   ├── emotional.py     # Emotion engine debug endpoints
-│   │   └── designer_v2.py   # Designer V2 (personality, bonds, calibration)
-│   ├── schemas/             # Pydantic request/response models
-│   ├── services/            # External API clients
-│   │   ├── elevenlabs.py    # TTS REST client with alignment
-│   │   └── emotion_engine.py # Emotion Engine V2
-│   ├── db/
-│   │   ├── connection.py    # Database management + migrations
-│   │   └── repositories/    # CRUD operations
-│   └── core/exceptions.py   # Custom exceptions
-│
-├── frontend/
-│   ├── src/
-│   │   ├── routes/          # TanStack Router pages
-│   │   ├── components/      # React components
-│   │   ├── store/           # Zustand state management
-│   │   ├── hooks/           # Custom React hooks
-│   │   ├── utils/api.ts     # API client with auth
-│   │   ├── avatar/          # Three.js + VRM avatar system
-│   │   └── games/           # LLM game modules
-│   ├── public/              # Static assets
-│   │   ├── vrm/             # VRM models + vrm-manifest.json
-│   │   └── animations/      # Animation assets + manifest
-│   └── dist/                # Production build output
-│
-├── data/
-│   └── emilia.db            # SQLite database
-│
+```text
+backend/
+├── main.py
+├── config.py
+├── dependencies.py
+├── routers/
+├── schemas/
+├── services/
+│   ├── chat_runtime/
+│   ├── dreams/
+│   ├── emotion/
+│   ├── memory/
+│   └── providers/
+├── db/
+│   ├── connection.py
+│   ├── migrations/
+│   └── repositories/
 ├── docs/
-│   ├── animation/           # VRM/animation pipeline docs
-│   ├── archive/             # Historical docs
-│   └── planning/            # Implementation plans
-│
-├── docker-compose.yml       # Container orchestration
-├── nginx.conf               # Frontend proxy config
-└── CHANGELOG.md             # Version history
+├── scripts/
+└── tests/
 ```
 
 ## Commands
 
-```bash
-# Full stack (recommended)
-docker compose up -d --build
-docker compose logs -f backend
+Run backend locally:
 
-# Backend only
+```bash
 cd backend
 python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python main.py                # Dev server :8080
-.venv/bin/python -m pytest -q # Run tests (preferred local)
-./scripts/run-tests.sh        # Backend tests (prefers docker)
-
-# Frontend only
-cd frontend
-npm install
-npm run dev -- --host         # Dev server :3443
-npm run build                 # Production build
-npm test                      # Run tests
-npm run lint                  # ESLint
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python main.py
 ```
 
-## URLs
+Backend checks:
 
-| Service | URL |
-|---------|-----|
-| Frontend | https://localhost:3443 |
-| Backend | http://localhost:8080 |
-| API Docs | http://localhost:8080/docs |
-| Agent Settings | https://localhost:3443/manage |
-| User Settings | In-app modal (Drawer → User Settings) |
-
-## Key Patterns
-
-### API Authentication
-All endpoints require `Authorization: Bearer {token}` header.
-User context via `X-User-Id`, `X-Agent-Id` headers.
-
-### Chat Room Architecture
-- Each chat is a **room** (`room_type='dm'` for 1:1, `'group'` for multi-agent)
-- Frontend passes `room_id` in `/api/chat` requests to target the correct room
-- `GET /api/rooms?agent_id=X` filters rooms by agent server-side
-- `POST /api/rooms` auto-detects `room_type` from agent count
-- Room deletion cascades to messages, participants, and agent mappings
-
-### State Management
-- **Zustand** for client state (user, agent, room, UI)
-- **React Query** for server state (API calls)
-- Don't mix them
-
-### Avatar Assets
-- VRM files live in `frontend/public/vrm/`
-- `vrm-manifest.json` drives the debug model selector
-- `voice-ids.json` lists available TTS voices
-
-### Adding Endpoints
-1. Create/update router in `backend/routers/`
-2. Add request/response models in `backend/schemas/`
-3. Register router in `backend/main.py`
-
-### Adding Components
-1. Create component in `frontend/src/components/`
-2. Add route in `frontend/src/routes/` if needed
-3. Update `routeTree.gen.ts` for new routes
-
-## Don't Touch Without Approval
-
-- **Model config** — Agents use `gpt-5.1-codex-mini`, don't change
-- **Gateway config** — `~/.openclaw/openclaw.json`
-- **Push to main** — Always ask first
-- **Deploy to production** — Always ask first
-
-## Database Schema (SQLite)
-
-Defined in `backend/db/connection.py` and auto-initialized.
-
-```sql
--- Users
-users (id, display_name, preferences, created_at)
-
--- Agents (linked to OpenClaw agents)
-agents (id, display_name, clawdbot_agent_id, vrm_model, voice_id, workspace,
-        chat_mode, direct_model, direct_api_base,
-        baseline_valence, baseline_arousal, baseline_dominance,
-        emotional_volatility, emotional_recovery, emotional_profile, created_at)
-
--- User-Agent access (many-to-many)
-user_agents (user_id, agent_id)
-
--- Rooms (canonical chat container — DM or group)
-rooms (id, name, room_type, created_by, created_at, last_activity,
-        message_count, settings, summary, summary_updated_at, compaction_count,
-        summary_style, summary_version)
-
--- Room participants (many-to-many users)
-room_participants (room_id, user_id)
-
--- Room agents (many-to-many agents + response mode)
-room_agents (room_id, agent_id, response_mode, added_at)
-
--- Room messages (chat history with sender attribution)
-room_messages (id, room_id, sender_type, sender_id, content, timestamp,
-              origin, model, processing_ms, usage_prompt_tokens,
-              usage_completion_tokens, behavior_intent, behavior_mood,
-              behavior_mood_intensity, behavior_energy, behavior_move,
-              behavior_game_action)
-
--- TTS cache
-tts_cache (key, voice_id, model_id, voice_settings, text,
-           audio_base64, alignment_json, duration_estimate,
-           audio_bytes, created_at, last_used, hits)
-
--- Game stats
-game_stats (id, room_id, user_id, agent_id, game_id,
-            result, moves, duration_seconds, played_at)
-
--- Emotional state (per user-agent pair)
-emotional_state (id, user_id, agent_id, valence, arousal, dominance,
-                 trust, attachment, familiarity,
-                 intimacy, playfulness_safety, conflict_tolerance,
-                 mood_weights_json, trigger_calibration_json,
-                 trigger_buffer, pending_triggers,
-                 interaction_count, last_interaction, last_updated)
-
--- Emotional events V2
-emotional_events_v2 (id, user_id, agent_id, session_id, timestamp,
-                     message_snippet, triggers_json,
-                     valence_before, valence_after,
-                     arousal_before, arousal_after,
-                     dominant_mood_before, dominant_mood_after,
-                     agent_mood_tag, agent_intent_tag, inferred_outcome,
-                     trust_delta, intimacy_delta, calibration_updates_json)
-
--- Character lived experience (per user-agent dream state)
-character_lived_experience (agent_id, user_id, lived_experience, last_dream_at, dream_count)
-
--- Dream audit trail
-dream_log (id, user_id, agent_id, triggered_by, prompt_used, output_json,
-           trust_delta, attachment_delta, intimacy_delta, dreamed_at,
-           conversation_summary, lived_experience_before, lived_experience_after,
-           relationship_before, relationship_after, internal_monologue, model_used,
-           input_context_meta, safety_flags)
-
--- Trigger counts (per user-agent-trigger)
-trigger_counts (user_id, agent_id, trigger_type, window, count, last_seen)
-
--- Moods
-moods (id, description, valence, arousal, emoji, category, created_at)
-
--- Relationship types
-relationship_types (id, description,
-                    modifiers, behaviors, response_modifiers,
-                    trigger_mood_map, example_responses, extra, created_at)
+```bash
+cd backend && .venv/bin/python -m pytest -q
+cd backend && ./scripts/run-tests.sh
+./scripts/check-backend.sh
 ```
 
-## Common Issues
+Backend via Docker:
 
-| Problem | Solution |
-|---------|----------|
-| TTS 503 | Ensure `ELEVENLABS_API_KEY` is set and valid |
-| Missing auth | Set `AUTH_TOKEN` or enable `AUTH_ALLOW_DEV_TOKEN=1` |
-| Ad blocker blocks routes | Don't use "admin" in URLs, use "manage" |
-| CORS errors | Check `ALLOWED_ORIGINS` in `docker-compose.yml` |
-| Missing CLAWDBOT token | Set `CLAWDBOT_TOKEN` (required) |
+```bash
+docker compose up -d --build backend
+docker compose logs -f backend
+```
 
-## Test Execution Policy (Agents)
+## Live Backend Rules
 
-- Do **not** run host/global `pytest` or system Python for backend tests.
-- Always use one of these:
-        - `cd backend && .venv/bin/python -m pytest -q`
-        - `cd backend && ./scripts/run-tests.sh` (Docker-preferred flow)
-- If `.venv` is missing, create it and install requirements before testing:
-        - `cd backend && python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt`
+- Rooms are canonical; DM chat is a room-backed facade.
+- All authenticated routes require `Authorization: Bearer <token>`.
+- User-facing routes typically also require `X-User-Id`; agent-scoped routes may require `X-Agent-Id`.
+- `agents.provider` plus `agents.provider_config` are the active runtime source of truth.
+- `direct_model` and `direct_api_base` are transitional mirrors only.
+- Do not add compatibility layers unless explicitly requested.
+- Prefer updating docs to match code over preserving stale design intent.
+
+## Database Notes
+
+Authoritative schema lives in `backend/db/connection.py`.
+
+Key active tables:
+- `users`, `agents`, `user_agents`
+- `rooms`, `room_participants`, `room_agents`, `room_messages`
+- `emotional_state`, `emotional_events_v2`
+- `character_lived_experience`, `dream_log`
+- `moods`, `relationship_types`, `app_settings`
+
+## Do Not Change Without Approval
+
+- Default model policy (`gpt-5.1-codex-mini` family)
+- OpenClaw gateway config outside the repo
+- Pushes to `main`
+- Production deploy steps
+
+## Test Policy
+
+- Do not run host-global `pytest`.
+- Use `cd backend && .venv/bin/python -m pytest -q` or `cd backend && ./scripts/run-tests.sh`.
+- If `.venv` is missing:
+
+```bash
+cd backend
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
