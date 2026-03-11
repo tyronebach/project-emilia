@@ -236,7 +236,7 @@ Parent spec: `docs/planning/P021-backend-realism-implementation-spec-2026-03-04.
 
 **Scope**
 - Upgrade dream prompt language and expected JSON fields (`salient_threads`, `confidence`).
-- Keep backward compatibility if model omits new optional fields.
+- Parse only the current schema; omitted optional fields remain absent/null without adding alternate legacy parsing paths.
 
 **Files**
 - `backend/services/dreams/runtime.py`
