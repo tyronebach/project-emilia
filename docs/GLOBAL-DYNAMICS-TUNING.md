@@ -1,72 +1,57 @@
-# Global Dynamics — Mood Injection Tuning Guide
+# Global Dynamics Tuning
 
-## What This Controls
+This document covers the backend mood-injection settings stored in `app_settings`.
 
-Each agent has an emotional state with weighted moods (e.g., "content: 0.45, playful: 0.38, curious: 0.30"). Before each LLM call, the engine picks which mood(s) to inject into the prompt. Normally it picks the top mood deterministically. But for **high-volatility agents**, it can randomly select from runner-up moods — so a character who's 45% content and 38% playful might sometimes act playful instead of always content.
+## What It Controls
 
-Global Dynamics controls this volatility-driven selection. The knobs live in Designer V2 → Dynamics tab and are persisted in the `app_settings` table.
+Before each response, the emotion engine decides whether to inject only the dominant mood or to sample from nearby moods based on agent volatility and global settings.
 
-## The Knobs
+Relevant code:
+- `backend/services/emotion_engine.py`
+- `backend/routers/designer_v2.py` (`GET/PUT /api/designer/v2/mood-injection-settings`)
 
-| Knob | Default | Range | Description |
-|------|---------|-------|-------------|
-| **Top K** | 3 | 1–6 | How many candidate moods to consider for random selection |
-| **Volatility Threshold** | 0.3 | 0–1 | Minimum normalized volatility before random selection activates |
-| **Min Margin** | 0.15 | 0–1 | If #1 mood leads by this ratio, stay deterministic |
-| **Random Strength** | 0.7 | 0–2 | Base probability multiplier for choosing randomly |
-| **Max Random Chance** | 0.85 | 0–1 | Hard cap on random selection probability |
+Stored setting key:
+- `mood_injection_settings`
 
-## How It Works
+## Knobs
 
-1. Agent's `emotional_volatility` (0–3 range, set per-agent in profile) gets normalized to 0–1 by dividing by 1.5 and clamping.
-2. If normalized volatility < **Volatility Threshold** → always pick the top mood. No randomness.
-3. Otherwise, check margin between #1 and #2 mood weights. If `(#1 - #2) / #1` >= **Min Margin** → stay deterministic (clear winner).
-4. If both checks pass, compute random chance: `Random Strength × vol_factor × margin_factor`, capped at **Max Random Chance**.
-5. Roll the dice. If random wins, sample from **Top K** moods weighted by their scores (high-volatility flattens the distribution).
+| Knob | Default | Meaning |
+|------|---------|---------|
+| `top_k` | `3` | maximum number of moods considered for random selection |
+| `volatility_threshold` | `0.3` | minimum normalized volatility before randomness can activate |
+| `min_margin` | `0.15` | if the top mood wins by at least this ratio, stay deterministic |
+| `random_strength` | `0.7` | multiplier for random-selection probability |
+| `max_random_chance` | `0.85` | hard cap on random-selection probability |
 
-## Tuning Presets
+## Runtime Logic
 
-### Stable (Deterministic) — Agents always use their dominant mood
+1. Normalize `AgentProfile.emotional_volatility`.
+2. If normalized volatility is below `volatility_threshold`, inject the top mood only.
+3. Compare the top two mood weights.
+4. If the winner is far enough ahead, stay deterministic.
+5. Otherwise compute a random-selection chance, capped by `max_random_chance`.
+6. If the random branch wins, sample from the top `top_k` moods.
 
-| Knob | Value | Why |
-|------|-------|-----|
-| Top K | 1 | Only the #1 mood is considered |
-| Volatility Threshold | 0.9 | Almost no agent crosses this bar |
-| Min Margin | 0.05 | Even a tiny lead stays deterministic |
-| Random Strength | 0.1 | Minimal random pull when it does trigger |
-| Max Random Chance | 0.2 | Hard cap at 20% in extreme cases |
+## Safe Presets
 
-**Shortcut**: Set Volatility Threshold to **1.0** to disable randomness entirely — normalized volatility can never reach 1.0 in practice.
+Stable:
+- `top_k=1`
+- `volatility_threshold=0.9`
+- `min_margin=0.05`
+- `random_strength=0.1`
+- `max_random_chance=0.2`
 
-### Volatile — Agents frequently shift between close moods
+Moderate:
+- use the defaults
 
-| Knob | Value | Why |
-|------|-------|-----|
-| Top K | 5–6 | Wider pool of mood candidates |
-| Volatility Threshold | 0.05 | Nearly every agent qualifies for random selection |
-| Min Margin | 0.5 | Only a massive lead (50%+) stays deterministic |
-| Random Strength | 1.5 | Strong random pull |
-| Max Random Chance | 0.95 | Nearly always random when conditions are met |
+Volatile:
+- `top_k=5`
+- `volatility_threshold=0.05`
+- `min_margin=0.5`
+- `random_strength=1.5`
+- `max_random_chance=0.95`
 
-### Moderate (Default) — Balanced behavior
+## Notes
 
-| Knob | Value |
-|------|-------|
-| Top K | 3 |
-| Volatility Threshold | 0.3 |
-| Min Margin | 0.15 |
-| Random Strength | 0.7 |
-| Max Random Chance | 0.85 |
-
-## Per-Agent vs Global
-
-These knobs are **global** — they affect all agents. Per-agent mood variation is controlled by `emotional_volatility` in the agent's profile (Designer V2 → Personality tab, 0–3 range). That's the value that gets compared against the Volatility Threshold.
-
-To make one specific agent more volatile without affecting others, bump that agent's `emotional_volatility` instead of touching global dynamics.
-
-## Where It Lives
-
-- **Backend logic**: `backend/services/emotion_engine.py` → `select_moods_for_injection()`
-- **API endpoints**: `GET/PUT /api/designer/v2/mood-injection-settings`
-- **DB storage**: `app_settings` table, key `mood_injection`
-- **Frontend UI**: `frontend/src/components/designer/GlobalDynamicsTab.tsx`
+- These are global settings. Per-agent variation still comes from `emotional_volatility`.
+- Setting `top_k=1` effectively disables multi-mood sampling regardless of the other values.
