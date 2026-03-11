@@ -136,7 +136,7 @@ Complete two non-blocking follow-ups from room parity work:
     - [x] `resetRoomAvatars()`
 - [x] Update `frontend/src/hooks/useRoomChat.ts`:
   - [x] Always persist `avatar` SSE events into room store per agent.
-  - [x] Preserve focused-agent bridge to `useAppStore().applyAvatarCommand(...)` for backward compatibility.
+  - [x] Preserve focused-agent bridge to `useAppStore().applyAvatarCommand(...)` only during the registry cutover.
 
 ### Tests
 
