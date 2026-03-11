@@ -1,219 +1,82 @@
-# Agent Profile One-Shot
+# Agent Profile Payloads
 
-This folder contains JSON payload examples for one-shot Designer V2 personality updates.
-Apply them directly through backend API route:
-`POST /api/designer/v2/personalities/apply`
-Default response is compact (`ok`, `agent_id`, `name`) for low-token clients.
-Use `?full=true` if you need the complete personality object.
-Add `simulate_archetype=<id>` to run apply + drift summary in one call (archetypes are global records managed via `/api/designer/v2/archetypes*`).
+JSON examples for `POST /api/designer/v2/personalities/apply`.
 
-## Files
-- `rem_rezero_profile.json` — full example profile for Rem (Re:Zero)
-- `playful_companion_profile.json` — example profile for a playful companion
-- `profile_template.json` — minimal template with all keys
+This directory currently contains:
+- `profile_template.json`
+- `rem_rezero_profile.json`
 
-Example profile (use this):
-- `/home/tbach/Projects/emilia-project/emilia-webapp/backend/scripts/agent_profiles/rem_rezero_profile.json`
+There is no bundled `playful_companion_profile.json` in this repo.
 
-Schema/template reference:
-- `/home/tbach/Projects/emilia-project/emilia-webapp/backend/scripts/agent_profiles/profile_template.json`
+## Apply a Payload
 
-## Quick Start
+Compact response:
 
 ```bash
-cd /home/tbach/Projects/emilia-project/emilia-webapp
-
-# Load AUTH_TOKEN from env file (example)
-set -a
-source backend/.env
-set +a
-
-curl -sS -X POST "http://localhost:8080/api/designer/v2/personalities/apply" \
+curl -sS -X POST \
   -H "Authorization: Bearer ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
-  --data @backend/scripts/agent_profiles/rem_rezero_profile.json
-
-# One-step apply + compact simulation summary
-curl -sS -X POST "http://localhost:8080/api/designer/v2/personalities/apply?simulate_archetype=neutral" \
-  -H "Authorization: Bearer ${AUTH_TOKEN}" \
-  -H "Content-Type: application/json" \
-  --data @backend/scripts/agent_profiles/rem_rezero_profile.json
-
+  --data @backend/scripts/agent_profiles/rem_rezero_profile.json \
+  "http://localhost:8080/api/designer/v2/personalities/apply"
 ```
 
-Required in payload:
-- `agent_id` or `id`: target agent id
-
-Common failures:
-- `400`: missing `agent_id` / `id`
-- `400`: invalid `simulate_archetype` (when set)
-- `404`: target agent id does not exist
-- `401/403`: invalid or missing auth token
-
-## One-Step Simulation Knobs (Query Params)
-
-When using `simulate_archetype`, you can tune simulation from query params:
-- `simulate_duration_days` (default `7`)
-- `simulate_sessions_per_day` (default `2`)
-- `simulate_messages_per_session` (default `20`)
-- `simulate_session_gap_hours` (default `8`)
-- `simulate_overnight_gap_hours` (default `12`)
-- `simulate_seed` (optional deterministic run)
-- `simulate_replay_mode=sequential|random` (default `sequential`)
-- `simulate_include_config=true` (include resolved config in `simulation_summary`)
-
-## Archetype IDs (LLM)
-
-Query current ids from the API:
+Full response:
 
 ```bash
-curl -sS "http://localhost:8080/api/designer/v2/archetypes" \
-  -H "Authorization: Bearer ${AUTH_TOKEN}"
+curl -sS -X POST \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data @backend/scripts/agent_profiles/rem_rezero_profile.json \
+  "http://localhost:8080/api/designer/v2/personalities/apply?full=true"
 ```
 
-Default seeded ids (editable/replaceable in DB):
-- `neutral`: baseline stability checks
-- `aggressive`: trust loss + conflict resilience
-- `supportive`: trust/intimacy gain behavior
-- `playful`: teasing/banter behavior
-- `flirty`: intimacy/attachment behavior
-- `random`: robustness under mixed interactions
-- `rough_day_then_recover`: trust loss/recovery cycle
-- `lonely_then_playful`: vulnerability-to-play transition
-- `moody_week`: phase-shift stability
+Required payload field:
+- `agent_id` or `id`
 
-## How The Profile Is Applied
-- `baseline_*`, `volatility`, `recovery_rate` are stored as columns on `agents`.
-- The rest of the fields are stored inside `agents.emotional_profile` (JSON).
-- Missing keys are left as-is; the engine merges defaults at runtime.
-- The engine reads these values when constructing the agent profile for emotion updates.
+## Related Endpoints
 
-## Field Legend And Ranges
+- `GET /api/designer/v2/personalities`
+- `GET /api/designer/v2/personalities/{agent_id}`
+- `PUT /api/designer/v2/personalities/{agent_id}`
+- `GET /api/designer/v2/trigger-defaults`
+- `GET /api/designer/v2/mood-injection-settings`
+- `PUT /api/designer/v2/mood-injection-settings`
+- `POST /api/designer/v2/soul/simulate`
 
-Top-level fields (these map to the Designer V2 UI):
-- `agent_id` / `id`: Target agent id for apply endpoint/script safety.
-- `name`: Display name for the agent.
-- `description`: Short personality description.
-- `baseline_valence`: Baseline mood valence. Range `-1..1`.
-- `baseline_arousal`: Baseline energy/arousal. Range `-1..1`.
-- `baseline_dominance`: Baseline dominance/assertiveness. Range `-1..1`.
-- `volatility`: Reactivity multiplier. Range `0..3` (higher = bigger swings).
-- `recovery_rate`: Speed of return to baseline. Range `0..1`.
-- `mood_decay_rate`: Speed of mood-weight decay. Range `0..1`.
-- `mood_baseline`: Map of mood → weight. Range `0..30` per mood (clamped by the engine).
-- `trust_gain_rate`: Trust increase multiplier. Range `0..3`.
-- `trust_loss_rate`: Trust decrease multiplier. Range `0..3`.
-- `valence_gain_multiplier`: Positive valence scaling. Default `0.95`.
-- `valence_loss_multiplier`: Negative valence scaling. Default `1.1`.
-- `bond_gain_multiplier`: Positive attachment/intimacy scaling. Default `0.95`.
-- `bond_loss_multiplier`: Negative attachment/intimacy scaling. Default `1.1`.
-- `mood_gain_multiplier`: Positive mood-weight scaling. Default `0.9`.
-- `mood_loss_multiplier`: Negative mood-weight scaling. Default `1.1`.
-- `trigger_sensitivities`: Map of trigger → multiplier (float). `1.0` is default; values > 1 amplify, values < 1 dampen. Negative values flip direction.
-- `trigger_responses`: Map of trigger → per-axis override. Each entry can include:
-  - `preset`: One of `threatening`, `uncomfortable`, `neutral`, `muted`, `normal`, `amplified`, `intense`, `custom`.
-  - axis keys: `valence`, `arousal`, `trust`, `attachment`, `intimacy` (numbers; override defaults).
-- `essence_floors`: Map of axis → minimum floor. Intended as hard limits on traits.
-- `essence_ceilings`: Map of axis → maximum ceiling. Intended as hard limits on traits.
-- `vrm_model`: Optional avatar model filename (e.g., `emilia.vrm`).
-- `voice_id`: Optional ElevenLabs voice ID.
+Use `/api/designer/v2/soul/simulate` separately if you want stateless persona evaluation. The apply endpoint does not run inline drift or soul simulation.
 
-Notes:
-- The engine clamps emotional state axes to `[-1, 1]` for valence/arousal/dominance and to `[0, 1]` for trust/attachment/intimacy/familiarity.
-- `essence_floors` / `essence_ceilings` are stored and surfaced in the Designer UI, but are not currently enforced by the engine. They are safe to include for future behavior.
-- `preset` is supported by the backend. If a preset is provided, the engine converts it into numeric axis deltas using preset multipliers. Explicit axis values override preset-derived values on a per-axis basis.
-- `custom` is not a backend multiplier. Use `custom` only when you provide explicit axis values.
-- Legacy trigger aliases (for example `compliment` and `conflict`) are normalized to canonical GoEmotions labels (for example `love` and `anger`) during processing, and canonical `trigger_responses` apply to those alias detections.
+## Field Mapping
 
-## Triggers And Moods
-- Canonical triggers are exposed by `GET /api/designer/v2/trigger-defaults` and used by the UI.
-- Moods are defined in `backend/db/seed.py` under `_MOOD_SEEDS`.
+Stored on `agents` columns:
+- `name` -> `display_name`
+- `baseline_valence`
+- `baseline_arousal`
+- `baseline_dominance`
+- `volatility` -> `emotional_volatility`
+- `recovery_rate` -> `emotional_recovery`
+- `vrm_model`
+- `voice_id`
 
-Canonical mood set (Designer V2 / Emotion Engine):
-- `bashful`
-- `defiant`
-- `enraged`
-- `erratic`
-- `euphoric`
-- `flirty`
-- `melancholic`
-- `sarcastic`
-- `sassy`
-- `seductive`
-- `snarky`
-- `supportive`
-- `suspicious`
-- `vulnerable`
-- `whimsical`
-- `zen`
+Stored inside `agents.emotional_profile` JSON:
+- `description`
+- `mood_decay_rate`
+- `mood_baseline`
+- `trust_gain_rate`
+- `trust_loss_rate`
+- `valence_gain_multiplier`
+- `valence_loss_multiplier`
+- `bond_gain_multiplier`
+- `bond_loss_multiplier`
+- `mood_gain_multiplier`
+- `mood_loss_multiplier`
+- `trigger_sensitivities`
+- `trigger_responses`
+- `essence_floors`
+- `essence_ceilings`
 
-## Tips For AI-Assisted Character Design
-- Start from the example JSON, then describe the character in plain language and let the AI edit the values.
-- Keep baselines subtle; use mood baselines for personality flavor.
-- Use `trigger_responses` if you want specific triggers to feel opposite of default (for example `desire` feels threatening).
+## Notes
 
-## Quick Tuning Guide (for LLMs)
-- Want a more reactive character? Increase `volatility` (0.5 → 0.8) and/or reduce `recovery_rate`.
-- Want emotions to linger? Lower `mood_decay_rate` (0.3 → 0.15). Want them to fade fast? Raise it.
-- Want a warmer baseline? Increase `baseline_valence` and boost `supportive` / `whimsical` moods.
-- Want thicker skin? Lower `trust_loss_rate` and set negative triggers to `muted`.
-- Want stronger bonding? Raise `trust_gain_rate` and set `admiration`, `caring`, `love` to `amplified`.
-
-### Mood Volatility Note (Prompt Dynamics)
-- `volatility` now influences not only emotional deltas, but also how injected mood labels can vary between close contenders.
-- Low-volatility personas are more stable: injection usually stays with top mood(s).
-- High-volatility personas are more dynamic: when top moods are close, injection can occasionally jump to nearby moods.
-- This keeps persona flavor coherent while preventing overly static prompts in high-reactivity characters.
-
-## Canonical Triggers (Designer V2)
-
-The engine uses GoEmotions labels as canonical triggers:
-
-- `positive`: `admiration`, `amusement`, `approval`, `caring`, `excitement`, `gratitude`, `joy`, `love`, `optimism`, `pride`, `relief`
-- `negative`: `anger`, `annoyance`, `disappointment`, `disapproval`, `disgust`, `fear`, `grief`, `sadness`
-- `self_conscious`: `embarrassment`, `nervousness`, `remorse`
-- `neutral`: `confusion`, `curiosity`, `realization`, `surprise`
-- `intimate`: `desire`, `love`, `caring`
-- `neutral` label also exists in defaults but is filtered out by classifier trigger output.
-
-These are the valid keys for `trigger_sensitivities` and `trigger_responses`.
-
-## Trigger Presets (UI Meaning)
-Presets are shorthand for how a trigger should *feel* and in which direction it should move the axes.
-The backend converts presets to numeric deltas using the default trigger deltas multiplied by the preset multiplier.
-If you provide explicit axis values, those override the preset on that axis.
-
-Example trigger (what the LLM should understand):
-- Trigger: `admiration` — “Respect, appreciation, or praise toward the agent.”
-
-Preset meanings:
-- `threatening`
-  ↓ Valence, ↓ Arousal, ↓ Trust
-  Example: admiration feels manipulative or unsafe.
-- `uncomfortable`
-  ↓ Valence, ↘ Arousal, ↓ Trust
-  Example: admiration feels awkward or invasive.
-- `neutral`
-  ~ No change
-  Example: admiration is acknowledged but not taken personally.
-- `muted`
-  ↗ Valence, ↗ Arousal, ↗ Trust (small)
-  Example: admiration lands a little, but the agent stays reserved.
-- `normal`
-  ↗ Valence, ↗ Arousal, ↗ Trust (default strength)
-  Example: admiration is welcomed in a healthy way.
-- `amplified`
-  ↑↑ Valence, ↑ Arousal, ↑↑ Trust
-  Example: admiration strongly boosts mood and trust.
-- `intense`
-  ↑↑↑ Valence, ↑↑ Arousal, ↑↑ Trust
-  Example: admiration is deeply affecting or emotionally significant.
-
-### Example With Mood Drift (LLM-friendly)
-Trigger: `desire` — “Romantic/affectionate attraction and wanting.”
-
-Preset: `threatening`
-- Axes: ↓ Valence, ↓ Arousal, ↓ Trust, ↓ Intimacy
-  “Desire feels invasive and alarming — strong negative reaction.”
-- Mood drift (typical):
-  `bashful` ↓, `seductive` ↓, `vulnerable` ↓, `whimsical` ↓
+- `essence_floors` and `essence_ceilings` are stored and returned, but the runtime does not currently enforce them.
+- Trigger aliases are normalized to canonical trigger labels during runtime processing.
+- Canonical trigger defaults come from `GET /api/designer/v2/trigger-defaults`.
+- Mood injection settings are global app settings, stored under the `mood_injection_settings` key in `app_settings`.
