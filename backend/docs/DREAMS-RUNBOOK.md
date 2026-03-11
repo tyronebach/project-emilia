@@ -1,58 +1,81 @@
-# Dreams Runbook (P013 Climate Layer)
+# Dreams Runbook
 
-Use this to validate climate evolution via `/api/dreams`.
+Operational checks for `/api/dreams`.
 
 ## Preconditions
 
-- Backend running
-- `AUTH_TOKEN` configured (or `AUTH_ALLOW_DEV_TOKEN=1` in local dev)
-- Target `(agent_id, user_id)` pair exists
+- Backend is running
+- `Authorization: Bearer <token>` is available
+- Target `agent_id` and `user_id` both exist
 
-## 1) Inspect current dream state
+## Inspect State
 
 ```bash
-curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
-  http://localhost:8080/api/dreams/<agent_id>/<user_id>
+curl -sS \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  "http://localhost:8080/api/dreams/${AGENT_ID}/${USER_ID}"
 ```
 
-Expect:
+Current response shape:
+- `agent_id`
+- `user_id`
 - `lived_experience`
-- `dream_count`
-- `last_dream_at`
-- latest `last_dream` metadata
+- `last_dream`
 
-## 2) Trigger a manual dream run
+`lived_experience` is either the stored row from `character_lived_experience` or a synthesized empty default.
 
-```bash
-curl -s -X POST -H "Authorization: Bearer $AUTH_TOKEN" \
-  http://localhost:8080/api/dreams/<agent_id>/<user_id>/trigger
-```
-
-Expect:
-- persisted dream log row
-- bounded relationship deltas applied
-- updated lived experience snapshot
-
-## 3) Read dream audit trail
+## Trigger a Dream
 
 ```bash
-curl -s -H "Authorization: Bearer $AUTH_TOKEN" \
-  http://localhost:8080/api/dreams/<agent_id>/<user_id>/log
+curl -sS -X POST \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  "http://localhost:8080/api/dreams/${AGENT_ID}/${USER_ID}/trigger"
 ```
 
-Verify:
-- before/after lived experience
-- before/after relationship JSON
-- model + safety metadata
+Validate:
+- a new `dream_log` row exists
+- `character_lived_experience` was updated
+- returned deltas are bounded
 
-## 4) Reset lived experience for test loops
+## Read Audit Log
 
 ```bash
-curl -s -X DELETE -H "Authorization: Bearer $AUTH_TOKEN" \
-  http://localhost:8080/api/dreams/<agent_id>/<user_id>/reset
+curl -sS \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  "http://localhost:8080/api/dreams/${AGENT_ID}/${USER_ID}/log"
 ```
+
+Current response shape:
+- `dreams`: newest first
+- `count`
+
+Useful fields inside each dream row:
+- `triggered_by`
+- `dreamed_at`
+- `conversation_summary`
+- `lived_experience_before`
+- `lived_experience_after`
+- `relationship_before`
+- `relationship_after`
+- `model_used`
+- `safety_flags`
+
+## Reset for Test Loops
+
+```bash
+curl -sS -X DELETE \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  "http://localhost:8080/api/dreams/${AGENT_ID}/${USER_ID}/reset"
+```
+
+Reset response:
+- `status`
+- `agent_id`
+- `user_id`
+- `lived_experience`
 
 ## Notes
 
-- Drift simulator endpoints are deprecated (`410`) and should not be used for climate behavior.
-- Weather (V/A/D) is session-scoped; climate changes should be observed via dream outputs + relationship persistence.
+- Dream execution is the active long-horizon relationship path.
+- Deprecated Designer drift endpoints return `410 Gone`; they are not part of the live climate system.
+- The background scheduler is started from `backend/main.py` and runs `check_and_trigger_dreams()` hourly.
