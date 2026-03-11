@@ -1,89 +1,85 @@
 # Prompt Assembly
 
-This document is the canonical map of backend prompt block order and ownership.
+Backend prompt order as implemented today.
 
 ## Scope
 
-- DM chat (`POST /api/chat`)
-- Room chat (`POST /api/rooms/{room_id}/chat`)
-- Room chat SSE (`stream=1`)
-- Dreams runtime
-- Compaction summaries
+- `POST /api/chat`
+- `POST /api/rooms/{room_id}/chat`
+- room SSE
+- dream execution
+- room compaction
 
-## Room/DM Chat Prompt Order
+## Room and DM Chat
 
-Ownership:
-- Base room/history context: `backend/services/room_chat.py::build_room_llm_messages`
-- Per-turn injections: `backend/services/room_chat.py::prepare_agent_turn_context`
-- Global webapp system prepend: `backend/services/providers/native.py::_prepare_messages`
-  via `backend/services/direct_llm.py::prepend_webapp_system_prompt`
+DM chat is a facade over the room runtime, so prompt assembly is shared.
 
-### 1. Base room/history build
+Base builders:
+- `backend/services/room_chat.py::build_room_llm_messages`
+- `backend/services/room_chat.py::PromptBuilder`
+- `backend/services/providers/native.py::_prepare_messages`
+- `backend/services/direct_llm.py::prepend_webapp_system_prompt`
 
-`build_room_llm_messages(...)` creates the initial list:
-1. System: room context (`_build_room_system_context`)
-2. System (optional): emotional context from pre-LLM emotion runtime
-3. System (optional): stored room summary
-4. History messages:
-   - current agent prior replies as `assistant`
-   - all other speakers as `user` (`[Name]: content`)
+Order:
 
-### 2. Per-turn runtime injection
-
-`prepare_agent_turn_context(...)` mutates the list in this order:
-1. `inject_top_of_mind_if_present`:
-   inserts autorecall memory as a `system` block before the last `user` message
-2. `inject_first_turn_context_if_present`:
-   prepends first-turn session facts to the last `user` message
-3. `inject_game_context_if_present`:
-   appends trusted game context to the last `user` message
-
-### 3. Provider-level prepend (final step before model call)
-
-`NativeProvider._prepare_messages(...)` prepends one global system message:
-1. `## Canon` (workspace SOUL/canon)
-2. `## Lived Experience`
-3. Behavioral rules block (trust/fragility aware)
-4. Webapp instructions:
+1. Provider prepend at index `0`
+   - `## Canon` from workspace SOUL.md
+   - `## Lived Experience` from `character_lived_experience`
+   - behavioral rules from trust + fragility profile
    - current time block
-   - memory tool usage rules
-   - behavior tag format (when enabled)
+   - memory instructions
+   - behavior format instructions when enabled
+2. Room system context from `_build_room_system_context(...)`
+3. Optional emotional context system block
+4. Optional stored room summary from `rooms.summary`
+5. History window from `room_messages`
+   - current agent's prior replies become `assistant`
+   - all other speakers are rewritten as `user` messages with `[Name]: ...`
+6. Per-turn injections applied by `PromptBuilder.build()`
+   - top-of-mind recollections inserted before the last user message
+   - first-turn facts prepended onto the last user message
+   - game context appended onto the last user message
 
-This prepended message is inserted at index `0`, ahead of all room/system/history content.
+## Shared Runtime Parity
 
-### 4. Parity note
+The following stay aligned across DM non-stream, room non-stream, and room stream paths:
 
-Non-stream DM, non-stream room, and SSE room paths all use:
-- `prepare_agent_turn_context(...)` for pre-LLM assembly
-- `schedule_post_llm_tasks(...)` for post-LLM hooks
+- responding agent selection
+- prompt build order
+- first-turn facts
+- top-of-mind injection
+- game context injection
+- post-LLM hooks
 
-This keeps context + hook behavior aligned across transports.
+The DM streaming facade still strips room-specific attribution from outbound SSE events after the shared runtime produces them.
 
-## Dreams Prompt Order
+## Dreams
 
-Ownership:
-- `backend/services/dreams/runtime.py::execute_dream`
+Owned by `backend/services/dreams/runtime.py::execute_dream`.
 
-Dream prompt blocks (single system message, in order):
-1. identity header (`You are {display_name}`)
+Dream prompt blocks are assembled into a single system message in this order:
+
+1. identity header
 2. `## Canon`
 3. `## Lived Experience`
-4. `## Recent Interactions`
-5. `## Prior Room Summaries`
-6. `## Memory Recollections`
-7. `## Current Relationship State`
+4. recent interactions
+5. prior room summaries when enabled
+6. memory hits when enabled
+7. current relationship state
 8. reflection instructions
-9. strict JSON output contract
+9. JSON output contract
 
-## Compaction Prompt Order
+## Compaction
 
-Ownership:
-- `backend/services/compaction.py::CompactionService.summarize_messages`
+Owned by `backend/services/compaction.py::CompactionService.summarize_messages`.
 
-Compaction messages:
-1. System prompt:
-   - neutral summarize prompt, or
-   - persona compaction prompt (with canon excerpt) when enabled
-2. conversation messages to summarize
+Modes:
+- neutral summary prompt
+- persona summary prompt when `COMPACTION_PERSONA_MODE` resolves to persona mode
 
-If persona output fails structure validation, compaction falls back to neutral prompt and emits warning + metric.
+Persona mode includes:
+- canon excerpt from workspace
+- fixed section headers
+- texture and open-thread limits from config
+
+If persona output fails structural validation, compaction falls back to the neutral prompt and emits a warning plus `compaction_persona_fallback` metric.
